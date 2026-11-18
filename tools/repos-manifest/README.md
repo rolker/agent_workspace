@@ -2,8 +2,8 @@
 
 Status: prototype. The format and the tools are still being designed; see
 [docs/spec.md](docs/spec.md), [docs/design.md](docs/design.md) and
-[docs/roadmap.md](docs/roadmap.md). The code here was written under the earlier name
-`ros-manifest`, and its directory, command and Python package still carry that name.
+[docs/roadmap.md](docs/roadmap.md). The tool was called
+`ros-manifest` until #497, which renamed its directory, command and Python package.
 
 ## Goals
 
@@ -100,8 +100,8 @@ yet fetch, sync or build. [docs/prototype.md](docs/prototype.md) describes what 
 commands, and the checks it applies to a manifest.
 
 ```bash
-ros-manifest resolve --manifest path/to/manifest.yaml --role dev --distro jazzy --out ./out
-ros-manifest validate --manifest path/to/manifest.yaml --role dev --distro jazzy
+repos-manifest resolve --manifest path/to/manifest.yaml --role dev --distro jazzy --out ./out
+repos-manifest validate --manifest path/to/manifest.yaml --role dev --distro jazzy
 ```
 
 ## Installing
@@ -114,6 +114,13 @@ python3 -m venv .venv
 ```
 
 It needs Python 3.10 or later and PyYAML.
+
+The settings under the old name are ignored since the rename: set
+`REPOS_MANIFEST_GIT_TIMEOUT` in place of `ROS_MANIFEST_GIT_TIMEOUT`, and an old
+`.ros-manifest-cache` directory can be deleted (the default cache is now
+`.repos-manifest-cache`). A checkout that had the old tool installed can keep an
+ignored `tools/ros-manifest/` directory after pulling (its egg-info and
+`__pycache__`, which git does not remove); it can be deleted too.
 
 ## Development
 

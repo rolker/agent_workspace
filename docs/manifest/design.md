@@ -4,11 +4,11 @@ How this workspace uses the manifest tool, repos-manifest, to set up, update and
 project made of many repos. The tool's own documents do not mention the workspace and are
 not repeated here:
 
-- the format: [`tools/ros-manifest/docs/spec.md`](../../tools/ros-manifest/docs/spec.md)
-- the tools: [`tools/ros-manifest/docs/design.md`](../../tools/ros-manifest/docs/design.md)
+- the format: [`tools/repos-manifest/docs/spec.md`](../../tools/repos-manifest/docs/spec.md)
+- the tools: [`tools/repos-manifest/docs/design.md`](../../tools/repos-manifest/docs/design.md)
 
-The order of work is in [roadmap.md](roadmap.md). The tool's code and command still carry its
-earlier name, `ros-manifest`.
+The order of work is in [roadmap.md](roadmap.md). The tool's code, command and directory
+carry the name repos-manifest.
 
 ## Goals
 
@@ -62,7 +62,7 @@ The `ros2_colcon` adapter has two routes to the list of repos, chosen by one fac
 3. Fetch the manifest. A path is read in place. A URL is fetched afresh every time with the
    adapter's own git code, into a directory that is removed afterwards; no clone is kept.
 4. Run the resolver:
-   `ros-manifest resolve --manifest <file> --role <role> --distro <distro> --out <dir> --layout manifest-dir --cache-dir <dir>.cache`.
+   `repos-manifest resolve --manifest <file> --role <role> --distro <distro> --out <dir> --layout manifest-dir --cache-dir <dir>.cache`.
    The cache directory is new each time and removed afterwards.
 5. Write the result into a new directory, `configs/manifest-resolved.gen-XXXXXX`, record
    where it came from in `.resolved-from`, and move the link `configs/manifest-resolved` to
@@ -106,7 +106,7 @@ What the route guarantees, and how far each guarantee goes:
   a directory a long run is still reading.
 - **Bounded and guarded fetches.** The adapter's fetch allows the https, ssh and file
   transports only and is bounded by `WT_FETCH_TIMEOUT`. The resolver's clone of an `extends`
-  base runs no user hook or filter driver and is bounded by `ROS_MANIFEST_GIT_TIMEOUT`.
+  base runs no user hook or filter driver and is bounded by `REPOS_MANIFEST_GIT_TIMEOUT`.
 - **Nothing is deleted.** The adapter removes no checkout and edits no ignore file.
 
 ### Worktrees
@@ -118,9 +118,9 @@ build. `layers/main` holds the default checkouts, and no issue work is done ther
 
 ### Installing the resolver
 
-`make install-ros-manifest`, which `make setup` includes, installs `tools/ros-manifest`
+`make install-repos-manifest`, which `make setup` includes, installs `tools/repos-manifest`
 editable into the workspace's shared `.venv` in the main checkout. The adapter runs
-`.venv/bin/ros-manifest` from there and does not look on `PATH`.
+`.venv/bin/repos-manifest` from there and does not look on `PATH`.
 
 ## The design we are working towards
 
@@ -316,8 +316,8 @@ checkout, in the way the tool's design gives for changing them after `init`.
 
 ### Installing the tool
 
-`make install-ros-manifest`, part of `make setup`, installs the tool from
-`tools/ros-manifest` into the workspace's shared `.venv`. That stays until the tool lives in
+`make install-repos-manifest`, part of `make setup`, installs the tool from
+`tools/repos-manifest` into the workspace's shared `.venv`. That stays until the tool lives in
 its own repo and is published as a package; the workspace then installs it as it installs
 its other tools.
 

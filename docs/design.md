@@ -121,7 +121,7 @@ A root (the workspace, or a project) may have parts that carry their own goals, 
 only by what crosses its boundary and points at the part's design, which is the one current picture of
 that part, so ADR-0017's one picture holds per owner. A part's design is cited as
 `<path>/design.md#<section>`, `<path>` being the design file's directory
-(`tools/ros-manifest/docs/design.md#<section>`); `check_design_anchors.sh` resolves it against that file's
+(`tools/repos-manifest/docs/design.md#<section>`); `check_design_anchors.sh` resolves it against that file's
 headings (a Markdown link from the linking file's directory, any other citation from the citing file's
 directory and then the root; a file missing from both is an error), and reads each tracked design or
 roadmap under a `docs/` directory, and each sub-roadmap the pointer table names with the design beside
@@ -193,7 +193,7 @@ only.
 | The root's design describes a part only by what crosses its boundary and points at the part's design | Keep one current design; ADR-0022 | `review only` | Review guide row "Keep one current design": the reviewer compares the root's text about a part with the part's own design; mechanics, steps and internals belong in the part's |
 | `AGENTS.md` stays at most 200 lines | Only what's needed | `hook` | `check_agents_md_budget.sh` (`agents-md-line-budget`), run only when `AGENTS.md`, the script or `.pre-commit-config.yaml` is staged; `make lint` and CI run it again |
 | A change that alters how the parts fit updates this file | Keep one current design | `review only` | Review guide rows "Keep one current design" and ADR-0017 |
-| Nothing committed to the workspace names a particular project, except history (ADRs, roadmap, work plans), comments saying where code or a bug came from, test fixtures and `tools/ros-manifest/` prose; examples and guidance use synthetic names | Put each thing at the level it applies to | `review only` | Review guide row "Put each thing at the level it applies to" (search the diff for project names; a real project name only for a public repository). The exceptions are the owner decision of 2026-10-09 (#335), with work plans added on 2026-10-12; from 2026-10-12 a new mention names only a public repository, and existing mentions are not scrubbed |
+| Nothing committed to the workspace names a particular project, except history (ADRs, roadmap, work plans), comments saying where code or a bug came from, test fixtures and `tools/repos-manifest/` prose; examples and guidance use synthetic names | Put each thing at the level it applies to | `review only` | Review guide row "Put each thing at the level it applies to" (search the diff for project names; a real project name only for a public repository). The exceptions are the owner decision of 2026-10-09 (#335), with work plans added on 2026-10-12; from 2026-10-12 a new mention names only a public repository, and existing mentions are not scrubbed |
 | Work happens in a worktree, not the main tree | ADR-0002 | `review only` | The main tree stays on `main`, so `no-commit-to-branch` stops the usual slip; nothing stops a branch switch there. The guide's ADR-0002 row says the worktree scripts and hooks enforce it; the hooks do not |
 | Ask first: instruction files, CI or branch protection, the project remote URL | Leave a trail; start limits strict | `review only` | Review guide row "Name the rule before bending it" (an Ask-First rule treated as bendable). No code-owner file or hook watches those paths |
 | A pull request or an issue carries the AI signature | Leave a trail; start limits strict | `script` | `gh_create_pr.sh` and `gh_create_issue.sh` append it to a given body and exit 2 when `AGENT_NAME` and `AGENT_MODEL` are unset (`--no-signature` skips it); a body gh would write itself (`--fill` and its variants or `--template` with no body flag, `--recover` with or without one) also exits 2 without `--no-signature`. An issue made with `gh issue create` directly is not checked. Comments are signed by habit only: no wrapper signs them |
@@ -470,8 +470,8 @@ Status: `decided`
   `source`. The bootstrap route is the `bootstrap.yaml` flow. On the manifest route the manifest, in the
   new format, is named by `source` (an absolute path, or a git repository with `source_ref` and,
   if the file is not `manifest.yaml`, `source_path`) and is resolved for the registry line's `role=` and `distro=` (both required) by the
-  workspace-installed resolver, `<main checkout>/.venv/bin/ros-manifest` from
-  `make install-ros-manifest`, called by CLI only; every verb reads the resulting directory the same way
+  workspace-installed resolver, `<main checkout>/.venv/bin/repos-manifest` from
+  `make install-repos-manifest`, called by CLI only; every verb reads the resulting directory the same way
   on both routes. One source only: `source` beside any other bootstrap source is a hard error that
   names it. `validate` fails when the directory was resolved from another source, ref, path, role or
   distro, or when a checkout the manifest calls for is missing (a layer marked optional is passed over).
@@ -486,9 +486,9 @@ Status: `decided`
   the tool's system directories), are in [manifest/design.md](manifest/design.md), the route step by
   step under [its own section](manifest/design.md#the-manifest-route-step-by-step); the order of that
   work is in [manifest/roadmap.md](manifest/roadmap.md) (#487). The resolver is the manifest tool in
-  `tools/ros-manifest`, a part too: its format, its commands and what it relies on are in its own
-  design, [tools/ros-manifest/docs/design.md](../tools/ros-manifest/docs/design.md) (the commands
-  under [Commands](../tools/ros-manifest/docs/design.md#commands)), and its order of work in its own
+  `tools/repos-manifest`, a part too: its format, its commands and what it relies on are in its own
+  design, [tools/repos-manifest/docs/design.md](../tools/repos-manifest/docs/design.md) (the commands
+  under [Commands](../tools/repos-manifest/docs/design.md#commands)), and its order of work in its own
   roadmap (#486). The roadmap's Direction section points at both parts' roadmaps.
 - The active project is resolved in this order: `--project`, then the cwd (or `--from`) inside a
   registered hosting directory (longest match); nothing else (`adapter` header, "Multi-tenant
@@ -528,7 +528,7 @@ needs logic of its own; "thin wrapper" means a script or target that already exi
 
 | Verb | For the workspace | Based on |
 |---|---|---|
-| `setup` | thin wrapper | The `git-bug` and `ros-manifest` stamps (`Makefile` line 100; the header lists `setup-dev`, `ros-manifest` and `git-bug`; `make setup` configures no project since #295); `single_project/setup.sh` brings up a registered checkout (since #265 part 4 it clones and links nothing), which the workspace does not need |
+| `setup` | thin wrapper | The `git-bug` and `repos-manifest` stamps (`Makefile` line 99; the header lists `setup-dev`, `repos-manifest` and `git-bug`; `make setup` configures no project since #295); `single_project/setup.sh` brings up a registered checkout (since #265 part 4 it clones and links nothing), which the workspace does not need |
 | `sync` | thin wrapper | `single_project/sync.py` already syncs the workspace repo, alone when no project is resolved (the dispatcher's `_WORKSPACE_ONLY_SYNC_TYPE`, #265 part 4) |
 | `validate` | thin wrapper, with care | `validate_workspace.py` checks the whole workspace and calls this verb for each registry entry, so the workspace's own implementation must not call back into it |
 | `build` | no-op | Nothing is built; `make build` runs the project's `BUILD_CMD` |
@@ -991,7 +991,7 @@ no section of this file carries that ADR.
 | [0004](decisions/0004-enforcement-hierarchy-for-agent-compliance.md) | A rule that matters is enforced at more than one layer; instruction files alone are not enough | in force | [Rules](#rules) | yes 2026-10-27 |
 | [0005](decisions/0005-layered-enforcement-strategy.md) | CI is the enforcement layer, pre-commit hooks the local mirror, framework hooks the early feedback; new rules go CI-first | in force | [Rules](#rules) | yes 2026-10-27 |
 | [0006](decisions/0006-adopt-agents-md-as-shared-instruction-file.md) | `AGENTS.md` holds the shared rules and each framework gets a thin adapter file | in force | [Decision register](#decision-register) | yes 2026-10-27 |
-| [0007](decisions/0007-retain-make-with-dependency-tracking.md) | Keep Make as the task runner, with stamp files for setup dependencies | in force (its "key behaviours" list describes the ROS fork's bootstrap/manifest/layer chain; here the stamps are setup-dev, then git-bug and ros-manifest (no project stamp since #295), and make test does not depend on build) | [Decision register](#decision-register) | yes 2026-10-27 |
+| [0007](decisions/0007-retain-make-with-dependency-tracking.md) | Keep Make as the task runner, with stamp files for setup dependencies | in force (its "key behaviours" list describes the ROS fork's bootstrap/manifest/layer chain; here the stamps are setup-dev, then git-bug and repos-manifest (no project stamp since #295), and make test does not depend on build) | [Decision register](#decision-register) | yes 2026-10-27 |
 | [0008](decisions/0008-permit-cross-reference-addendums-in-adrs.md) | An accepted ADR may gain a status note, a references list or link and typo fixes; anything else needs a superseding ADR | in force | [Documentation layers](#documentation-layers) | yes 2026-10-27 |
 | [0009](decisions/0009-python-package-management-policy.md) | Python tools go in the workspace `.venv` (from `requirements.txt`) or in pipx; PEP 668 is the guardrail | in force | [Decision register](#decision-register) | yes 2026-10-27 |
 | [0010](decisions/0010-git-bug-is-optional.md) | git-bug is installed by default and `skip-git-bug` opts out; scripts work without it | in force | [Decision register](#decision-register) | yes 2026-10-27 |
@@ -1137,6 +1137,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-18 | Documentation layers, Rules, Decision register | Parts with their own documents (#488, ADR-0022): a part owns its inside; the Direction row adds the `Sub-roadmap \| Root` pointer, each part's next step in every run and a part's sub-roadmap path as a third kind of focus; a Now paragraph gives the boundary, the citation form, the one level the checker follows and the totals rule; the Target relates parts to OQ-1 without answering it; two Rules rows (the part-citation check, `hook`; the boundary, `review only`); register row 0022. Documentation layers is about 75 lines, past the 60-line prompt: the pointer and citation mechanics are in the `sitrep_checks.sh` and `check_design_anchors.sh` headers, and the section keeps what two parts must agree on | #488 | 1191 |
 | 2026-11-18 | Change log | Main merged into issue 488's branch after #487 landed (pull request 496): the rows of both sides are kept, #487's (already on main) before #488's, and their line counts are each side's own file at the time; this row's count is the merged file's | #488 | 1187 |
 | 2026-11-18 | Registry and adapters | The manifest-route bullet cites ADR-0022 for the rule for parts, now written, in place of "being written under #488", and links the manifest tool's own design (`tools/ros-manifest/docs/design.md`, its Commands section) as ADR-0022 decision 2 requires, with a section citation into `docs/manifest/design.md`; the roadmap's Direction section gains the pointer rows for both parts' roadmaps | #488 | 1193 |
+| 2026-11-18 | Documentation layers, Rules, Registry and adapters, Decision register | The manifest tool is renamed repos-manifest (path `tools/repos-manifest`, package, command, make target `install-repos-manifest`, stamp, environment variable, cache directory), with no change to what it does; `make setup` removes the old install on a machine that has it. Earlier rows keep the old name as history | #497 | 1194 |
 
 ## Glossary
 

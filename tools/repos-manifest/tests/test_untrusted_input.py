@@ -6,8 +6,8 @@ pre-push review of issue 436."""
 
 import pytest
 
-from ros_manifest.cli import main
-from ros_manifest.schema import ManifestError, parse_manifest_text
+from repos_manifest.cli import main
+from repos_manifest.schema import ManifestError, parse_manifest_text
 
 SECRET = "s3cr3tT0ken"
 
@@ -294,7 +294,7 @@ def test_every_url_and_ref_in_the_p11_fixture_is_on_the_allow_list(fixtures_dir)
     # The patterns were checked against the real manifest before they were fixed.
     import yaml
 
-    from ros_manifest.schema import _REF, _URL_SHAPES
+    from repos_manifest.schema import _REF, _URL_SHAPES
 
     raw = yaml.safe_load((fixtures_dir / "p11" / "manifest.yaml").read_text())
     entries = [entry for layer in raw["repos"].values() for entry in layer.values()]
@@ -492,7 +492,7 @@ def test_a_manifest_is_read_as_utf8_whatever_the_locale(tmp_path, monkeypatch):
     # Round 4: read with the locale's encoding, the "not text" branch differed by machine.
     from pathlib import Path
 
-    from ros_manifest.schema import load_manifest_file
+    from repos_manifest.schema import load_manifest_file
 
     seen = {}
     original = Path.read_text
@@ -606,8 +606,8 @@ def test_names_differing_only_in_case_are_refused():
 
 
 def test_names_differing_only_in_case_are_refused_across_the_chain(tmp_path):
-    from ros_manifest.extends import resolve_chain
-    from ros_manifest.merge import merge_chain
+    from repos_manifest.extends import resolve_chain
+    from repos_manifest.merge import merge_chain
 
     (tmp_path / "base.yaml").write_text("layers: [core]\n")
     (tmp_path / "leaf.yaml").write_text("extends:\n  path: base.yaml\nlayers: [Core]\n")
@@ -637,7 +637,7 @@ _VALID = _repo_manifest() + "roles:\n  dev: {}\n"
 
 
 def _merged(layer: str = "core", source: str = "t"):
-    from ros_manifest.merge import merge_chain
+    from repos_manifest.merge import merge_chain
 
     merged = merge_chain([parse_manifest_text(_VALID, source=source)])
     merged.layers = [layer]
@@ -646,8 +646,8 @@ def _merged(layer: str = "core", source: str = "t"):
 
 
 def _emit(merged, out, layout, distro="jazzy"):
-    from ros_manifest.emit import emit_manifest
-    from ros_manifest.selectors import select_repos
+    from repos_manifest.emit import emit_manifest
+    from repos_manifest.selectors import select_repos
 
     return emit_manifest(merged, select_repos(merged, "dev"), "dev", distro, out, layout=layout)
 

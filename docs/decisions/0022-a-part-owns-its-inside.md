@@ -33,7 +33,8 @@ root's `docs/design.md` on `main` names the tool only at its boundary
 (the resolver, installed by `make install-ros-manifest`, called by CLI
 from the adapter) and holds no resolver mechanics, so the boundary half
 of the rule holds. It did not point at
-`tools/ros-manifest/docs/design.md`, which decision 2 requires; #488
+`tools/ros-manifest/docs/design.md` (now `tools/repos-manifest`), which
+decision 2 requires; #488
 adds that link, after #487 merged, together with the Direction pointer
 rows for the tool's roadmap and the workspace's manifest roadmap.
 The workspace's manifest support (#487): on `main`, the Registry and
@@ -72,7 +73,7 @@ text in the main design keeps what crosses the boundary").
    changed in the checker alone, not a limit of the rule or the pointer.
 6. Citation. A part's design is cited by its path and section,
    `<path>/design.md#<section>`, where `<path>` is the directory of the
-   design file (`tools/ros-manifest/docs/design.md#<section>`,
+   design file (`tools/repos-manifest/docs/design.md#<section>`,
    `docs/manifest/design.md#<section>`). The anchor check resolves it against
    that file's headings, never the root's.
 7. Serves. Work inside a part serves a goal of the root (a section of the

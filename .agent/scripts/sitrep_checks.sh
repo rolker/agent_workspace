@@ -69,7 +69,7 @@
 # Sub-roadmaps (issue #488, ADR-0022). A part of the root may carry its own
 # roadmap. The root's Direction section points at it with a third table:
 #   | Sub-roadmap | Root |
-#   | `tools/ros-manifest/docs/roadmap.md` | `tools/ros-manifest` |
+#   | `tools/repos-manifest/docs/roadmap.md` | `tools/repos-manifest` |
 #   | `docs/manifest/roadmap.md` | . |
 # Cell 1 is the sub-roadmap file, cell 2 the directory its checks' paths
 # are relative to (what --root gets for it); both are relative to this

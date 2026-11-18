@@ -207,7 +207,7 @@ Assess each dimension and assign a verdict (**Good** / **Needs work** / **Concer
   Work inside a part that has its own design (ADR-0022) names the root
   goal it serves and may also name the part's own goal, citing the part's
   design section as `<path>/design.md#<section>`, `<path>` being the
-  design file's directory (`tools/ros-manifest/docs/design.md#<section>`);
+  design file's directory (`tools/repos-manifest/docs/design.md#<section>`);
   the anchor is checked against that file.
   Copy the line, as checked, into this row's Notes. A
   missing line, work that serves no goal, or work that breaks a stated

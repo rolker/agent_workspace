@@ -128,7 +128,7 @@ Read relevant files to understand the current state:
   Work inside a part that has its own design (ADR-0022) names the root
   goal it serves and may also name the part's own goal, citing the part's
   design section as `<path>/design.md#<section>`, `<path>` being the
-  design file's directory (`tools/ros-manifest/docs/design.md#<section>`).
+  design file's directory (`tools/repos-manifest/docs/design.md#<section>`).
   For a project, use its own goals and design document, or write "none"
 - Ask whether the change alters the design picture (how the parts fit
   today) and, if so, which section of the owning repo's design document

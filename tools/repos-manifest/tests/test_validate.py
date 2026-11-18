@@ -1,6 +1,6 @@
-from ros_manifest.merge import merge_chain
-from ros_manifest.schema import parse_manifest_text
-from ros_manifest.validate import build_validation_table, check_dependencies
+from repos_manifest.merge import merge_chain
+from repos_manifest.schema import parse_manifest_text
+from repos_manifest.validate import build_validation_table, check_dependencies
 
 MANIFEST = """
 layers: [core]

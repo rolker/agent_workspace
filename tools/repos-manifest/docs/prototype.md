@@ -41,8 +41,8 @@ A resolver for a manifest format that lets multiple ROS 2 repos compose into one
 ## Usage
 
 ```bash
-ros-manifest resolve --manifest path/to/manifest.yaml --role dev --distro jazzy --out ./out
-ros-manifest validate --manifest path/to/manifest.yaml --role dev --distro jazzy
+repos-manifest resolve --manifest path/to/manifest.yaml --role dev --distro jazzy --out ./out
+repos-manifest validate --manifest path/to/manifest.yaml --role dev --distro jazzy
 ```
 
 `resolve` writes one `.repos` file for every layer in the composed manifest, skipping a layer
@@ -133,7 +133,7 @@ and the rest of `git rev-parse --local-env-vars`, which git sets inside a hook) 
 closed, `GIT_TERMINAL_PROMPT=0`, an empty `core.askPass`, no `GIT_ASKPASS` or `SSH_ASKPASS`
 and `SSH_ASKPASS_REQUIRE=never`, so neither git nor ssh can ask for a password or passphrase;
 a credential helper you configured still runs. Each git call that asks the remote is limited to
-`ROS_MANIFEST_GIT_TIMEOUT` seconds (default 60; set it in the environment to change it): when
+`REPOS_MANIFEST_GIT_TIMEOUT` seconds (default 60; set it in the environment to change it): when
 the limit runs out, git and everything still in its process group are killed (a program that
 left the group, which ssh does not, is not) and `resolve` fails, saying so. An interrupt while
 git runs kills git's group the same way, removes the partial clone and ends `resolve` by that
@@ -164,7 +164,7 @@ notice. Neither holds manifest text.
 
 A git-backed `extends` is cloned one commit deep (`git clone --no-checkout --branch <ref>
 --depth 1`, then checked out as described above) into the cache directory (`--cache-dir`,
-default `.ros-manifest-cache` in the current directory). The clone is made in a temporary
+default `.repos-manifest-cache` in the current directory). The clone is made in a temporary
 `.<key>.partial-*` directory beside its entry and renamed into place only when complete, so a
 failed, timed-out or interrupted clone leaves no entry a later run would trust (a run killed
 outright may leave a `.partial-*` directory, which is never read: delete it). An entry is reused on

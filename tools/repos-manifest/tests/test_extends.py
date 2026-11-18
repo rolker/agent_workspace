@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from ros_manifest.extends import resolve_chain
-from ros_manifest.merge import merge_chain
-from ros_manifest.schema import ManifestError
+from repos_manifest.extends import resolve_chain
+from repos_manifest.merge import merge_chain
+from repos_manifest.schema import ManifestError
 
 
 def _write(path: Path, text: str) -> Path:
@@ -225,7 +225,7 @@ optional_layers: [extra, site]
 def test_optional_layer_outside_composed_layers_is_error_at_merge():
     # parse_manifest_text already refuses this per file; merge_chain re-checks against the
     # composed list, so a Manifest built any other way cannot slip an unknown layer through.
-    from ros_manifest.schema import Manifest
+    from repos_manifest.schema import Manifest
 
     bad = Manifest(
         source="handmade",
@@ -403,8 +403,8 @@ def test_git_backed_extends_provenance_is_url_ref_path_commit(tmp_path):
     # Issue 267 decision 5: generated files say which manifest contributed each repository.
     # A base read from a clone is labelled by where it came from, never by the cache path,
     # which may be a temporary directory that is gone after the resolve.
-    from ros_manifest.emit import emit_layer
-    from ros_manifest.selectors import select_repos
+    from repos_manifest.emit import emit_layer
+    from repos_manifest.selectors import select_repos
 
     remote = tmp_path / "base_repo"
     commit = _manifest_repo(remote, {"config/manifest.yaml": _BASE_TEXT})
@@ -508,7 +508,7 @@ def test_label_with_a_slash_in_the_ref_is_unambiguous(tmp_path):
 def test_clone_states_the_transport_policy(tmp_path, monkeypatch):
     # The transports the clone may use are on the command line, not left to git's defaults:
     # everything refused, then https, ssh and file allowed; `--` before the url.
-    from ros_manifest import extends
+    from repos_manifest import extends
 
     calls = []
 
@@ -538,7 +538,7 @@ def test_clone_states_the_transport_policy(tmp_path, monkeypatch):
 def test_a_failed_clone_reports_git_s_status_not_its_output(tmp_path, monkeypatch):
     # Round 4: git's stderr was decoded as text (a UnicodeDecodeError traceback when the remote's
     # file names are not UTF-8) and, when it decoded, quoted in the message.
-    from ros_manifest import extends
+    from repos_manifest import extends
 
     def fake_run_git(args, timeout=None):
         return 128, b"\xff" * 300 + b" remote-file-name"
@@ -562,7 +562,7 @@ def _git_based_leaf(tmp_path):
 
 def test_missing_git_has_its_own_message(tmp_path, monkeypatch, capsys):
     # Round 4: it read "its extends cannot be followed (No such file or directory)".
-    from ros_manifest.cli import main
+    from repos_manifest.cli import main
 
     monkeypatch.setenv("PATH", str(tmp_path / "empty"))
     leaf = _git_based_leaf(tmp_path)
@@ -574,7 +574,7 @@ def test_missing_git_has_its_own_message(tmp_path, monkeypatch, capsys):
 
 
 def test_an_uncreatable_cache_dir_has_its_own_message(tmp_path, capsys):
-    from ros_manifest.cli import main
+    from repos_manifest.cli import main
 
     (tmp_path / "a-file").write_text("")
     cache = tmp_path / "a-file" / "cache"

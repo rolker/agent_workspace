@@ -6,10 +6,10 @@ fixture is authored to reproduce that with a single manifest + one per-distro re
 
 import pytest
 
-from ros_manifest.emit import emit_layer, strip_provenance_header
-from ros_manifest.extends import resolve_chain
-from ros_manifest.merge import merge_chain
-from ros_manifest.selectors import select_repos
+from repos_manifest.emit import emit_layer, strip_provenance_header
+from repos_manifest.extends import resolve_chain
+from repos_manifest.merge import merge_chain
+from repos_manifest.selectors import select_repos
 
 LAYERS = ["underlay", "core", "platforms", "site", "sensors", "simulation", "ui"]
 
@@ -39,7 +39,7 @@ def test_dev_role_selects_all_44_repos(merged):
 
 
 def test_rolling_only_differs_by_unh_marine_autonomy_ref(merged):
-    from ros_manifest.selectors import resolve_distro_ref
+    from repos_manifest.selectors import resolve_distro_ref
 
     diffs = [
         name

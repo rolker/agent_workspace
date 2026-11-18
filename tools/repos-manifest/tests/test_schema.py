@@ -1,6 +1,6 @@
 import pytest
 
-from ros_manifest.schema import ManifestError, parse_manifest_text
+from repos_manifest.schema import ManifestError, parse_manifest_text
 
 
 def test_minimal_valid_manifest():

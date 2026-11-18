@@ -13,8 +13,8 @@
 # project's settings file sets `source` (with source_ref and source_path for
 # a git URL), and needs role= and distro= on the registry line: the
 # manifest, in the new format, is resolved by the workspace-installed
-# ros-manifest resolver (<main checkout>/.venv/bin/ros-manifest, from `make
-# install-ros-manifest`; called by CLI only) into configs/manifest-resolved
+# repos-manifest resolver (<main checkout>/.venv/bin/repos-manifest, from `make
+# install-repos-manifest`; called by CLI only) into configs/manifest-resolved
 # (see "Manifest route" below for the fetch, staleness and network rules).
 # Package worktrees' env.sh is written once at create time: after a sync
 # that changes the layers, sync says to recreate them.
@@ -524,7 +524,7 @@ _rc_bootstrap_manifest() {
 
 # --- Manifest route (issue #436) -------------------------------------------
 # A project whose settings file sets `source` takes the manifest route: its
-# manifest, in the new format (tools/ros-manifest), is fetched (a git URL
+# manifest, in the new format (tools/repos-manifest), is fetched (a git URL
 # source, afresh on each setup and sync; no clone is kept) or read in place
 # (a path source), resolved for the registry line's role= and distro= by the
 # workspace-installed resolver into a generated directory
@@ -571,10 +571,10 @@ _rc_bootstrap_manifest() {
 # or fetched. Local manifest work uses the path form. Every `extends` base
 # is cloned afresh, the resolver's cache being a sibling of the new
 # generated directory removed on every exit; the resolver protects that
-# clone itself (tools/ros-manifest/docs/prototype.md: no user hook, filter driver or
+# clone itself (tools/repos-manifest/docs/prototype.md: no user hook, filter driver or
 # submodule, git's repository variables cleared, no terminal and no
 # askpass, the same three transports) and bounds each of its git calls by
-# ROS_MANIFEST_GIT_TIMEOUT (default 60 s). So while the source lock is
+# REPOS_MANIFEST_GIT_TIMEOUT (default 60 s). So while the source lock is
 # held, every call that asks a remote has a limit: WT_FETCH_TIMEOUT for
 # the leaf, the resolver's for each base. The leaf's limit ends git, not
 # an ssh git started, which may outlive it (until its own connect
@@ -586,7 +586,7 @@ _rc_bootstrap_manifest() {
 # Network: the source host and every `extends` host at setup and sync, and
 # every package host at setup (vcs import) and sync (git pull/fetch); none
 # once fetched for the other verbs. The resolver itself comes from PyPI
-# when it is installed (make install-ros-manifest).
+# when it is installed (make install-repos-manifest).
 #
 # Concurrency: setup and sync fetch and resolve holding an exclusive flock
 # on configs/.lock.source (waits ROS2_COLCON_LOCK_WAIT seconds, default
@@ -665,7 +665,7 @@ _rc_check_single_source() {
     return 1
 }
 
-# The workspace-installed resolver: <main checkout>/.venv/bin/ros-manifest,
+# The workspace-installed resolver: <main checkout>/.venv/bin/repos-manifest,
 # the main checkout found from git's common dir (a worktree has no venv of
 # its own; the Makefile's WS_ROOT), else WORKSPACE_ROOT. No PATH lookup, so
 # a stray copy elsewhere is never used.
@@ -673,11 +673,11 @@ _rc_resolver_bin() {
     local common main="$WORKSPACE_ROOT"
     common="$(_rc_nofd git -C "$WORKSPACE_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common=""
     [ -n "$common" ] && main="${common%/.git}"
-    echo "$main/.venv/bin/ros-manifest"
+    echo "$main/.venv/bin/repos-manifest"
 }
 
 # The transports the fetch may use, stated on its command line as the
-# resolver's extends clone states them (tools/ros-manifest extends.py):
+# resolver's extends clone states them (tools/repos-manifest extends.py):
 # https, ssh (a user's url.*.insteadOf rule may send https to an ssh
 # mirror) and file, nothing else; GIT_ALLOW_PROTOCOL says the same in the
 # environment, which a user's own protocol.<name>.allow=always cannot widen.
@@ -923,7 +923,7 @@ _rc_manifest_resolve() {
     [ -n "$err" ] && printf '%s\n' "$err" >&2
     if [ "$rc" -ne 0 ]; then
         if [ "$rc" -eq 2 ] && [[ "$err" == *--layout* ]]; then
-            echo "ERROR: the resolver at $bin predates this adapter (it does not know --layout manifest-dir); reinstall it: make install-ros-manifest (from the workspace main checkout)" >&2
+            echo "ERROR: the resolver at $bin predates this adapter (it does not know --layout manifest-dir); reinstall it: make install-repos-manifest (from the workspace main checkout)" >&2
         else
             echo "ERROR: the manifest resolver failed (exit $rc, above); nothing changed: the previously resolved manifest, if any, is kept" >&2
         fi
@@ -1129,7 +1129,7 @@ _rc_manifest_prepare() {
     _rc_distro >/dev/null || return 1
     bin="$(_rc_resolver_bin)"
     if [ ! -x "$bin" ]; then
-        echo "ERROR: the manifest resolver is not installed at $bin; run: make install-ros-manifest (from the workspace main checkout)" >&2
+        echo "ERROR: the manifest resolver is not installed at $bin; run: make install-repos-manifest (from the workspace main checkout)" >&2
         return 1
     fi
     local rc=0

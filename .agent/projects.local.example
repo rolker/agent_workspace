@@ -75,8 +75,8 @@
 #                         project's bootstrap.yaml (refused for
 #                         single_project, which is cloned by hand)
 #   source                ros2_colcon only: the project's manifest in the
-#                         new format, resolved by the ros-manifest resolver
-#                         (make install-ros-manifest): an absolute path to
+#                         new format, resolved by the repos-manifest resolver
+#                         (make install-repos-manifest): an absolute path to
 #                         the file, or an https:// or file:// URL of a git
 #                         repository holding it (not plain http://, no
 #                         user name or password; the fetch uses https, ssh

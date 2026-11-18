@@ -1,8 +1,7 @@
 # Design
 
 Status: draft. This is the design we are working towards. What exists today is listed under
-"What is built" at the end. The prototype's command is still called `ros-manifest`, the
-tool's earlier name.
+"What is built" at the end.
 
 The format of a manifest is in [spec.md](spec.md). This document is about the tools.
 

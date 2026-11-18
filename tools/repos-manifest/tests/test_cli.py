@@ -1,7 +1,7 @@
 import pytest
 
-from ros_manifest import cli
-from ros_manifest.cli import main
+from repos_manifest import cli
+from repos_manifest.cli import main
 
 
 def test_cli_resolve_writes_files(fixtures_dir, tmp_path, capsys):

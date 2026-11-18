@@ -59,7 +59,7 @@
 #         naming both paths.
 #     A path that resolves to docs/design.md is a citation of the root's
 #     design. One that resolves to any other file named `design.md`,
-#     wherever it is (`tools/ros-manifest/docs/design.md`,
+#     wherever it is (`tools/repos-manifest/docs/design.md`,
 #     `docs/manifest/design.md`, `tools/x/design.md`, a root-level
 #     `design.md`), cites a part's design (ADR-0022 decision 6: `<path>` is
 #     the design file's directory) and is checked against that file's
