@@ -117,3 +117,69 @@ Proceed to planning, with these instructions for the plan:
 **Plan**: `.agent/work-plans/issue-495/plan.md` at `46fbb9f6`
 
 Distro directories from the first distro on, config.yaml with a list of distros, and `init --distro` adding a distro to an existing directory; the plan leads with the section issue 500 waits for, draws the smallest system before and after a second distro, lists every place in the tool's documents the rule touches, and puts five open questions with recommendations to the owner.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-18 15:10 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #495 — repos-manifest design: start with one distro and add more later, without moving the first
+**Plan**: `.agent/work-plans/issue-495/plan.md` at `46fbb9f6`
+**Branch**: `feature/issue-495`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Documents only, four files, one PR. The section issue 500 waits for is put first and committed on its own. |
+| Issue alignment | Needs work | Covers the layout rule, config.yaml, adding a distro, the flat case and the per-distro-settings question, and every action of the Issue Review and the Checkpoint. Serves, as checked: "Workspace goals "Flexibility" and "Easy to use" (README); `tools/repos-manifest/docs/design.md#more-than-one-distro` and `#the-system-directory`; workspace side `docs/manifest/design.md#a-project-instance-is-a-system-directory`" (README headings at lines 62 and 90, the three anchors exist). But the issue's first bullet says `init` "can be told" to use distro directories for one distro, which is option B of open question 1; the plan recommends A without saying that A departs from the issue's text (finding 6). |
+| File targeting | Needs work | Right four files. The table of places misses text the new rule makes false (finding 4). |
+| Consequences | Needs work | Missed: the `Commands` walk-through (`source setup.bash` at the top), "Not covered" (`distro` is recorded), the `resolve` section's output path, `show`/`resolve` distro choice inside a system directory; what `sync` does when a manifest gains or drops `distros:`. |
+| Principle alignment | Needs work | "Only what's needed": `per_distro` and `init`'s second meaning add shape the owner's own case does not need (findings 1, 2). "Ask about what matters": the `init`-versus-own-command choice is design-changing and is decided silently (finding 2). "Keep one current design" and "Look for prior art" are answered. Docs-only, no test, said so implicitly by "documents only". |
+| ADR compliance | Good | ADR-0017 and ADR-0022 handled: the part's design is edited in place, the root's design changes in one sentence. ADR-0001 rightly not triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Principle alignment — Only what's needed] (medium)** `per_distro` is not needed for the owner's case and its meaning is ambiguous. The owner's case starts with rolling (`docs/manifest/design.md` "The case it is designed for"; `docs/manifest/roadmap.md`: "Jazzy is set up ... as a second distro of the same root"), and the spec says the rolling copy lists every distro (spec.md "Copies of a manifest on different branches..."), so the recorded manifest already lists jazzy. The plan's own semantics, "replaces the top-level `manifest` for that distro's reads before its first sync", is either one-shot (then it need not be recorded at all) or permanent (then the text is wrong, and a system with no `local_manifest` breaks on the second sync of that distro). Simpler shape, one key: the recorded `manifest` must list every distro in `distros`; adding a distro that it does not list takes a new location, which replaces `manifest` and is accepted only if it lists all the system's distros (a newer branch does). Each distro then reads its own local copy after its first sync, as the design already says. If `per_distro` stays, say whether it is first-sync-only or every read, and make `distros` a mapping instead of a list plus a second map naming distros.
+2. **[Principle alignment — simplicity] (medium)** "Add a distro" as `init --distro X` in an existing directory gives `init` two meanings, each with its own accepted and refused flags, and a third once the re-runnable `init` ask is designed (complete the record). A command of its own (`repos-manifest add-distro <d> [--manifest-ref/--manifest-path]`, name for the owner) has one meaning, needs no refusal list for `--role`/`--with`/`--fetch-from`/`--remote`, and lets issue 500's `init` simply refuse any directory that has `.repos-manifest/`. Either way this is design-changing (the CLI the adapter's `setup` row names) and belongs in the open questions; the Issue Review listed it as a blocking point ("whether `init --distro X` ... means add X or needs `--add`"), and the plan decided it without asking.
+3. **[Issue alignment] (medium)** `--manifest-path` on "add a distro" contradicts open question 3's recommendation A: if rolling's manifest is at a different path, the one `local_manifest` string, the same in every distro, points at the wrong file for rolling. Drop `--manifest-path` from the add command (the path must be the same in each distro), or make `local_manifest` per distro.
+4. **[Consequences] (medium)** Places the plan's table misses, from a grep of `design.md` for "distro" and "setup.bash": (a) "Commands", lines 209–223: `repos-manifest init ... --distro jazzy` then `source setup.bash` at the top, which no longer exists; it becomes `jazzy/setup.bash`. (b) "Not covered", line 649: "`distro` is recorded", a removed key. (c) "resolve", lines 271–272: writes "into `.repos-manifest/resolved/`", now `resolved/<distro>/` (or `resolved/` when flat). (d) "show", line 259, and line 225: which distro `show` and `resolve` use inside a system directory with several distros is not said; the plan gives the one-distro-at-the-top rule only for `build`. State one rule for every command once: inside a distro's directory, that distro; at the top with one distro, that one; at the top with several, `sync` and `status` act on each and the others need `--distro`. (e) `docs/manifest/design.md`'s `setup` row ("`repos-manifest init` ... for a distro the instance does not have yet (#495)"), which the Issue Review named: drop "(#495)" and keep or change the command to whatever finding 2 settles.
+5. **[Consequences] (minor)** What `sync` does when the manifest's `distros:` changes shape is unstated: a flat system whose manifest gains `distros:` (resolving with no distro is then an error by spec.md "Distros"), and a distro system whose manifest drops it. Say that `sync` refuses with the same "set up a new directory" message.
+6. **[Issue alignment] (minor)** Open question 1 should label the conflict: the issue's first bullet ("`init` can be told to use one directory per distro even when it is given a single distro") reads as B; the workspace design and the owner's "the first distro's directories must not move" read as A. The plan's recommendation is right, but the owner should see that it departs from the issue's wording.
+7. **[Issue alignment] (minor)** The flat limit is stated only as a refusal message of `init`. The design text should say it as a limit, with the cheap way around it: a project that may later have distros names one from the start (`distros: [main]`) and pays one directory level. Moving a flat system is a re-clone or a hand move; say so plainly.
+8. **[Consequences] (minor)** `state.yaml` as one shared file for every distro makes "jazzy's entries are not touched" a promise about rewriting a shared file, and two distros' syncs write the same file (the lock ask). A file per distro beside its resolved output (`.repos-manifest/resolved/<distro>/` or `.repos-manifest/<distro>/`) gives that for free. The plan leaves the shape to 500 but fixes "one file"; leave that open too, or choose per distro.
+9. **[Issue alignment] (minor)** `init <manifest> --distro rolling` in a complete directory is not in the refusal list (the plan says only that the add form "takes no `<manifest>` argument"). Moot if finding 2 gives adding its own command.
+
+### Grow path, step by step
+
+- One repo, one distro: `init m --distro jazzy` gives `jazzy/src/my_repo`, `resolved/jazzy/`. One extra level against today. Fine.
+- Layers added: unnamed layer's `src/` stays in `jazzy/`, named layers beside it. Nothing moves (a repo given a layer later is the design's existing open question). Fine.
+- Second distro: nothing of jazzy moves, no hand edit, no re-clone. Holds when the recorded manifest lists the new distro (the owner's rolling-first case); for jazzy-first the plan needs `per_distro` (finding 1 gives a one-key alternative).
+- Third distro: same as the second.
+- Flat (no distro) to distros: not possible in place; a new directory and a re-clone or hand move. The right limit, since the unnamed variant stops resolving once `distros:` exists, but it must be stated as a limit with its way around (finding 7).
+
+### Open questions for the owner
+
+1. Distro directories always: agree with A. Keep it as a question, labelled as a conflict with the issue's wording (finding 6).
+2. `distros` always a list: agree with A. Mechanism that follows from 1; decide it, do not ask.
+3. `local_manifest` one string: agree with A, which also follows from spec.md (a repo's layer does not vary by distro); then the add command must not take `--manifest-path` (finding 3). Mostly mechanism.
+4. Per-distro manifest version: disagree with A. Add option D, one `manifest` key that must list every distro, replaced when a distro is added that it does not list (finding 1), and recommend it; or B, with a refusal message. The owner's own case (rolling first) needs neither A nor C.
+5. Flat for no distros: agree with A, with the limit and the way around it in the design (finding 7).
+Missing: adding a distro as `init` in an existing directory or as its own command (finding 2).
+
+### Summary
+
+The layout rule, the `distros` list, the flat case and the section issue 500 waits for are right and close to complete; `init` and `sync` for the first distro can be built from section 1 items 1, 2 (without `per_distro`) and 4. Before implementation: settle or simplify `per_distro`, put "add a distro: `init` or its own command" to the owner, drop the `--manifest-path`/`local_manifest` contradiction, and add the missed places to the table.
+
+### Recommended Actions
+
+- [ ] Replace `per_distro` with the one-`manifest`-key rule (recorded manifest lists every distro; adding one it does not list replaces it with a location that does), or define `per_distro` precisely and make `distros` a mapping (finding 1)
+- [ ] Add "add a distro: `init --distro` in an existing directory, or a command of its own" to the open questions, with a recommendation (finding 2)
+- [ ] Remove `--manifest-path` from adding a distro, or make `local_manifest` per distro (finding 3)
+- [ ] Add to the table: the Commands walk-through, "Not covered", "resolve", one distro-selection rule for every command, and the `setup` row in `docs/manifest/design.md` (finding 4)
+- [ ] Say what `sync` does when the manifest gains or drops `distros:` (finding 5)
+- [ ] Label open question 1 as a conflict with the issue's first bullet; decide 2 and 3 as mechanism (findings 6, 3)
+- [ ] State the flat limit and the `distros: [main]` way around it in the design (finding 7)
+- [ ] Leave `state.yaml`'s split to 500, or choose a file per distro (finding 8)
