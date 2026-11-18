@@ -329,3 +329,32 @@ Specialists: static analysis (shellcheck clean on the 7 changed scripts, yamllin
 - [x] (suggestion) The #488 Change log row records 1189 lines, but the file now has 1190: commit `99135314` added a line and did not update the count. Found by gemini. — `docs/design.md:1136`
 - [x] (suggestion) The design text and the skill both say `named_part` comes from a part line's `gh-issue` check. `sitrep_root.sh` also matches `adapter --project` checks and issue numbers in the Line cell, by the same rules as root lines. Found by gemini. — `docs/design.md:105`, `.claude/skills/sitrep/SKILL.md:460`
 - [x] (suggestion) `update_roadmap.sh` still edits `ROADMAP.md` and `docs/ROADMAP.md` beside `docs/roadmap.md`. A sub-roadmap at one of those paths would therefore have its items ticked, although the docs say the updater leaves sub-roadmaps alone; the added test covers only paths outside its candidate list. Either skip a candidate that the active roadmap's pointer table names, or narrow the claim. Found by codex. — `.agent/scripts/update_roadmap.sh:169`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 11:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-488 at `6c323166`
+**Addressed**: Local Review (Pre-Push) at `45b2d243` (2026-11-18 11:03 -05:00)
+**Commits**: `b96f82ee`, `8d6a2fe1`, `ce810336`, `6c323166`
+
+The four anchor-check findings share one file and are one commit (`b96f82ee`). The new tests for the unreadable citer, the `=` path, the duplicate `./design.md` and the angle-bracket fallback fail on the previous `check_design_anchors.sh` (checked by running the new suite against HEAD~ of it: 4 failures); the collision test pins behaviour the code already had.
+
+### Actions
+- [x] (must-fix) Each citer is scanned on its own and awk's status is checked, as `design_records` does: an unreadable citer is the finding "could not read <file>" and the citers after it are still checked. Files reach awk through a redirect, not as an operand, in `citations` and in `design_records`, so `a=b/docs/roadmap.md` is read as a file. Tests: a mode-000 README.md before a skill with a broken anchor (skipped when run as root), and a tracked `a=b/docs/roadmap.md` — `.agent/scripts/check_design_anchors.sh` (`b96f82ee`)
+- [x] (suggestion 1) `add_citer` folds the path before keeping it, so a pointer to a root-level `ROADMAP.md` adds `design.md`, not `./design.md`, and a design also cited as `design.md#x` is read once. Test: one finding, not two — `.agent/scripts/check_design_anchors.sh` (`b96f82ee`)
+- [x] (suggestion 2) Kept the behaviour (the citing file's directory wins, as a part's own files would cite their design) and corrected the text: the header and docs/roadmap.md say `docs/design.md#x` names a part's design from a citer whose directory has its own `docs/design.md`, and `/docs/design.md#x` names the root's from anywhere. Collision test with `tools/t/ROADMAP.md` — `.agent/scripts/check_design_anchors.sh`, `docs/roadmap.md` (`b96f82ee`)
+- [x] (suggestion 3) `](<path#x>)` is a link: it resolves from the file only. Test: a destination that exists only from the root fails — `.agent/scripts/check_design_anchors.sh` (`b96f82ee`)
+- [x] (suggestion 4) The #488 Change log row gives 1191, `wc -l docs/design.md` after this round's edits — `docs/design.md` (`6c323166`)
+- [x] (suggestion 5) docs/design.md's Direction row and the sitrep skill say a part's line names work by the rules a root line uses: `(#N)` in its item, a `gh-issue` check or an `adapter --project` check, as `sitrep_root.sh` matches — `docs/design.md`, `.claude/skills/sitrep/SKILL.md` (`8d6a2fe1`)
+- [x] (suggestion 6) Narrowed the claim: `update_roadmap.sh` never edits a sub-roadmap at a path other than its three candidates, and one at `ROADMAP.md`, `docs/ROADMAP.md` or `docs/roadmap.md` would be edited like the root's; the test's name and comment say the same — `docs/design.md`, `.agent/scripts/tests/test_update_roadmap.sh` (`ce810336`)
+
+### Checks
+Suites run, each on its own from the worktree:
+- `test_design_anchors.sh`: `test_design_anchors: 76 passed, 0 failed`
+- `test_sitrep_checks.sh` (names `check_design_anchors.sh`): `test_sitrep_checks: 252 passed, 0 failed`
+- `test_update_roadmap.sh` (suite file changed): `test_update_roadmap:16 passed, 0 failed`
+- `test_skill_paths.sh` (skill text changed): `test_skill_paths: 163 passed, 0 failed`
+
+`check_design_anchors.sh` on the worktree exits 0. Every commit ran the hooks with `SKIP=validate-script-tests` (owner rule of 2026-11-13, #465). The full pre-commit pass over the branch was left to the host.
