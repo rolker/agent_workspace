@@ -192,3 +192,64 @@ Instructions for the plan:
 **Plan**: `.agent/work-plans/issue-503/plan.md` at `3c2fdd0d`
 
 Part 1, the first cut: a root holding `.repos-manifest/` takes a third route through the adapter's existing path helpers (`_rc_manifest_dir` to `resolved/<d>`, a new `_rc_repos_file`, `_rc_layer_dir` to `<root>/<d>/<layer>` or `<root>/<d>` for `_unnamed`, optional per repo), the distro by the owner's rule from `ACTIVE_PROJECT_FROM` set by the dispatcher, `setup`/`sync` running `repos-manifest sync --distro <d>`, `build`/`test` the interim colcon loop with `--base-paths src`, and `validate` checking the last resolve and refusing a second record; type detection in `register_project.sh`; no new verb. Owner's decisions recorded (2026-11-18): "yes, the directory the session is started in decides"; "yes, starting at ~/project11 is fine for the first cut", so sessions start at the root and `<root>/<distro>/` sessions are part 3 with a decision superseding that part of ADR-0020. No open questions remain. Merges after #500 part 1.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-18 17:53 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #503 — ros2_colcon adapter: call the manifest tool's commands, and register a project from a manifest
+**Plan**: `.agent/work-plans/issue-503/plan.md` at `3c2fdd0d`
+**Branch**: `feature/issue-503`
+**Serves**: Easy to use and Modular (`README.md#workspace-goals`); `docs/design.md#registry-and-adapters`, `docs/manifest/design.md#a-project-instance-is-a-system-directory` (checked: present, and the work serves them)
+
+### The owner's use, traced through the code as it would be after the plan
+
+1. `repos-manifest init ./project11.manifest.yaml --distro-dirs --distro rolling --role simulator` (feature/issue-500): writes `.repos-manifest/{config.yaml,state.yaml}`, `.repos-manifest/resolved/rolling/{layers.txt,<layer>.repos,optional.txt}` (head `#` lines, `yaml.safe_dump` with two-space keys, which `_rc_repos_entries` and `_rc_layers` read), clones to `rolling/<layer>/src/<key>`, and the stub `rolling/setup.bash`. Works.
+2. `register_project.sh ~/project11 --name project11` from the workspace: type from `.repos-manifest/` (plan step 9); `registration.conf` has `setup=when-missing` (the directory exists, so no setup) and `run=none`, so registration runs neither `build` nor `test` and `--skip-run` is not needed; the gate's `adapter --from <main checkout> --project project11 validate` gets rolling by rule 2 and passes when every non-optional repo cloned; line `project11 ros2_colcon /home/roland/project11`; the user-tier check runs `session_root.sh --dir ~/project11`, which accepts a root in no git repository when the directory is the root itself. Works.
+3. A session at `~/project11`: `session_root.sh` accepts it (above); `skill_prefix.sh` answers `agent-workspace:`; the plugin is at user scope; the root has no `.claude/` of its own, so nothing is missing. Works.
+4. `/run-issue rolker/unh_marine_autonomy#415 --layer core --package-repos unh_marine_autonomy`: `session_root.sh`, `skill_prefix.sh` and `dispatch_phase.sh base` work (`adapter worktree_repos` and `repo_pin` from the session's cwd, rule 2, the pin `rolling` from `resolved/rolling/core.repos`, its kind from the clone's origin). **Breaks next, at `/start-task` step 1**: `git rev-parse --git-dir` in `~/project11` fails and the skill stops with "Not in a git repository. /start-task must be invoked from the workspace root." Past that, **`worktree_create.sh` lines 545–549** refuse every project worktree whose root is no git repository ("project checkout is not a git repository: /home/roland/project11"), package worktrees included. Neither is in the plan; the issue review listed `worktree_create.sh` as unchanged.
+5. Once 4 is fixed: `env.sh` sources `/opt/ros/rolling/setup.bash` (present on this machine), each lower layer's `install/local_setup.bash` guarded, `rolling/core/install`, then the worktree's own; `build.sh` builds `core_ws/src`. A lower layer with no install is skipped without a word and the build fails in CMake with "Could not find a package configuration file provided by <pkg>", which names the package but not the layer; a partly built layer exposes what did install. Acceptable for a first cut (finding 5).
+6. PR and merge: `gh_create_pr.sh -R owner/repo --base <base>` skips the repo-safety check; `merge_pr.sh --pr owner/repo#M` skips the project-root lookup, and its "Syncing project" step is guarded by `-e $PJ_REPO_ROOT/.git`. Nothing found that reads the old layout or `distro=`. But nothing on this path updates the root's clone after a merge (finding 3).
+
+### One issue across about ten repos in several layers
+
+Not with one worktree. A package worktree holds one layer (`worktree_repos` refuses a repo of another layer by name), and its directory is named from the issue alone (`issue-<project>-<owner>-<repo>-<N>`), so a second worktree for the same issue in another layer is refused as already existing. Within one layer, the repos other than the issue's own are siblings: their branches start from origin's default branch, not from their pin, and `run-issue` opens only the owning repo's PR (siblings by hand). For the Rolling port with this first cut: one issue per repo in that repo's own tracker (`rolker/<repo>#M`), each run with `--layer <its layer> --package-repos <repo>`, its branch and PR base from its own pin, with #415 kept as the tracking issue that lists them; work bottom-up, and after a lower layer's PR merges, pull it into the root's clone and rebuild that layer before the upper worktrees build against it. That meets his aim; one #415 worktree spanning layers does not exist.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One PR; adapter helpers plus route, dispatcher variable, type detection; nothing in part 1 that his use does not need |
+| Issue alignment | Needs work | Every Issue Review action and Checkpoint instruction is carried, but the owner's step 8 (`/run-issue` from `~/project11`) breaks at `/start-task` step 1 and `worktree_create.sh:545`, so part 1 does not reach "working on the issues so it can build" |
+| File targeting | Needs work | Missing `.agent/scripts/worktree_create.sh` (root-is-git check) and `.claude/skills/start-task/SKILL.md` step 1; `AGENTS.md`'s "registration still needs it" becomes untrue (owner's approval needed to edit) |
+| Consequences | Needs work | How a merged lower-layer fix reaches the root's clone is not said (tool-route `sync` never pulls by decision; `merge_pr.sh` syncs only a git root) |
+| Principle alignment | Good | Each rule stated once (distro rule in the adapter header); no new verb; offline tests; but the worktree test fixture as described would hide finding 1 ("Test what breaks") |
+| ADR compliance | Good | 0011 (no verb, no type name in generic scripts), 0012 (composition stays in the adapter; the fix to `worktree_create.sh` is generic), 0019, 0020/0021 (session at the root only; registration from the workspace), 0022 (only `resolved/` read) |
+| ROS conventions | Good | Overlay order unchanged; `--base-paths src` only on the tool route, so today's routes build as before |
+
+### Findings
+
+1. **[Issue alignment, blocker]** A session at a root in no git repository cannot create a worktree: `/start-task` step 1 stops on `git rev-parse --git-dir` failing, and `worktree_create.sh` lines 545–549 require the project root to be a git repository for every project worktree. Resolution: in `worktree_create.sh`, require only that the root is a directory, since each entry's origin is already checked to be a repository at line 868 (a `.` entry is the root itself, so a single-repo project keeps its check there); in start-task step 1, treat "not in a git repository" as the main tree when `session_root.sh` accepts the cwd as a root (it already refuses a subdirectory of such a root). Both are generic (no type name). This goes beyond the Checkpoint's "kept to the adapter's few path helpers": a conflict between that instruction and the owner's aim, labelled as such; recommended in part 1 (about 10 lines and a test).
+2. **[Principle alignment, high]** The planned package-worktree test would pass with finding 1 unfixed: `make_worktree_sandbox` makes `$sb` a git repository and the fixture root lives under it, so `git -C <root> rev-parse` succeeds. The tool-route root must be outside every git repository (an absolute path on its registry line), in the worktree test and in `test_register_project.sh`.
+3. **[Consequences, medium]** After a lower layer's PR merges, nothing updates `~/project11/rolling/<lower>/src/<repo>`: the tool route's `sync` never pulls (decided), and `merge_pr.sh` pulls only a root that is a git repository. Upper-layer worktrees then build against a stale install. The acceptance steps and `WORKTREE_GUIDE.md` should say: `git -C <root>/<d>/<layer>/src/<repo> pull`, then rebuild that layer.
+4. **[File targeting, medium]** `AGENTS.md` Terminology says "git is meant to be, but registration still needs it", which becomes untrue for a tool root. Editing an instruction file needs the owner's approval; list it in the PR as the one stale sentence, or ask.
+5. **[Consequences, low]** A lower layer with no install is skipped silently in `env.sh`. Acceptable for the first cut. A cheap improvement that changes no assertion: `worktree_env` prints a NOTE on stderr at creation naming each lower layer with no `install/` (stderr is not written into `env.sh`). Otherwise say in the acceptance that the symptom is CMake's "Could not find a package configuration file provided by <pkg>".
+6. **[Consequences, low]** The plan says a worktree under `<root>/worktrees/` falls to rule 3 with several distros. In fact `worktree_create.sh` calls `worktree_repos` and `pr_base_for` from the caller's cwd and `worktree_env` after `cd "$ROOT_DIR"` (the workspace), so with two distros and a session in `<root>/<d2>/` they would disagree (d2, then refused). Name this in part 3 (pass `--from` or carry the distro).
+7. **[Scope, low]** Rule 1 compares `ACTIVE_PROJECT_FROM` (`pwd -P`) with `<root>/<d>`; compare with the physical root too, as a registered path may pass through a link.
+8. **[Scope, info]** `adapter build` stops at the first failing layer and passes extra arguments after `--cmake-args`, so `--continue-on-error` cannot be passed through it. The acceptance's by-hand per-layer command is the right instruction for a tree that does not build yet; adding `--continue-on-error` there lets each layer install what does build.
+9. **[Scope, info]** Checked and fine: the tool's output format and exit statuses (0, 1, 128+n) as on `feature/issue-500`; `sync` re-resolves and rewrites `resolved/<d>/` each run, so the layers-changed line works; the route order and never-fall-back rule; `validate` refusing a second record; appending tests leaves today's lines unchanged (the suites end in a run list); the quoted design sentences exist and the replacements are true after the change; `/` keys refused by name is acceptable as his manifest has none.
+
+### Summary
+
+The adapter side is right and confined to the helpers it lists, and steps 1 to 3 of the owner's use work after it. Step 4 breaks before the worktree exists, in two generic places the plan does not touch, and the planned fixture would not catch it. With findings 1 to 3 added the plan meets the owner's aim; the work across ten repos is one issue per repo with this first cut.
+
+### Recommended Actions
+
+- [ ] Add to part 1: `worktree_create.sh` accepts a project root in no git repository (entries are checked at line 868), and start-task step 1 accepts a cwd in no git repository that `session_root.sh` accepts as a root; a test with a tool-route root outside every git repository, through `worktree_create.sh`
+- [ ] Put the tool-route fixture roots (worktree and registration tests) outside any git repository
+- [ ] In the acceptance steps and `WORKTREE_GUIDE.md`: one issue per repo for the Rolling port, bottom-up; after a lower-layer merge, `git pull` in the root's clone and rebuild that layer
+- [ ] Ask the owner about `AGENTS.md`'s "registration still needs it" sentence, or name it in the PR as stale
+- [ ] Name in part 3 that `worktree_create.sh` calls the adapter from two different directories; compare physical paths in rule 1
+- [ ] Optional: a stderr NOTE from `worktree_env` for lower layers with no install; `--continue-on-error` in the by-hand build command
