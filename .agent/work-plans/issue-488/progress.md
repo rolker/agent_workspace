@@ -96,3 +96,45 @@ The remaining actions of the Issue Review are instructions for the plan, not own
 **Plan**: `.agent/work-plans/issue-488/plan.md` at `505e7106`
 
 Seven commits: a new ADR-0022 and the design text with the pointer format fixed first (a `Sub-roadmap | Root` table in the Direction section); sit-rep follows pointers one level with `part` problem rows and part lines kept out of the root's totals; sit-rep skill; part-design citations in the anchor check; Serves wording in the review skills; project-session tests; and the manifest pointers last, conditional on #486 and #487 merging.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-18 08:23 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #488 — Sub-roadmaps: a part of a root carries its own goals, design and roadmap, for the workspace and for projects
+**Plan**: `.agent/work-plans/issue-488/plan.md` at `505e7106`
+**Branch**: `feature/issue-488`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Needs work | Seven commits, three scripts, four skills, a knowledge file, the ADR, design and roadmap text, four test files. Large for one PR, but the plan orders it as the Issue Review asked and names the split point (steps 2–3 to a sub-issue). Acceptable with that fallback. |
+| Issue alignment | Needs work | Follows the owner's checkpoint decisions (Part owns its inside; new ADR-0022 beside ADR-0017, no edit to 0017) and every Issue Review action: pointer format first and naming the Root, citation form, broken/circular pointer reporting, totals, conditional acceptance. Gaps: the default next-step rule does not meet acceptance bullet 3 (finding 2), and the Serves line names no README goal. Serves as checked: "How I interact with the system and keep track of what's relevant" and "Keep one current design" — `docs/design.md#documentation-layers`; the anchor resolves (Documentation layers, line 87), but the first is a quote from `docs/roadmap.md` line 7, not a section of `README.md#workspace-goals`, and the second is a principle (finding 3). |
+| File targeting | Needs work | Scripts, tests, skills and design text are the right set. `check_design_anchors.sh`'s citer list (README, onboarding, `docs/roadmap.md`, skills, knowledge) misses the files where part citations will actually live (finding 1). |
+| Consequences | Needs work | Table is thorough. Missing: the sitrep skill's "named work" matching for `gh-issue` checks in sub-roadmap lines (finding 5); the Registry and adapters manifest-route bullet against the new rule (finding 4). |
+| Principle alignment | Good | One level, no cross-repo pointers, run record unchanged ("Only what's needed"); broken pointers reported, not skipped ("Enforcement over documentation"); prior art stated (Cargo/Bazel members, existing `--root`/`--roadmap`, `slug()`); Design Picture names `docs/design.md#documentation-layers`. |
+| ADR compliance | Good | ADR-0017 scoped by a new ADR-0022, ADR-0008 respected; 0022 is free (highest in `docs/decisions/` is 0021, no local or remote branch carries a 0022). ADR-0018 delivery copy is checked in step 5. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[File targeting] Major** — The part-citation rule does not fit where part citations will appear. The plan resolves `<path>/design.md#x` relative to the citing root, but (a) the citer list in `check_design_anchors.sh` (lines 286–289) is README, onboarding, `docs/roadmap.md`, skills and knowledge; the places that will cite a part's sections are `docs/design.md` (the root's pointer at the part), `docs/roadmap.md`, and the part's own roadmap and design, and only one of those is scanned; (b) Markdown links in `docs/` resolve relative to the file, as both drafts write them (`[manifest/design.md](manifest/design.md)` in `docs/design.md` and `docs/roadmap.md` on `feature/issue-487`; `../../tools/ros-manifest/docs/design.md` in `docs/manifest/design.md`), so `manifest/design.md#x` written in `docs/roadmap.md` would be resolved as `<root>/manifest/design.md` and fail, or must be read file-relative; the existing relative-form regex excludes a leading `/`, so today it is simply unseen; (c) a URL such as `https://github.com/<owner>/<repo>/blob/main/docs/design.md#x` matches the "any prefix" root form today and becomes "any other path" → a missing-file error under the new rule, although the plan says URL citations are not checked. Resolution: state each form's base (backtick citation root-relative; Markdown link target file-relative), exclude `scheme://` prefixes explicitly, add `docs/design.md`'s links to part designs, each followed sub-roadmap and each part design to the citers (from the pointer table or a glob), widen the hook `files:` filter to match, and test `manifest/design.md#x` from `docs/roadmap.md`, `docs/manifest/design.md#x` from a skill, and a URL citation.
+2. **[Issue alignment] Major** — Step 3 makes the part's next step appear only "when the root has none left, or when asked". The root's Direction section will have open lines for the foreseeable future, so a default `/sitrep` would not report the manifest sub-roadmap's next step, which is acceptance bullet 3. Report, in every run, each followed part's first line not true (marked by its sub-roadmap path), beside the root's next step, and make the step 7 check test that.
+3. **[Issue alignment] Minor** — Serves: name a section of `README.md#workspace-goals` (likely "Trust, control and information", with "Light touch on projects" or "Modular" for the project case), not a quote from `docs/roadmap.md` and a principle. The same fix applies to the Issue Review's Serves line it copied.
+4. **[Principle alignment] Minor** — Step 1 adds a "Rules table row for the new check" without saying which rule or check. The rule that matters, "the root's design describes a part only by what crosses its boundary", has no machine check; say it is `review only` and add the matching row to `principles_review_guide.md`. The plan also asserts the rule "applies to both examples as written" without checking: `docs/design.md`'s Registry and adapters manifest-route bullet (around lines 424–462) holds the route's mechanics, and the 487 branch keeps that text unchanged while `docs/manifest/design.md` also describes "the route step by step". Either confirm in the plan that the bullet states only what crosses the boundary (settings, registry line, resolver install) or name trimming it as a consequence, here or in #487.
+5. **[Consequences] Minor** — The sitrep skill marks work in flight as named by a Direction line through its `gh-issue` checks (SKILL.md around lines 244–257, and the Path marking around 287–321). Sub-roadmap lines carry `gh-issue 486 closed` and `gh-issue 436 closed` (487 draft). Say whether `subline` checks name work in flight and which path such work is marked with, and test it. Also tidy the citation-form wording: "`<path>` is the part's directory" contradicts the examples, which include the part's `docs/` (`tools/ros-manifest/docs/design.md#x`); say `<path>` is the design file's directory.
+
+### Summary
+
+The plan follows the owner's decisions and covers every Issue Review action with concrete mechanism choices listed for veto; the pointer format, depth limit, problem reporting and totals rule are sound. It needs work on two points before implementation: the anchor check's citation forms and citer scope must match how the parts' documents actually link (file-relative Markdown links, citations in `docs/design.md`, part roadmaps and designs, URLs), and the sit-rep must report each part's next step in a default run, or acceptance bullet 3 is not met.
+
+### Recommended Actions
+
+- [ ] Define the base of each part-citation form (backtick root-relative, Markdown link file-relative), exclude URLs, extend the citer list and hook filter to `docs/design.md`'s part links, followed sub-roadmaps and part designs, and add the tests named in finding 1.
+- [ ] Change step 3 so every run reports each followed part's next step by its path, and test it.
+- [ ] Replace the Serves goal with a `README.md#workspace-goals` section name.
+- [ ] Name the Rules row ADR-0022 adds, mark the boundary rule `review only` with a review-guide row, and check the Registry and adapters manifest-route bullet against the rule.
+- [ ] Say how `gh-issue` checks in sub-roadmap lines feed the sit-rep's named-work and path marking; fix the `<path>` wording.
