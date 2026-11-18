@@ -19,6 +19,7 @@ from helpers import (
     temporaries,
     write_manifest,
 )
+from repos_manifest import sync
 from repos_manifest.cli import main
 from repos_manifest.output import MARKER
 
@@ -223,6 +224,21 @@ def test_setup_bash_says_nothing_is_built_and_fails_when_sourced(remotes, tmp_pa
     )
     assert done.stdout == "status 1\n"
     assert "nothing is built here yet" in done.stderr
+
+
+def test_a_setup_bash_made_while_init_runs_is_not_replaced(remotes, tmp_path, system, monkeypatch):
+    plain(tmp_path, remotes)
+    checked = sync.is_in_place
+
+    def a_person_writes_setup_bash_meanwhile(system_, parts):
+        if parts[-1] == "setup.bash":
+            (system_ / "setup.bash").write_text("# mine\n")
+        return checked(system_, parts)
+
+    monkeypatch.setattr(sync, "is_in_place", a_person_writes_setup_bash_meanwhile)
+    assert run(system, "init", "../m.manifest.yaml", "--yes") == 0
+    assert (system / "setup.bash").read_text() == "# mine\n"
+    assert temporaries(system) == []
 
 
 def test_a_repo_that_cannot_be_fetched_is_an_error_and_the_others_go_on(

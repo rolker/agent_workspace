@@ -256,6 +256,20 @@ def is_in_place(system: Path, parts: Parts) -> bool:
 
 def replace_file(system: Path, path: Path, text: str) -> None:
     """Write `path` whole: a temporary file in `.repos-manifest/`, then one rename."""
+    _put_file(system, path, text, os.replace)
+
+
+def create_file(system: Path, path: Path, text: str) -> bool:
+    """Create `path` whole, only if nothing is there: a temporary file in `.repos-manifest/`,
+    then one hard link, which a file made meanwhile refuses. False when something was there."""
+    try:
+        _put_file(system, path, text, os.link)
+    except FileExistsError:
+        return False
+    return True
+
+
+def _put_file(system: Path, path: Path, text: str, put) -> None:
     handle, temporary = tempfile.mkstemp(
         prefix=f"{TEMP_PREFIX}{os.getpid()}-", dir=system / SYSTEM_DIR
     )
@@ -263,7 +277,7 @@ def replace_file(system: Path, path: Path, text: str) -> None:
         with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as file:
             file.write(text)
         os.chmod(temporary, default_mode(0o666))
-        os.replace(temporary, path)
+        put(temporary, path)
     finally:
         if os.path.lexists(temporary):
             os.unlink(temporary)

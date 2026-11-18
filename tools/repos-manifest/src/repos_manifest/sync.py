@@ -42,7 +42,7 @@ from .system import (
     read_config,
     read_manifest,
     read_state,
-    replace_file,
+    create_file,
     reporting_oserror,
     resolved_parts,
     setup_parts,
@@ -254,7 +254,7 @@ def sync_distro(system: Path, config: Config, resolved: Resolved, env: Env) -> D
     setup = setup_parts(config.layout, distro)
     if not os.path.lexists(system.joinpath(*setup)) and is_in_place(system, setup):
         system.joinpath(*setup).parent.mkdir(parents=True, exist_ok=True)
-        replace_file(system, system.joinpath(*setup), SETUP_TEXT)
+        create_file(system, system.joinpath(*setup), SETUP_TEXT)
     return result
 
 
