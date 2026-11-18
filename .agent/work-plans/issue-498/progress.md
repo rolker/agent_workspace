@@ -1141,3 +1141,29 @@ Held by hand: a diamond with key-by-key merge, `distros: {}`, `absent: false`, `
 - [x] (suggestion) `validate` prints `base:` lines without the unsafe-character guard `head_comment` applies; only a parent path with a control character reaches it; not worth doing (codex) — `tools/repos-manifest/src/repos_manifest/cli.py:138` (deferred: host decision: no action; only a control character in a parent's path reaches it)
 
 Dropped: the http(s)/git readers and the 1 MiB limit missing (codex 1-2, gemini 6-7: out of 2a by the 16:21 Checkpoint); relative path from the real directory (codex 4, gemini 5 first half: Checkpoint finding 8); newline injection into the head comment (gemini 4: the existing guard refuses it).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 16:47 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-498 at `c984dd8d`
+**Addressed**: Local Review (Pre-Push) at `8a40db04` (2026-11-18 16:40 -05:00)
+**Commits**: `5aa038c9`, `b8fbf5a4`, `c8bf0b91`, `c984dd8d`
+
+### Actions
+- [x] (must-fix) A repo's entry is complete where its key first appears: `merge_parts` records the keys the manifest that first brings a key gave (`brought`), and `_check_complete` checks `type` and `url` on those, naming that manifest; `_repo` no longer checks the merged entry. It runs where the old check ran (after the layer-case and role checks), so the order among combined checks is main's. spec.md states the one rule (the "Only the first manifest ... has to be complete" paragraph rewritten, `type`/`url` dropped from the combination paragraph, the Repos table says "yes, where the repo's key first appears"). Tests: `test_an_entry_is_complete_where_its_key_first_appears_not_after_a_later_manifest` (the review's repro, failed before), `test_an_overlay_with_no_base_may_change_repos_an_earlier_manifest_brought`, `test_an_overlay_with_no_base_that_brings_a_new_repo_gives_it_whole[type,url]`; `test_a_misspelt_key_is_a_new_entry_and_is_refused` unchanged and passing — `b8fbf5a4` `tools/repos-manifest/src/repos_manifest/combine.py`, `tools/repos-manifest/docs/spec.md`
+- [x] (must-fix) The earlier-format refusal is the first check of `part()`, before the warnings and `format`; design.md says "before any other check on that manifest". Test: `test_the_old_project11_fixture_as_a_parent_is_refused_as_the_earlier_format` (tests/fixtures/p11/manifest.yaml as a parent; failed before with "roles.dev: must be a list") — `5aa038c9` `tools/repos-manifest/src/repos_manifest/manifest.py`
+- [x] (must-fix) The repo key is checked before its entry. Tests: `test_a_manifest_with_no_base_names_a_bad_repo_key_before_its_entry` and a `../x: 5` case in `test_every_check_on_one_manifest_applies_to_a_parent` (both failed before). Comparing every per-file check of `part()` with main's `manifest()`: no other order changed without need. The remaining differences are the checks that moved to the combination (layer case, a role's and a repo's groups declared, a repo's layer declared, repo `distros:` with no top-level list, completeness), which is suggestion 3's case, and the earlier-format refusal, a check main does not have (main reports the old fixture by its `roles:` error; this branch, by host decision, by its format) — `5aa038c9` `tools/repos-manifest/src/repos_manifest/manifest.py`
+- [x] (suggestion) A parent's label in `# base:` and `validate` (deferred: host decision, no change in 2a; one line added to plan.md part 3, step 3, saying the label is decided there) — `c984dd8d` `.agent/work-plans/issue-498/plan.md`
+- [x] (suggestion) The rule "a `:` before the first `/` makes a URL" is stated once, in `_colon_before_slash`, used by `url` and `base_locations` (host decision). Test: `test_one_rule_tells_a_url_from_a_path_for_url_and_base` (failed before: no helper) — `c8bf0b91` `tools/repos-manifest/src/repos_manifest/manifest.py`
+- [x] (suggestion) First error for a manifest with a per-file and a combined fault at once (deferred: host decision, no action; the manifest is still refused and each message is unchanged). The pull request body should say that the first error reported can differ from main when one manifest has a per-file fault and a combined fault at once — `tools/repos-manifest/src/repos_manifest/combine.py`
+- [x] (suggestion) `os.path.realpath` collapsing `missing/../p.yaml` (deferred: host decision, no action; a path nobody writes) — `tools/repos-manifest/src/repos_manifest/base.py`
+- [x] (suggestion) `validate`'s `base:` lines without the unsafe-character guard (deferred: host decision, no action; only a control character in a parent's path reaches it) — `tools/repos-manifest/src/repos_manifest/cli.py`
+
+Suggestions 1 to 5 were decided by the host (listed for the owner's veto).
+
+Suites:
+- `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests` (Python 3.14): `829 passed` (822 tests plus 7 parametrized helper cases; 818 after the order fixes, 822 after completeness). `tests/test_documents.py`: `11 passed`.
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: `=== Results: 1014 passed, 0 failed, 0 skipped ===`.
+- No part 1 test changed (`test_manifest_reading.py`, `test_selection.py` still differ from main only in their import lines). Nothing new needs a Python newer than 3.10; no test patches an `os` function. Commits made with `SKIP=validate-script-tests`; black and flake8 ran in the hooks; the full pre-commit pass is left to the host.
