@@ -310,6 +310,10 @@ def test_a_distro_version_starting_with_a_dash_is_refused():
         "https://[2001:db8::1]/a.git",
         "git@[::1]:repo",
         "ssh://git@example.org:22/a.git",
+        # The scp form with no user: an ssh host alias.
+        "example.org:a.git",
+        "myrobot:repos/a.git",
+        "[::1]:a.git",
     ],
 )
 def test_the_transports_that_only_fetch_are_accepted(url):
@@ -327,7 +331,13 @@ def test_the_transports_that_only_fetch_are_accepted(url):
         ("fd::17", "<transport>::<address> form is refused"),
         ("https::example.org/a.git", "<transport>::<address> form is refused"),
         ("relative/path.git", "is refused"),
-        ("example.org:a.git", "is refused"),
+        # A relative path on the local disk is not the scp form, even with a ':' after a '/'.
+        ("./a:b", "is refused"),
+        ("dir/a:b", "is refused"),
+        ("a.git", "is refused"),
+        (":a.git", "is refused"),
+        ("host::a.git", "<transport>::<address> form is refused"),
+        ("[-oProxyCommand=x]:p", "the host starts with '-'"),
         ("ssh://-oProxyCommand=x/a", "the host starts with '-'"),
         ("git@-oProxyCommand=x:a", "the host starts with '-'"),
         # The host is what follows the last '@' of the part before the first '/', brackets

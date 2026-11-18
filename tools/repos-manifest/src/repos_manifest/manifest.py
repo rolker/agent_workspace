@@ -38,13 +38,14 @@ UNNAMED_LAYER = "_unnamed"
 
 # The transports a `url` may use: they only fetch.
 _URL_SCHEMES = ("https://", "http://", "ssh://", "file://")
-# git's scp-like form, `user@host:path`: a ':' before any '/'. The user runs to the last '@'
-# before the host; a host in brackets may hold ':' (an IPv6 address).
+# git's scp-like form, `[user@]host:path`: a ':' before any '/'. The user, which may be left
+# out (an ssh host alias), runs to the last '@' before the host; a host in brackets may hold
+# ':' (an IPv6 address). A relative path on the local disk has a '/' before any ':', or no ':'.
 _SCP_FORM = re.compile(r"(?:(?P<user>[^/:\[\]]*)@)?(?P<host>\[[^\]/]*\]|[^/:@\[\]]+):(?P<path>.+)")
 # git's <transport>::<address> form: a word at the start, then '::'.
 _TRANSPORT_FORM = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*::")
 _URL_RULE = (
-    "a url uses https, http, ssh, file, the user@host:path form or an absolute path on the"
+    "a url uses https, http, ssh, file, the [user@]host:path form or an absolute path on the"
     " local disk"
 )
 
@@ -212,7 +213,7 @@ class _Checker:
             return url
         if "://" not in url:
             scp = _SCP_FORM.fullmatch(url)
-            if scp and scp.group("user") is not None:
+            if scp:
                 host = scp.group("host")
                 if host.startswith("["):
                     host = host[1:-1]
