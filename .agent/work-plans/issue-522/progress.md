@@ -198,3 +198,22 @@ The full pre-commit pass was not run: the answer changes the code, so the pass r
 - `bash .agent/scripts/tests/test_skill_paths.sh`: `test_skill_paths: 164 passed, 0 failed`
 - `bash .agent/scripts/tests/test_merge_pr.sh`: `=== Results: 175 passed, 0 failed ===`
 - Commits used `SKIP=validate-script-tests`; the full pre-commit pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 14:51 -05:00
+**By**: Claude Code (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a797d9839157b0aa3, resume 1 of 3)
+
+**Branch**: feature/issue-522 at `16e4df32`
+**Base**: origin/main
+**Depth**: Standard (reason: governance file `.claude/skills/run-issue/SKILL.md` changed; whole-branch classification)
+**Must-fix**: 0 | **Suggestions**: 2
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Verified: the three fixes are in (label space restored, test renamed and comment reworded, step 11's worktree sentence conditioned); `git diff origin/main...HEAD` outside work-plans changes only intended lines, `git diff --check` clean; test_skill_paths.sh 164/0, test_merge_pr.sh 175/0 (new case 5/5), shellcheck clean. Cross-model: gemini completed. It repeated its round-1 `SKILL.md 45-58` off-by-one claim as must-fix, which is false: line 58 ends the sentence. Its objection to the test rename repeats a point the host already ruled on. Codex completed. Its must-fix (a parent's default_instance changing between worktree creation and merge filters the manifest out) repeats round-1 finding 3, which was ruled on; that case is recorded here as context for suggestion 1, not as a new finding.
+
+### Findings
+- [ ] (suggestion) "which the session's `project=` does": for a session at a parent root `project=` names the parent, which resolves to the instance; say "names, or resolves to,". Also, the qualified `--pr`, not the refused `--type`, is what targets the package repository; the "so" reads otherwise — `.claude/skills/run-issue/SKILL.md:1034`
+- [ ] (suggestion) The pin checks only that phrases are present: it does not cover the sibling passage (SKILL.md 1216-1217) and would not catch a package merge command that pairs `--pr <owner/repo#M>` with `--type`, so its "never --type" title claims more than it checks — `.agent/scripts/tests/test_skill_paths.sh:769`
