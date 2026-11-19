@@ -1628,3 +1628,48 @@ grep -A6 '<repo>:' .repos-manifest/state.yaml    # version, commit and url are t
 ```
 
 His clones whose `origin` is ssh while the manifest says https are left as set, with one line each per run; his record has no urls yet, so none is repointed. For the safety rows, use a throw-away system made the same way (never the real one): a changed tracked file, a local commit, a repo switched by hand, an `origin` set by hand, and an ignored file where an incoming file arrives. After each, run `sync`, then `git status` and `git log -1`, and compare with before.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 18:21 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a52816d3cdcc13103, resume 3 of 3)
+
+**Branch**: feature/issue-500 at `00ffcba9`
+**Base**: origin/main
+**Depth**: Deep (reason: round 4 convergence check per handoff)
+**Must-fix**: 1 | **Suggestions**: 8
+**Round**: 4 | **Ship**: continue — round 4: must-fix rising (0 -> 1); the one must-fix is a mechanical fix
+
+Scope: the round 3 suggestions and `3d8601c8..00ffcba9`. Cross-model: skipped (round-4 convergence check, per handoff). The Claude adversarial specialist ran fresh, held to this scope.
+
+**Merge (64c5d0a2):** correct. For every file both sides touched, the change lines of `git diff 3d8601c8 64c5d0a2 -- tools/` equal those of `git diff b836e5e1 origin/main -- tools/` (PR 534's), except `README.md`. There, both sentences are kept whole: 534's skip and ignore options and record, and this branch's "or a `sync` of that distro". `system.py`, `docs/design.md`, `test_build.py` and `test_system.py` hold both changes. Whole suite at 00ffcba9: 1569 passed in 506s.
+
+The six round 3 suggestions:
+1. **"Made by git or a hook it ran":** fixed.
+2. **The report lists what ran, in order:** fixed. Adversarial cases 1a-1c match the reflog word for word. The switch back runs only from a clean tree. In no path was the person left on a branch without the report saying so, or moved further than the manifest's branch.
+3. **The upstream note with a half-change:** fixed. It is given once (S4 below).
+4. **Masking:** the round-3 false positives are gone (`w@x` with `file://` urls, `git@github.com:`, `origin/main@{upstream}`, `/srv/main@2`, and common-word passwords). Every round-2 and round-3 leak case still holds. Two new leaks, below.
+5. **Lock refusal after a killed sync:** every word true (`s5_lock.py`, `s5b.py`).
+6. **`--prune` and `-p` in the scan:** fixed. `--no-prune` and `--prune-tags` are not flagged.
+
+### Findings
+- [ ] (must-fix) A password held by a url in the manifest refusals is printed in full when Python's `repr` escapes it and it holds white space: `'` together with `"`, or a `\`, plus a space.
+  - The refusals quote the url with `{url!r}`. The escaped text no longer matches the registered user information, and the fallback pattern stops at the space.
+  - Reproduced through sync's output by the specialist (`adv4/s3_e2e.py` cases 0 and 4). Output: `repositories.a.url: 'foo::https://u:a\'b" c@127.0.0.1:9/r.git': the <transport>::<address> form is refused`.
+  - Reproduced here at the function level: `mask_urls(repr(u))` after `remember_url(u)` returns the password whole for `u:a'b" c` and for `u:p\ q`.
+  - The design says the user information is masked "whatever characters it holds (quotes, spaces, …)".
+  - Fix: mask the url before quoting it in these messages. — `manifest.py:270`, `:281` (and the same `{url!r}` at :296, :300, :305, :313, :320, :338, :347, :364)
+- [ ] (suggestion) A `file://` url's user and password are printed whole (`file://u:SECRETPW@localhost/...` in the repoint failure line, `adv4/s3_e2e.py` case 5). I grade this a suggestion, not a printed credential:
+  - The design says on purpose that a `file://` url is never masked.
+  - git's file transport takes no user or password.
+
+  Still, masking a `file://` user information that holds `:` and no `/` would close it. — `masking.py:44-49`, `docs/design.md:884`
+- [ ] (suggestion) The design's "so a change git or a hook made is never carried back onto the branch the repo was on" holds for tracked changes. An ignored file a `post-checkout` hook made on `dev` stays in the work tree after the switch back, and the report says "left as it was" (`adv4/s2_behaviour.py` 2b). Say "a tracked change". — `docs/design.md:805-807`
+- [ ] (suggestion) A half-changed move leaves the repo on `dev` with the record still on `main`. If the manifest then goes back to `main` and the tree is cleaned, the next sync says "moved by a person: it is on dev", though sync moved it (`adv4` 2e). — `update.py:815`
+- [ ] (suggestion) The report says "These changes were made by git or a hook it ran" when no changes are listed (both the merge and the switch back refused, so the tree is clean, case 2d). When git printed nothing, the error ends in "was run here:" and an empty line. — `update.py:1002`
+- [ ] (suggestion) With a stub git only, a merge that moves `dev` part way and exits 1 on a clean tree triggers the switch back. The report says "left as it was" while `dev` was moved; the `ran` list is dropped on the LEFT path. A real `merge --ff-only` is all-or-nothing, and the commits stay reachable (case 2h). — `update.py:940`
+- [ ] (suggestion) The missing upstream after a half-changed `switch -c` is said once. Once the tree is clean, later runs say "up to date" and never mention it again (1c, `s1c_next.py`). — `update.py:951`
+- [ ] (suggestion) Where `_holds` cannot check the process (no /proc, or a sync run by another user), a running sync is now reported as one that "may have ended", with advice to kill what `fuser` names. Before this diff it said "is still running". — `system.py:505-515`
+- [ ] (suggestion) The scan does not flag `-P`/`--prune-tags`, a bundled `-pt`, `switch -f`, `--discard-changes`, `branch -f`, or arguments held in a tuple variable. — `update.py` `NEVER`, `tests/test_update_safety.py`
