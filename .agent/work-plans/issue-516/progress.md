@@ -403,3 +403,13 @@ Checked by hand at 81edecc: test_worktree_create.sh 101 passed / 0 failed. The P
 
 ### False positives
 - (none)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 13:39 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the triage left four findings open, all small and valid; a review with open findings is sent back for fixes)
+**After**: findings
+**Decision**: address
+
+The four open findings are fixed as the Integrated Review says: the guide sentence; a relative --plan-file made absolute against the caller's directory when the argument is parsed; no dangling "said:" when git wrote nothing; the three test points. The pull request body's sentence that the plan comment line is printed "when a plan file was given" is corrected by the host to "when the plan file was found".
