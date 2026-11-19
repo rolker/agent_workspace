@@ -249,3 +249,13 @@ Checked against the code: `merge_pr.sh` 427-457 derives the kind from the qualif
 - [x] (pre-existing, PR body, deferred) A parent project's default instance changed between worktree creation and merge: `--project` resolves to the new instance, the package worktree is filtered out, and the merge prints "No local package worktree ... nothing local to clean up" though one exists. Rare, existing behaviour; worth its own issue since that message is then wrong — `.agent/scripts/merge_pr.sh`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 15:30 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner was shown what pull request 533 changes (the run-issue instructions for merging a package pull request; the merge script unchanged; one corrected row of the design document), the reviews, the four points left on purpose, and CI passing with no open findings. His answer: "Merge (Recommended)".
