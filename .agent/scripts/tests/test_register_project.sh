@@ -1051,6 +1051,51 @@ else
     echo "  SKIP: flock is not available (the registry lock needs it)"
 fi
 
+# ------------------------------------- a root the manifest tool set up ---
+echo "TEST: a root the manifest tool set up, in no git repository (issue 503): type detected, the gate passes, no role= or distro="
+# Its resolved files are written by THIS checkout's resolver (MR_PY, found
+# above); each repo is a git repository at <root>/<distro>/<layer>/src.
+if [ -n "$MR_PY" ]; then
+    TS="$(mktemp -d -p "$SANDBOX")"
+    TROOT="$TS/tsys"
+    mkdir -p "$TROOT/.repos-manifest/resolved"
+    printf 'format: 1\ndistros: [fakefox]\nlayers: [core]\nrepositories:\n  pkg_u:\n    type: git\n    url: file:///nonexistent/pkg_u.git\n    version: main\n  pkg_a:\n    type: git\n    url: file:///nonexistent/pkg_a.git\n    version: main\n    layer: core\n' > "$TS/m.manifest.yaml"
+    (cd "$TS" && PYTHONPATH="$MR_SRC" "$MR_PY" -m repos_manifest.cli resolve --manifest m.manifest.yaml \
+        --distro fakefox --out "$TROOT/.repos-manifest/resolved/fakefox" >/dev/null)
+    for _d in fakefox/src/pkg_u fakefox/core/src/pkg_a; do
+        mkdir -p "$TROOT/$_d"
+        gitq -C "$TROOT/$_d" init --quiet
+    done
+    check "precondition: the root is in no git repository" bash -c '! git -C "$1" rev-parse --git-dir >/dev/null 2>&1' _ "$TROOT"
+    : > "$STUB_LOG"
+    out="$(reg "$WS" "$TROOT")"; rc=$?
+    check "exit 0, STATUS=registered" [ "$rc" -eq 0 -a "$(status_of "$out")" = registered ]
+    check "type ros2_colcon detected from .repos-manifest/, no setup run" \
+        bash -c '[[ "$(grep -E "^tsys[[:space:]]" "$1")" == "tsys  ros2_colcon  $2" ]] && [[ "$3" != *"== adapter --project tsys setup"* ]]' _ "$WS/.agent/projects.local" "$TROOT" "$out"
+    check "the gate passed through the tool route's validate" \
+        bash -c '[[ "$1" == *"OK: adapter validate passed"* && "$1" == *"VERIFY=pass"* ]]' _ "$out"
+    check "the user-tier check accepts a session at the root" \
+        bash -c '[[ "$1" == *"a session started at $2 has root '"'"'tsys'"'"'"* ]]' _ "$out" "$TROOT"
+    check "no settings file, nothing written in the root, no CLI call" \
+        bash -c '[ ! -e "$1" ] && [ ! -e "$2/configs" ] && [ ! -e "$2/.claude" ] && [ ! -s "$3" ]' _ "$(pfile "$WS" tsys)" "$TROOT" "$STUB_LOG"
+    out="$(reg "$WS" --remove tsys)"
+    echo "TEST: a root the tool set up that the adapter cannot use (nothing resolved) is refused and rolled back, with no setup"
+    TBAD="$TS/tbad"
+    mkdir -p "$TBAD/.repos-manifest/resolved"
+    out="$(reg "$WS" "$TBAD")"; rc=$?
+    check "exit 1, STATUS=refused, naming the next step" \
+        bash -c '[ "$1" -eq 1 ] && [ "$2" = refused ] && [[ "$3" == *"nothing is resolved for any distro yet"* && "$3" == *"--project tbad sync"* ]]' _ "$rc" "$(status_of "$out")" "$out"
+    check "rolled back, and setup was not run" \
+        bash -c '! grep -q "^tbad " "$1" && [ ! -e "$2/configs" ] && [[ "$3" != *"== adapter --project tbad setup"* ]]' _ "$WS/.agent/projects.local" "$TBAD" "$out"
+else
+    if command -v repos-manifest >/dev/null 2>&1 || [ -n "${CI:-}" ] \
+        || { [ -n "$_common" ] && [ -x "${_common%/.git}/.venv/bin/repos-manifest" ]; }; then
+        fail "no python imports both yaml and $MR_SRC, though the resolver is meant to be present here"
+    else
+        echo "  SKIPPED: PyYAML not importable with this checkout's resolver source ($MR_SRC)"
+    fi
+fi
+
 # ------------------------------------------------------- linked worktree ---
 echo "TEST: refused from a linked worktree of the workspace"
 gitq -C "$WS" worktree add --quiet "$SANDBOX/ws-linked" 2>/dev/null

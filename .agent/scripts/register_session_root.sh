@@ -52,9 +52,11 @@
 # another call between the checks here and that lock would be adopted.
 #
 # A folder in no git repository: register_project.sh's gate (adapter
-# validate, through registration_verify.sh) refuses it and rolls back, so
-# registration needs a git repository today. A dry run does not run the
-# gate, so it looks clean until the real run refuses.
+# validate, through registration_verify.sh) refuses a single-repository
+# folder there and rolls back, while a root the manifest tool set up
+# (.repos-manifest/, type ros2_colcon) passes it and is registered (issue
+# 503). A dry run does not run the gate, so a folder the gate refuses
+# looks clean until the real run.
 #
 # Not promoted to the user tier (ADR-0016 decision 6;
 # .agent/user_tier_scripts.txt names it among the scripts never promoted),
