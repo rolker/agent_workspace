@@ -919,3 +919,29 @@ The round 2 must-fix is fixed. `init` reaches `make_system_dir` only after readi
 Dropped: adversarial 4 (design.md does not place the output check in the refusal table's order: it runs where resolution already ran; no claim is false).
 
 Checks: CI at 39e1cfb4, push and pull_request runs, every job pass: Lint (pre-commit), Validate Adapter Contract, Validate Documentation, repos-manifest tests Python 3.10 and 3.14 (each header `vcs 1.1.7`, `1018 passed`). Local: `pytest tools/repos-manifest/tests` 1018 passed (/usr/bin/vcs, vcstool 0.3.0); `test_ros2_colcon.sh` 1030 passed, 0 failed, 0 skipped. `git diff b6f52636..HEAD --stat -- tools/` lists only the three fix commits' six files. Mergeable: MERGEABLE.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-18 20:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #512 at `c84189eb`
+**Sources**: 2 (Local Review round 3, PR mode, @ `39e1cfb4`, covers `c84189eb` via bookkeeping: the commits since touch only this issue's progress.md; CI rollup). No hosted reviews: 0 reviews, 0 inline comments, 0 conversation comments on the pull request when fetched at 20:00.
+**Cross-source confirmations**: 0
+**CI**: all-pass at the code head `39e1cfb4`; at `c84189eb` (a progress-only commit) Lint (pre-commit) still pending in both runs after about 5 minutes, every other job pass
+
+CI at `39e1cfb4`, push run 44431995841 and pull_request run 44431998275, every job pass: Lint (pre-commit), Validate Adapter Contract (adapter 248, project registry 425, ros2_colcon 1030 passed, 0 failed, 0 skipped), Validate Documentation, repos-manifest tests Python 3.10 and Python 3.14 (vcs2l 1.1.7 installed, header `vcs 1.1.7`, `1018 passed` in each of the four jobs, none skipped or failed). At `c84189eb`, runs 44433774537 (push) and 44433771612 (pull_request): Validate Adapter Contract, Validate Documentation, repos-manifest tests 3.10 and 3.14 pass; Lint (pre-commit) pending when checked at 20:07. `merge_pr.sh` gates on CI at the head either way.
+
+Timeline: `review_progress.sh sources` at `c84189eb` returned the three suggestions of the round 3 Local Review as the only open findings, no dropped entries and no candidates. Every finding of the four pre-push rounds and of PR-mode rounds 1 and 2 is ticked, closed by a fix round or marked no action with the review's own reason. Unticked boxes elsewhere in this file are not open findings: the Issue Review's actions (three empty template boxes and the recommendations) were ruled by the Checkpoint at 16:11; the two Plan Reviews' actions by the Checkpoints at 16:25 (revise) and 16:37 (proceed, every finding applied while building); "No issues found. LGTM." in pre-push round 4 is a placeholder, not a finding.
+
+PR body (read at 20:05): every statement checked against this file, CI logs and the code head is true, with two imprecisions, neither false about the code: "approved with 3 small wording suggestions" (suggestion 1 is about when a warning is printed, not only its words); "CI on the pushed head" (the 1018 counts are from `39e1cfb4`; at the pushed head `c84189eb` Lint is still pending). `gh pr view 512 --json mergeable`: MERGEABLE.
+
+Open before the merge decision: no findings. Only Lint at the record-only head `c84189eb` is still running.
+
+### Findings
+- [x] (suggestion, Local Review @ `39e1cfb4`, covers `c84189eb` via bookkeeping) `init`'s sweep warns "whose process is still running" for a hand-made entry with a live pid holding other files, or a pid of 0 or too large for `os.kill` — `tools/repos-manifest/src/repos_manifest/init.py` — closed, no action in this pull request (host ruling): it is only a warning about a hand-made entry, nothing is removed, and no ordinary use reaches it; noted for part 2 of #500, which touches the same module
+- [x] (suggestion, Local Review @ `39e1cfb4`, covers `c84189eb` via bookkeeping) `sync`'s "the manifest's output is what failed" error does not name the recorded manifest's path — `tools/repos-manifest/src/repos_manifest/sync.py:461` — closed, deferred to part 2 of #500 (host ruling): not a wrong behaviour, a loss or a false statement
+- [x] (suggestion, Local Review @ `39e1cfb4`, covers `c84189eb` via bookkeeping) `init`'s head-comment refusal does not say that nothing was set up — `tools/repos-manifest/src/repos_manifest/init.py:246` — closed, deferred to part 2 of #500 (host ruling): not a wrong behaviour, a loss or a false statement
+
+### False positives
+None (no hosted comments).
