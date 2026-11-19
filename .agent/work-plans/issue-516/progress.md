@@ -526,3 +526,54 @@ Suites run (each on its own with bash; the full pre-commit pass is left to the h
 - test_project_registry.sh: Results: 425 passed, 0 failed
 - test_merge_pr.sh: Results: 170 passed, 0 failed
 - test_ros2_colcon.sh: Results: 1375 passed, 0 failed, 0 skipped
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-19 14:10 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent ab8fe1f4c5985ec5a, resume 3 of 3)
+
+**PR**: #526 at `007b26db`
+**Depth**: Deep (reason: whole-PR diff over 200 lines with plan/progress; same specialists as Standard)
+**Must-fix**: 1 | **Suggestions**: 5
+
+Checked by hand at 007b26db:
+- Tests and lint:
+  - test_worktree_create.sh: 105 passed / 0 failed.
+  - test_skill_paths.sh: 163 passed / 0 failed.
+  - shellcheck --severity=warning: clean on both scripts.
+- Success path compared with origin/main (dd53c590) in sandboxes (a gh stub that records calls, absolute plan path). Three cases:
+  - workspace worktree;
+  - single-repository project worktree;
+  - workspace worktree with --print-path-only.
+- In all three:
+  - the full output and the gh calls and body were identical to main's, apart from the init commit's short sha;
+  - git's "set up to track" line shows as on main;
+  - under --print-path-only it goes to stderr and stdout is the path alone.
+- The tr filter keeps bytes >= 0x80 and tab, and drops ESC and CR. With GNU sed under a UTF-8 locale an invalid byte passes and sed exits 0.
+
+PR body, sentence by sentence against the code:
+- True: "What changes", "What it prints after a failed push", the relative-path behaviour change (resolved from CALLER_DIR; usage text and start-task:230 say so; no repo caller passed a root-relative path), "The success path", "Left open, on purpose" (the two deferred points) and "105 passed".
+- False: "the plan was silently not posted even when the push worked". On main, a new draft PR's plan comment failure printed "⚠️  Failed to post plan comment (non-fatal)" (main worktree_create.sh:1340-1341). Only the existing-PR branch (main:1284-1285) was silent. The adversarial reviewer found this on its own.
+
+CI at 007b26db: Validate Documentation, Validate Adapter Contract and repos-manifest tests (3.10, 3.14) pass in both runs; Lint (pre-commit) is pending in both. No GitHub reviews or comments.
+
+Outside reviewers:
+- Claude adversarial (fresh subagent): ran.
+  - It found the same false sentence and 2 suggestions.
+  - It checked the fd-4 push line: the exit status is git's, the stdout under --print-path-only goes to stderr, and fd 4 is closed for git.
+  - It found the body bytes identical to main's.
+- gemini: ran, EXIT=0, 6 suggestions. New with substance: the locale point (finding 2), the C1 note (folded into finding 3) and the test gap (finding 4). The rest repeat points already ruled on: whitespace-only stderr, [PLAN] with a missing plan file, the `//` path from `/`, and the gh_create_pr.sh -R check.
+- codex: ran, EXIT=0, 2 points it called must-fix, neither held:
+  - Head-only PR lookup for a stacked branch: the success path's own existing-PR check is `gh pr list --head` without a base too, so the hint matches it, and a brand-new branch already having a PR against another base is contrived.
+  - Credentials in git's stderr under GIT_TRACE_CURL=1 with GIT_TRACE_REDACT=0: that needs the user to switch redaction off, and the script's fetch error already prints git's stderr. Without those settings git strips credentials (checked in the round 2 pre-push review).
+  - Suggestions: xpg_echo undoing %q (off by default in a non-interactive bash; not raised); the plan-drift note (repeated; the plan now has its "Added after the plan was approved" section).
+
+### Findings
+- [ ] (must-fix) PR body, "Also fixed..." paragraph: "the plan was silently not posted even when the push worked" is false for the usual case. On main a new draft PR got "⚠️  Failed to post plan comment (non-fatal)" (main:1340-1341), and only an already-existing PR got nothing (main:1284-1285). Suggested wording: "was not posted, with only a generic 'Failed to post plan comment' warning (none when the PR already existed)". Body edit only — PR #526 body
+- [ ] (suggestion) Under `set -e` the warning's display pipeline exits with sed's status. BSD sed under a UTF-8 locale can fail on invalid bytes from a remote hook and would then end the script. Not reproducible with GNU sed here. `LC_ALL=C` on tr and sed avoids it (gemini) — `.agent/scripts/worktree_create.sh:1302-1303`
+- [ ] (suggestion) Dropping ESC leaves the rest of a colour sequence (`[31m`) in the shown text, and UTF-8 C1 controls (U+009B CSI) pass through. Stripping whole `ESC[...letter` sequences first would read cleaner. Cosmetic (Claude adversarial, gemini) — `.agent/scripts/worktree_create.sh:1302`
+- [ ] (suggestion) No test checks that a successful push under --print-path-only keeps git's tracking line off stdout. The fd-4 redirection was checked by hand only (gemini) — `.agent/scripts/tests/test_worktree_create.sh`
+- [ ] (suggestion) PR body, "Reviews and outcomes": "four small suggestions, fixed with tests". The CALLER_DIR refactor and the plan note have no test of their own. "fixed (two with new tests)" would be exact — PR #526 body
+- [ ] (suggestion) This predates the PR and is out of scope: under --print-path-only, git push (and any ssh it starts) inherits fd 3, the caller's `$(...)` pipe. A lingering ssh ControlMaster could keep start-task's `WT=$(...)` waiting. `3>&-` on the push would close it (Claude adversarial) — `.agent/scripts/worktree_create.sh:168,1292`
