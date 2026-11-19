@@ -475,3 +475,32 @@ Round 2's must-fix, re-run: (1) gone — after a SIGKILL of the tool's whole gro
 **Decision**: address
 
 Round 3 confirmed all four round 2 must-fix gone and found two new ones, both reproduced, both in the rule for runs with a package-selection option. The host replaces its round 2 rule with the reviewer's: (1) a run with a package-selection option is refused, before anything runs, when it would build a layer that is not built; the message names those layers and says to build them without selection first; such a run then only rebuilds layers already built and exits 0. (2) After a successful selection run a layer gets back the record it had (its repos list unchanged), and a layer whose repos on disk differ from its record is treated as not built for a selection run. Suggestion 1: --packages-skip-build-finished is not package selection (it finishes a layer, and is how a failed layer is resumed during a port); --packages-select-build-failed stays selection, since packages never tried are not built by it. Suggestion 2 (write the lock file's pids, then cut to length) is fixed. Suggestion 3 (a colcon usage error found only after the first layer's record is removed) is not fixed: telling a usage error from a build failure after the fact is not reliable; design.md says a build <layer> restores it, and the pull request names it. This is the host's first address at this checkpoint.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 11:51 -05:00
+**By**: claude-code (claude-opus-5-5)
+**Dispatch**: resumed (agent a87bbb2d0d4e6df83, resume 2 of 3)
+
+**Branch**: feature/issue-501 at `dfbd1936`
+**Addressed**: Local Review (Pre-Push) at `afb4c937` (2026-11-19 11:41 -05:00), with the Checkpoint of 2026-11-19 11:42 -05:00
+**Commits**: dfbd1936
+
+### Actions
+- [x] (must-fix) A run with package selection is refused before anything runs or any record is touched when it would build a layer that is not built; the message names those layers with why and says to build them without selection first. The "selected packages built, not recorded / not tried / exit 1" path, its report line and design text are gone; a selection run exits 0 when colcon succeeds. Checked with /usr/bin/colcon: in a layer where the selection matches nothing, colcon exits 0 and does rewrite `install/setup.bash` (new mtime/ctime), so the "written in this run" check holds and the layer keeps its record; tested (`test_real_colcon_package_selection`) — `build.py` `not_built_for_selection`, `build_layers`
+- [x] (must-fix) After a successful selection run a layer gets back exactly the record it had, time included (so the time still says when the whole layer was last built); a layer whose repos on disk differ from its record counts as not built for a selection run (refused, "its repos differ from its record: new n"); the "new since" note shows at the next plain build. Neighbouring case: with `--keep-going`, a layer above a failed one is not tried in a selection run, since it could only be built on another base than its record's — `build.py`
+- [x] (suggestion) `--packages-skip-build-finished` (and an abbreviation that can only be it) is not package selection, so a layer completed that way is recorded by the ordinary rule; `--packages-select-build-failed` stays selection. Checked with the real colcon on a layer with one failing package, then fixed: select-build-failed refused, skip-build-finished completes and records it; design.md says how to resume a failed layer — `build.py` `package_selection`, `RESUMING`
+- [x] (suggestion) The lock file's pids are written first, then the file is cut to length — `system.py` `note_lock_holders`
+- [x] (suggestion) colcon usage error after the first record is removed — not fixed in code (deferred: host decision, Checkpoint 2026-11-19 11:42: telling a usage error from a build failure after the fact is not reliable); design.md now says `build <that layer>` with correct arguments restores it
+
+### Checked by hand with the real colcon
+Fresh system `build -- --packages-select c`: refused naming all three layers. Fully built: `build -- --packages-select c` rebuilt every layer, exit 0, record file byte-identical. One layer named (`build top -- --packages-sel c --packages-sel d`): `--packages-sel` is ambiguous to colcon (exit 2), so top failed and lost its record, the case the deferred suggestion describes; the tool treats it as selection, correctly. Selection option given twice (`--packages-select m --packages-select t`): passed through, tested. Lower layer not built, not named (`build top -- --packages-select c` with mid's install gone): refused by the existing "top is built on mid" rule; `build mid -- --packages-select b`: refused as not built. `--keep-going` selection with mid failing: mid failed, top not tried and kept its record, exit 1; then `build mid -- --packages-skip-build-finished` after fixing b: mid built and top back in the run.
+
+### Tests
+Each code fix has a test that fails with the fix reverted (6 reverted copies, all caught).
+- Tool suite: `REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest` — `1107 passed in 202.06s` (real colcon, none skipped); no stray process afterwards
+- No workspace script or adapter changed, so no `.agent/scripts/tests` suite applies; pre-commit (SKIP=validate-script-tests) on the changed files clean; the full pass was left to the host.
+
+### Notes
+- Departure: none from the host's rules. One addition the rules did not cover: with `--keep-going`, a selection run does not try a layer above a failed one (restoring its old record would claim a base it was not rebuilt on).
+- Possible follow-up, not done (outside the host's decision on suggestion 3): an abbreviation that is ambiguous among the options in `COLCON_BUILD_OPTIONS` could be refused before anything runs, since colcon is sure to reject it.
