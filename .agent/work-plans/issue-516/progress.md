@@ -313,3 +313,38 @@ Verified by hand: test_worktree_create.sh 93 passed / 0 failed; shellcheck --sev
 **Decision**: address
 
 The full pre-commit pass was not run: the answer changes the code, so the pass runs on the head that follows. Fixed in this round: suggestion 1 (the warning says the push failed and shows git's own error, and does not claim the branch is absent from origin); suggestion 2 (PLAN_FILE is made absolute once where HAS_PLAN is set, which also fixes the success path's plan comment for a relative path); suggestion 3 (tests for the -R, --base / Part of, skill-body and relative-plan branches of the hint, the [PLAN] title, and that no pr create runs after the refused push); suggestion 5 (one line saying to skip the create step when a pull request for the branch already exists); suggestion 6 (the body is built once, above the push, and used by both the hint and the body file). Suggestion 4 (the user-tier guard in gh_create_pr.sh refusing a worktree folder outside both the project root and the workspace) is older behaviour of another script and is not changed here; the host proposes an issue for it to the owner.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 13:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-516 at `b285d884`
+**Addressed**: Local Review (Pre-Push) at `f5c68a46` (2026-11-19 13:12 -05:00)
+**Commits**: 969f2670, 2dab4cd4, e11af985, d74f8943, 5f29acd8, b285d884
+
+### Actions
+- [x] Suggestion 1: the warning says "Push failed ... git push -u origin <branch> said:" and prints git's own stderr indented (trailing padding of `remote:` lines trimmed, b285d884); the "is not on origin" sentence is gone; tests assert the hook's `remote:` line and "pre-receive hook declined" appear and the old claim does not — `.agent/scripts/worktree_create.sh` create_draft_pr (e11af985, b285d884)
+- [x] Suggestion 2: `PLAN_FILE` is made absolute (against `$PWD`, which is ROOT_DIR there) where `HAS_PLAN=true` is set; `plan_abs` is gone. Reproduced first: a new success-path test (relative `notes/plan 73.md`, recording gh stub) failed with `comment-file missing: notes/plan 73.md`; it passes after the fix — `.agent/scripts/worktree_create.sh` HAS_PLAN block (969f2670)
+- [x] Suggestion 3: `make_recording_gh` stub; tests for the [PLAN] title and no `pr create`/`pr comment`/`pr list` after the refused push, `--parent-issue` (`--base feature/issue-80`, `Part of #80`) with a relative plan (absolute path in the comment line), `--skill research` (skill title and body), and a single-repository project (`-R acme/demo15` on the create, list and comment lines; its origin is a local bare repo at `.../github.com/acme/demo15.git` so the slug reads). Mutation-checked: dropping `return 0`, `-R`, `--base`, `[PLAN]` or `Part of` each fails a test — `.agent/scripts/tests/test_worktree_create.sh` (5f29acd8)
+- [x] Suggestion 4: user-tier guard in gh_create_pr.sh — `.agent/scripts/gh_create_pr.sh:87` (deferred: host checkpoint 2026-11-19 13:10: older behaviour of another script, not changed here; the host proposes an issue for it to the owner)
+- [x] Suggestion 5: one line after the create line: "Skip the gh_create_pr.sh line if `gh pr list --head <branch> [-R <repo>]` already shows a pull request."; test fails without it — `.agent/scripts/worktree_create.sh` (d74f8943)
+- [x] Suggestion 6: `pr_body` (## Summary, title, Closes [+ Part of] or the skill text) is built once above the push; the hint's `--body` and the body file (`pr_body` + signature via printf) both use it. The hint's body now carries the Summary heading and title too (it did not before); tests assert both forms — `.agent/scripts/worktree_create.sh` (2dab4cd4)
+
+Paste trial (sandbox workspace `my ws` under a path with a space, all `.agent/scripts` and `.agent/project_types` copied in, local bare origins under `.../github.com/acme/` whose pre-receive hook prints a line and refuses, gh stubbed to log its arguments): (a) `--issue 81 --type workspace --parent-issue 80 --plan-file "notes/plan 81.md"` and (b) `--issue 91 --type project --project demo --plan-file <abs plan>` each exited 0, ran no gh pr create/comment, and printed git's rejection lines and the hint. After removing the hook, the cd, push, gh_create_pr.sh and gh pr comment lines were saved as printed and run with `bash -e` (AGENT_NAME/AGENT_MODEL set): exit 0 both times, each branch landed on origin, gh got (a) `pr create --draft --base feature/issue-80 --title "[PLAN] Issue #81" --body "## Summary\n\nIssue #81\n\nCloses #81\nPart of #80" + signature` and `pr comment feature/issue-81 --body-file "<ws>/notes/plan 81.md"`; (b) `pr create --draft --repo acme/demo --title "[PLAN] Issue #91" ...` and `pr comment feature/issue-91 -R acme/demo --body-file ...`. Sandbox removed. Departure: the project's folder had no space in its path, since projects.local refuses paths with spaces.
+
+`.agent/WORKTREE_GUIDE.md` line 394 checked: still true as written (warns, prints the commands, makes the worktree, failed push alone does not make it exit non-zero); not changed.
+
+Suites run (each on its own with bash; the full pre-commit pass is left to the host):
+- test_worktree_create.sh: PASS: 101 / FAIL: 0
+- test_precommit_hook_path.sh: 19 passed, 0 failed
+- test_merge_pr_skill.sh: 132 passed, 0 failed
+- test_user_tier_guard.sh: 64 passed, 0 failed
+- test_validate_workspace_stale.sh: 126 passed, 0 failed
+- test_user_tier_install.sh: 276 passed, 0 failed
+- test_package_issue_loop.sh: 220 passed, 0 failed
+- test_records_write_gate.sh: 68 passed, 0 failed
+- test_skill_paths.sh: 163 passed, 0 failed
+- test_project_registry.sh: Results: 425 passed, 0 failed
+- test_merge_pr.sh: Results: 170 passed, 0 failed
+- test_ros2_colcon.sh: Results: 1375 passed, 0 failed, 0 skipped
