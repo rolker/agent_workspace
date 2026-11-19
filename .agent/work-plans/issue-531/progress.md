@@ -166,3 +166,11 @@ The classification, the record field, the changed-list rule and the document cha
 **Decision**: revise
 
 The host takes the Plan Review's finding and six notes as written. An option's last occurrence is taken first, and an option whose last occurrence has no values is not recorded, since colcon then leaves nothing out; stub tests for --packages-skip alone and for --packages-skip b --packages-skip. Notes: design.md says the field holds the options given after --, and the three texts about a defaults file or mixin are reworded to cover a skip set there; the new report line is worded "built leaving out:" so it cannot be mixed up with "built without sourcing"; a value that starts with - ends the list, which is harmless; the line is printed for a layer built under --keep-going but not used too; design.md says an older tool refuses a record that has the field; format stays 1.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-19 15:04 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-531/plan.md` at `831c2a10`
+
+Revision after the plan review: the last occurrence of an option is taken first and one with no values is not recorded; the report line reads "built leaving out:" (also for a layer built under --keep-going but not used); design.md and the defaults-file texts say the field holds the options given after `--`; stub tests for the no-value shapes and a write-then-read round trip.
