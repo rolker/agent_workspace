@@ -850,3 +850,31 @@ Scope: the round 4 review's findings and the fix diff 1e20771e..b16709b9. Cross-
 ### Findings
 - [ ] (suggestion) An absolute `COLCON_DEFAULTS_FILE` pointing at a layer's own `colcon_defaults.yaml` is still named twice (the global NOTE and the layer's NOTE); outside this fix's relative-path scope, redundant not false — `tools/repos-manifest/src/repos_manifest/build.py:981-986`
 - [ ] (suggestion) "Reviews and outcomes" says the seventh review's 4 fixed suggestions are "fixed with tests"; one (suggestion c) was a README wording change with no test of its own; inexact, not false of the code — PR #518 body
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-19 14:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #518 at `b16709b9`
+**Sources**: 3 (Local Review @ `b16709b` exact, the pull request body's "Left open, on purpose" list, CI rollup); Local Review (Pre-Push) @ `6ce07fb` dropped as stale (prior round, closed by later rounds)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+No GitHub reviews, inline comments or conversation comments on the pull request; no Copilot review requested. CI at `b16709b9` (two runs): tests on Python 3.10 and 3.14, Validate Adapter Contract and Validate Documentation passed; Lint (pre-commit) in progress in both runs since 19:13Z (started, not queued; the last lint at `030cc28f` took 15 min), so slow, not stuck. The body has a `## Decision summary` heading and says "Part of #501" with no closing reference; issue 501 is open and its by-hand acceptance is the owner's, stated truthfully.
+
+### Findings
+- [ ] (suggestion, Local Review @ `b16709b`) An absolute `COLCON_DEFAULTS_FILE` that is a layer's own `colcon_defaults.yaml` is named twice (the global NOTE before the first layer and that layer's NOTE). Same defect class the previous round fixed for the relative path, and the fix is a few lines: in `colcon_defaults_files(layer)`, also skip the layer's `colcon_defaults.yaml` when its real path equals the real path of an absolute `_defaults_file()` that is a file; add the absolute case (and a symlinked spelling) to the test of the relative fix — `tools/repos-manifest/src/repos_manifest/build.py:897-907`
+- [x] (suggestion, Local Review @ `b16709b`) "Fixed with tests" for the seventh review's four suggestions — already corrected on the pull request: the body now reads "the code changes with tests (one of the four was README wording)"; nothing to do — PR #518 body
+- [x] (left open, rightly) A forwarded argument colcon rejects is found only after the first layer's record is removed: catching it first would need colcon's own parser; a plain `build` of the layer restores it, and design.md says so
+- [x] (left open, rightly) No terminal prompt from git or ssh under `build`: colcon runs in its own process group so stop signals reach every job; handing the terminal over would undo that, and design.md names the agent / credential-helper route
+- [x] (left open, rightly) A hard kill of the tool cannot be caught; colcon keeps the lock until it ends, which is the safe direction (no second build starts on a half-built layer)
+- [x] (left open, rightly) `sync --distro=` reads an empty name as no `--distro`: `sync.py` is not changed by this pull request and `build` refuses the empty name (`cli.py` `cmd_build`); it is a real missing validation in `sync`, and no open issue tracks it — it needs its own issue (owner's call to open)
+- [x] (left open, rightly) `sync` takes no build lock: the lock between commands is issue 510's
+- [x] (left open, rightly) Check-then-replace of `setup.bash` is not atomic: Linux has no compare-and-swap rename, and the window is a person writing that exact file during the build's final write
+- [x] (left open, rightly) No fsync of the record before colcon starts: the design claims no power-loss safety
+- [x] (left open, rightly) A signal between taking the build lock and storing its descriptor leaks the descriptor only for an in-process caller; there is none
+- [x] (left open, rightly) The workspace adapter is not switched to `build`: issue 503's scope
+
+### False positives
+- None.
