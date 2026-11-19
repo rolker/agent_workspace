@@ -353,3 +353,13 @@ Round 1's three must-fix are fixed and re-checked with real colcon: `--packages-
 - [ ] (suggestion) A `-regex` pattern that starts with `--packages` (`--packages-skip-regex --packages-x`) makes `package_selection` read the run as selection, because `_option_names` takes every `--` argument as an option name, although colcon takes it as a pattern and `left_out` records it as one. This errs on the safe side (refused on an unbuilt layer); either skip the values `left_out` consumes or note the exception — `tools/repos-manifest/src/repos_manifest/build.py:801`
 - [ ] (suggestion) `read_built` checks `without` with `_CONTROL` (C0 and DEL) while the command line refuses with `has_unsafe_char`, so a hand-edited record holding `‮`, `\x9b` or a lone surrogate is read and printed in the "changed" line (a surrogate raises UnicodeEncodeError). Only a hand edit can produce it — `tools/repos-manifest/src/repos_manifest/system.py:608`
 - [ ] (suggestion) Where colcon-mixin is not installed, colcon takes a `--mixin` after a `-regex` list as a pattern while `left_out` ends the list there, so the record holds fewer patterns than colcon used. design.md states only the reverse case (an unlisted extension's option recorded as patterns); add this one — `tools/repos-manifest/docs/design.md:1037`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 16:30 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 2 approved with no must-fix; the host's full pre-commit pass over the branch passed at 48558c2e, every hook, no SKIP)
+**After**: publish
+**Decision**: publish
+
+Round 2, with the outside reviewers, approved the branch and left five suggestions, which the pull request lists. The full pass ran on head 48558c2e with exit 0.
