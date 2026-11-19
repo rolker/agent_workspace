@@ -746,3 +746,22 @@ design.md's changed passages (the removal paragraph, the setup.bash rewrite para
 Each code fix has a test that fails without it: the new tests were run against the source at adb63e75 and all failed there except the guard test that `--cmake-target-skip-unavailable` alone is not selection (it passes on both, as it should).
 - Tool suite: `REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest -p no:cacheprovider` before the commits (code identical to a490b255) — `1140 passed in 242.46s`
 - black and flake8 on the changed files clean; commits with `SKIP=validate-script-tests`; no workspace script changed; the full pass is left to the host. Follow-up still open from the last pass: `sync --distro=`.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-19 13:44 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent ac4541685cd426ca6, resume 2 of 3)
+
+**PR**: #518 at `a889904e`
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 2 | **Suggestions**: 2
+
+Scope: the round 2 review's findings and the fix diff 0e4b7162..346d5057. Cross-model: skipped (round-3 convergence check, per handoff). The three round 2 must-fix were re-run with the real colcon and are fixed: a fresh `build -- --cmake-target all` (and `--cmake-tar=all`) is refused with nothing run and no record, and on a built layer it gives "rebuilt with selection" with the record byte for byte unchanged; a read-only `mid/install` gives "stopped before mid ... it keeps its record", exit 1, record unchanged, setup.bash still sources mid; a missing `COLCON_DEFAULTS_FILE` gives no note. The body's arguments bullet, its "Reviews and outcomes" and the four new "Left open" items are true (issue 510 is the open lock issue; design.md and the README claim no power-loss safety). Tool suite: 1140 passed with real colcon. CI at a889904e: all checks passed; no Copilot review.
+
+### Findings
+- [ ] (must-fix) design.md says that with `COLCON_DEFAULTS_FILE` naming a path where nothing is, colcon "reads no defaults file at all"; colcon-defaults 0.2.9 still reads the layer's `colcon_defaults.yaml` (it always merges `Path('colcon_defaults.yaml')`; reproduced by the adversarial reviewer with `colcon list`). The code is right; say "no other global defaults file". The `_defaults_file` docstring repeats it — `docs/design.md:1006`, `build.py:876`
+- [ ] (must-fix) `COLCON_DEFAULTS_FILE` set but empty: the tool falls back to `$COLCON_HOME/defaults.yaml` and names it in a NOTE, but colcon takes `Path('')` (not a file) and reads no global defaults file, so the note names a file colcon will not read, against the README's "names each defaults file colcon will read". Test `"COLCON_DEFAULTS_FILE" in os.environ` — `build.py:877`
+- [ ] (suggestion) A bare `--cmake` or `--cmake-t` (ambiguous for colcon) is refused with a message naming `--cmake-target` — `build.py:657-660`
+- [ ] (suggestion) "Built on a shorter chain than before" note: read in code only, not run for real in this round — `build.py` `_left_behind`
