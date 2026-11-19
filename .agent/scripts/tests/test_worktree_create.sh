@@ -1155,7 +1155,7 @@ make_refusing_origin() {  # <repo> <bare> [<branch> pushed before the hook]
     gitq -C "$repo" remote add origin "$bare"
     gitq -C "$repo" push -q origin main ${3:+"$3"}
     gitq -C "$repo" remote set-head origin main
-    printf '#!/bin/sh\nexit 1\n' > "$bare/hooks/pre-receive"
+    printf '#!/bin/sh\necho refused-by-test >&2\nexit 1\n' > "$bare/hooks/pre-receive"
     chmod +x "$bare/hooks/pre-receive"
 }
 SB11="$SANDBOX/ws11"
@@ -1190,11 +1190,13 @@ if [[ "$OUT" == *"Push failed"* \
 else
     fail "refused push with --plan-file: hint lines missing: out=${OUT:0:1500}"
 fi
-# Review suggestion 1: the warning shows git's own error, indented, and
+# Review suggestion 1: the warning shows git's own error, indented (the
+# remote's lines without git's trailing padding), and
 # does not claim the branch is absent from origin (a rejection can come
 # from a branch origin already has).
 if [[ "$OUT" == *"git push -u origin feature/issue-71 said:"* \
       && "$OUT" == *$'\n'"       "*"pre-receive hook declined"* \
+      && "$OUT" == *$'\n'"       remote: refused-by-test"$'\n'* \
       && "$OUT" != *"is not on origin"* ]]; then
     pass "refused push: the warning shows git's error, indented, and no claim about origin"
 else
