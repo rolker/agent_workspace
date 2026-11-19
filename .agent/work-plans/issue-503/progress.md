@@ -548,3 +548,26 @@ Suites, each run with `bash`: test_gh_create_issue PASS 88 FAIL 0; test_worktree
 **Decision**: publish
 
 The full pass (every hook, no SKIP, over the files the branch changes) passed on 2912d5a6. Published as part 1A: the pull request says "Part of #503" and does not close the issue. Part 1B (the adapter's route for a directory the manifest tool set up, registration, the approved one-sentence edit to AGENTS.md) is built after issue 500 part 1 has merged. The owner's merge is asked for after an outside-model read of this pull request's final state.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-18 19:24 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #513 at `32abb3cd`
+**Depth**: Deep (reason: enforcement scripts worktree_create.sh and gh_create_issue.sh, a skill and docs/design.md; 11 files, +1631/-45)
+**Must-fix**: 0 | **Suggestions**: 5
+
+Round 1 of PR mode. Gemini and Codex both completed (EXIT=0) on the final state; Claude adversarial subagent completed. Every outside-model point checked against the code in a sandbox (copied suite fixture, stub gh; no real registry, no real gh issue create).
+
+### Findings
+- [ ] (suggestion) same-repository duplicate check `(^|[^0-9])#N` also matches another repository's `other/repo#N` in the body, so "Part of #N" is left out; same idiom as main's in-git path (line 259), worth changing only for both paths together, not here (Gemini, Codex; confirmed by regex) — `.agent/scripts/gh_create_issue.sh:291`
+- [ ] (suggestion) workspace slug taken by the `.*github\.com[:/]` sed (matches notgithub.com) and compared case- and form-exactly with -R; only effect is which label list is used or a qualified "Part of"; the same sed is in six scripts on main; not worth doing here (Codex said must-fix, Gemini, Claude adversarial) — `.agent/scripts/gh_create_issue.sh:129`
+- [ ] (suggestion) SB10's bare --issue case captures RC but does not assert exit 0 or that the worktree was made; two-line fix, worth doing (Gemini, Codex) — `.agent/scripts/tests/test_worktree_create.sh:1097`
+- [ ] (suggestion) a root that is a file, not a directory, is reported "not a git repository" (main's text); not worth doing (Gemini) — `.agent/scripts/worktree_create.sh:553`
+- [ ] (suggestion) an exported GH_REPO does not count as -R outside git (parser blanks it, as on main); clear refusal, not worth doing (Claude adversarial) — `.agent/scripts/gh_create_issue.sh:124`
+
+Dropped as named in the PR body ("Found, not fixed here"): Gemini and Codex must-fix on `worktree_create.sh:603` (`rev-parse --git-dir` succeeds for a plain root nested in an enclosing repository, so ROOT_NOT_GIT stays false). Probe: a plain two-repo root registered under the workspace's ignored `projects/` (ADR-0016 decision 1) with a bare --issue 64 looked the issue up in the workspace's repository, accepted it and made the worktree; the `worktrees/` exclude went to the workspace's `.git/info/exclude`. As on main; the body's example (a home directory under version control) understates this case — open human call whether to fix now (both models propose the top-level check) or keep it named.
+
+Checks: CI all 10 jobs pass (Lint x2, Validate Adapter Contract x2, Validate Documentation x2, repos-manifest 3.10/3.14 x2). Suites: test_gh_create_issue 88/0, test_worktree_create 89/0, test_ros2_colcon 1030/0, test_session_root 71/0, test_register_project 201/0, test_merge_pr 170/0, test_package_issue_loop 220/0, test_skill_paths 163/0, test_gh_create_pr 113/0; check_design_anchors exit 0; removed test lines 0; mergeable MERGEABLE.
