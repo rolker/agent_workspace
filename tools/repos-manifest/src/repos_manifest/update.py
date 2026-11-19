@@ -279,19 +279,25 @@ def submodules_in_the_way(git: Git, head: str, targets: Sequence[str]) -> Option
         if any(commit is None for commit in after):
             found.append(
                 f"submodule {path} is checked out here, and the move removes it or puts"
-                " something else in its place"
+                f" something else in its place (to let it go on: move it aside, mv"
+                f" {quoted(place)} <elsewhere>)"
             )
             continue
         sub = Git(place, git.env, None)
         top = sub.out("rev-parse", "--show-toplevel")
         if top is None or os.path.realpath(top) != os.path.realpath(place):
-            found.append(f"submodule {path} holds files and is not a repository of its own")
+            found.append(
+                f"submodule {path} holds files and is not a repository of its own (to let it go"
+                f" on: move them aside, mv {quoted(place)} <elsewhere>)"
+            )
             continue
         sub_head = sub.out("rev-parse", "--verify", "-q", "HEAD")
         if sub_head != recorded:
             found.append(
                 f"submodule {path} is on {(sub_head or 'no commit')[:12]}, not on"
                 f" {recorded[:12]}, the commit recorded here, and the move changes that commit"
+                f" (when it holds nothing of yours: git -C {quoted(git.place)} submodule update"
+                f" -- {quoted(path)})"
             )
     return found
 

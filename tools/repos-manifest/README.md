@@ -109,8 +109,10 @@ changed is left as it is and reported: one with uncommitted changes, commits not
 another branch checked out, an operation in progress, or a file git does not track (untracked
 or ignored) where an incoming file goes. Untracked files elsewhere do not stop an update. So
 is a clone where the update would remove or replace a checked-out submodule, or move the
-commit of one a person has moved; submodules are never updated, and a sparse checkout is left
-as it is. A version given as a commit is followed only when `origin` holds it. An
+commit of one a person has moved; submodules are never updated, so a repo with submodules
+stops following at the next change of a submodule's commit until that submodule is updated by
+hand (the report gives the `git submodule update` command), and a sparse checkout is left as
+it is. A version given as a commit is followed only when `origin` holds it. An
 `origin` a person set is left as set; the manifest's new url replaces `origin` only when the
 clone still has the url `sync` recorded and no local branch has commits it lacks. No line
 `sync` prints shows a url's user name and password. A repo the

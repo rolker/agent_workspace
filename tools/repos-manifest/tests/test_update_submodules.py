@@ -107,8 +107,8 @@ def test_a_submodule_the_move_removes_or_replaces_is_left_with_its_work(
         clone,
         capsys,
         "src/top: left alone: submodule sm is checked out here, and the move removes it or puts"
-        " something else in its place; not updated (a submodule has to be dealt with by hand,"
-        " then sync again)",
+        f" something else in its place (to let it go on: move it aside, mv {clone / 'sm'}"
+        " <elsewhere>); not updated (a submodule has to be dealt with by hand, then sync again)",
     )
     assert "updated" not in out.replace("not updated", "")
     assert git("rev-parse", "mywork", cwd=clone / "sm") == mine
@@ -150,7 +150,8 @@ def test_a_submodule_a_person_moved_stops_a_move_of_its_pointer(vcs, tmp_path, c
         clone,
         capsys,
         f"src/top: left alone: submodule sm is on {mine[:12]}, not on {recorded[:12]}, the commit"
-        " recorded here, and the move changes that commit; not updated",
+        " recorded here, and the move changes that commit (when it holds nothing of yours: git"
+        f" -C {clone} submodule update -- sm); not updated",
     )
     assert head(clone / "sm") == mine
 
@@ -182,6 +183,9 @@ def test_a_submodule_left_behind_by_an_earlier_sync_stops_the_next_pointer_move(
     assert "fast-forwarded 1 commits" in _sync(sys_dir, capsys)
     _move_pointer(sub, top)
     _left_alone(sys_dir, clone, capsys, f"submodule sm is on {old[:12]}, not on")
+    # The command the report gives lets the next sync follow.
+    git(*FILE_ALLOW, "submodule", "update", "-q", "--", "sm", cwd=clone)
+    assert "fast-forwarded 1 commits" in _sync(sys_dir, capsys)
 
 
 def test_a_tracked_file_replaced_by_a_submodule_is_followed(vcs, tmp_path, capsys):
