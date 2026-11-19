@@ -226,3 +226,13 @@ The revision closes the one gap and the six notes as the Checkpoint decided, wit
 ### Recommended Actions
 
 - [ ] None before implementation; the notes are for the implementer.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 15:05 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (second plan review: ready, two notes)
+**After**: plan
+**Decision**: proceed
+
+The two notes go to the implementer: a value list ends only at an argument that starts with - and is not a number, as colcon reads it, so --packages-skip-regex -1 x is recorded as given; one of the two overlapping "empty list is not written" tests is enough.
