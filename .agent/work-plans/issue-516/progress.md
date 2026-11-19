@@ -281,3 +281,25 @@ Suites run (each on its own with bash; the full pre-commit pass is left to the h
 - test_skill_paths.sh: 163 passed, 0 failed
 - test_user_tier_guard.sh: 64 passed, 0 failed
 - test_package_issue_loop.sh: 220 passed, 0 failed
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 13:12 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-516 at `f5c68a46`
+**Base**: main
+**Depth**: Deep (reason: 452 changed lines with plan/progress; code diff ~105 lines; Deep dispatches the same specialists as Standard)
+**Must-fix**: 0 | **Suggestions**: 6
+**Round**: 1 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Verified by hand: test_worktree_create.sh 93 passed / 0 failed; shellcheck --severity=warning clean on both scripts. Sandbox trial (workspace path with a space, plan path with a space, refusing pre-receive hook, gh stub logging arguments, issue title `Fix $(touch PWNED) & 'q' "dq" \`bt\``): workspace, --parent-issue 5 and --skill research worktrees each exit 0 and print the hint; --print-path-only exits 0 with stdout exactly the worktree path. With the hook removed, the pasted lines pushed each branch and gh received `pr create --draft [--base feature/issue-5] --title "[PLAN] <title verbatim>" --body "Closes #N[\nPart of #5] + signature"` (skill: the skill body text) and `pr comment <branch> --body-file "<plan path with space>"`; no command substitution ran. Success path unchanged (pr_title only moved). WORKTREE_GUIDE sentence matches the code. Outside reviewers: Claude adversarial (fresh subagent) ran, no must-fix; gemini ran (EXIT=0), 8 suggestions, mostly test coverage, 2 with substance; codex ran (EXIT=0), 1 claimed must-fix judged a suggestion (pre-existing gh_create_pr.sh guard, plan-review note 5), 2 suggestions.
+
+### Findings
+- [ ] (suggestion) The warning says "The branch ... is not on origin" and the push's stderr goes to /dev/null; a non-fast-forward rejection of an existing remote branch makes that sentence false and hides why. Say the push failed and show git's error (gemini, codex) — `.agent/scripts/worktree_create.sh:1274-1279`
+- [ ] (suggestion) Pre-existing: a relative --plan-file passes the -f check against ROOT_DIR, but the success path's `gh pr comment --body-file "$PLAN_FILE"` runs after `cd "$git_dir"` and cannot read it. Resolve PLAN_FILE to an absolute path once where HAS_PLAN is set; the hint then needs no plan_abs (Claude adversarial) — `.agent/scripts/worktree_create.sh:1226-1231,1325,1347`
+- [ ] (suggestion) The new tests cover only a workspace worktree with an absolute plan; no case pins the -R, --base/Part of, skill-body or relative-plan branches of the hint, the title's [PLAN] prefix (`--title "*"` matches anything), or that no `gh pr create` runs after the refused push (a recording gh stub would). Add a --parent-issue case and a relative plan case (Claude adversarial, gemini, codex) — `.agent/scripts/tests/test_worktree_create.sh:1115-1171`
+- [ ] (suggestion) The printed gh_create_pr.sh line is refused by its user-tier guard in a project whose `worktrees=` directory lies outside both the project root and the workspace; pre-existing wrapper behaviour (plan-review note 5, checkpoint: no action), worth its own issue against gh_create_pr.sh / registry_require_root (codex) — `.agent/scripts/gh_create_pr.sh:87`
+- [ ] (suggestion) The hint always runs gh_create_pr.sh; if a PR already exists for the branch (e.g. a re-run whose push was rejected) it fails with gh's "already exists". One line saying to skip it when `gh pr list --head <branch>` shows a PR would cover it (Claude adversarial) — `.agent/scripts/worktree_create.sh:1290-1296`
+- [ ] (suggestion) The hint's body text (skill text / Closes / Part of) duplicates the BODY_FILE heredoc branches; building it once above the push would keep the two from drifting (gemini) — `.agent/scripts/worktree_create.sh:1282-1288`
