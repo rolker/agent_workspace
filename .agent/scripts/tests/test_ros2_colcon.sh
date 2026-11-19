@@ -4735,10 +4735,11 @@ test_tool_set_aside_resolve_is_a_distro() {
     assert_not_contains "a dot name not the tool's: fakefox2 not counted" "fakefox2" "$out"
 }
 
-# Integrated review, finding 4: _rc_tool_distros lists the set-aside
-# names before the plain ones; a distro whose plain and set-aside
-# directories both exist is listed once. (Listed when only the set-aside
-# one exists: test_tool_set_aside_resolve_is_a_distro.)
+# Integrated review, finding 4: a distro whose plain and set-aside
+# directories both exist is listed once, by _rc_tool_distros itself and
+# in the refusal that lists the distros. (Listed when only the set-aside
+# one exists: test_tool_set_aside_resolve_is_a_distro and
+# test_tool_distros_counts_each_name_globbed.)
 test_tool_distro_listed_once_beside_its_set_aside() {
     echo "TEST: tool route: a distro with both its resolve and a set-aside one is listed once"
     local sb root out rc res kind
@@ -4748,16 +4749,54 @@ test_tool_distro_listed_once_beside_its_set_aside() {
     res="$root/.repos-manifest/resolved"
     for kind in old new; do
         cp -a "$res/fakefox" "$res/.fakefox.$kind-4242-abcd1234"
+        out="$(tool_distros "$sb" "$root")"
+        assert_eq "$kind beside fakefox, two distros: _rc_tool_distros lists each once" \
+            "$(printf 'fakefox\nfakefox2')" "$out"
         rc=0; out="$(run_tool "$sb" "$root" env 2>&1)" || rc=$?
         assert_eq "$kind beside fakefox, two distros: from the root, env refused" "1" "$rc"
-        assert_contains "$kind beside fakefox: each listed once" "several distros (fakefox, fakefox2)" "$out"
+        assert_contains "$kind beside fakefox: the refusal lists each once" "several distros (fakefox, fakefox2)" "$out"
         rm -r "$res/.fakefox.$kind-4242-abcd1234"
     done
     rm -r "$res/fakefox2"
     cp -a "$res/fakefox" "$res/.fakefox.new-4242-abcd1234"
+    out="$(tool_distros "$sb" "$root")"
+    assert_eq "fakefox and its set-aside copy, no other: _rc_tool_distros lists fakefox once" "fakefox" "$out"
     rc=0; out="$(run_tool "$sb" "$root" validate 2>&1)" || rc=$?
-    assert_eq "one distro and its set-aside copy: from the root, validate exit 0 (one distro)" "0" "$rc"
-    assert_contains "one distro and its set-aside copy: fakefox chosen" "for distro fakefox (" "$out"
+    assert_eq "fakefox and its set-aside copy, no other: from the root, validate exit 0" "0" "$rc"
+    assert_contains "fakefox and its set-aside copy, no other: fakefox chosen" "for distro fakefox (" "$out"
+}
+
+# _rc_tool_distros run on its own: <root> as the project root, its
+# distros one per line.
+tool_distros() {  # <sb> <root>
+    ACTIVE_PROJECT_ROOT="$2" bash -c 'set -euo pipefail; source "$1/.agent/project_types/ros2_colcon/adapter.sh"; _rc_tool_distros' _ "$1"
+}
+
+# Round 2 on the pull request, suggestion 1: every name a glob of
+# _rc_tool_distros returned counts, even if it is gone when examined (the
+# tool's second rename moves a set-aside name away during the call); an
+# unmatched pattern gives no name. The disappearance is staged by
+# removing a set-aside directory the moment the function tests it with
+# [ (a name gone between the glob and its use cannot be timed in a test).
+test_tool_distros_counts_each_name_globbed() {
+    echo "TEST: tool route: _rc_tool_distros counts each name its globs returned; an unmatched pattern is no distro"
+    local sb root res out
+    sb="$(make_sandbox)"
+    root="$(mktemp -d -p "$SANDBOX")/toolsys"
+    res="$root/.repos-manifest/resolved"
+    mkdir -p "$res/.fakefox.old-4242-abcd1234"
+    out="$(tool_distros "$sb" "$root")"
+    assert_eq "only a set-aside directory: its distro listed" "fakefox" "$out"
+    out="$(ACTIVE_PROJECT_ROOT="$root" bash -c 'set -euo pipefail
+        [() { if [[ "$1" == -d && "$2" == */.fakefox.old-* ]]; then rm -rf "$2"; fi; builtin [ "$@"; }
+        source "$1/.agent/project_types/ros2_colcon/adapter.sh"; _rc_tool_distros' _ "$sb")"
+    assert_eq "a set-aside directory gone once globbed: its distro still listed" "fakefox" "$out"
+    rm -rf "$res"/.fakefox.*
+    out="$(tool_distros "$sb" "$root")"
+    assert_eq "nothing under resolved/: no distro and no literal pattern" "" "$out"
+    rmdir "$res"
+    out="$(tool_distros "$sb" "$root")"
+    assert_eq "no resolved/: no distro and no literal pattern" "" "$out"
 }
 
 # Round 3, suggestion 2: from a top-level directory the tool has no
@@ -5168,6 +5207,7 @@ mr_test test_tool_layers_read_once_per_call
 mr_test test_tool_distro_rule_never_moves_on
 mr_test test_tool_set_aside_resolve_is_a_distro
 mr_test test_tool_distro_listed_once_beside_its_set_aside
+mr_test test_tool_distros_counts_each_name_globbed
 mr_test test_tool_not_a_distro_directory
 mr_test test_tool_links_are_not_candidates
 mr_test test_tool_sync_steps_run_literally

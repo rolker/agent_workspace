@@ -798,10 +798,16 @@ _rc_route() {
 # one per line. Whether one is usable is _rc_tool_read_layers's question,
 # not this list's (a set-aside one with no resolved/<d>/ is not).
 _rc_tool_distros() {
-    local d
-    # Set-aside names first: a sync swapping <d> between the two globs then shows <d> in one of them.
-    for d in "$(_rc_root)/.repos-manifest/resolved"/.*/ "$(_rc_root)/.repos-manifest/resolved"/*/; do
-        [ -d "$d" ] || continue
+    local d res restore
+    local -a names
+    res="$(_rc_root)/.repos-manifest/resolved"
+    # Set-aside names first, and every name a glob returned counts even if gone since: a sync's
+    # swap of <d> during the call lists <d>, unless the first glob ran before the sync wrote its new copy.
+    restore="$(shopt -p nullglob)" || true  # exit 1 when unset
+    shopt -s nullglob
+    names=("$res"/.*/ "$res"/*/)
+    eval "$restore"
+    for d in ${names[@]+"${names[@]}"}; do
         d="${d%/}"
         d="${d##*/}"
         if [[ "$d" == .* ]]; then
