@@ -156,3 +156,13 @@ The classification, the record field, the changed-list rule and the document cha
 ### Recommended Actions
 
 - [ ] State in step 2 that the last occurrence is taken first and an option whose last occurrence has no values is left out of `without`; add stub tests for `--packages-skip` alone and `--packages-skip b --packages-skip`.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 15:03 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review's one needs-work finding is a gap in how an option with no values is read; mechanism)
+**After**: plan
+**Decision**: revise
+
+The host takes the Plan Review's finding and six notes as written. An option's last occurrence is taken first, and an option whose last occurrence has no values is not recorded, since colcon then leaves nothing out; stub tests for --packages-skip alone and for --packages-skip b --packages-skip. Notes: design.md says the field holds the options given after --, and the three texts about a defaults file or mixin are reworded to cover a skip set there; the new report line is worded "built leaving out:" so it cannot be mixed up with "built without sourcing"; a value that starts with - ends the list, which is harmless; the line is printed for a layer built under --keep-going but not used too; design.md says an older tool refuses a record that has the field; format stays 1.
