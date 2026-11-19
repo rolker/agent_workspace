@@ -232,6 +232,7 @@ if [ "$sub" = "$STUB_ON" ]; then
     kill-after) "$REAL_GIT" "$@"; s=$?; kill -9 "$PPID"; exit "$s";;
     term-during) kill -TERM "$PPID"; sleep 0.3; exec "$REAL_GIT" "$@";;
     fail) echo "stub refuses" >&2; exit 1;;
+    silent) exit 1;;
     plant) printf 'precious\n' >"$STUB_PLANT"; exec "$REAL_GIT" "$@";;
     half) "$REAL_GIT" "$@"; "$REAL_GIT" -C "$STUB_PLANT" symbolic-ref HEAD "$STUB_BACK"; exit 128;;
   esac
@@ -490,3 +491,44 @@ def test_a_switch_back_that_a_hook_changes_is_reported_in_order(two, tmp_path, c
     ) in done.stdout, done.stdout
     assert "nothing after the steps above was run here" in done.stdout
     assert branch(clone) == "main" and git("rev-parse", "dev", cwd=clone) == local
+
+
+def test_a_failure_git_says_nothing_about_ends_in_a_full_stop(two, tmp_path, capsys):
+    system, manifest, remote = two
+    clone = system / "jazzy/core/src/a"
+    rewrite_manifest(manifest, lambda d: d["repositories"]["a"].update(version="dev"))
+    assert run(system, "sync", "--distro", "jazzy") == 0
+    push_commit(remote, "one", "1\n")
+    rewrite_manifest(manifest, lambda d: d["repositories"]["a"].update(version="main"))
+    done = _sync_with_stub(tmp_path, system, "merge", "silent")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "jazzy/core/src/a: left alone: `git merge` exited 1; left as it was.\n" in done.stdout
+    assert branch(clone) == "dev"
+
+
+def test_a_half_change_with_no_tracked_changes_names_none(two, tmp_path, capsys):
+    # The fast-forward fails on a clean tree, and the switch back is refused because a hook
+    # wrote an untracked file where main has a tracked one: HEAD is left on dev, nothing is
+    # changed, and the report says so without a "These changes" line.
+    system, manifest, remote = two
+    clone = system / "jazzy/core/src/a"
+    push_commit(remote, "mainonly", "m\n")
+    assert run(system, "sync", "--distro", "jazzy") == 0
+    git("branch", "-q", "dev", "origin/dev", cwd=clone)
+    local = git("rev-parse", "dev", cwd=clone)
+    push_commit(remote, "more", "x\n", "dev")
+    hook = clone / ".git" / "hooks" / "post-checkout"
+    hook.write_text(
+        "#!/bin/sh\n"
+        '[ "$(git symbolic-ref HEAD)" = refs/heads/dev ] && echo hook >mainonly\nexit 0\n'
+    )
+    hook.chmod(0o755)
+    rewrite_manifest(manifest, lambda d: d["repositories"]["a"].update(version="dev"))
+    done = _sync_with_stub(tmp_path, system, "merge", "silent")
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert (
+        f"HEAD is now dev at {local[:12]}, with no tracked changes; sync does not move it back,"
+        " and nothing after the steps above was run here:\n"
+    ) in done.stdout, done.stdout
+    assert "These changes" not in done.stdout
+    assert branch(clone) == "dev" and (clone / "mainonly").read_text() == "hook\n"

@@ -937,7 +937,7 @@ def _change(
             turn.put(turn.record if turn.record is not None else turn.new_record(head))
             return Done(
                 LEFT,
-                f"`git {step[0]}` exited {status}; left as it was:\n{said_by_git}",
+                f"`git {step[0]}` exited {status}; left as it was{_git_said(said_by_git)}",
                 notes,
             )
         # What git left is said as it is; the record loses its moving line, so the next sync
@@ -997,13 +997,24 @@ def _half_changed(git: Git, ran: Sequence[str], after: Before, said: str) -> str
             more = f" and {len(lines) - SHOWN_PATHS} more" if len(lines) > SHOWN_PATHS else ""
             files += f"; {label}: {shown}{more}"
     where = _shown((after.head, after.symbolic))
+    if files:
+        changes = (
+            f"{files}. These changes were made by git or a hook it ran (the repo had no tracked"
+            " changes before); sync does not put them back, as it runs no reset or forced"
+            f" checkout: `git -C {quoted(git.place)} status` shows them"
+        )
+    else:
+        changes = ", with no tracked changes; sync does not move it back"
     return (
         f"the move left the repo half-changed. What ran, in order: {steps}. HEAD is now"
-        f" {where}{files}. These changes were made by git or a hook it ran (the repo had no"
-        " tracked changes before); sync does not put them back, as it runs no reset or forced"
-        f" checkout: `git -C {quoted(git.place)} status` shows them, and nothing after the"
-        f" steps above was run here:\n{said}"
+        f" {where}{changes}, and nothing after the steps above was run here{_git_said(said)}"
     )
+
+
+def _git_said(said: str) -> str:
+    """What git printed, after a colon on lines of its own; or a full stop when it printed
+    nothing, so a report never ends in an empty line."""
+    return f":\n{said}" if said.strip() else "."
 
 
 def _fetch_covers(git: Git, branch: str) -> bool:
