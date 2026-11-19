@@ -1112,6 +1112,36 @@ else
     fail "multi-repository root outside git, bare --issue: rc=$RC, worktree [$(ls -A "$W10" 2>/dev/null | tr '\n' ' ')] out=${OUT:0:600}"
 fi
 
+# A gh stub that records each call in <log> and fails `issue view` (so
+# the title is the generic "Issue #<N>"). `pr list` finds no PR, `pr
+# create` prints a URL and saves its --body-file to <log>.body, and `pr
+# comment` records whether its --body-file can be read from where it runs.
+make_recording_gh() {  # <stubbin> <log>
+    cat > "$1/gh" <<GHREC_EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$2"
+case "\$1 \$2" in
+    "pr list") exit 0 ;;
+    "pr create")
+        while [ \$# -gt 0 ]; do
+            [ "\$1" = --body-file ] && cp "\$2" "$2.body"
+            shift
+        done
+        echo "https://github.com/o/r/pull/1"; exit 0 ;;
+    "pr comment")
+        while [ \$# -gt 0 ]; do
+            if [ "\$1" = --body-file ]; then
+                if [ -r "\$2" ]; then echo "comment-file readable" >> "$2"; else echo "comment-file missing: \$2" >> "$2"; fi
+            fi
+            shift
+        done
+        exit 0 ;;
+esac
+exit 1
+GHREC_EOF
+    chmod +x "$1/gh"
+}
+
 # Issue 516: with --plan-file, a refused push skips the draft PR and is
 # non-fatal: the script exits 0, the worktree exists, and the warning
 # prints lines to push and open the PR by hand. The origin's pre-receive
@@ -1119,11 +1149,11 @@ fi
 # and made executable (git skips a hook that is not). The worktree's
 # directory name takes the repository slug detected from the origin's
 # name (origin11 -> issue-origin11-71).
-make_refusing_origin() {  # <repo> <bare>
+make_refusing_origin() {  # <repo> <bare> [<branch> pushed before the hook]
     local repo="$1" bare="$2"
     gitq init -q --bare -b main "$bare"
     gitq -C "$repo" remote add origin "$bare"
-    gitq -C "$repo" push -q origin main
+    gitq -C "$repo" push -q origin main ${3:+"$3"}
     gitq -C "$repo" remote set-head origin main
     printf '#!/bin/sh\nexit 1\n' > "$bare/hooks/pre-receive"
     chmod +x "$bare/hooks/pre-receive"
@@ -1133,6 +1163,8 @@ make_ws_repo "$SB11"
 make_refusing_origin "$SB11" "$SANDBOX/origin11.git"
 PLAN11="$SANDBOX/plan11.md"
 printf '# Plan\n' > "$PLAN11"
+GH_LOG11="$SANDBOX/gh11.log"
+make_recording_gh "$SB11/stubbin" "$GH_LOG11"
 OUT="$(cd "$SB11" && PATH="$SB11/stubbin:$PATH" "$SB11/.agent/scripts/worktree_create.sh" \
     --issue 71 --type workspace --plan-file "$PLAN11" 2>&1)"
 RC=$?
@@ -1175,6 +1207,14 @@ if [[ "$OUT" == *"Skip the gh_create_pr.sh line if \`gh pr list --head feature/i
 else
     fail "refused push: no skip line for an existing PR: out=${OUT:0:1500}"
 fi
+# Review suggestion 3: the title carries the [PLAN] prefix, and after the
+# refused push no PR is created and no plan is posted.
+if [[ "$OUT" == *"gh_create_pr.sh --draft --title $(printf '%q' '[PLAN] Issue #71') --body"* ]] \
+   && [[ -s "$GH_LOG11" ]] && ! grep -qE '^pr (create|comment|list)' "$GH_LOG11"; then
+    pass "refused push: the hint's title is [PLAN] Issue #71, and gh ran no pr create, list or comment"
+else
+    fail "refused push: title or gh calls wrong: gh calls=[$(tr '\n' ';' < "$GH_LOG11" 2>/dev/null)] out=${OUT:0:1500}"
+fi
 # The same refused push through --print-path-only (the start-task call):
 # stdout is the worktree path alone, and the exit status is 0.
 SB12="$SANDBOX/ws12"
@@ -1188,36 +1228,6 @@ if [[ "$RC" -eq 0 && "$STDOUT12" == "$SB12/worktrees/workspace/issue-origin12-72
 else
     fail "refused push with --plan-file --print-path-only: rc=$RC stdout=[$STDOUT12]"
 fi
-
-# A gh stub that records each call in <log> and fails `issue view` (so
-# the title is the generic "Issue #<N>"). `pr list` finds no PR, `pr
-# create` prints a URL and saves its --body-file to <log>.body, and `pr
-# comment` records whether its --body-file can be read from where it runs.
-make_recording_gh() {  # <stubbin> <log>
-    cat > "$1/gh" <<GHREC_EOF
-#!/usr/bin/env bash
-printf '%s\n' "\$*" >> "$2"
-case "\$1 \$2" in
-    "pr list") exit 0 ;;
-    "pr create")
-        while [ \$# -gt 0 ]; do
-            [ "\$1" = --body-file ] && cp "\$2" "$2.body"
-            shift
-        done
-        echo "https://github.com/o/r/pull/1"; exit 0 ;;
-    "pr comment")
-        while [ \$# -gt 0 ]; do
-            if [ "\$1" = --body-file ]; then
-                if [ -r "\$2" ]; then echo "comment-file readable" >> "$2"; else echo "comment-file missing: \$2" >> "$2"; fi
-            fi
-            shift
-        done
-        exit 0 ;;
-esac
-exit 1
-GHREC_EOF
-    chmod +x "$1/gh"
-}
 
 # Issue 516 (review suggestion 2): a relative --plan-file is found against
 # the workspace root; on the success path the plan comment runs after a cd
@@ -1247,6 +1257,71 @@ if [[ "$(cat "$GH_LOG13.body" 2>/dev/null)" == $'## Summary\n\nIssue #73\n\nClos
     pass "push succeeds: the draft PR's body file is the Summary, the title, Closes and the signature"
 else
     fail "relative --plan-file, push succeeds: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG13" 2>/dev/null)] out=${OUT:0:1200}"
+fi
+
+# Review suggestion 3: the hint's other branches. A sub-issue (its parent
+# branch on origin, pushed before the hook) with a relative plan path gets
+# --base and Part of, and the plan's absolute path; a skill worktree gets
+# the skill body.
+SB14="$SANDBOX/ws14"
+make_ws_repo "$SB14"
+gitq -C "$SB14" branch feature/issue-80 main
+make_refusing_origin "$SB14" "$SANDBOX/origin14.git" feature/issue-80
+GH_LOG14="$SANDBOX/gh14.log"
+make_recording_gh "$SB14/stubbin" "$GH_LOG14"
+mkdir -p "$SB14/notes"
+printf '# Plan 81\n' > "$SB14/notes/plan 81.md"
+OUT="$(cd "$SB14" && PATH="$SB14/stubbin:$PATH" "$SB14/.agent/scripts/worktree_create.sh" \
+    --issue 81 --type workspace --parent-issue 80 --plan-file "notes/plan 81.md" 2>&1)"
+RC=$?
+BODY14="$(printf '%q' $'## Summary\n\nIssue #81\n\nCloses #81\nPart of #80')"
+if [[ "$RC" -eq 0 \
+      && "$OUT" == *"gh_create_pr.sh --draft --base feature/issue-80 --title $(printf '%q' '[PLAN] Issue #81') --body $BODY14"* \
+      && "$OUT" == *"gh pr comment feature/issue-81 --body-file $(printf '%q' "$SB14/notes/plan 81.md")"* ]] \
+   && ! grep -qE '^pr (create|comment)' "$GH_LOG14"; then
+    pass "refused push, --parent-issue and relative plan: --base, Part of and the plan's absolute path"
+else
+    fail "refused push, --parent-issue and relative plan: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG14" 2>/dev/null)] out=${OUT:0:1500}"
+fi
+: > "$GH_LOG14"
+OUT="$(cd "$SB14" && PATH="$SB14/stubbin:$PATH" "$SB14/.agent/scripts/worktree_create.sh" \
+    --skill research --type workspace --plan-file "$PLAN11" 2>&1)"
+RC=$?
+BODY14S="$(printf '%q' $'## Summary\n\nSkill update: research\n\nAutomated update from the `research` skill.')"
+if [[ "$RC" -eq 0 \
+      && "$OUT" == *"git push -u origin skill/research-"* \
+      && "$OUT" == *"gh_create_pr.sh --draft --title $(printf '%q' '[PLAN] Skill update: research') --body $BODY14S"* \
+      && "$OUT" == *"gh pr comment skill/research-"*" --body-file $(printf '%q' "$PLAN11")"* ]] \
+   && ! grep -qE '^pr (create|comment)' "$GH_LOG14"; then
+    pass "refused push, --skill research: the skill title and body"
+else
+    fail "refused push, --skill research: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG14" 2>/dev/null)] out=${OUT:0:1500}"
+fi
+
+# Review suggestion 3: a single-repository project worktree gets -R on the
+# create, list and comment lines. The project's origin is a local bare repo
+# whose path holds github.com/acme/demo15.git, so the slug reads acme/demo15.
+SB15="$SANDBOX/ws15"
+make_ws_repo "$SB15"
+GH_LOG15="$SANDBOX/gh15.log"
+make_recording_gh "$SB15/stubbin" "$GH_LOG15"
+P15="$SANDBOX/proj15"
+gitq init -q -b main "$P15"
+gitq -C "$P15" commit -q --allow-empty -m "project init"
+mkdir -p "$SANDBOX/github.com/acme"
+make_refusing_origin "$P15" "$SANDBOX/github.com/acme/demo15.git"
+printf 'demo15 single_project %s\n' "$P15" >> "$SB15/.agent/projects.local"
+OUT="$(cd "$SB15" && PATH="$SB15/stubbin:$PATH" "$SB15/.agent/scripts/worktree_create.sh" \
+    --issue 91 --type project --project demo15 --plan-file "$PLAN11" 2>&1)"
+RC=$?
+if [[ "$RC" -eq 0 \
+      && "$OUT" == *"gh_create_pr.sh --draft -R acme/demo15 --title $(printf '%q' '[PLAN] Issue #91') --body "* \
+      && "$OUT" == *"\`gh pr list --head feature/issue-91 -R acme/demo15\`"* \
+      && "$OUT" == *"gh pr comment feature/issue-91 -R acme/demo15 --body-file $(printf '%q' "$PLAN11")"* ]] \
+   && ! grep -qE '^pr (create|comment)' "$GH_LOG15"; then
+    pass "refused push, single-repository project: -R on the create, list and comment lines"
+else
+    fail "refused push, single-repository project: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG15" 2>/dev/null)] out=${OUT:0:1500}"
 fi
 
 echo
