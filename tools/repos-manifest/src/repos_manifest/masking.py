@@ -30,8 +30,9 @@ _FALLBACK = re.compile(
 
 
 def userinfo_of(url: str) -> Optional[Tuple[str, str]]:
-    """The scheme and the user information of a whole url, or None when it has none."""
-    match = SCHEME.match(url)
+    """The scheme and the user information of a whole url (its first `scheme://`, wherever it
+    is, as in git's `<transport>::<address>` form), or None when it has none."""
+    match = SCHEME.search(url)
     if match is None:
         return None
     at = url.rfind("@", match.end())

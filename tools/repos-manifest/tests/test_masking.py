@@ -123,3 +123,24 @@ def test_a_hand_set_origin_with_credentials_and_a_manifest_url_with_them(vcs, tm
         ["git", "config", "--get", "remote.origin.url"], cwd=clone, capture_output=True, text=True
     )
     assert done.stdout.strip() == secret
+
+
+@pytest.mark.parametrize("password", ["s3cr'tQ", "s3cr tQ"])
+@pytest.mark.parametrize("command", ["sync", "resolve"])
+def test_a_refused_url_is_not_printed_in_the_error(vcs, tmp_path, capsys, password, command):
+    """The manifest refuses the url (the <transport>::<address> form): the error, a distro's
+    report or the run's, quotes it with its credentials masked."""
+    sys_dir, manifest, _, _ = _system(tmp_path)
+    bad = f"foo::https://alice:{password}@example.invalid/x.git"
+    rewrite_manifest(manifest, lambda d: d["repositories"]["a"].update(url=bad))
+    capsys.readouterr()
+    argv = (
+        ["sync"]
+        if command == "sync"
+        else ["resolve", "--manifest", manifest, "--out", tmp_path / "o"]
+    )
+    assert run(sys_dir, *argv) == 1
+    out = capsys.readouterr()
+    text = out.out + out.err
+    assert "the <transport>::<address> form is refused" in text, text
+    assert password not in text and "alice" not in text, text
