@@ -478,14 +478,17 @@ def not_built_for_selection(
     """A run with package selection builds only part of each layer, so it only rebuilds layers
     that are built, with the repos their record has: any other layer it would build is refused
     before anything runs."""
-    why = []
+    not_built, changed = [], []
     for index, layer in enumerate(layers):
         if layer.name not in to_build:
             continue
         below = built_run(layers[:index], records).last
         reason = why_not_built(layer, records, below)
-        record = records.get(layer.name)
-        if reason is None and sorted(record.repos) != sorted(layer.on_disk):
+        if reason is not None:
+            not_built.append(f"{layer.name} ({reason})")
+            continue
+        record = records[layer.name]
+        if sorted(record.repos) != sorted(layer.on_disk):
             new = [key for key in layer.on_disk if key not in record.repos]
             gone = [key for key in record.repos if key not in layer.on_disk]
             changes = []
@@ -493,18 +496,30 @@ def not_built_for_selection(
                 changes.append(f"new {', '.join(new)}")
             if gone:
                 changes.append(f"gone {', '.join(gone)}")
-            reason = f"its repos differ from its record: {'; '.join(changes)}"
-        if reason is not None:
-            why.append((layer.name, reason))
-    if why:
-        names = [name for name, _ in why]
+            changed.append((layer.name, "; ".join(changes)))
+    if not_built or changed:
+        found, steps = [], []
+        if not_built:
+            found.append(f"not built: {', '.join(not_built)}")
+            names = " ".join(entry.split(" (", 1)[0] for entry in not_built)
+            steps.append(
+                f"Build them without package selection first: `repos-manifest build {names}`"
+            )
+        if changed:
+            found.append(
+                "built, but its repos differ from its record: "
+                + ", ".join(f"{name} ({change})" for name, change in changed)
+            )
+            names = " ".join(name for name, _ in changed)
+            steps.append(
+                f"A build without package selection records the change: `repos-manifest build"
+                f" {names}`"
+            )
         raise Refusal(
             "a run with package selection builds only part of a layer, so it only rebuilds"
-            " layers that are built; not built: "
-            + ", ".join(f"{name} ({reason})" for name, reason in why)
-            + "; nothing was run",
-            "Build them without package selection first: `repos-manifest build"
-            f" {' '.join(names)}`",
+            f" layers that are built, with the repos their record has; {'; '.join(found)};"
+            " nothing was run",
+            ". ".join(steps),
         )
 
 
@@ -695,6 +710,7 @@ class Progress:
     setup_problems: List[str] = field(default_factory=list)  # every such reason in the run
     setup_written: bool = False
     ready: bool = False  # the checks have passed: every way the run ends now settles
+    selection: bool = False  # the run passes package selection to colcon
 
     @property
     def stopped_at(self) -> List[str]:
@@ -844,7 +860,8 @@ def report(progress: Progress, run: Optional[Run]) -> None:
     records = read_built(progress.system, progress.distro)
     used = [name for name in progress.built if name in run.layers]
     if used:
-        print(f"  built: {', '.join(used)}")
+        label = "rebuilt with selection" if progress.selection else "built"
+        print(f"  {label}: {', '.join(used)}")
     failed_names = progress.stopped_at
     for name in progress.built:
         if name in run.layers:
@@ -977,7 +994,7 @@ def _build(
         missing_repos(layers, chosen)
         to_build = [layer for layer in layers if layer.name in chosen and not layer.empty]
         selection = package_selection(colcon_args, [layer.name for layer in to_build])
-        progress = Progress(system, config, distro, layers)
+        progress = Progress(system, config, distro, layers, selection=selection)
         holder.append(progress)  # from here run_build releases the lock however the run ends
         progress.lock = hold_build_lock(system, distro)
         records = read_built(system, distro)

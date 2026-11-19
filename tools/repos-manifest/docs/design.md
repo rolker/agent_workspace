@@ -811,18 +811,17 @@ built, such a layer's base no longer matches and it is built again by the next p
 `build`; that is the check of the base at work, not a rule of its own. The exit status is 1
 whenever a layer failed.
 
-`setup.bash` is rewritten from the record, in one step, before and after each layer's
-`colcon` and on every way a run ends once its checks have passed: at the end, after a failure,
-after a `colcon` that cannot be started, after a stop signal, and when no layer was started
-at all because every layer asked for has no repos. It is replaced only where nothing is or
-where the file there is one this tool wrote (its first line says so). A file with other text,
-a link of any kind, a directory or anything else that is not a file is left as it is and named
-in a warning, and the exit status is 1: writing `setup.bash` is part of what `build` promises.
-A rewrite that fails at any point of the run counts so, and is named in the closing report,
-even when a later rewrite in the run works, since `setup.bash` was out of line with the
-record meanwhile.
-That differs from `sync`, which creates `setup.bash` only where nothing is and does not change
-its exit status for what it finds there.
+`setup.bash` is rewritten from the record, in one step, before and after each layer's `colcon`
+and on every way a run ends once its checks have passed: at the end, after a failure, after a
+`colcon` that cannot be started, after a stop signal, and when no layer was started at all
+because every layer asked for has no repos. It is replaced only where nothing is or where the
+file there is one this tool wrote (its first line says so). A file with other text, a link of
+any kind, a directory or anything else that is not a file is left as it is and named in a
+warning, and the exit status is 1: writing `setup.bash` is part of what `build` promises. A
+rewrite that fails at any point of the run counts so, and is named in the closing report, even
+when a later rewrite in the run works, since `setup.bash` was out of line with the record
+meanwhile. That differs from `sync`, which creates `setup.bash` only where nothing is and does
+not change its exit status for what it finds there.
 
 The closing report, after `colcon`'s own output, gives the layers built; the layer that failed,
 with `colcon`'s exit status, where its log is and, when `colcon` wrote one, the command that
@@ -854,28 +853,27 @@ last layer brings in the layers under it and the environment the first layer was
 
 `colcon` runs in a session of its own, and so in a process group of its own, which takes in
 every job it starts (`cmake`, `make`, the compilers). A Ctrl-C at a terminal reaches only the
-tool, since `colcon` is not in the terminal's foreground group; `colcon`'s output still goes
-to the terminal. While `colcon` runs, the tool passes each stop signal it gets (SIGINT,
-SIGTERM, SIGHUP; one that was ignored when the tool started stays ignored) to `colcon`'s whole
-group: the first as itself, so a SIGINT reaches `colcon` and its jobs as a Ctrl-C would, the
-second as SIGTERM, and the third and every later one as SIGKILL. However `colcon` ends, the tool
-waits for it; then it kills, with SIGKILL, whatever of the group is still running, and waits
-up to 10 seconds for the group to be gone, so no job of the stopped build goes on writing to
-`build/` or `install/` after the tool has ended. A member of the group that is the tool's own
-child, as when the tool runs as PID 1 or as a subreaper in a container, is reaped while it
-waits; members still there after the 10 seconds are named in a warning, with the command that
-lists them. Only then does it write `setup.bash` from the
-record, in which the stopped layer is not built, and print one line with the layers built in
-the run, the layer that was stopped, and what `setup.bash` sources; the tool then ends by the
-first signal it got, even when its terminal is gone and the line cannot be printed. The
-record and `setup.bash` are written with the stop signals held, and
-the run's own account of which layers started and which were built changes in the same held
-step as the record's write, so a signal that arrives during a write finds the line, the record
-and `setup.bash` in agreement. A Ctrl-Z (SIGTSTP) stops `colcon`'s group and then the tool;
-when the tool is continued (SIGCONT), so is `colcon`'s group. A terminal closed while the tool
-is stopped sends it SIGHUP and SIGCONT, which end the build as above. A SIGKILL of the tool
-itself cannot be caught: `colcon` then runs on, holding the distro's lock until it ends, and
-the layer it builds is already out of the record and out of `setup.bash`.
+tool, since `colcon` is not in the terminal's foreground group; `colcon`'s output still goes to
+the terminal. While `colcon` runs, the tool passes each stop signal it gets (SIGINT, SIGTERM,
+SIGHUP; one that was ignored when the tool started stays ignored) to `colcon`'s whole group:
+the first as itself, so a SIGINT reaches `colcon` and its jobs as a Ctrl-C would, the second as
+SIGTERM, and the third and every later one as SIGKILL. However `colcon` ends, the tool waits
+for it; then it kills, with SIGKILL, whatever of the group is still running, and waits up to 10
+seconds for the group to be gone, so no job of the stopped build goes on writing to `build/` or
+`install/` after the tool has ended. A member of the group that is the tool's own child, as
+when the tool runs as PID 1 or as a subreaper in a container, is reaped while it waits; members
+still there after the 10 seconds are named in a warning, with the command that lists them. Only
+then does it write `setup.bash` from the record, in which the stopped layer is not built, and
+print one line with the layers built in the run, the layer that was stopped, and what
+`setup.bash` sources; the tool then ends by the first signal it got, even when its terminal is
+gone and the line cannot be printed. The record and `setup.bash` are written with the stop
+signals held, and the run's own account of which layers started and which were built changes in
+the same held step as the record's write, so a signal that arrives during a write finds the
+line, the record and `setup.bash` in agreement. A Ctrl-Z (SIGTSTP) stops `colcon`'s group and
+then the tool; when the tool is continued (SIGCONT), so is `colcon`'s group. A terminal closed
+while the tool is stopped sends it SIGHUP and SIGCONT, which end the build as above. A SIGKILL
+of the tool itself cannot be caught: `colcon` then runs on, holding the distro's lock until it
+ends, and the layer it builds is already out of the record and out of `setup.bash`.
 
 Since `colcon` and its jobs are in a session of their own, they have no controlling terminal
 and cannot open `/dev/tty`: a job that asks for a password or a passphrase there, such as `git`
@@ -903,19 +901,20 @@ the manifest. It stays with `colcon`:
   the layer's `install/setup.bash` is there with it and the layers chain as without it
   (checked with colcon-core 0.21.3).
 - Package selection, any `--packages-` option but `--packages-skip-build-finished`, is passed
-  too, and builds only part of a layer. So a run with it only rebuilds layers that are
-  built: it is refused before anything runs or any record is touched when it would build a
-  layer that is not built, or one whose repos on disk differ from its record (the message
-  names those layers, with why, and says to build them without selection first). When
-  `colcon` exits with 0 and has written the layer's `install/setup.bash`, the layer gets
-  back the record it had, unchanged: its repos, its base and its time, which so still says
-  when the whole layer was last built, and a note about a repo new since then still comes at
-  the next build without selection. A plain `build -- --packages-select c` on a system that
-  is built rebuilds every layer with that selection: in a layer without `c`, `colcon` warns,
-  builds nothing, exits with 0 and still writes `install/setup.bash`, so the layer keeps its
-  record (checked with colcon-core 0.21.3). A layer whose `colcon` fails is not built, as
-  without selection; with `--keep-going` the layers above it are not tried, since they
-  could only be built on another base than their records'.
+  too, and builds only part of a layer. So a run with it only rebuilds layers that are built:
+  it is refused before anything runs or any record is touched when it would build a layer that
+  is not built, or one that is built but whose repos on disk differ from its record. The
+  message names the two kinds apart, each layer with why, and says to build them without
+  selection first; for the second kind, that a build without selection records the change. When
+  `colcon` exits with 0 and has written the layer's `install/setup.bash`, the layer gets back
+  the record it had, unchanged: its repos, its base and its time, which so still says when the
+  whole layer was last built without selection. The closing report names such layers as
+  "rebuilt with selection", not as "built". A plain `build -- --packages-select c` on a system
+  that is built rebuilds every layer with that selection: in a layer without `c`, `colcon`
+  warns, builds nothing, exits with 0 and still writes `install/setup.bash`, so the layer keeps
+  its record (checked with colcon-core 0.21.3). A layer whose `colcon` fails is not built, as
+  without selection; with `--keep-going` the layers above it are not tried, since they could
+  only be built on another base than their records'.
 - `colcon` must find the packages named by `--packages-up-to`, `--packages-up-to-regex`,
   `--packages-above`, `--packages-above-and-dependencies`, `--packages-above-depth`,
   `--packages-start` and `--packages-end` among the layer's own packages, and fails a layer
@@ -925,15 +924,24 @@ the manifest. It stays with `colcon`:
   options (`--packages-select`, `--packages-skip`, `--packages-ignore`, their `-regex` forms
   and the rest) only warn about a name a layer does not have (checked with colcon-core
   0.21.3).
-- A layer that failed is resumed with `repos-manifest build <layer> --
-  --packages-skip-build-finished`: `colcon` builds the packages it did not finish last time
-  and skips the rest, which completes the layer, so the layer is recorded built as by a
-  plain build. `--packages-select-build-failed` is package selection, since a package that
-  was never tried is not built by it, so it is refused on a layer that is not built.
+- `--packages-skip-build-finished` is not package selection: `colcon` skips every package
+  of the layer whose most recent build finished, in whichever run that was (it reads the
+  result `colcon` left in the package's `build/` directory), and builds the others. A layer
+  whose `colcon` exits with 0 on it is recorded built as by a plain build. That record then
+  says that every package of the layer has been built at some point, not that the layer is
+  up to date: a package whose sources changed since its last finished build is not rebuilt,
+  nor is one that depends on a package rebuilt in this run. It is a quick way to finish a
+  failed layer when nothing that already built has changed since; a plain build of the
+  layer is the sure one. `--packages-select-build-failed` is package selection, since it
+  builds only the packages whose last build failed (not those never tried, or aborted), so
+  it is refused on a layer that is not built (checked with colcon-core 0.21.3 and
+  colcon-package-selection).
 - A mistake in the forwarded arguments that `colcon` rejects, such as an abbreviation it
   finds ambiguous, is found only when the first layer's `colcon` runs, after that layer's
-  record has been removed, so the layer is then not built; `repos-manifest build <that
-  layer>` with correct arguments restores it.
+  record has been removed, so the layer is then not built. Only a build of that layer
+  without package selection brings it back (`repos-manifest build <that layer>`, with
+  other arguments as wanted): a run with selection, even with the mistake corrected, is
+  refused, since the layer is not built.
 - A mixin (`--mixin`) or a `colcon_defaults.yaml` that sets one of the refused options is not
   seen by `build`; one that moves `install/` leaves the layer not built, since its
   `install/setup.bash` is not written.

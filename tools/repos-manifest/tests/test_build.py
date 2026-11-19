@@ -910,8 +910,8 @@ def test_a_selection_run_that_would_build_a_layer_not_built_is_refused(
     err = capsys.readouterr().err
     assert (
         "a run with package selection builds only part of a layer, so it only rebuilds layers"
-        f" that are built; not built: {BASE} (not built), mid (not built), top (not built);"
-        " nothing was run" in err
+        " that are built, with the repos their record has; not built:"
+        f" {BASE} (not built), mid (not built), top (not built); nothing was run" in err
     )
     assert (
         f"Build them without package selection first: `repos-manifest build {BASE} mid top`" in err
@@ -937,7 +937,8 @@ def test_a_selection_run_rebuilds_built_layers_and_gives_back_their_records(syst
     assert built(system) == before  # repos, base and time as they were
     assert sourced_by_setup(system) == real(system / "top")
     out = capsys.readouterr().out
-    assert f"  built: {BASE}, mid, top\n" in out and out.endswith("setup.bash: sources top\n")
+    assert f"  rebuilt with selection: {BASE}, mid, top\n" in out
+    assert "  built:" not in out and out.endswith("setup.bash: sources top\n")
     # A failure still leaves the layer not built; with --keep-going the layer above it is not
     # tried, since it could only be built on another base than its record's.
     (system / "mid/src/m/STUB_FAIL").touch()
@@ -960,7 +961,19 @@ def test_a_layer_whose_repos_differ_from_its_record_is_not_built_for_a_selection
     capsys.readouterr()
     assert run(system, "build", "mid", "--", "--packages-select", "m") == 1
     err = capsys.readouterr().err
-    assert "not built: mid (its repos differ from its record: new n); nothing was run" in err
+    assert (
+        "built, but its repos differ from its record: mid (new n); nothing was run. A build"
+        " without package selection records the change: `repos-manifest build mid`" in err
+    )
+    assert "not built:" not in err
+    # Both kinds at once, each named as what it is.
+    (system / "top/install/setup.bash").unlink()
+    assert run(system, "build", "mid", "top", "--", "--packages-select", "m") == 1
+    err = capsys.readouterr().err
+    assert "; not built: top (recorded built, but" in err
+    assert "; built, but its repos differ from its record: mid (new n); nothing was run" in err
+    assert "Build them without package selection first: `repos-manifest build top`" in err
+    (system / "top/install/setup.bash").write_text("")
     assert built(system)["mid"]["repos"] == ["m"]
     assert run(system, "build", "mid") == 0
     assert "NOTE: n is new in mid since it was last built\n" in capsys.readouterr().out
