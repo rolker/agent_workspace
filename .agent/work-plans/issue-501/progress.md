@@ -228,3 +228,52 @@ The host takes the second Plan Review's five findings and its recommendation as 
 **Plan**: `.agent/work-plans/issue-501/plan.md` at `f561d94b`
 
 Second revision after the plan review and checkpoint: "the built run" defined once (bottom layers up to the first non-empty layer not built) and read by setup.bash, the refusal and the environment; each record holds its base and a layer is built only when the base matches; one-distro refusal in system.py and a repeated --distro refused; Serves names "Modular"; the SIGKILL test dropped for the stub's in-run record check; keep-going section aligned.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-19 09:43 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #501 — repos-manifest: `build` builds the layers in order and writes one setup file
+**Plan**: `.agent/work-plans/issue-501/plan.md` at `f561d94b`
+**Branch**: `feature/issue-501`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged: one command, one record file, tests and docs in one pull request. |
+| Issue alignment | Good | The second review's five findings are resolved as the checkpoint decided: (1) "the built run" defined once in step 5 and read by steps 4, 7, 9 and 12, the report names the failed layer's own `install/setup.bash`, the design sentence is replaced, tests cover fail-then-rebuild; (2) the record holds the base, a layer is built only when it matches, the empty-then-filled test is listed, the keep-going section restated; (3) the refusal is one helper in `system.py` beside `distros_for` (system.py:233), a repeated `--distro` is refused by its own argparse action, the hedge is gone; (4) Serves names "Modular", tied to its first bullet (README.md:73); (5) the SIGKILL test is dropped for the stub's in-run check of `built.yaml`. Serves: "The root README goal "Modular" (`README.md#modular`, first bullet: knowledge about a kind of project, like ROS best practices, is added as a module without changing the rest of the workspace), since `build` is the command the ros2 module's build route will call, so the ros2 module can build a layered system without the workspace knowing colcon; under the part's own design `tools/repos-manifest/docs/design.md#build` (ADR-0022)." Both anchors exist. |
+| File targeting | Good | As before. Checked: the adapter does not write `<distro>/setup.bash` (adapter.sh:97, its `env` emits the sourcing instead), so a system built by the adapter still has the stub and a plain `build` replaces it. |
+| Consequences | Good | Design sections, tree, stub sentence, "What is built", "Open questions", README, tool roadmap and the stub-text tests are listed. |
+| Principle alignment | Good | One rule picks layers; the six cases below give one consistent answer. Notes 1-3 are wording an implementer needs to get right, not behaviour. |
+| ADR compliance | Good | ADR-0022, ADR-0017, ADR-0009 as before. |
+| ROS conventions | N/A | Workspace tool. |
+
+### Worked cases (by hand through steps 4-9)
+
+- Three layers built; plain `build` fails at 2: layer 1 rebuilt, 2's record removed, 3's kept with base 2; the run ends at 1, `setup.bash` sources 1, 3 is reported recorded-not-used. Then `build layer2` succeeds (base 1): 3's base 2 is the run's last layer below it, so 3 is built again without a rebuild and `setup.bash` sources 3. Correct. (A plain `build` there rebuilds 3 too, since it tries every layer; see note 3.)
+- Layer 2 empty when 3 was built (3's base 1); `sync` fills 2; the run ends at 1 (2 non-empty, no record), `setup.bash` sources 1, `build layer3` refuses naming 2; a plain `build` builds 2 (base 1) and 3 (base 2), `setup.bash` sources 3; `build layer2` alone makes 3's base mismatch, so 3 is not built and the run ends at 2. Correct; see note 1 for the label.
+- Middle layer empty throughout: 3 built on 1 (base 1), the run passes over 2, `setup.bash` sources 3; rebuilding 1 leaves 3's base matching. Correct.
+- `build layer3` after only layer 1: refuses naming layer 2 when 2 has repos, with "a plain `build` fixes it"; builds 3 on 1 when 2 is empty. Strict (a layer 2 built by other means is not trusted), not wrong.
+- Layer 1 rebuilt with 2 and 3 recorded: bases unchanged, so 2 and 3 stay built and `setup.bash` sources 3. That is how colcon overlays behave anyway (an underlay rebuild does not rebuild overlays), and step 5 says the record does not mean up to date; not wrong for a user (note 2).
+- System built by other means, plain `build`: no records, so every layer is built in order, layer 1 with colcon directly; no install note (no record); the own-prefix warning fires if the shell has `adapter env` applied; the stub `setup.bash` is replaced and sources the last layer. Correct; colcon reuses the existing `build/` directories where they sit in the same place.
+
+No case gives a result a user would find wrong.
+
+### Findings
+
+1. **[Principle alignment] Low (note for the implementer)** — As written, the predicate of step 5 calls a layer above an unbuilt gap "built" when its base matches the run's last layer below it: in the empty-then-filled case, layer 3 (base 1) matches layer 1, the run's last layer below it, while layer 2 is non-empty and has no record. Behaviour is still right, because the run stops at layer 2 and nothing above is used, but the step 5 parenthetical and the test say "the layer above is then not built", and step 12's line "recorded built, not used: above failed <layer>" does not fit a layer 2 that never failed. Implement the report from the run first: a recorded layer above the run's end is "recorded built, not used: above <layer>, which is not built" (failed, never built, or install missing); "base changed" only for a layer inside the run's reach whose base differs. Write the test assertion against that line, not against the predicate.
+2. **[Principle alignment] Low (note)** — After a successful rebuild of a lower layer with later layers kept, the report's "built and in the run" line could add "built against <lower>'s earlier output" so a person knows a plain `build` refreshes them. Optional.
+3. **[Tests] Low (note)** — "layer 3 not rebuilt" holds for `build layer2`, not for a plain `build`, which tries every layer; the fail-then-rebuild test uses `build layer2`.
+
+The two owner questions: the plan is complete without either. The CI step stands alone and touches no other step. The keep-going section reads the same run and base rule and can be switched on as written; its "recorded, not used" layer carries the same label point as note 1.
+
+### Summary
+
+All five findings of the second review are resolved as the checkpoint decided, and the built run, the per-layer base, the refusal, the environment and `setup.bash` agree in every case worked by hand. Ready for implementation; the three notes are for the implementer.
+
+### Recommended Actions
+
+- [ ] At implementation: report lines from the run's end first (note 1), and the fail-then-rebuild test with `build layer2` (note 3).
