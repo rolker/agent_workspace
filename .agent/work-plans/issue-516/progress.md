@@ -119,3 +119,13 @@ The fix and its placement are right, and no caller relies on the old exit status
 - [ ] Build the warning's recovery command from `repo_flag`, `base_flag` and `pr_title` with `gh_create_pr.sh --draft`, and mention the unposted plan; assert `gh_create_pr.sh` in the test.
 - [ ] Make the test's `pre-receive` hook executable and keep the "Push failed" assertion; drop the conditional preflight block.
 - [ ] Optionally add a `--print-path-only` run asserting stdout is exactly the worktree path.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 12:51 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review's one needs-work finding is about the wording of a hint; mechanism)
+**After**: plan
+**Decision**: revise
+
+The host takes the Plan Review's three findings as written. (1) The recovery hint is built from the function's own repo_flag, base_flag and pr_title and names gh_create_pr.sh --draft, never bare gh pr create; it also says the plan comment was not posted; the test checks the hint names gh_create_pr.sh. (2) The test's pre-receive hook is made executable, and the "Push failed" assertion stays; the optional preflight-text assertion is dropped. (3) A second run with --print-path-only checks that stdout is exactly the worktree path.
