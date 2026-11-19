@@ -197,3 +197,51 @@ The host takes the second Plan Review's finding and its three notes as written. 
 **Plan**: `.agent/work-plans/issue-516/plan.md` at `d3e7f045`
 
 Second revision: the failed-push hint prints the worktree directory, git push, then the absolute-path gh_create_pr.sh line with --draft, -R and --base when set, printf %q title and an inline --body (Closes / Part of, or the skill text), plus the gh pr comment line for the unposted plan; the test adds the refusing hook after the set-up push and asserts the absolute path and Closes body.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-19 12:56 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #516 — worktree_create.sh exits 1 when only the draft pull request's push failed
+**Plan**: `.agent/work-plans/issue-516/plan.md` at `d3e7f045`
+**Branch**: `feature/issue-516`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One function, one test file, one guide sentence. |
+| Issue alignment | Good | The second review's finding and three notes are resolved as the checkpoint decided: `cd <WORKTREE_DIR>` first, `git push -u origin <branch>`, the script by its absolute path `$SCRIPT_DIR/gh_create_pr.sh`, `--draft` with `-R`/`--base` only when set, title through `printf %q`, inline `--body` with the function's own `Closes` / `Part of` / skill text (no `--body-file` naming a missing file), the `gh pr comment <branch> [-R]` line for the unposted plan, and the refusing hook added after the set-up push. Serves: "A safeguard has to earn its cost (a message that says non-fatal must act non-fatal); Isolated worktrees for every task: `docs/design.md#worktrees`", unchanged and checked in the first review. |
+| File targeting | Good | Same three files. |
+| Consequences | Good | Unchanged from the first review; callers checked there. |
+| Principle alignment | Good | Every printed line runs as written in all four cases (checked below). |
+| ADR compliance | Good | None triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+Checked per case against `.agent/scripts/gh_create_pr.sh` and `create_draft_pr` (lines 1253-1350, call sites 1357-1365):
+- `gh_create_pr.sh` accepts `--body` (header line 14, parse at 103-110) and signs it by appending to the `--body` argument (lines 206-225); `-R` sets `GH_REPO`, which skips the repo-safety check (line 134); `--draft`, `--base`, `--title` pass through (lines 47-48). Its user-tier guard (`registry_require_root`, line 87) accepts the current directory when it is inside the workspace checkout or under a registered project root: a workspace worktree (`worktrees/workspace/...`) and a project worktree in the default `<project>/worktrees` both pass, which is why the `cd W` line first matters.
+- Workspace issue worktree: `cd W`; push; `S/gh_create_pr.sh --draft --title T --body <Closes #N>`; runs, targets origin of the worktree, base is the default branch, as the function would.
+- Single-repository project worktree: same with `-R <PROJECT_GH_SLUG>`, matching the function's `--repo`; `gh pr comment B -R <slug>` selects the PR by branch.
+- `--parent-issue` worktree: `--base <PR_PARENT_BASE>` matches the function's `--base`; body `printf %q` of `$'Closes #N\nPart of #P'` prints as `$'Closes #N\nPart of #P'`, which bash expands back to the two lines the function writes.
+- Skill worktree: no `-R`/`--base` for workspace skills (`create_draft_pr "$WORKTREE_DIR" ""`), `-R` for an `onboard-project` skill worktree; no `Closes`; title `[PLAN] Skill update: <skill>`; body is the skill text. Runs.
+- `gh pr comment <branch>`: accepted per `gh pr comment --help` (host-checked); run from the worktree, so the branch resolves in the right repository.
+
+### Findings
+
+None blocking. Notes for the implementer:
+1. **[Test] (low)** — `printf %q 'Closes #516'` prints `Closes\ #516` (checked), so a test asserting the literal text `Closes #516` in the output will fail. Assert the escaped form, or the `printf %q` result computed in the test.
+2. **[Hint] (low)** — Quote the `cd` path and the `--body-file <plan>` path with `printf %q` too; a worktree or plan path with a space would otherwise break the pasted line.
+3. **[Hint] (low)** — `gh_create_pr.sh` hard-fails with instructions when `AGENT_NAME`/`AGENT_MODEL` are unset in the shell where the line is pasted (`worktree_create.sh` defaults them inside its own process only). Its error says what to do, so the line still behaves correctly; one hint line naming `set_git_identity_env.sh` would save a round trip.
+4. **[Hint] (low)** — The inline body is shorter than the function's (no `## Summary` and title). It still closes the issue; adding the title is optional.
+5. **[Pre-existing, no action]** — A project whose `worktrees=` override lies outside both the project root and the workspace checkout would be refused by `gh_create_pr.sh`'s user-tier guard (`registry_require_root` uses `registry_resolve_from_dir`, not the session resolver). This is the wrapper's existing behavior for any PR from such a worktree, not something this plan introduces.
+
+### Summary
+
+The finding and notes of the second review are resolved as the checkpoint decided, and each printed line runs as written and opens the same pull request the function would have opened, in all four cases. Ready for implementation; the notes above are small and for the implementer.
+
+### Recommended Actions
+
+- [ ] In the test, match the `printf %q` form of the `Closes` body.
+- [ ] Quote the printed `cd` and plan-file paths with `printf %q`.
