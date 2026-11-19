@@ -2,24 +2,41 @@
 # A stand-in for `colcon build` in the tests of `repos-manifest build`. It appends one line
 # per run to $STUB_COLCON_LOG: the directory it runs in, the layers sourced before it (the
 # `install/setup.bash` it writes adds its layer to STUB_SOURCED), and its arguments. It writes
-# `install/setup.bash`, as colcon does even after a failure, and copies the system's
-# `.repos-manifest/built.yaml`, as it is while it runs, to $STUB_COLCON_LOG.built-<layer>.
-# A repo given in --base-paths with a file STUB_FAIL makes it exit 1; one with STUB_WAIT makes
-# it wait until it gets SIGTERM or SIGINT, which it logs, and then exit 143.
+# `install/setup.bash`, as colcon does even after a failure, and copies each of the system's
+# `.repos-manifest/built-<distro>.yaml` and its `setup.bash`, as they are while it runs, to
+# $STUB_COLCON_LOG.built-<distro>-during-<layer> and $STUB_COLCON_LOG.setup-during-<layer>.
+# With `--help` among its arguments it prints a line and exits 0 having written nothing.
+# A repo given in --base-paths with a file STUB_FAIL makes it exit 1; STUB_FAIL_EARLY makes it
+# exit 1 before it writes install/setup.bash. One with STUB_WAIT makes it start a job that
+# ignores SIGINT, SIGTERM and SIGHUP (it logs "job pid=<pid>"), log "waiting pid=<its pid>",
+# and wait until it gets SIGINT, SIGTERM or SIGHUP, which it logs, and then exit; with
+# STUB_STUBBORN beside STUB_WAIT it logs those signals and goes on waiting.
 set -u
 layer=$(basename "$PWD")
 log=${STUB_COLCON_LOG:?}
 echo "run cwd=$PWD sourced=${STUB_SOURCED:-} args=$*" >>"$log"
 
+for arg in "$@"; do
+    if [ "$arg" = --help ]; then
+        echo "usage: colcon build (stand-in)"
+        exit 0
+    fi
+done
+
 top=$PWD
 while [ "$top" != / ] && [ ! -d "$top/.repos-manifest" ]; do
     top=$(dirname "$top")
 done
-if [ -f "$top/.repos-manifest/built.yaml" ]; then
-    cp "$top/.repos-manifest/built.yaml" "$log.built-$layer"
-else
-    : >"$log.built-$layer"
-fi
+for record in "$top"/.repos-manifest/built-*.yaml; do
+    [ -f "$record" ] && cp "$record" "$log.$(basename "$record" .yaml)-during-$layer"
+done
+setup=$PWD/setup.bash
+[ -f "$setup" ] || setup=$PWD/../setup.bash
+[ -f "$setup" ] && cp "$setup" "$log.setup-during-$layer"
+
+for arg in "$@"; do
+    [ -e "$arg/STUB_FAIL_EARLY" ] && exit 1
+done
 
 mkdir -p install
 printf 'export STUB_SOURCED="${STUB_SOURCED:+$STUB_SOURCED:}%s"\n' "$layer" >install/setup.bash
@@ -34,9 +51,14 @@ for arg in "$@"; do
     if [ "$paths" = 1 ]; then
         [ -e "$arg/STUB_FAIL" ] && status=1
         if [ -e "$arg/STUB_WAIT" ]; then
-            trap 'echo "got TERM" >>"$log"; exit 143' TERM
-            trap 'echo "got INT" >>"$log"; exit 130' INT
-            echo "waiting" >>"$log"
+            (trap '' INT TERM HUP; exec sleep 300) &
+            echo "job pid=$!" >>"$log"
+            stubborn=0
+            [ -e "$arg/STUB_STUBBORN" ] && stubborn=1
+            trap 'echo "got TERM" >>"$log"; [ "$stubborn" = 1 ] || exit 143' TERM
+            trap 'echo "got INT" >>"$log"; [ "$stubborn" = 1 ] || exit 130' INT
+            trap 'echo "got HUP" >>"$log"; [ "$stubborn" = 1 ] || exit 129' HUP
+            echo "waiting pid=$$" >>"$log"
             while :; do sleep 0.05; done
         fi
     fi

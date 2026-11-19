@@ -115,14 +115,17 @@ def temporaries(top: Path):
     return [p for p in top.rglob(".repos-manifest-tmp-*")]
 
 
-def cmake_lists(name: str, needs: str = "", bad: bool = False) -> str:
+def cmake_lists(name: str, needs: str = "", bad: bool = False, slow: bool = False) -> str:
     """A plain CMake package with no compiler: it installs `<name>Config.cmake`, so a package
-    in a later layer finds it with `find_package`; `needs` names one it finds; `bad` fails."""
+    in a later layer finds it with `find_package`; `needs` names one it finds; `bad` fails;
+    `slow` builds a target that appends its shell's pid to the file $SLOW_PIDS and sleeps."""
     lines = ["cmake_minimum_required(VERSION 3.10)", f"project({name} NONE)"]
     if needs:
         lines.append(f"find_package({needs} REQUIRED)")
     if bad:
         lines.append(f'message(FATAL_ERROR "{name} is meant to fail")')
+    if slow:
+        lines.append(f"add_custom_target(slow_{name} ALL COMMAND sh ${{CMAKE_SOURCE_DIR}}/slow.sh)")
     lines += [
         f'file(WRITE ${{CMAKE_CURRENT_BINARY_DIR}}/{name}Config.cmake "set({name}_FOUND TRUE)\\n")',
         f"install(FILES ${{CMAKE_CURRENT_BINARY_DIR}}/{name}Config.cmake"
@@ -131,10 +134,15 @@ def cmake_lists(name: str, needs: str = "", bad: bool = False) -> str:
     return "\n".join(lines) + "\n"
 
 
-def make_package_remote(root: Path, name: str, needs: str = "", bad: bool = False) -> Path:
+def make_package_remote(
+    root: Path, name: str, needs: str = "", bad: bool = False, slow: bool = False
+) -> Path:
     """A remote as `make_remote` makes, holding one plain CMake package named `name`."""
     path = make_remote(root, name)
-    (path / "CMakeLists.txt").write_text(cmake_lists(name, needs, bad))
+    (path / "CMakeLists.txt").write_text(cmake_lists(name, needs, bad, slow))
     git("add", "CMakeLists.txt", cwd=path)
+    if slow:
+        (path / "slow.sh").write_text('echo $$ >>"$SLOW_PIDS"\nexec sleep 300\n')
+        git("add", "slow.sh", cwd=path)
     git("commit", "-q", "-m", "package", cwd=path)
     return path

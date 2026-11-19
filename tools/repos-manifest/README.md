@@ -108,10 +108,12 @@ there yet. Both need `git`, and `vcs` from vcs2l or vcstool, on `PATH`.
 
 `build` builds one distro's layers in order with `colcon`, each on top of the ones below it,
 stops at the first layer that fails (`--keep-going` tries the later ones), and writes the one
-`setup.bash` to source. It keeps a record of what it built in `.repos-manifest/built.yaml`
-and trusts nothing else; [docs/design.md](docs/design.md#build) says what it builds, what it
-refuses and what `setup.bash` sources. It needs `colcon` on `PATH`, or installed in the same virtual environment
-as repos-manifest.
+`setup.bash` to source. It keeps a record of what it built, one file per distro in
+`.repos-manifest/`, and trusts nothing else; a second `build` of the same distro while one
+runs is refused; [docs/design.md](docs/design.md#build) says what it builds, what it
+refuses and what `setup.bash` sources. It needs `bash`, and `colcon` on `PATH` (empty and
+relative entries are not searched) or installed in the same virtual environment as
+repos-manifest.
 
 ```bash
 repos-manifest resolve --manifest project11.manifest.yaml --role robot --distro jazzy --out ./out

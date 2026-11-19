@@ -12,6 +12,7 @@ Every temporary this tool makes in a system, after ``init``'s first step, is in
 
 from __future__ import annotations
 
+import fcntl
 import os
 import re
 import sys
@@ -40,7 +41,8 @@ STATE_FORMAT = 1
 TEMP_PREFIX = ".repos-manifest-tmp-"
 TEMP_NAME = re.compile(re.escape(TEMP_PREFIX) + r"(?P<pid>[0-9]+)-[a-z0-9_]{8}")
 
-BUILT_FILE = "built.yaml"
+BUILT_PREFIX = "built-"  # built-<distro>.yaml: the layers `build` built for the distro
+BUILD_LOCK_PREFIX = "build-"  # build-<distro>.lock: held by a `build` of the distro
 BUILT_FORMAT = 1
 
 # The first line of every `setup.bash` this tool writes starts with it; `build` replaces only
@@ -412,7 +414,53 @@ def put_distro_state(system: Path, distro: Optional[str], state: DistroState) ->
     replace_file(system, system / SYSTEM_DIR / STATE_FILE, text)
 
 
-# --- built.yaml -----------------------------------------------------------------------------
+# --- The build record and its lock ---------------------------------------------------------
+
+
+def built_file(system: Path, distro: Optional[str]) -> Path:
+    """The record of one distro's layers that `build` built: `built-<distro>.yaml`."""
+    return system / SYSTEM_DIR / f"{BUILT_PREFIX}{state_key(distro)}.yaml"
+
+
+def build_lock_file(system: Path, distro: Optional[str]) -> Path:
+    """The file a `build` of one distro holds a lock on while it runs."""
+    return system / SYSTEM_DIR / f"{BUILD_LOCK_PREFIX}{state_key(distro)}.lock"
+
+
+def hold_build_lock(system: Path, distro: Optional[str]) -> int:
+    """Take the lock of one distro's `build`, held until the returned descriptor is closed or
+    the process ends for any reason (`flock`). A second `build` of the same distro is refused;
+    one of another distro takes another lock and reads and writes another record."""
+    path = build_lock_file(system, distro)
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags, 0o666)
+    except OSError as exc:
+        raise ManifestError(f"{path}: cannot be opened: {exc.strerror or type(exc).__name__}")
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        try:
+            holder = os.read(fd, 32).decode("ascii", "replace").strip()
+        except OSError:
+            holder = ""
+        os.close(fd)
+        who = f" (process {holder})" if holder.isdigit() else ""
+        name = distro if distro is not None else "(no distro)"
+        raise Refusal(
+            f"another `repos-manifest build` of distro {name} is running in this system{who};"
+            " nothing was run",
+            f"It holds {path}. Wait for it to end, then run this again",
+        ) from None
+    except OSError as exc:
+        os.close(fd)
+        raise ManifestError(f"{path}: cannot be locked: {exc.strerror or type(exc).__name__}")
+    try:
+        os.ftruncate(fd, 0)
+        os.pwrite(fd, f"{os.getpid()}\n".encode("ascii"), 0)
+    except OSError:
+        pass  # the pid only makes the refusal's message more helpful
+    return fd
 
 
 @dataclass
@@ -425,10 +473,11 @@ class LayerRecord:
     base: Optional[str]
 
 
-def _read_built_data(system: Path) -> dict:
-    """`built.yaml`, read and checked whole: it has exactly the shape `put_built_layers`
-    writes, and each error names the file and what is wrong."""
-    path = system / SYSTEM_DIR / BUILT_FILE
+def read_built(system: Path, distro: Optional[str]) -> Dict[str, LayerRecord]:
+    """The layers of one distro that its record has as built; none when there is no record.
+    The file is read and checked whole: it has exactly the shape `put_built_layers` writes,
+    and each error names the file and what is wrong."""
+    path = built_file(system, distro)
 
     def bad(why: str) -> ManifestError:
         return ManifestError(f"{path}: {why}; repair or remove it")
@@ -436,54 +485,42 @@ def _read_built_data(system: Path) -> dict:
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return {"format": BUILT_FORMAT, "distros": {}}
+        return {}
     except (yaml.YAMLError, UnicodeDecodeError):
         raise bad("does not read as YAML") from None
-    _check_keys(data, "", ("format", "distros"), (), bad)
+    _check_keys(data, "", ("format", "layers"), (), bad)
     if data["format"] != BUILT_FORMAT or isinstance(data["format"], bool):
         raise bad(
             f"`format` is {data['format']!r}, not {BUILT_FORMAT}, the one this version writes"
         )
-    _check_keys(data["distros"], "distros", (), None, bad)
-    for distro, entry in data["distros"].items():
-        where = f"distros.{distro}"
-        _check_keys(entry, where, ("layers",), (), bad)
-        _check_keys(entry["layers"], f"{where}.layers", (), None, bad)
-        for layer, record in entry["layers"].items():
-            at = f"{where}.layers.{layer}"
-            _check_keys(record, at, ("time", "repos", "base"), (), bad)
-            if not isinstance(record["time"], str):
-                raise bad(f"`{at}.time` is {_kind(record['time'])}, not a string")
-            if not isinstance(record["repos"], list) or not all(
-                isinstance(key, str) for key in record["repos"]
-            ):
-                raise bad(f"`{at}.repos` is not a list of repo keys")
-            if record["base"] is not None and not isinstance(record["base"], str):
-                raise bad(f"`{at}.base` is {_kind(record['base'])}, not a layer or empty")
-    return data
-
-
-def read_built(system: Path, distro: Optional[str]) -> Dict[str, LayerRecord]:
-    """The layers of one distro that `built.yaml` records as built; none when it is missing."""
-    entry = _read_built_data(system)["distros"].get(state_key(distro)) or {}
-    return {
-        layer: LayerRecord(record["time"], list(record["repos"]), record["base"])
-        for layer, record in (entry.get("layers") or {}).items()
-    }
+    _check_keys(data["layers"], "layers", (), None, bad)
+    records = {}
+    for layer, record in data["layers"].items():
+        at = f"layers.{layer}"
+        _check_keys(record, at, ("time", "repos", "base"), (), bad)
+        if not isinstance(record["time"], str):
+            raise bad(f"`{at}.time` is {_kind(record['time'])}, not a string")
+        if not isinstance(record["repos"], list) or not all(
+            isinstance(key, str) for key in record["repos"]
+        ):
+            raise bad(f"`{at}.repos` is not a list of repo keys")
+        if record["base"] is not None and not isinstance(record["base"], str):
+            raise bad(f"`{at}.base` is {_kind(record['base'])}, not a layer or empty")
+        records[str(layer)] = LayerRecord(record["time"], list(record["repos"]), record["base"])
+    return records
 
 
 def put_built_layers(system: Path, distro: Optional[str], layers: Dict[str, LayerRecord]) -> None:
-    """Replace one distro's records, written whole by one rename; every other distro's is
-    written back as it was read."""
-    data = _read_built_data(system)
-    data["distros"][state_key(distro)] = {
+    """Write one distro's record whole, by one rename."""
+    data = {
+        "format": BUILT_FORMAT,
         "layers": {
             layer: {"time": record.time, "repos": list(record.repos), "base": record.base}
             for layer, record in layers.items()
-        }
+        },
     }
     text = yaml.safe_dump(data, default_flow_style=False, sort_keys=False, width=4096)
-    replace_file(system, system / SYSTEM_DIR / BUILT_FILE, text)
+    replace_file(system, built_file(system, distro), text)
 
 
 # --- The manifest ---------------------------------------------------------------------------
