@@ -125,3 +125,26 @@ The plan is accurate against `merge_pr.sh` and its suite, its three sentences gi
 **Decision**: proceed
 
 The Plan Review's two low findings and its note go to the implementer in the handoff: in the docs/design.md row the plan edits, correct "defaults to workspace" (run-issue's --type defaults to the type of the session's root) and the SKILL.md line reference; give the skill's Scope sentence about a sibling repository's pull request the same --project clause as the new step 11; the new test_merge_pr.sh case passes a --project name registered in its sandbox and asserts exit 2 exactly.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 14:42 -05:00
+**By**: Claude Code (claude-opus-5-5)
+**Branch**: feature/issue-522 at `6e413324`
+
+- `.claude/skills/run-issue/SKILL.md`: step 11 gives a workspace or single-repository merge as `merge_pr.sh --pr <M> --type <type>` (with `--project` when `project=` is not empty) and a package merge as `merge_pr.sh --pr <owner/repo#M>` with `--project` when `project=` is not empty and never `--type`, saying why (the script derives the kind and refuses a differing `--type`). The `--project` sentence near the top (lines 51-58) limits "wherever this skill passes `--type`" to a workspace or single-repository merge and says a package merge passes `--project` and no `--type`; the `--type` usage line (152-159) says the same; the Scope sentence on a sibling's own pull request gains the same `--project` clause and "no `--type`" (Plan Review finding 2).
+- `.agent/scripts/tests/test_skill_paths.sh`: one `has` pin with the plan's three fixed texts; run against the unchanged skill first, it failed on the step 11 text.
+- `.agent/scripts/tests/test_merge_pr.sh`: `test_repo_type_project_rejected_for_package_repo` runs `--pr owner/pkg_a#561 --type project --project demo` (`demo` registered by `make_package_worktree`) and asserts exit 2 exactly, the conflict and "Drop --type" messages, no `pr merge` call and the worktree intact.
+- `docs/design.md` inventory row for `run-issue`/`agent start-task`: the skill's `--type` defaults to the type of the session's root (`agent start-task`'s to `workspace`), the package exception is added, and the `SKILL.md` cite is now 45-58, 152-159 (Plan Review finding 1). No heading moved.
+- The commands checked against `merge_pr.sh`: the package form with `--project` and no `--type` by the suite's `test_same_repo_under_two_instances_requires_project` (`--pr owner/pkg_a#560 --project inst2`, exit 0); the refused form by the new case; the single-repository form by reading the code path (`--project` resolved at line 234, used for the project root at line 330, unchanged by this work).
+- `merge_pr.sh` not changed. No departure from the plan beyond the two review findings the checkpoint carried.
+
+Suites, each run on its own with `bash`:
+- `test_skill_paths.sh`: `test_skill_paths: 164 passed, 0 failed`
+- `test_merge_pr.sh`: `=== Results: 175 passed, 0 failed ===`
+- `test_package_issue_loop.sh`: `test_package_issue_loop: 220 passed, 0 failed`
+- `test_script_tests_hook_scope.sh`: `test_script_tests_hook_scope: 342 passed, 0 failed`
+- `test_dispatch_phase.sh`: `test_dispatch_phase: 236 passed, 0 failed`
+- `test_design_anchors.sh`: `test_design_anchors: 82 passed, 0 failed` (the `docs/design.md` anchor hook also passed on commit)
+
+The full pre-commit pass was left to the host.
