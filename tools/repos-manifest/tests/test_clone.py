@@ -402,3 +402,22 @@ def test_a_file_where_a_directory_belongs_is_found_before_the_clone(
     assert f": {where} is on the way and is not a directory; not cloned" in out
     assert "cloning" not in out
     assert not (tmp_path / "cloned").exists()
+
+
+def test_a_clone_put_in_place_but_not_recorded_says_so(setup, monkeypatch, capsys):
+    system, add = setup
+    add("d")
+
+    def no_room(*_):
+        raise OSError(errno.ENOSPC, "No space left on device", "/elsewhere/tmp-file")
+
+    monkeypatch.setattr(sync, "put_distro_state", no_room)
+    capsys.readouterr()
+    assert run(system, "sync") == 1
+    state_file = system / ".repos-manifest" / "state.yaml"
+    assert capsys.readouterr().err == (
+        f"ERROR: {system / 'src' / 'd'}: the clone is in place but was not recorded in"
+        f" {state_file}: No space left on device\n"
+    )
+    assert (system / "src" / "d" / "README").is_file()
+    assert _recorded(system) == {"a"}

@@ -29,6 +29,7 @@ from .system import (
     current_directory,
     CONFIG_FILE,
     SETUP_TEXT,
+    STATE_FILE,
     SYSTEM_DIR,
     TEMP_NAME,
     TEMP_PREFIX,
@@ -258,7 +259,18 @@ def _put_in_place(
                 os.rename(temporary.joinpath(*key_parts), place)
             except OSError as exc:
                 return RepoResult(shown, FAILED, rename_failure(exc, system, place))
-            record(commit)
+            try:
+                record(commit)
+            except OSError as exc:
+                state_file = system / SYSTEM_DIR / STATE_FILE
+                why = exc.strerror or type(exc).__name__
+                raise ManifestError(
+                    f"{place}: the clone is in place but was not recorded in {state_file}: {why}"
+                ) from None
+            except ManifestError as exc:
+                raise ManifestError(
+                    f"{place}: the clone is in place but was not recorded: {exc}"
+                ) from None
         return RepoResult(shown, CLONED, commit=commit)
     finally:
         _remove_temporary(temporary)

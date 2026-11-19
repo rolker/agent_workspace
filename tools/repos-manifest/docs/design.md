@@ -289,8 +289,9 @@ distros:
         commit: 3f2a9c...
 ```
 
-It is made at the first clone and written whole, by one rename, after each repo is cloned. One
-without exactly this shape (`format: 1`, each repo with `layer`, `version` and `commit`, and
+It is made at the first clone and written whole, by one rename, after each repo is cloned. A
+write that fails ends the run with a message that the clone is in place but not recorded,
+naming the file and the reason. One without exactly this shape (`format: 1`, each repo with `layer`, `version` and `commit`, and
 no other key) is an error that names it and says what is wrong. Nothing stops two runs at
 once, and two runs can each lose the other's update to it.
 
