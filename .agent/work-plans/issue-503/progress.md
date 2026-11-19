@@ -779,3 +779,17 @@ Part 1B, round-3 convergence check on the round-2 findings and the fix diff sinc
 - [ ] (suggestion) From a top-level directory that is not a distro (notes/, or a link such as current -> jazzy, which also sorts before the distro it points to), the refusal blames "a sync cut short" and names `sync --distro notes`, which the tool refuses ("does not record it"); when resolved/<x>/ does not exist, say so and name running from the root or a distro's directory too (lead, adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:842`
 - [ ] (suggestion) `sync` from inside <root>/<d>/ with no previous resolve prints "the layers of distro d changed; existing package worktrees keep their old env.sh" though none existed; print it only when there was a previous read; low value (lead) — `.agent/project_types/ros2_colcon/adapter.sh:991`
 - [ ] (suggestion) _rc_tool_unusable's repair line says "the directory the manifest tool made there" also when .repos-manifest is a file or a link to nothing; cosmetic, not worth doing alone (adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:827`
+
+## Checkpoint
+**When**: 2026-11-18 21:48 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the round-3 review approved with 0 must-fix; two of its suggestions are a wrong answer and an untrue message inside the host's own distro rule, cheap to fix before publishing)
+**After**: publish
+**Decision**: address
+
+Fix suggestions 1 and 2 of the round-3 review before the push; 3 and 4 take no action.
+
+1. A distro whose resolve the tool has set aside (a directory .<d>.old-* or .<d>.new-* under .repos-manifest/resolved/, between the tool's two renames or after a kill there) counts as distro <d> with an unusable resolve: a call from outside every distro's directory does not pick "the one other distro" past it, and validate over every distro fails on it by name with the tool's sync step. Read how the tool names those directories (tools/repos-manifest/src) and match exactly that; one rule in the function that lists the distros.
+2. A call from inside a top-level directory <x> of the root for which the tool has no resolve at all (no resolved/<x>/ and nothing set aside for it) gets a true message: <x> is not a distro the tool has resolved here; run the command from the root or from inside a distro's directory (listing them), or, if <x> is a distro being added, run the tool's sync for it. It does not say a sync was cut short.
+
+Each with a test that fails before it; the documents' sentence on the rule is updated to match. Nothing else changes.
