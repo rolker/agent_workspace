@@ -115,3 +115,13 @@ The plan is accurate against `merge_pr.sh` and its suite, its three sentences gi
 - [ ] While editing the `docs/design.md` run-issue row, fix "defaults to `workspace`" for the skill and the `SKILL.md` line cite.
 - [ ] Optionally add the `--project` clause to the sibling sentence in the skill's Scope section.
 - [ ] In the new `test_merge_pr.sh` case, use a registered `--project` name and assert exit 2 exactly.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 14:38 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (plan review: ready, two low findings and a note)
+**After**: plan
+**Decision**: proceed
+
+The Plan Review's two low findings and its note go to the implementer in the handoff: in the docs/design.md row the plan edits, correct "defaults to workspace" (run-issue's --type defaults to the type of the session's root) and the SKILL.md line reference; give the skill's Scope sentence about a sibling repository's pull request the same --project clause as the new step 11; the new test_merge_pr.sh case passes a --project name registered in its sandbox and asserts exit 2 exactly.
