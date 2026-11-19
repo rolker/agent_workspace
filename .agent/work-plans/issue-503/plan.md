@@ -104,7 +104,7 @@ table below says what each does.
     generic). Lines 545–549 refuse only a root that is not a directory. After the manifest
     is resolved (`REPO_LINES`, before line 755 and so before any directory is made), each
     origin it names must be a git repository: for a `.` entry (the root itself: every
-    single-repository project, and a skill worktree) today's message, "Error: project
+    single-repository project; a skill worktree is refused earlier, at line 698, with its own message) today's message, "Error: project
     checkout is not a git repository: <root>" and its second line; for any other entry
     today's line-868 message "manifest entry is not a git repository: <origin>". Line 868
     stays. A single-repository project is guarded as before: its one entry is its root.
@@ -141,7 +141,7 @@ merged pull request. "Works" means read in the code and, where noted, run here.
 | `worktree_create.sh` 861–913, hook preflight 1333–1352 | per entry: each clone is a repository, checked at 868 | none |
 | `worktree_create.sh` 788 `cd "$ROOT_DIR"` before `worktree_env` | `ROOT_DIR` is the workspace; one distro, so rule 2 (finding 6 for several) | none in part 1 |
 | `dispatch_phase.sh` `where`, `next`, handoff | `ROOT_DIR` from the script's checkout; `resolve_worktree` by registry; `issue_checkout_of` reads `.worktree-repos`; `gh repo view` in the owning checkout | none |
-| `_resolve_work_plans_dir.sh`, `progress_append.sh`, `review_progress.sh persist` | all `git -C <owning checkout>`: the timeline is `<wt>/<L>_ws/src/<R>/.agent/work-plans/issue-<N>/`; `records_path` finds the enclosing `.worktree-repos` | none |
+| `_resolve_work_plans_dir.sh`, `progress_append.sh`, `review_progress.sh persist` | resolve from the cwd's `git rev-parse --show-toplevel`, which is the owning checkout because every phase starts its chains with `cd <worktree>` (`progress_append.sh` alone also takes `-C`); the timeline is `<wt>/<L>_ws/src/<R>/.agent/work-plans/issue-<N>/`; `records_path` finds the enclosing `.worktree-repos`. A chain that lost its `cd` runs at the root and fails loudly, outside git | none |
 | `set_git_identity_env.sh` | `git config user.email` in the cwd; outside a repository it reads the global and system files (run here in a directory outside git: the global address, `+claude-code` added). Sourced in the owning checkout for every dispatch, entry and commit; at the root only for step 11 or `gh_create_issue.sh`, where no clone-level address could apply | none |
 | run-issue step 2 PR probe, step 8 `check_branch_updates.sh`, step 7 `git push` | run in `<dir>`, the owning checkout | none |
 | `gh_create_pr.sh -R owner/repo --base <b>` | `REPO_ROOT` is the owning checkout; `registry_require_root` passes (cwd under the registered root by path); `-R` skips the repo-safety check | none |
