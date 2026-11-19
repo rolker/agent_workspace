@@ -102,8 +102,18 @@ as paths on the local disk; a `base` at a URL or in a git repo is not read yet.
 [docs/design.md](docs/design.md#resolve) says what `resolve` writes.
 
 `init` sets up a system directory from a manifest given as a path on the local disk and clones
-its repos; `sync` clones the ones that are missing. Neither updates a repo that is already
-there yet. Both need `git`, and `vcs` from vcs2l or vcstool, on `PATH`.
+its repos; `sync` clones the ones that are missing and updates the ones that are there, with
+`git`. A clean clone on the manifest's branch is fast-forwarded, and one `sync` left on the
+version the manifest named before is moved to the one it names now. A clone a person has
+changed is left as it is and reported: one with uncommitted changes, commits not on `origin`,
+another branch checked out, an operation in progress, or a file git does not track (untracked
+or ignored) where an incoming file goes. Untracked files elsewhere do not stop an update. An
+`origin` a person set is left as set; the manifest's new url replaces `origin` only when the
+clone still has the url `sync` recorded and no local branch has commits it lacks. A repo the
+manifest moves to another layer is not moved: `sync` prints the `mv` command. A clone with
+commits not on `origin` is not rebased yet; `sync` prints the `git pull --rebase` command for a
+person to run. Both need `git`, and `vcs` from vcs2l or vcstool, on `PATH`.
+[docs/design.md](docs/design.md#sync) gives the rules and
 [docs/design.md](docs/design.md#what-is-built) says how far they go.
 
 `build` builds one distro's layers in order with `colcon`, each on top of the ones below it,
@@ -114,7 +124,7 @@ layers below it are the ones it was built on. It sees only the `colcon` argument
 `--`, not package selection set in a file of `colcon` defaults or a mixin; it names each
 defaults file `colcon` will read, and no mixin. A run with package selection or
 `--cmake-target` after `--` only rebuilds layers that are built. A second `build` of the same
-distro while one (or the `colcon` it started) runs is refused, and so is a build of a layer
+distro while one (or the `colcon` it started), or a `sync` of that distro, runs is refused, and so is a build of a layer
 with a repo missing from disk that is not optional; [docs/design.md](docs/design.md#build) says what it builds, what it
 refuses and what `setup.bash` sources. It needs `bash`, and `colcon` on `PATH` (empty and
 relative entries are not searched) or installed in the same virtual environment as
