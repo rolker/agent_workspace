@@ -571,3 +571,32 @@ Round 1 of PR mode. Gemini and Codex both completed (EXIT=0) on the final state;
 Dropped as named in the PR body ("Found, not fixed here"): Gemini and Codex must-fix on `worktree_create.sh:603` (`rev-parse --git-dir` succeeds for a plain root nested in an enclosing repository, so ROOT_NOT_GIT stays false). Probe: a plain two-repo root registered under the workspace's ignored `projects/` (ADR-0016 decision 1) with a bare --issue 64 looked the issue up in the workspace's repository, accepted it and made the worktree; the `worktrees/` exclude went to the workspace's `.git/info/exclude`. As on main; the body's example (a home directory under version control) understates this case — open human call whether to fix now (both models propose the top-level check) or keep it named.
 
 Checks: CI all 10 jobs pass (Lint x2, Validate Adapter Contract x2, Validate Documentation x2, repos-manifest 3.10/3.14 x2). Suites: test_gh_create_issue 88/0, test_worktree_create 89/0, test_ros2_colcon 1030/0, test_session_root 71/0, test_register_project 201/0, test_merge_pr 170/0, test_package_issue_loop 220/0, test_skill_paths 163/0, test_gh_create_pr 113/0; check_design_anchors exit 0; removed test lines 0; mergeable MERGEABLE.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-18 19:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #513 at `4c58b157`
+**Sources**: 3 (Local Review @ `32abb3cd` (covers 4c58b157 via bookkeeping; Gemini, Codex, Claude adversarial), Local Review (Pre-Push) @ `e03b2d10` (covers 4c58b157 via bookkeeping), CI rollup). Hosted reviews: none (0 reviews, 0 inline, 0 conversation comments).
+**Cross-source confirmations**: 0 (no GitHub comments to correlate; the local review's own multi-model agreements are noted per finding)
+**CI**: all-pass at the code head `32abb3cd` (10/10 jobs, both runs). At `4c58b157` (progress-only commit): 8 pass, Lint (pre-commit) x2 still pending after about 5 minutes.
+
+Verdict: no must-fix; the code is ready for the owner's merge decision. One open item, a wording fix in the pull request body (no code). Mergeable: MERGEABLE.
+
+### Findings
+- [ ] (suggestion, triage) PR body, "Behaviour that changes inside a git repository", first bullet says a project root that is a plain directory nested inside another git repository "is now refused". That holds only when the root itself is a worktree entry (`.`, a single-repository project: `resolve_worktree_repos` top check). A plain multi-repo root nested in a repository keeps `ROOT_NOT_GIT=false` (`rev-parse --git-dir` succeeds) and takes the in-git path, as the body's own "Found, not fixed here" third bullet says, so the two bullets read as contradictory. Reword bullet 1 to "a single-repository project's root (or a repo named for a package worktree) that is a plain directory nested inside another git repository" — `.agent/scripts/worktree_create.sh:566-606`
+- [x] (suggestion, Local Review @ 32abb3cd; Gemini, Codex) `(^|[^0-9])#N` duplicate check matches `other/repo#N` — no action: same idiom as main's in-git path, change both together or not at all (host ruling) — `.agent/scripts/gh_create_issue.sh:291`
+- [x] (suggestion, Local Review @ 32abb3cd; Codex said must-fix, Gemini, Claude) workspace slug sed / exact-case compare with -R — no action: same sed in six scripts on main, effect limited to label list choice or a qualified "Part of" (host ruling) — `.agent/scripts/gh_create_issue.sh:129`
+- [x] (suggestion, Local Review @ 32abb3cd; Gemini, Codex) SB10 bare `--issue` captures RC without asserting it — deferred to part 1B, which extends the same suite; stated in the PR body's "Found, not fixed here" (host ruling) — `.agent/scripts/tests/test_worktree_create.sh:1097`
+- [x] (suggestion, Local Review @ 32abb3cd; Gemini) a root that is a file reported "not a git repository" — no action: main's text, not worth doing (host ruling) — `.agent/scripts/worktree_create.sh:553`
+- [x] (suggestion, Local Review @ 32abb3cd; Claude) exported GH_REPO not counted as -R outside git — no action: clear refusal, as on main (host ruling) — `.agent/scripts/gh_create_issue.sh:124`
+- [x] (must-fix per Gemini and Codex; dropped by Local Review @ 32abb3cd) plain multi-repo root nested in an enclosing repository (e.g. under the workspace's ignored `projects/`) takes the in-git path: bare `--issue` looked up in the workspace's repository, `worktrees/` exclude written to the workspace's `.git/info/exclude`. Valid but pre-existing: same on origin/main; today's hosted layouts and fixtures are roots of this kind. Not changed here; named in the PR body's "Found, not fixed here" with the `projects/` case spelled out (verified); host to propose a separate issue to the owner — `.agent/scripts/worktree_create.sh:603`
+- [x] (suggestions x6, Local Review (Pre-Push) round 3 @ e03b2d10) nested root via `--git-dir`; top-of-own-repository loop as an in-git behaviour change; `.git`-dir / bare-repo cwd takes the outside-git path; `#N` regex; case-sensitive slug compare; silent non-matching `WORKTREE_ISSUE` — no action, ruled by the host at the publish Checkpoint (the Checkpoint text itself records only "approved, no must-fix"; this entry records the ruling). The first two are named in the PR body (nested root under "Found, not fixed here", the loop under "Behaviour that changes"); the regex one duplicates PR-mode suggestion 1 — `.agent/scripts/worktree_create.sh`, `.agent/scripts/gh_create_issue.sh`
+
+Earlier entries: Issue Review (lines 152-161) ruled by the Checkpoint at 17:38; Plan Review 1 (250-255) by the Checkpoint at 17:54; Plan Review 2 (357-362) by the Checkpoint at 18:09 (parts 1B to 4 are later pull requests). Pre-push rounds 1 and 2 closed by fix rounds. No open, unruled box remains.
+
+PR body check against the host's account: Decision summary, Part of #503 (does not close), "Found, not fixed here" (nested plain root with the `projects/` case, SB10 deferred to 1B) all match. One inaccuracy: the first bullet under "Behaviour that changes", above.
+
+### False positives
+- None.
