@@ -598,3 +598,28 @@ Round 4's six, re-checked: (1) gone: `git ls-files tools/repos-manifest/log` is 
 **Decision**: publish
 
 The round 5 review approved the branch (four suggestions, listed in the pull request). The full pass ran on head e15494a9 with exit 0: every hook passed, the script test suites included. The pull request says "Part of #501", not "Closes": the issue's by-hand acceptance (a build of the real project directory with the new command) is the owner's to run and is not done.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-19 12:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #518 at `d3322416`
+**Depth**: Deep (reason: +3650 lines over 15 files, CI workflow change)
+**Must-fix**: 2 | **Suggestions**: 9
+
+Cross-model: gemini completed (12 findings; 1 false positive, `Stopped` is a BaseException), codex completed (7 findings; one reproduced as must-fix 1). Tool suite: 1107 passed locally with real colcon. CI: every check passed, the new colcon install step included, on Python 3.10 and 3.14 (1107 passed, none skipped).
+
+### Findings
+- [ ] (must-fix) Only the immediate base is checked: layers [x(optional, absent), b, c] built, x's repo put back, `build x b` exits 0 and reports `c (on the earlier output of x, b)` in the built run; `setup.bash` sources c, whose environment lacks x (reproduced with real colcon). Contradicts design.md 770-772 and 798-801. Record the whole chain below a layer, or drop records above a layer rebuilt on a new base — `build.py:170-212`
+- [ ] (must-fix) design.md says `setup.bash` sources the last layer "by its absolute real path"; only the system directory is resolved, so a layer directory that is a link is sourced through the link (reproduced by the Claude adversarial reviewer); `report()` resolves the layer, so the two disagree — `build.py:222`, `docs/design.md:790-791`
+- [ ] (suggestion) Package selection set in `colcon_defaults.yaml`, `COLCON_DEFAULTS_FILE` or a mixin is not seen and the layer is recorded fully built; also `--cmake-target` skipping install. Say so in the doc (design.md:945-950) or refuse — `build.py:572`
+- [ ] (suggestion) "built without mid (failed)" and design.md 770-772/803-805 overstate: a layer built after a failed lower layer still finds that layer's stale `install/` (CMakeCache points into it) — `build.py:871`
+- [ ] (suggestion) colcon killed by anything other than the tool's forwarded signal (OOM, crash): `_end_the_rest` is not called, surviving jobs can keep writing after the lock is released; design.md 861 "However colcon ends" reads as covering this — `build.py:421-423`
+- [ ] (suggestion) A stop signal between the `if came:` check and restoring the handlers skips `_end_the_rest`; handler install loop is outside the try — `build.py:392-427`
+- [ ] (suggestion) A failed pre-build rewrite of `setup.bash` still starts colcon while `setup.bash` may source the layer, against design.md 745-747 — `build.py:824`
+- [ ] (suggestion) SIGQUIT (Ctrl-\) is not forwarded; the tool dumps core and colcon runs on holding the lock; document or add to the stop set — `build.py` `_STOP`
+- [ ] (suggestion) `--distro=` (empty) is treated as no `--distro` (same pattern in `sync`) — `cli.py:191`
+- [ ] (suggestion) "to use what it did build" is offered whenever `install/setup.bash` exists, also a stale one colcon did not write in this run (design.md says "when colcon wrote one"); `_stamp` relies on mtime/ctime, which a 1 s-granularity filesystem may not move — `build.py:773,883`
+- [ ] (suggestion) Lock-holder message: pid 0 or a reused pid can be named as the holder (message only); `layers.txt`/`optional.txt` undecodable gives a traceback — `system.py:449,483`, `build.py:90-118`
