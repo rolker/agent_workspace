@@ -1442,9 +1442,7 @@ def test_a_selection_run_says_rebuilt_with_selection_when_the_record_cannot_be_r
 # --- Round 7: --cmake-target, a failed removal, the defaults note, what is left behind -------
 
 
-@pytest.mark.parametrize(
-    "given", [["--cmake-target", "all"], ["--cmake-target=all"], ["--cmake-targ", "all"]]
-)
+@pytest.mark.parametrize("given", [["--cmake-target", "all"], ["--cmake-target=all"]])
 def test_a_cmake_target_is_refused_on_a_layer_not_built(system, stub, capsys, given):
     """`--cmake-target` builds one target and skips the install step, while colcon still exits
     0 and writes install/setup.bash: like package selection, it only rebuilds built layers."""
@@ -1580,6 +1578,84 @@ def test_real_colcon_a_cmake_target_installs_nothing_so_it_is_selection(real_col
     assert run(system, "build", "--", "--cmake-target", "all") == 0
     assert built(system, "_unnamed") == before
     assert sourced_by_setup(system) == real(system / "top")
+
+
+# --- Round 8: the defaults file as colcon finds it, an ambiguous --cmake ------------------
+
+
+@pytest.mark.parametrize(
+    "case, named",
+    [
+        ("unset", "home"),
+        ("existing", "given"),
+        ("missing", None),
+        ("empty", None),
+        ("directory", None),
+        ("relative", "layer"),
+    ],
+)
+def test_the_defaults_note_names_what_colcon_reads(
+    system, stub, tmp_path, monkeypatch, case, named
+):
+    """Checked with colcon-defaults 0.2.9 and `colcon list`: with COLCON_DEFAULTS_FILE unset colcon
+    reads $COLCON_HOME/defaults.yaml; set, it reads that path only when it is a file (an empty
+    value, a missing path and a directory are none, and no other global file is read); a
+    relative path is read in the directory colcon runs in."""
+    home = tmp_path / "colcon-home"
+    home.mkdir()
+    (home / "defaults.yaml").write_text("{}\n")
+    given = tmp_path / "given.yaml"
+    given.write_text("{}\n")
+    (tmp_path / "a-directory").mkdir()
+    (system / "mid/rel.yaml").write_text("{}\n")
+    value = {
+        "existing": str(given),
+        "missing": str(tmp_path / "missing.yaml"),
+        "empty": "",
+        "directory": str(tmp_path / "a-directory"),
+        "relative": "rel.yaml",
+    }.get(case)
+    if value is not None:
+        monkeypatch.setenv("COLCON_DEFAULTS_FILE", value)
+    mid = next(
+        layer
+        for layer in build.read_layers(system, build.read_config(system), "jazzy")
+        if layer.name == "mid"
+    )
+    found = build.colcon_defaults_files() + build.colcon_defaults_files(mid)
+    expected = {
+        "home": [str(home / "defaults.yaml")],
+        "given": [str(given)],
+        "layer": [str(system / "mid/rel.yaml")],
+        None: [],
+    }[named]
+    assert found == expected
+
+
+def test_a_missing_defaults_file_still_leaves_the_layers_own_named(
+    system, stub, tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setenv("COLCON_DEFAULTS_FILE", str(tmp_path / "missing.yaml"))
+    (system / "mid/colcon_defaults.yaml").write_text("{}\n")
+    capsys.readouterr()
+    assert run(system, "build") == 0
+    out = capsys.readouterr().out
+    assert (
+        f"NOTE: colcon reads default arguments from {system / 'mid/colcon_defaults.yaml'};" in out
+    )
+    assert out.count("NOTE: colcon reads default arguments") == 1
+
+
+@pytest.mark.parametrize("given", ["--cmake", "--cmake-t", "--cmake-targ"])
+def test_an_ambiguous_abbreviation_of_cmake_target_is_refused_as_ambiguous(
+    system, stub, capsys, given
+):
+    assert run(system, "build", "--", given, "all") == 1
+    err = capsys.readouterr().err
+    assert f"{given} (colcon would reject it as ambiguous, and it could be" in err
+    assert "--cmake-target, --cmake-target-skip-unavailable) is not passed to colcon" in err
+    assert "a run with `--cmake-target`" not in err
+    assert runs(stub) == []
 
 
 # --- With the real colcon -------------------------------------------------------------------

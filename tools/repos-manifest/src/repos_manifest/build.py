@@ -655,6 +655,12 @@ def package_selection(colcon_args: Sequence[str], to_build: Sequence[str]) -> st
     skipping = False
     for name in _option_names(colcon_args):
         could = _could_be(name)
+        if INSTALL_SKIPPING in could and len(could) > 1:
+            raise Refusal(
+                f"{name} (colcon would reject it as ambiguous, and it could be"
+                f" {', '.join(could)}) is not passed to colcon; nothing was run",
+                "Give the option in full",
+            )
         if INSTALL_SKIPPING in could:
             skipping = True
             continue
@@ -870,13 +876,14 @@ def _setup_failed(progress: Progress, problem: str, left_alone: bool = False) ->
 
 
 def _defaults_file() -> str:
-    """The file of default arguments colcon-defaults reads (0.2.9): the one COLCON_DEFAULTS_FILE
-    names, else `$COLCON_HOME/defaults.yaml` (`~/.colcon/` without COLCON_HOME). A relative
+    """The global file of default arguments colcon-defaults reads (0.2.9): the one
+    COLCON_DEFAULTS_FILE names whenever the variable is set, even to an empty value, else
+    `$COLCON_HOME/defaults.yaml` (`~/.colcon/` when COLCON_HOME is unset or empty). A relative
     path is read by colcon against the layer's directory, where it runs. colcon reads it only
-    when it is a file, and with COLCON_DEFAULTS_FILE set it reads no other."""
-    named = os.environ.get("COLCON_DEFAULTS_FILE")
-    if named:
-        return named
+    when it is a file; an empty value is no file. With COLCON_DEFAULTS_FILE set colcon reads no
+    other global file, but it still reads the `colcon_defaults.yaml` of its directory."""
+    if "COLCON_DEFAULTS_FILE" in os.environ:
+        return os.environ["COLCON_DEFAULTS_FILE"]
     home = os.environ.get("COLCON_HOME") or os.path.join(os.path.expanduser("~"), ".colcon")
     return os.path.join(home, "defaults.yaml")
 
@@ -891,7 +898,7 @@ def colcon_defaults_files(layer: Optional[Layer] = None) -> List[str]:
     if layer is None:
         return [path] if os.path.isabs(path) and os.path.isfile(path) else []
     found = []
-    if not os.path.isabs(path) and (layer.directory / path).is_file():
+    if path and not os.path.isabs(path) and (layer.directory / path).is_file():
         found.append(str(layer.directory / path))
     workspace = layer.directory / "colcon_defaults.yaml"
     if workspace.is_file():
