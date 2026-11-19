@@ -89,3 +89,11 @@ issue: 501
 **Decision**: proceed
 
 The host read the Issue Review's eight actions. Seven are mechanism and go to the plan: the pull request's record of the by-hand build, what the output and exit status say, the stub setup.bash, how "built" is decided, the partial-failure test, the unnamed first layer, and the corrected paths (the tool is at tools/repos-manifest/; the issue body is left as written and the review comment on the issue carries the correction). One is the owner's: whether build gets an option to keep going to later layers after a layer fails, which the issue text does not ask for ("it stops at the first layer that fails"). The host puts that question to the owner while the plan is written; the plan is written to the issue as it stands (stop at the first failing layer, a layer fails when colcon exits non-zero) and says what the option would add, so the owner's answer can be applied at the plan checkpoint.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-19 09:33 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-501/plan.md` at `3ffcbf9e`
+
+One pull request: a build command that runs colcon per layer from the resolved files, records built layers in a new built.yaml (colcon writes install/setup.bash even after failures, so that file cannot say built), and writes setup.bash pointing at the last layer of the built prefix. Tests use a stub colcon always and real colcon where present; docs and a CI colcon step (owner's yes) in the same change. Keep-going option written up as a separate section.
