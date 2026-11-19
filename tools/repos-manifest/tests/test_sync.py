@@ -345,3 +345,27 @@ def test_a_current_directory_that_no_longer_exists_is_a_plain_error(tmp_path, ca
         "ERROR: the current directory no longer exists; change to one that does and run it"
         " again\n"
     )
+
+
+def test_a_flat_system_whose_manifest_gains_distros_says_to_set_one_up_anew(vcs, tmp_path, capsys):
+    remotes = tmp_path / "remotes"
+    data = {"format": 1, "repositories": {"a": repo(make_remote(remotes, "a"))}}
+    path = write_manifest(tmp_path / "m.manifest.yaml", data)
+    system = tmp_path / "sys"
+    system.mkdir()
+    assert run(system, "init", "../m.manifest.yaml", "--yes") == 0
+    write_manifest(path, {"format": 1, "distros": ["jazzy", "rolling"], **data})
+    before = snapshot(system)
+    capsys.readouterr()
+    assert run(system, "sync") == 1
+    assert snapshot(system) == before
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "ERROR: ../m.manifest.yaml: the manifest now has distros (jazzy, rolling), and this"
+        " system directory was set up without one; nothing in it has been moved or changed."
+        " A system with distros is set up in a new directory with `repos-manifest init`, with"
+        " `--distro-dirs` to hold more than one distro.\n"
+    )
+    # No option it names is refused: sync takes no --distro-dirs, and --distro is not named.
+    assert "--distro " not in captured.err and "sync --" not in captured.err

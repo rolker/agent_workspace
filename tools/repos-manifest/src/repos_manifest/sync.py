@@ -394,6 +394,14 @@ def resolve_all(system: Path, config: Config, distros: Sequence[Optional[str]]) 
             f"{failed}: {exc} (the manifest's path is `manifest` in {recorded}, taken from the"
             f" system directory {system})"
         ) from None
+    if config.distros is None and manifest.distros is not None:
+        # A flat system set up from a manifest with no distros: it cannot gain one.
+        raise ManifestError(
+            f"{config.manifest}: the manifest now has distros ({', '.join(manifest.distros)}),"
+            " and this system directory was set up without one; nothing in it has been moved or"
+            " changed. A system with distros is set up in a new directory with"
+            " `repos-manifest init`, with `--distro-dirs` to hold more than one distro."
+        )
     try:
         return [
             selection.resolve(manifest, config.role, distro, config.groups) for distro in distros
