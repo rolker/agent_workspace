@@ -363,3 +363,25 @@ Round 1's three must-fix are fixed and re-checked with real colcon: `--packages-
 **Decision**: publish
 
 Round 2, with the outside reviewers, approved the branch and left five suggestions, which the pull request lists. The full pass ran on head 48558c2e with exit 0.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-19 16:32 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #534 at `5039501c`
+**Sources**: 2 (Local Review (Pre-Push) @ `37edd856` (covers 5039501c via bookkeeping), CI rollup; the round 1 pre-push entry @ `6b33f161` has every box checked; no GitHub reviews, inline or conversation comments)
+**Cross-source confirmations**: 0
+**CI**: pending (2 pass: Validate Documentation x2; 8 pending: Lint, Validate Adapter Contract, repos-manifest tests 3.10 and 3.14, in two runs)
+
+All five open suggestions of the round 2 pre-push review were checked against the code at the head; none is a must-fix and none is left as an open box. The PR body's `## Decision summary` heading is present, and its three quoted report lines match `build.py` `report` (lines 1264, 1269-1275, 1281).
+
+### Findings
+(none open)
+
+### False positives
+- (Local Review @ 37edd856, valid but rightly left) design.md:1045 "a value that holds a control or invisible character is refused" without "as colcon reads it": loose wording, not a false sentence. The same paragraph opens "The record holds them as colcon reads them" and the sentence just before says a package name is recorded with leading whitespace stripped; the refusal's stated reason is that the record could not hold the value. Checked: `left_out(['--packages-skip', '\nfoo'])` gives `['foo']`, which colcon also skips, and the record round-trips. No user gets a wrong record or a silent failure.
+- (Local Review @ 37edd856, valid but rightly left) README.md:118 and design.md:747 "when it was last built" where "last built as a whole" is meant: loose wording, not a false sentence. In the tool's own terms a layer is built when it is recorded built; design.md:1029 says a selection run on a built layer gives back the record it had, list unchanged; and each such run prints "not recorded, given with package selection: ..." naming the options, so the user is told at the moment it happens.
+- (Local Review @ 37edd856, valid but rightly left) `--packages-skip-regex --packages-x` is read as package selection (`package_selection(...)` returns 'package selection', checked): errs on the safe side, refused on an unbuilt layer and reported as not recorded on a built one; no package name can start with `-`, so such a pattern matches nothing a user means — `build.py:801`.
+- (Local Review @ 37edd856, valid but rightly left) `read_built` checks `without` with `_CONTROL`, narrower than `has_unsafe_char`: only a hand edit of the record can produce such text, it is the same rule the existing `time`, `repos` and `below` fields are read with, and the worst result is a loud "internal error", not a silent one — `system.py:608`.
+- (Local Review @ 37edd856, valid but rightly left) `--mixin` after a `-regex` list where colcon-mixin is not installed: `left_out(['--packages-skip-regex','a','--mixin','release'])` gives `['a']` while colcon would take `--mixin release` as patterns. design.md's limit sentence is incomplete, not false; the case is a mixin request that already fails to do what the user meant — `docs/design.md:1037`.
