@@ -836,3 +836,18 @@ Part 1B, round-4 convergence check on the round-3 findings and the fix diff sinc
 - [ ] (suggestion) "if <x> is a distro being added, run: ... sync --distro <x>" works only when config.yaml already records x; the installed tool has no add-distro and refuses it otherwise ("this system does not record it"); the host's wording, not worth changing alone (lead) — `.agent/project_types/ros2_colcon/adapter.sh:860`
 - [ ] (suggestion) validate from notes/ ends "(failing distro: notes)" right after "notes is not a distro"; cosmetic, not worth doing alone (lead) — `.agent/project_types/ros2_colcon/adapter.sh:1089`
 - [ ] (suggestion) Not worth doing: `sort -u` follows the caller's collation (line 251 uses LC_ALL=C; same order for [a-z0-9_] names), and a resolved/<x> that is a file gets "nothing under resolved/ for it" (the tool never makes one) (adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:811`
+
+## Checkpoint
+**When**: 2026-11-18 22:00 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (first host answer at rounds for this pull request; the one must-fix is a sentence that says more than the code does, and it comes from a link rule that has grown cases; one simpler rule removes them)
+**After**: rounds
+**Decision**: address
+
+Replace the link handling in step 1 of the distro rule by one rule, and state exactly that rule in the design paragraph and the adapter's header:
+
+Step 1 looks only at real directories directly under the root (the root taken as a physical path; entries that are links are not candidates; worktrees and dot names excluded as now). The calling directory, as a physical path, is inside at most one of them: that one is <x>. A call that arrives through a link to a distro's directory is therefore inside the directory the link points to, and no name-order or "which of two names is resolved" choice exists. A calling directory under the root but inside none of them (the root itself, worktrees/, a link's target outside the root) goes to step 2 as now.
+
+This fixes the must-fix (docs/manifest/design.md:141 and the header's "so a link is its target", reworded to the rule above) and suggestion 1 (two names leading to one directory can no longer pick by name order). Remove the code the earlier preference needed. Suggestions 2 to 6 take no action, except 3: the comment on setup/sync says a set-aside resolve counts as resolved.
+
+Tests: a link current -> <distro> with the distro resolved: a call from current/ and from the distro's own directory both answer for the distro; with the distro's resolve set aside or gone, both name the distro (never the link's name); a link whose own name has a directory under resolved/ does not make a call from its target answer for the link's name. Each fails before the change where the behaviour changes.
