@@ -331,13 +331,13 @@ def test_a_stopped_move_is_worded_from_the_moving_line(system, capsys):
     target = git("rev-parse", "other", cwd=remote)
     data["distros"]["_unnamed"]["repos"]["a"]["moving"] = {"from": head(clone), "to": target}
     state.write_text(yaml.safe_dump(data))
-    (clone / "README").write_text("left by a stopped switch\n")
+    (clone / "README").write_text("left by a stopped switch, or a person's edit\n")
     _left_alone(
         sys_dir,
         clone,
         capsys,
-        f"a sync was stopped while moving this repo from {head(clone)[:12]} to {target[:12]};"
-        " `git status` shows what it left",
+        f"left alone: has uncommitted changes (1 files); a sync was stopped while moving this"
+        f" repo from {head(clone)[:12]} to {target[:12]}; `git status` shows what it left",
     )
 
 
@@ -348,8 +348,38 @@ def test_a_moving_line_is_not_used_once_a_person_moved_the_repo(system, capsys):
     data["distros"]["_unnamed"]["repos"]["a"]["moving"] = {"from": "1" * 40, "to": "2" * 40}
     state.write_text(yaml.safe_dump(data))
     (clone / "README").write_text("mine\n")
-    out = _left_alone(sys_dir, clone, capsys, "has uncommitted changes (1 files)")
+    git("fetch", "-q", "--tags", "origin", cwd=clone)
+    before = snapshot_repo(clone, fetched=True)
+    out = _sync(sys_dir, capsys)
+    assert "src/a: left alone: has uncommitted changes (1 files)\n" in out
     assert "a sync was stopped" not in out
+    assert snapshot_repo(clone, fetched=True) == before
+    assert "moving" not in state_of(sys_dir)["a"]
+
+
+@pytest.mark.parametrize("why", ["an index.lock", "a merge in progress", "another branch"])
+def test_a_moving_line_that_no_longer_describes_the_repo_is_cleared_when_left_alone(
+    system, capsys, why
+):
+    sys_dir, _, remote, clone = system
+    state = sys_dir / ".repos-manifest/state.yaml"
+    data = yaml.safe_load(state.read_text())
+    data["distros"]["_unnamed"]["repos"]["a"]["moving"] = {"from": "1" * 40, "to": "2" * 40}
+    state.write_text(yaml.safe_dump(data))
+    if why == "an index.lock":
+        (clone / ".git" / "index.lock").write_text("")
+        says = "left alone: index.lock exists; another git may be running here\n"
+    elif why == "a merge in progress":
+        _conflict(clone, "a merge")
+        says = "left alone: a merge is in progress\n"
+    else:
+        git("switch", "-q", "--track", "origin/dev", cwd=clone)
+        says = "left alone: moved by a person"
+    before = snapshot_repo(clone)
+    out = _sync(sys_dir, capsys)
+    assert says in out and "a sync was stopped" not in out, out
+    assert snapshot_repo(clone)["head"] == before["head"]
+    assert "moving" not in state_of(sys_dir)["a"]
 
 
 def test_a_moving_line_is_removed_when_the_repo_is_found_on_the_version(system, capsys):

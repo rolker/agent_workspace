@@ -546,11 +546,16 @@ def update_repo(
             f"a sync was stopped while moving this repo from {record.moving[0][:12]} to"
             f" {record.moving[1][:12]}; `git status` shows what it left"
         )
+    elif record is not None and record.moving is not None:
+        # The line no longer describes the repo (a person moved it since): it goes.
+        record = replace(record, moving=None)
+        write(record)
+    also = f"; {stopped}" if stopped else ""
     for name, what in IN_PROGRESS:
         if os.path.lexists(git_dir / name):
-            return Done(LEFT, stopped or f"{what} is in progress")
+            return Done(LEFT, f"{what} is in progress{also}")
     if os.path.lexists(git_dir / "index.lock"):
-        return Done(LEFT, stopped or "index.lock exists; another git may be running here")
+        return Done(LEFT, f"index.lock exists; another git may be running here{also}")
 
     status, printed, _ = git.run("config", "--get-all", "remote.origin.url")
     urls = printed.splitlines() if status == 0 else []
@@ -582,7 +587,7 @@ def update_repo(
     if changes is None:
         return turn.left("`git status` fails here")
     if changes:
-        return turn.left(stopped or f"has uncommitted changes ({changes} files)")
+        return turn.left(f"has uncommitted changes ({changes} files){also}")
 
     status, printed, error = git.run(
         "fetch", "--prune", "--no-prune-tags", "--tags", "origin", prompt=True
@@ -761,8 +766,9 @@ def _change(
             git.run(*back, change=True)
         after = Before.read(git, turn.git_dir)
         if after == before:
-            if turn.record is not None:
-                turn.put(turn.record)  # without the moving line
+            # The record without the moving line; a repo that had none is recorded as one
+            # on the version would be (only such a repo is fast-forwarded without a record).
+            turn.put(turn.record if turn.record is not None else turn.new_record(head))
             return Done(
                 LEFT,
                 f"`git {step[0]}` exited {status}; left as it was:\n{said_by_git}",

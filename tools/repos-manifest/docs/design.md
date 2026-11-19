@@ -836,7 +836,10 @@ text.
 A stop signal is held while a `git` that changes a repo runs (and `git` inherits it held), so
 the call ends whole, and the run then ends. Before such a call `sync` records a `moving` line
 in the repo's record and removes it with the record that follows; a run killed outright may
-leave it.
+leave it. While `HEAD` is the line's `from` or `to` commit, the line is added to the reason a
+repo is left as it is (uncommitted changes, an operation in progress, an `index.lock`), never
+put in its place; a later `sync` that finds `HEAD` elsewhere removes the line, whatever then
+happens to the repo. It only changes wording: no rule reads it to decide what to do.
 
 | Where a run ends | What it leaves | The next `sync` |
 |---|---|---|

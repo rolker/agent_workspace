@@ -10,6 +10,7 @@ import subprocess
 import sys
 
 import pytest
+import yaml
 
 from helpers import (
     branch,
@@ -359,3 +360,21 @@ def test_an_ignored_file_made_just_before_the_move_is_never_overwritten(two, tmp
     assert (clone / "incoming.log").read_text() == "precious\n"
     assert head(clone) == was and branch(clone) == "main"
     assert state_of(system, "jazzy")["a"] == recorded
+
+
+def test_a_failed_fast_forward_of_a_repo_with_no_record_leaves_no_moving_line(
+    two, tmp_path, capsys
+):
+    system, _, remote = two
+    clone = system / "jazzy/core/src/a"
+    state = system / ".repos-manifest/state.yaml"
+    data = yaml.safe_load(state.read_text())
+    del data["distros"]["jazzy"]["repos"]["a"]
+    state.write_text(yaml.safe_dump(data))
+    push_commit(remote, "one", "1\n")
+    was = head(clone)
+    done = _sync_with_stub(tmp_path, system, "merge", "fail")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "src/a: left alone: `git merge` exited 1; left as it was" in done.stdout
+    record = state_of(system, "jazzy")["a"]
+    assert "moving" not in record and record["commit"] == was
