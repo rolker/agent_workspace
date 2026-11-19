@@ -66,6 +66,8 @@ NEVER = (
     "stash",
     "gc",
     "prune",
+    "--prune",  # sync removes no ref; --no-prune, which it passes, is another word
+    "-p",  # fetch's short form of --prune
     "push",
     "--force",
     "rebase",

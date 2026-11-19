@@ -55,6 +55,22 @@ def test_the_update_module_runs_no_command_that_can_lose_work(word):
         assert f" {word} " not in f" {text} ", f"{word!r} in {text!r}"
 
 
+@pytest.mark.parametrize(
+    "source, hit",
+    [
+        ('git.run("fetch", "--prune", "origin")\n', True),
+        ('git.run("fetch", "-p", "origin")\n', True),
+        ('args = ["fetch", "--prune-tags"]\n', False),
+        ('args = ["--no-prune", "--no-prune-tags", "origin"]\n', False),
+    ],
+)
+def test_pruning_flags_are_forbidden_and_no_prune_is_not(source, hit):
+    texts = git_argument_texts(source)
+    found = [w for w in ("--prune", "-p") for t in texts if f" {w} " in f" {t} "]
+    assert {"--prune", "-p"} <= set(update.NEVER)
+    assert bool(found) == hit, (texts, found)
+
+
 def test_the_scan_finds_a_forbidden_command():
     source = 'git.run("stash", "push")\nsteps = [["reset", "--hard", "x"]]\n'
     texts = git_argument_texts(source)

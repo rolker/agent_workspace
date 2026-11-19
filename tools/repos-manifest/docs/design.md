@@ -822,7 +822,7 @@ and the same report says so, with the two `git config` commands that set one. It
 the `moving` line, so the next `sync` reports the uncommitted changes and does not take them
 for a run that was stopped. `sync` never runs `reset`, `checkout -f`,
 `clean`, `stash`, `rebase`, `pull`, `push`, `gc` or `prune`, never deletes a branch, and passes
-no `--force` or `--no-verify`. Each `git` runs with automatic `gc` and `maintenance` off and
+no `--force`, `--no-verify`, `--prune` or `-p` (a test reads `update.py` for each of these). Each `git` runs with automatic `gc` and `maintenance` off and
 with `submodule.recurse` off.
 
 A clone with submodules is followed like any other, and its submodules are not updated: the
