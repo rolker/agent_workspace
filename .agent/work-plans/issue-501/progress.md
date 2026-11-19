@@ -686,14 +686,63 @@ Each code fix has a test that fails without it: the new tests were run against t
 Previous must-fix 1 (chain) re-run with real colcon: fixed (`build x b` now leaves c "recorded built, not used", setup.bash sources b; a plain build brings c back with x on the path). Porter path re-run with real colcon (by-hand base, failing mid, `-- --continue-on-error`, `--keep-going`, fix, `build mid -- --packages-skip-build-finished`, plain build): report and setup.bash true at every step. A by-hand system whose first `build` fails in the lowest layer: setup.bash goes back to the stub, the report says "nothing is built" and offers sourcing what colcon wrote. Cross-model: codex completed (8 findings, must-fix 1 reproduced), gemini failed twice (empty response, a tool call denied headless). Tool suite: 1129 passed with real colcon. CI at adb63e75: all checks passed on Python 3.10 and 3.14; no Copilot review.
 
 ### Findings
-- [ ] (must-fix) `build -- --cmake-target all` on a fresh system records `_unnamed` "built" with its package not installed (colcon skips the install step but writes the prefix scripts); mid then fails on `find_package(a)`. Reproduced with real colcon. design.md 986-989 covers `--cmake-target` only in a defaults file or mixin. Treat it like package selection (only rebuild built layers, keep their records) or refuse it — `build.py` (forwarded-argument checks)
-- [ ] (must-fix) A failed removal of `install/setup.bash` (e.g. `chmod 555 mid/install`, then `build mid`) drops the layer's valid record, and so the layers above it from the run, though colcon never started; the setup-blocked path just above gives `had` back. Restore the record on that path too — `build.py:931-946`
-- [ ] (must-fix) design.md says the note names "each such file that is there"; `colcon_defaults_files()` names `COLCON_DEFAULTS_FILE` without checking it exists (`COLCON_DEFAULTS_FILE=/nonexistent/x.yaml` prints a NOTE for it) — `build.py:851-853`, `docs/design.md:990`
-- [ ] (suggestion) A layer dropped from the manifest (or emptied) and `sync`: the layer above is rebuilt on the shorter chain and recorded built, but its CMakeCache still points into the dropped layer's leftover `install/` (exit 0, `built: _unnamed, top`); note the leftover `install/` as the keep-going line does — `build.py` report
-- [ ] (suggestion) When colcon ends without writing `install/setup.bash` (argument error, stop signal), the failed line and stop line do not say the file was removed, which a person sourcing it directly will meet — `build.py` report / `run_build`
-- [ ] (suggestion) README "names such a file when one is there" follows "a file of colcon defaults or a mixin"; mixins are never named — `README.md:112-115`
-- [ ] (suggestion) `sync` takes no build lock, so a `sync` during `build` can change the resolved files between `build`'s reads — `build.py` `read_layers`
-- [ ] (suggestion) An unreadable tool-written `setup.bash` is treated as a person's own file, so the run goes on instead of stopping before colcon — `build.py:278`
-- [ ] (suggestion) The ownership check and `os.replace` of `setup.bash` are not atomic (a file put there between them is overwritten) — `build.py:288`
-- [ ] (suggestion) The record write is not fsynced before colcon starts, so a power loss can bring back the old record; plan item 6 promises power loss is covered (the design doc does not) — `system.py:338`, `plan.md:29`
-- [ ] (suggestion) A stop signal between `hold_build_lock` and `progress.lock` assignment leaves the descriptor unclosed for an in-process caller of `cli.main()` — `build.py:1148`
+- [x] (must-fix) `build -- --cmake-target all` on a fresh system records `_unnamed` "built" with its package not installed (colcon skips the install step but writes the prefix scripts); mid then fails on `find_package(a)`. Reproduced with real colcon. design.md 986-989 covers `--cmake-target` only in a defaults file or mixin. Treat it like package selection (only rebuild built layers, keep their records) or refuse it — `build.py` (forwarded-argument checks)
+- [x] (must-fix) A failed removal of `install/setup.bash` (e.g. `chmod 555 mid/install`, then `build mid`) drops the layer's valid record, and so the layers above it from the run, though colcon never started; the setup-blocked path just above gives `had` back. Restore the record on that path too — `build.py:931-946`
+- [x] (must-fix) design.md says the note names "each such file that is there"; `colcon_defaults_files()` names `COLCON_DEFAULTS_FILE` without checking it exists (`COLCON_DEFAULTS_FILE=/nonexistent/x.yaml` prints a NOTE for it) — `build.py:851-853`, `docs/design.md:990`
+- [x] (suggestion) A layer dropped from the manifest (or emptied) and `sync`: the layer above is rebuilt on the shorter chain and recorded built, but its CMakeCache still points into the dropped layer's leftover `install/` (exit 0, `built: _unnamed, top`); note the leftover `install/` as the keep-going line does — `build.py` report
+- [x] (suggestion) When colcon ends without writing `install/setup.bash` (argument error, stop signal), the failed line and stop line do not say the file was removed, which a person sourcing it directly will meet — `build.py` report / `run_build`
+- [x] (suggestion) README "names such a file when one is there" follows "a file of colcon defaults or a mixin"; mixins are never named — `README.md:112-115`
+- [x] (suggestion) `sync` takes no build lock, so a `sync` during `build` can change the resolved files between `build`'s reads — `build.py` `read_layers` (deferred: left open by the host: the lock against two runs of the tool is issue 510's)
+- [x] (suggestion) An unreadable tool-written `setup.bash` is treated as a person's own file, so the run goes on instead of stopping before colcon — `build.py:278`
+- [x] (suggestion) The ownership check and `os.replace` of `setup.bash` are not atomic (a file put there between them is overwritten) — `build.py:288` (deferred: left open by the host: listed in the pull request as open)
+- [x] (suggestion) The record write is not fsynced before colcon starts, so a power loss can bring back the old record; plan item 6 promises power loss is covered (the design doc does not) — `system.py:338`, `plan.md:29` (deferred: left open by the host: design.md claims no power-loss safety (checked: no such sentence); listed in the pull request as open)
+- [x] (suggestion) A stop signal between `hold_build_lock` and `progress.lock` assignment leaves the descriptor unclosed for an in-process caller of `cli.main()` — `build.py:1148` (deferred: left open by the host: matters only to an in-process caller of the tool, which nothing is today)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 13:29 -05:00
+**By**: claude-code (claude-opus-5-5)
+**Dispatch**: resumed (agent af385806006e91fa6, resume 1 of 3)
+
+**PR**: #518 at `346d5057`
+**Addressed**: Local Review at `adb63e75` (2026-11-19 13:16 -05:00)
+**Commits**: a490b255 (code and tests), 346d5057 (design.md and README)
+
+### Actions
+- [x] (must-fix) `--cmake-target` (exact, `=value`, and any abbreviation that could be it) is read as package selection: refused on a layer that is not built, a built layer keeps its record, report says "rebuilt with selection". Reproduced first with real colcon: `build -- --cmake-target all` on a fresh system recorded `_unnamed` built with `a` not installed and mid failed on `find_package(a)`; now refused before anything runs. In colcon-cmake 0.2.30's source `--cmake-target` is the only option that skips the install step; `--cmake-target-skip-unavailable` acts only together with it (alone it is passed and is not selection, tested); a CMake argument that drops the install rules makes colcon warn and go on, which `build` cannot see (design.md says so) — `build.py` `package_selection`, `INSTALL_SKIPPING`
+- [x] (must-fix) A failed removal of `install/setup.bash` gives the layer back its record, does not start colcon, stops the run with "stopped before <layer>: <path> cannot be removed before colcon writes it again (<reason>), so colcon was not started on it; it keeps its record", and brings setup.bash into line; exit 1. Test with a read-only `install/` — `build.py` `_halt`, `_remove_install_setup`
+- [x] (must-fix) The note names a defaults file only when colcon will read it. colcon-defaults 0.2.9 reads the file only when it is a file and, with `COLCON_DEFAULTS_FILE` set, reads no other; so a missing `COLCON_DEFAULTS_FILE` gives no note (and `$COLCON_HOME/defaults.yaml` is then not named either). A relative path is looked for in the layer directory, where colcon runs. design.md matches — `build.py` `colcon_defaults_files`
+- [x] (suggestion a) A layer rebuilt on a shorter chain (a layer of its last chain left the manifest or has no repos now) gets "built on a shorter chain than before: <layer> (it may have used what is left in <dir>/install/ ...)" when that `install/` is there — `build.py` `_left_behind`
+- [x] (suggestion b) When colcon ends without writing `install/setup.bash` again, the failed line, the not-built line and the stop line add "its earlier <path> was removed when this run started on it and is not there now"; design.md says it where the removal is described — `build.py` `_removed_note`
+- [x] (suggestion c) README: names each defaults file colcon will read and no mixin; adds the `--cmake-target` rule
+- [x] (suggestion d) A `setup.bash` that cannot be read is no longer taken for a person's own file: before a layer's colcon it stops the run like a failed rewrite (report line, WARNING, exit 1, record kept). Departure: it uses that stop path rather than ending the run with a bare ERROR, so the report and setup.bash handling are the same as for the other pre-build stop — `build.py` `write_setup`
+- [x] (suggestion) `sync` takes no build lock — `build.py` `read_layers` (deferred: left open by the host: the lock against two runs of the tool is issue 510's)
+- [x] (suggestion) Ownership check and replace of `setup.bash` not one step — `build.py` `write_setup` (deferred: left open by the host, listed in the pull request)
+- [x] (suggestion) No fsync before colcon starts — `system.py` (deferred: left open by the host; checked that design.md and README claim no power-loss safety: no such sentence)
+- [x] (suggestion) A stop between taking the lock and storing its descriptor — `build.py` `_build` (deferred: left open by the host: matters only to an in-process caller, which nothing is today)
+
+A change found while trying the neighbours: the layer the run stops before is no longer also listed under "not tried" (the "stopped before" line names it, and it is still listed "built before, in the run" when its record is kept).
+
+### Hand runs with real colcon (scratch system: `_unnamed` a, mid m needs a, top t needs m)
+- fresh `build -- --cmake-target all`: refused, nothing run, no record.
+- `build mid -- --cmake-target all` on a built system: exit 0, "rebuilt with selection: mid", record file unchanged byte for byte.
+- `build --keep-going -- --cmake-target all` with mid broken: `_unnamed` rebuilt with selection, mid failed, top not tried, exit 1, records `_unnamed, top` (top recorded, not used).
+- read-only `install/` of `_unnamed`, then of mid, plain build: "stopped before <layer>: … cannot be removed … (Permission denied) …; it keeps its record", exit 1, all three records kept, setup.bash still sources top.
+- `COLCON_DEFAULTS_FILE` = an existing file: NOTE naming it; = a missing path (with `$COLCON_HOME/defaults.yaml` present): no NOTE; unset with `$COLCON_HOME/defaults.yaml` present: NOTE naming that file.
+
+### Re-reading
+design.md's changed passages (the removal paragraph, the setup.bash rewrite paragraph, the closing report, the chain paragraph, the selection bullet rewritten whole, the defaults bullet) and the README's `build` paragraph were read against the code and the hand runs; no power-loss claim exists to remove.
+
+### For the pull request body
+- How it behaves, the arguments bullet, replace "A run with a package-selection option only rebuilds layers that are already built and leaves their records as they were." with: "A run with a package-selection option, or with `--cmake-target` (which builds one target and skips the install step while colcon still exits 0), only rebuilds layers that are already built and leaves their records as they were."
+- Left open, on purpose, add:
+  - "`sync` takes no build lock, so a `sync` during a `build` can change the resolved files between `build`'s reads; the lock against two runs of the tool is issue 510's."
+  - "The check that `setup.bash` is the tool's own and its replacement are not one step: a file put there between them is overwritten."
+  - "The record is not fsynced before colcon starts, so a power loss can bring back an older record; the design does not claim power-loss safety."
+  - "A stop signal between taking the build lock and storing its descriptor leaves the descriptor open for an in-process caller of the tool; nothing calls it in-process today."
+- Reviews and outcomes, replace the sixth-review sentence with: "A sixth review (on the pull request) found 2 must-fix and 9 suggestions, all fixed with tests. A seventh found 3 must-fix and 8 suggestions: the 3 must-fix and 4 of the suggestions are fixed with tests; 4 suggestions are left open and listed below." and the suite figure: "The tool's suite: 1140 passed with real colcon, nothing skipped."
+
+### Tests
+Each code fix has a test that fails without it: the new tests were run against the source at adb63e75 and all failed there except the guard test that `--cmake-target-skip-unavailable` alone is not selection (it passes on both, as it should).
+- Tool suite: `REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest -p no:cacheprovider` before the commits (code identical to a490b255) — `1140 passed in 242.46s`
+- black and flake8 on the changed files clean; commits with `SKIP=validate-script-tests`; no workspace script changed; the full pass is left to the host. Follow-up still open from the last pass: `sync --distro=`.
