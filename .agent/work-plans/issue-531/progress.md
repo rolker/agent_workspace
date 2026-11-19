@@ -385,3 +385,13 @@ All five open suggestions of the round 2 pre-push review were checked against th
 - (Local Review @ 37edd856, valid but rightly left) `--packages-skip-regex --packages-x` is read as package selection (`package_selection(...)` returns 'package selection', checked): errs on the safe side, refused on an unbuilt layer and reported as not recorded on a built one; no package name can start with `-`, so such a pattern matches nothing a user means — `build.py:801`.
 - (Local Review @ 37edd856, valid but rightly left) `read_built` checks `without` with `_CONTROL`, narrower than `has_unsafe_char`: only a hand edit of the record can produce such text, it is the same rule the existing `time`, `repos` and `below` fields are read with, and the worst result is a loud "internal error", not a silent one — `system.py:608`.
 - (Local Review @ 37edd856, valid but rightly left) `--mixin` after a `-regex` list where colcon-mixin is not installed: `left_out(['--packages-skip-regex','a','--mixin','release'])` gives `['a']` while colcon would take `--mixin release` as patterns. design.md's limit sentence is incomplete, not false; the case is a mixin request that already fails to do what the user meant — `docs/design.md:1037`.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 17:41 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner was shown what pull request 534 changes (the skip and ignore options accepted on a layer's first build and recorded; the report lines; what stays strict; the two caveats), the reviews, the five points left on purpose, and CI: both workflow runs on the head finished with success, one job row still shown as pending in the checks list although its run is complete, the pull request mergeable and clean. His answer: "Merge (Recommended)".
