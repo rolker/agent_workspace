@@ -391,7 +391,7 @@ Pass `--plan-file` to create a draft PR immediately and post the plan as a PR co
 .agent/scripts/worktree_create.sh --issue 42 --type project --plan-file /tmp/plan.md
 ```
 
-If the branch push fails, the script warns, prints the commands to push the branch, open the draft PR and post the plan by hand, and still makes the worktree: the failed push alone does not make it exit non-zero.
+If the branch push fails, the script warns, prints the commands to push the branch, open the draft PR and, if the plan file was found, post the plan by hand, and still makes the worktree: the failed push alone does not make it exit non-zero.
 
 ## Sub-Issue Worktrees (Stacked PRs)
 
