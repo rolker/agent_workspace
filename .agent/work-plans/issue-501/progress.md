@@ -166,3 +166,47 @@ The host read the Plan Review's ten findings and decides them as follows for the
 **Plan**: `.agent/work-plans/issue-501/plan.md` at `49c3b137`
 
 Revision after the plan review and checkpoint: one distro per run; records kept across rebuilds (built = record plus install/setup.bash); record removed before colcon and set on exit 0; own-prefix warning; stop signal forwarded; design-document list completed; Serves names a README goal; CI change split out as an optional step; keep-going restated against the new rules.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-19 09:39 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #501 — repos-manifest: `build` builds the layers in order and writes one setup file
+**Plan**: `.agent/work-plans/issue-501/plan.md` at `49c3b137`
+**Branch**: `feature/issue-501`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged: one command, one record file, tests and docs in one pull request. |
+| Issue alignment | Good | The ten first-review findings are resolved as the checkpoint decided: (1) one `--distro`, the refusal at the top (step 1); (2) later records kept (step 6); (3) record removed and written before colcon, set on exit 0, tested (step 6, tests); (4) record plus `install/setup.bash`, dropped layers, added repos in the note (steps 5, 6, 14); (5) own-prefix warning and direct first colcon (steps 4, 11); (6) the design list (Files table); (7) refusal message and "the record is the only thing `build` trusts" (step 9, Files); (8) link sentence plain, difference from `sync` stated, signal forwarded and waited for (steps 8, 13); (9) Serves names a README section, though a loose fit (finding 4); (10) the plan is complete without the CI step. Serves: "The root README goal "Quality of the work" (`README.md#quality-of-the-work`: a tool that builds the system the same checked way every time, with failures visible rather than silent), under the part's own design `tools/repos-manifest/docs/design.md#build` (ADR-0022)." Both anchors exist. |
+| File targeting | Good | As before. Checked: only `sync` calls `distros_for` (sync.py:488); the CLI has `resolve`, `validate`, `init`, `sync` and no command that acts on one distro of a system, so no existing refusal or shared helper exists (finding 3). The stub's first line starts `# Written by repos-manifest.` (system.py:44), so the marker test of step 8 works as a prefix. |
+| Consequences | Good | Design sections "build", the tree, the stub sentence (design.md:202), "What is built" and the last "Open questions" bullet are listed; `test_init.py:253` asserts the stub text. |
+| Principle alignment | Needs work | "Know whether it works": the revision's three uses of "built" (refusal, environment, `setup.bash`) share the per-layer predicate but choose layers by three different rules, so they disagree after a failure, against step 9's own claim (finding 1). The keep-going section, and one edge in the default path, record a layer as built on a chain that skips a lower layer (finding 2). |
+| ADR compliance | Good | ADR-0022, ADR-0017, ADR-0009 as before. |
+| ROS conventions | N/A | Workspace tool. |
+
+### Findings
+
+1. **[Principle alignment] High** — One definition of "built" is written once (step 5), per layer, but each use picks layers differently: the refusal (step 9) needs every earlier non-empty layer built, the environment (step 4) sources "an earlier built layer", and `setup.bash` (step 7) sources the last built layer anywhere. After layer 2 fails with layer 3 recorded earlier, `setup.bash` sources layer 3 while `build layer3` refuses because layer 2 is not built; step 9's "they cannot disagree" is false. Recommendation: define once, beside step 5, "the built run": the layers from the bottom, empty ones passed over, up to the first non-empty layer that is not built. `setup.bash` sources the last layer of the built run; the refusal is "an earlier non-empty layer is outside the built run and not named in this run"; the environment is the last layer of the built run below the one being built. Records stay as the checkpoint decided, so once layer 2 is rebuilt the run reaches layer 3 again and `setup.bash` sources it with no rebuild of 3. For a person porting, whose lowest failing layer is built with `--continue-on-error`: neither rule sources that layer's partial output (it is unrecorded under both), and the current rule instead hands them a stale layer 3 chaining a half-rewritten layer 2, which is the worst of both. Under the built-run rule `setup.bash` stays honest (layer 1), and the report says how to use what there is: "layer 2 failed; what it did build can be used with `source <abs>/layer2/install/setup.bash` (it brings in layer 1)". Change steps 4, 7, 9 and 12 (the "built earlier, on <layer>'s older output" line goes; a "recorded built, not used: above failed <layer>" line replaces it), the design paragraph, and the tests (failure at layer 2 with 3 recorded: `setup.bash` sources 1, the report names layer 2's own setup file; rebuild of 2 succeeds: `setup.bash` sources 3).
+2. **[Principle alignment] Medium** — A layer's colcon setup chains only the layer sourced when it was built. A layer built on a chain that skips a lower layer stays blind to it even after that layer is built later. The keep-going section records layer 3 as built on layer 1 while layer 2 failed; once layer 2 is fixed, layer 3's record still says built and sourcing it never brings in layer 2. The default path has the same edge: layer 2 empty (skipped) when layer 3 was built, then `sync` gives layer 2 repos. Resolution: record, per layer, the layer it was built on (none for the first); a layer is built only when that recorded base equals the last layer of the built run below it now. This one clause in step 5 closes both cases, keeps the keep-going section switchable without another revision (a layer built over a failed one is then simply not built: tried for its output, not recorded), and needs a test for the empty-then-filled layer.
+3. **[File targeting] Low** — Step 1 says "not verified here which of them do". Checked: no existing command refuses at the top of a system with several distros, and there is no shared helper; `distros_for` (system.py:233) is used only by `sync`, and `show`, `freeze` and `status` are not built (`resolve` and `validate` do not read a system). The design table gives `show`, `resolve`, `build` and `freeze` the same refusal, so put it in `system.py` beside `distros_for` (one function, `build` its first caller) and drop the hedge. Also say how a second `--distro` is refused: argparse's plain `store` silently keeps the last.
+4. **[Issue alignment] Low** — "Quality of the work" (README.md:33) is about agents' work: time and care, safeguards earning their cost, concise documents, learning from existing code, field safety. Its bullets do not contain the plan's gloss ("builds the system the same checked way every time"). Sibling plans for this tool name "Modular" (issue 498) and "Easy to use" (issue 503), and `build` is what the ros2 module's build route will call. Name "Modular" or "Easy to use" (or both), with the gloss tied to a bullet in the section named.
+5. **[Tests] Low** — "a stub killed with SIGKILL mid-build leaves the layer not built" tests a failing colcon, which step 10 already covers. What step 6 protects against is the tool dying while colcon runs. The in-run check of `built.yaml` by the stub already proves the order; either drop the SIGKILL clause or make it kill the tool's process (and the stub) and check `built.yaml` and that the next `build` reports the layer not built.
+
+The two owner questions: the plan is complete without either. The CI step stands alone and can be switched on as written. The keep-going section can be switched on as written once finding 2's clause is in step 5; its sentence "`setup.bash` sources layer 3, which lacks layer 2" then changes under finding 1 to "sources layer 1", which belongs in the same edit.
+
+### Summary
+
+The revision resolves all ten first-review findings as the checkpoint decided. One structural gap remains: "built" is one predicate but three selection rules, so the refusal and `setup.bash` disagree after a failure; define the built run from the bottom once and use it in all three, with the base layer recorded so a layer built over a missing one is never counted. Both are local edits to steps 4, 5, 7, 9 and 12 and their tests.
+
+### Recommended Actions
+
+- [ ] Define "the built run" once beside step 5 and use it for the refusal, the environment and `setup.bash`; the report names the failed layer's own `install/setup.bash` for using its partial output; update the tests and the design paragraph.
+- [ ] Record each layer's base layer; a layer whose base is not the current last layer of the built run below it is not built; test the empty-then-filled layer; restate the keep-going section's last sentences.
+- [ ] Put the one-distro refusal in `system.py` beside `distros_for`, drop "not verified", say how a repeated `--distro` is refused.
+- [ ] Name "Modular" or "Easy to use" in Serves, tied to a bullet.
+- [ ] Make the SIGKILL test kill the tool, or drop it.
