@@ -60,30 +60,30 @@ Two limitations of slash-command argument forwarding worth knowing:
 
 ## Steps
 
-### 1. Refuse if already in a worktree (or not in the workspace at all)
+### 1. Refuse if already in a worktree
 
 The check below uses `git rev-parse --git-dir` vs `--git-common-dir`: in the main tree they're equal; in a linked worktree they differ. This is the most reliable git-native test for "am I in a linked worktree", regardless of where the worktrees live on disk.
 
 ```bash
-GITDIR=$(git rev-parse --git-dir 2>/dev/null) || {
-    echo "Not in a git repository. /start-task must be invoked from the workspace root." >&2
-    exit 1
-}
-COMMON=$(git rev-parse --git-common-dir 2>/dev/null)
+if ! GITDIR=$(git rev-parse --git-dir 2>/dev/null); then
+    echo "Not in a git repository: no linked worktree to refuse; step 2a decides whether this directory is a session's root."
+else
+    COMMON=$(git rev-parse --git-common-dir 2>/dev/null)
 
-# Resolve to absolute paths so the comparison is robust.
-GITDIR_ABS=$(cd "$GITDIR" && pwd -P)
-COMMON_ABS=$(cd "$COMMON" && pwd -P)
+    # Resolve to absolute paths so the comparison is robust.
+    GITDIR_ABS=$(cd "$GITDIR" && pwd -P)
+    COMMON_ABS=$(cd "$COMMON" && pwd -P)
 
-if [ "$GITDIR_ABS" != "$COMMON_ABS" ]; then
-    echo "Already inside a linked worktree:" >&2
-    echo "  $(git rev-parse --show-toplevel)" >&2
-    echo "Exit it first (cd back to the main workspace), then re-run /start-task." >&2
-    exit 1
+    if [ "$GITDIR_ABS" != "$COMMON_ABS" ]; then
+        echo "Already inside a linked worktree:" >&2
+        echo "  $(git rev-parse --show-toplevel)" >&2
+        echo "Exit it first (cd back to the main workspace), then re-run /start-task." >&2
+        exit 1
+    fi
 fi
 ```
 
-If the test passes, the session is in the main tree — proceed.
+If the test passes, the session is in the main tree — proceed. Outside a git repository the step does not stop: go on to step 2a, where `session_root.sh` refuses any directory that is not a session's root (a project root need not be a git repository).
 
 ### 2. Resolve the workspace root — do NOT `cd`
 
@@ -160,8 +160,10 @@ else
     #
     # Recovery: a partial creation may have left a worktree on disk even on
     # non-zero exit (e.g., set -e fires after `git worktree add` succeeds but
-    # before bookkeeping finishes). Run `git worktree list` and, if anything
-    # under worktrees/<type>/ matches, offer the user
+    # before bookkeeping finishes). Run `$WS_ROOT/.agent/scripts/worktree_list.sh`
+    # (it works from a project root outside git) and, if anything under
+    # worktrees/<type>/ (a project's: its root's worktrees/, or its
+    # override) matches, offer the user
     # `$WS_ROOT/.agent/scripts/worktree_remove.sh --issue <N> --type <type>` (or
     # `--skill <name>`) to clean up before retrying.
     exit 1
@@ -207,6 +209,8 @@ After changes to this skill, run these checks from a fresh main-tree session to 
 4. **Re-entry case** — exit the worktree from check 1 (`cd -` back to the workspace root), then re-run the same `/start-task --issue <test-N> --type workspace`. Expected: step 3's `if` branch fires (existing worktree found); no new creation; `cd` puts the session back in the existing worktree.
 
 5. **Glob safety (structural check)** — inspect step 3 of this skill body and confirm `set -f` precedes the `if` block and `set +f` is restored in each of the three branches. Without these, an invocation containing values like `--branch main*` or `--plan-file *.md` would glob-expand against the cwd before reaching the script. The bracket makes the failure mode structurally impossible.
+
+6. **Root outside git** — from a registered project root that is not a git repository (a plain directory holding clones), `/start-task --issue <owner/repo#N> --type project --layer <l> --package-repos <r>`. Expected: step 1 prints that it is not in a git repository and does not stop; step 2a passes; the package worktree is created under the root's `worktrees/`. From a subdirectory of that root, step 2a refuses.
 
 ## Exit semantics
 

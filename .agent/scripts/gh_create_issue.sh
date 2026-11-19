@@ -35,6 +35,18 @@
 #     to be added; missing vars hard-fail (exit 2) before any gh call. Set via:
 #     source .agent/scripts/set_git_identity_env.sh --agent <framework> "<model-id>"
 #   - No body flag at all (interactive editor mode) means nothing is signed.
+#   - Inside a git repository labels are validated against that checkout's
+#     .agent/github_metadata.json, also with -R. Outside a git repository (a
+#     project root that is a plain directory holding clones) -R / --repo
+#     must name the repository; labels are validated against the workspace
+#     checkout's list only when -R names the workspace's own repository,
+#     otherwise GitHub validates them.
+#   - With WORKTREE_ISSUE set, a parent reference is added. Outside a git
+#     repository only a WORKTREE_ISSUE of the form owner/repo#N gives one
+#     ("Part of #N" when owner/repo is the -R target, "Part of owner/repo#N"
+#     otherwise); a bare number gives none, with a one-line warning. From a
+#     package worktree WORKTREE_ISSUE is a bare number, so outside git no
+#     parent reference is added there and the person writes it in the body.
 #   - A --body-file is read once into a temporary copy (under TMPDIR,
 #     removed on exit), which is what gets signed and what gh reads: a
 #     pipe, FIFO or process substitution is signed like a regular file,
@@ -47,6 +59,7 @@
 #   2 - Argument / usage errors:
 #         - a value-taking flag with no value (-R/--repo also refuses an
 #           empty one)
+#         - outside a git repository, no -R/--repo
 #         - both a body and a body file provided
 #         - --template / -T with no body, or --recover with or without
 #           one, and no --no-signature (gh would write a body this wrapper
@@ -64,11 +77,9 @@ if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
 fi
 set -euo pipefail
 
-# Get repository root
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
-    echo "❌ Error: Not in a git repository"
-    exit 3
-}
+# Get repository root. Outside a git repository there is none: -R must then
+# name the repository (checked once the command line is parsed, below).
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || REPO_ROOT=""
 
 # ---------------------------------------------------- user-tier guard (#265) ---
 # This script is promoted to the user tier (.agent/user_tier_scripts.txt), so
@@ -104,6 +115,24 @@ fi
 # shellcheck source=_gh_create_args.sh
 source "$_UT_SCRIPT_DIR/_gh_create_args.sh"
 gh_create_parse issue "$@" || exit 2
+
+# Outside a git repository gh cannot tell which repository is meant, and
+# there is no checkout's own label list: the workspace checkout's is read
+# only when -R names the workspace's own repository (an owner/repo slug of
+# its GitHub origin); for any other target GitHub validates the labels.
+if [ -z "$REPO_ROOT" ]; then
+    if [ -z "$GH_REPO" ]; then
+        echo "❌ Error: Not in a git repository: pass -R <owner/repo> to name the repository the issue is for" >&2
+        exit 2
+    fi
+    _WS_CHECKOUT="$(cd "$_UT_SCRIPT_DIR/../.." && pwd)"
+    _WS_OWN_SLUG=$(git -C "$_WS_CHECKOUT" remote get-url origin 2>/dev/null \
+        | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//') || _WS_OWN_SLUG=""
+    METADATA_FILE=""
+    if [[ "$_WS_OWN_SLUG" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] && [ "$GH_REPO" = "$_WS_OWN_SLUG" ]; then
+        METADATA_FILE="$_WS_CHECKOUT/.agent/github_metadata.json"
+    fi
+fi
 
 # --- Mutually exclusive body sources -----------------------------------------
 # Both would mean the wrapper signs one source while gh may use the other
@@ -209,7 +238,7 @@ if [ -z "$GH_REPO" ]; then
 fi
 
 # Auto-inject parent issue reference when $WORKTREE_ISSUE is set
-if [ -n "${WORKTREE_ISSUE:-}" ]; then
+if [ -n "$REPO_ROOT" ] && [ -n "${WORKTREE_ISSUE:-}" ]; then
     # Determine the correct issue reference format (cross-repo vs same-repo)
     PARENT_REF="#${WORKTREE_ISSUE}"
     CURRENT_REPO_SLUG=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")
@@ -248,6 +277,43 @@ Part of ${PARENT_REF}"
         else
             echo "⚠️  No --body or --body-file provided; cannot auto-inject parent reference (Part of ${PARENT_REF})"
         fi
+    fi
+elif [ -n "${WORKTREE_ISSUE:-}" ]; then
+    # Outside a git repository the parent's repository is known only from a
+    # WORKTREE_ISSUE of the form owner/repo#N (nothing is taken from a
+    # remote): "#N" when that repository is the -R target, "owner/repo#N"
+    # otherwise. A bare number names no repository: no reference is added.
+    if [[ "$WORKTREE_ISSUE" =~ ^([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#([0-9]+)$ ]]; then
+        _PARENT_SLUG="${BASH_REMATCH[1]}"
+        _PARENT_NUM="${BASH_REMATCH[2]}"
+        if [ "$GH_REPO" = "$_PARENT_SLUG" ]; then
+            _OUT_REF="#${_PARENT_NUM}"
+            _OUT_PATTERN="(^|[^0-9])#${_PARENT_NUM}([^0-9]|$)"
+        else
+            _OUT_REF="${_PARENT_SLUG}#${_PARENT_NUM}"
+            _OUT_PATTERN="(^|[^A-Za-z0-9_./-])${_PARENT_SLUG//./\\.}#${_PARENT_NUM}([^0-9]|$)"
+        fi
+        _OUT_NEEDED=true
+        if [ "$GH_BODY_INDEX" -ge 0 ]; then
+            [[ "${GH_ARGS[$GH_BODY_INDEX]}" =~ $_OUT_PATTERN ]] && _OUT_NEEDED=false
+        elif [ -n "$GH_BODY_COPY" ]; then
+            grep -Eq -- "$_OUT_PATTERN" "$GH_BODY_COPY" && _OUT_NEEDED=false
+        fi
+        if [ "$_OUT_NEEDED" = true ]; then
+            if [ "$GH_BODY_INDEX" -ge 0 ]; then
+                GH_ARGS[GH_BODY_INDEX]="${GH_ARGS[$GH_BODY_INDEX]}
+
+Part of ${_OUT_REF}"
+                echo "ℹ️  Auto-added parent reference: Part of ${_OUT_REF}"
+            elif [ -n "$GH_BODY_COPY" ]; then
+                printf '\n\nPart of %s\n' "$_OUT_REF" >> "$GH_BODY_COPY"
+                echo "ℹ️  Auto-added parent reference: Part of ${_OUT_REF}"
+            else
+                echo "⚠️  No --body or --body-file provided; cannot auto-inject parent reference (Part of ${_OUT_REF})"
+            fi
+        fi
+    elif [[ "$WORKTREE_ISSUE" =~ ^[0-9]+$ ]]; then
+        echo "⚠️  Parent issue #${WORKTREE_ISSUE}: no parent reference added, as its repository is not known outside a git repository; write \"Part of owner/repo#${WORKTREE_ISSUE}\" in the body to add one"
     fi
 fi
 
@@ -302,6 +368,12 @@ fi
 # If no labels specified or metadata file doesn't exist, just pass through to gh
 if [ ${#GH_LABELS[@]} -eq 0 ]; then
     echo "ℹ️  No labels specified, passing through to 'gh issue create'"
+    gh issue create "${GH_ARGS[@]}"; exit $?
+fi
+
+if [ -z "$METADATA_FILE" ]; then
+    echo "⚠️  Warning: no local label list for $GH_REPO outside a git repository"
+    echo "   Skipping label validation. Labels will be validated by GitHub."
     gh issue create "${GH_ARGS[@]}"; exit $?
 fi
 
