@@ -920,3 +920,25 @@ PR mode, round 1. Cross-model: Gemini completed (EXIT=0), Codex completed (EXIT=
 - [ ] (suggestion) "(else it says it fetched only: `git -C <clone> pull`)" reads as merge_pr.sh's output; it prints "fetched only: <reason>" and no command (adversarial, merge_pr.sh:2301) — `.agent/WORKTREE_GUIDE.md:318`
 - [ ] (suggestion) _rc_tool_distros globs `*/` before `.*/`: a root-level call on a two-distro root whose first glob falls between the tool's two renames and second after the old directory's removal sees neither name and silently takes the other distro; a microsecond window during a concurrent sync; globbing `.*/` first closes it but for a descheduled shell; one line (Codex, checked against output.py) — `.agent/project_types/ros2_colcon/adapter.sh:797`
 - [ ] (suggestion) Not worth doing now: a worktrees= override directly under the root (e.g. <root>/wt) is taken as a distro by step 1, so calls from inside a package worktree there are refused (truly); registry_worktree_dir would close it (adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:906`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-18 22:35 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #514 at `7ac39c89`
+**Sources**: 3 (Local Review @ `3dd61876` (covers 7ac39c89 via bookkeeping; Gemini, Codex and a fresh Claude reviewer completed), Local Review (Pre-Push) @ `93e2693b` (covers 7ac39c89 via bookkeeping), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+PR mode, round 1 triage. Hosted reviews: none (0 reviews, 0 inline comments, 0 conversation comments on the pull request). CI: code head e18bdcc8 has no run of its own; 3dd61876, whose tree differs from it only in progress.md, passed every job (Validate Adapter Contract, Lint (pre-commit), Validate Documentation, repos-manifest tests 3.10 and 3.14, on both the push and pull_request runs). At the record-only head 7ac39c89, after about 5 minutes: Validate Adapter Contract, Validate Documentation and both repos-manifest test jobs pass; Lint (pre-commit) still pending on both runs. Mergeable: MERGEABLE. Each finding below was checked against the cited lines (adapter.sh:1-25, 72, 797, 902-912; docs/manifest/design.md:133, 159; WORKTREE_GUIDE.md:318 against merge_pr.sh:2301). Pre-push round 5's first suggestion is the same as this round's first, and is recorded once; its second was not ruled by the Checkpoint and is ruled below. Four findings remain open, to be fixed in this pull request before the owner's merge decision.
+
+### Findings
+- [ ] (suggestion, Local Review + Local Review (Pre-Push) round 5) The distro paragraph and the adapter header do not say the calling directory is taken as a physical path too; and "or `sync` with no `--distro` when nothing is resolved yet" holds only from outside every distro's directory (from <root>/<x>/ it passes --distro x). Say both — `docs/manifest/design.md:133,159`, `.agent/project_types/ros2_colcon/adapter.sh:72`
+- [ ] (suggestion, Local Review) The header's opening still says the adapter "reads the manifest from the hosting dir only" and "Two routes to that directory (issue #436)", while the tool route is checked first; say three routes — `.agent/project_types/ros2_colcon/adapter.sh:5-11`
+- [ ] (suggestion, Local Review) "(else it says it fetched only: `git -C <clone> pull`)" reads as merge_pr.sh's output; it prints "fetched only: <reason>" and no command. Reword so the command is the reader's next step, not the script's output — `.agent/WORKTREE_GUIDE.md:318`
+- [ ] (suggestion, Local Review (Codex)) `_rc_tool_distros` globs `*/` before `.*/`, so a call during the tool's swap can see neither name and silently take the other distro; glob the set-aside `.*/` names first — `.agent/project_types/ros2_colcon/adapter.sh:797`
+
+### False positives
+- (Local Review, suggestion 5: no action, host ruling) A `worktrees=` override placed directly under the root is taken as a distro by step 1 and calls from a package worktree there are refused — neither the tool nor the workspace places it there by default, and the refusal it gives is true, not a wrong answer.
+- (Local Review (Pre-Push) round 5, suggestion 2: no action, triage ruling) A root that can be entered but not listed skips step 1 — then step 2 decides: on a one-distro root it answers the only distro, the same answer step 1 would give from that distro's directory and the same as any call from outside it; on a root with several it refuses. No call gets a wrong distro, and the tool never makes such a root.
