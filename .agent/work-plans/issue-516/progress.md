@@ -413,3 +413,35 @@ Checked by hand at 81edecc: test_worktree_create.sh 101 passed / 0 failed. The P
 **Decision**: address
 
 The four open findings are fixed as the Integrated Review says: the guide sentence; a relative --plan-file made absolute against the caller's directory when the argument is parsed; no dangling "said:" when git wrote nothing; the three test points. The pull request body's sentence that the plan comment line is printed "when a plan file was given" is corrected by the host to "when the plan file was found".
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 13:48 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent abcbbae1ea267062f, resume 1 of 3)
+
+**PR**: #526 at `c4256be2`
+**Addressed**: Integrated Review at `81edecc` (2026-11-19 13:39 -05:00)
+**Commits**: 114b032d, e8d94d6b, 3ebf2d67, c4256be2
+
+### Actions
+- [x] Guide sentence: now "prints the commands to push the branch, open the draft PR and, if the plan file was found, post the plan by hand" — `.agent/WORKTREE_GUIDE.md:394` (c4256be2)
+- [x] Relative --plan-file: made absolute against `$PWD` in the `--plan-file)` parse case, before any cd; the conversion where HAS_PLAN is set is removed. The usage text now says a relative path is relative to the directory the script is run from, and `start-task`'s SKILL.md (the `--plan-file` bullet) says the same, naming the session's directory in step 3; neither said anything before. New test: run from `$SB13/drafts` with `--plan-file "sub/plan 74.md"`; the plan is found, `pr create --draft --title [PLAN] Issue #74`, and the comment gets `$SB13/drafts/sub/plan 74.md`, readable. It fails without the fix ("Plan file not found", no comment). The SB13 and SB14 relative-plan cases already run from the directory their path is relative to (the workspace root); their comments are adjusted — `.agent/scripts/worktree_create.sh` parse loop, usage; `.claude/skills/start-task/SKILL.md` (114b032d)
+- [x] No dangling "said:": the "git push -u origin <branch> said:" phrase and git's text print only when push_err is non-empty; otherwise "Push failed — skipping draft PR (non-fatal)." New test via the git double (`STUB_PUSH=silent-fail`, a push that fails with nothing on stderr); fails without the fix — `.agent/scripts/worktree_create.sh` create_draft_pr (e8d94d6b)
+- [x] Test points: the body-file check has its own fail message printing the saved body; the SB13 comment check is `grep -qxF` on the full line; the --print-path-only case captures stderr to a file and checks the warning, push line and gh_create_pr.sh line reached it — `.agent/scripts/tests/test_worktree_create.sh` (3ebf2d67)
+
+Departure: the new caller-directory test runs from a subdirectory of the workspace, not a folder outside it, because the user-tier guard refuses a cwd that is neither in the workspace nor under a registered project root (tried first: "refusing to run: ... is neither inside the workspace ...").
+
+Suites run (each on its own with bash; the full pre-commit pass is left to the host):
+- test_worktree_create.sh: PASS: 103 / FAIL: 0
+- test_precommit_hook_path.sh: 19 passed, 0 failed
+- test_merge_pr_skill.sh: 132 passed, 0 failed
+- test_user_tier_guard.sh: 64 passed, 0 failed
+- test_validate_workspace_stale.sh: 126 passed, 0 failed
+- test_user_tier_install.sh: 276 passed, 0 failed
+- test_package_issue_loop.sh: 220 passed, 0 failed
+- test_records_write_gate.sh: 68 passed, 0 failed
+- test_skill_paths.sh: 163 passed, 0 failed
+- test_project_registry.sh: Results: 425 passed, 0 failed
+- test_merge_pr.sh: Results: 170 passed, 0 failed
+- test_ros2_colcon.sh: Results: 1375 passed, 0 failed, 0 skipped
