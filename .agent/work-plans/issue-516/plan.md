@@ -68,3 +68,9 @@ None.
 ## Estimated Scope
 
 Single PR.
+
+## Added after the plan was approved
+
+- A relative `--plan-file` is resolved from the caller's directory (`CALLER_DIR`), where the argument is parsed, not from the workspace root. Asked for by the round 2 `## Local Review (Pre-Push)` (2026-11-19 13:34 -05:00) and fixed by the `## Integrated Review` (2026-11-19 13:39 -05:00, PR #526); `CALLER_DIR` in place of `$PWD` came from the `## Local Review` at `e1b99bf1`.
+- The `start-task` SKILL.md and the script's usage text say what a relative plan path is relative to. Asked for in the host's handoff for that `## Integrated Review` fix round (after its `## Checkpoint`, 2026-11-19 13:39 -05:00).
+- The hint's `--body` carries the same body as the draft PR's body file, so it now has the `## Summary` heading and the issue title (plan-review note 4 had accepted the hint without them). Follows from suggestion 6 of the round 1 `## Local Review (Pre-Push)` (2026-11-19 13:12 -05:00): build the body once.
