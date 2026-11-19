@@ -529,3 +529,13 @@ Round 3's must-fix, re-run: (1) gone — on a fresh system `build -- --packages-
 - [ ] (suggestion) In a selection run the report says "built: X" for a layer where colcon built nothing ("ignoring unknown package", "0 packages finished"); "rebuilt with selection" would not mislead — `tools/repos-manifest/src/repos_manifest/build.py:847`
 - [ ] (suggestion) The selection refusal lists a built layer whose repos differ from its record under "not built" — `tools/repos-manifest/src/repos_manifest/build.py` `not_built_for_selection`
 - [ ] (suggestion) design.md's clause that the "new since" note "still comes at the next build without selection" describes a case a selection run now refuses; drop it — `tools/repos-manifest/docs/design.md:911-912`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 11:57 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 4 found three must-fix, all quick: stray committed files and two false sentences in design.md; this is the host's second address in a row at this checkpoint, so the next answer here is the owner's)
+**After**: rounds
+**Decision**: address
+
+Round 4 confirmed both round 3 must-fix gone and the fixer's --keep-going choice sound. Its three must-fix are fixed as follows. (1) The colcon log files committed under tools/repos-manifest/log/ are removed from the branch. (2) design.md says what --packages-skip-build-finished really does (colcon skips every package whose most recent build finished, whichever run that was, so changed sources of such a package are not rebuilt) and that a layer recorded after such a run means every package has been built at some point, not that it is up to date; the code is not changed. (3) design.md says that only a build of that layer without package selection brings back a layer lost to a rejected argument. The three suggestions are fixed too: the report says "rebuilt with selection" in a selection run; the selection refusal separates layers that are not built from layers whose repos differ from their record; the clause about the "new since" note that now describes nothing is removed or corrected.
