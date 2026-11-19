@@ -255,3 +255,29 @@ The finding and notes of the second review are resolved as the checkpoint decide
 **Decision**: proceed
 
 The third Plan Review found every printed line runs as written in all four cases. Its notes 1 to 3 go to the implementer in the handoff: the test matches the escaped form printf %q prints for the body; the printed cd path and plan-file path are quoted with printf %q too; the hint names set_git_identity_env.sh, since gh_create_pr.sh stops when AGENT_NAME or AGENT_MODEL is unset. Note 4 (the inline body has no Summary heading or issue title) is accepted as it is. Note 5 is older behaviour and no action.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 13:03 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-516 at `1ac07db1`
+
+- `.agent/scripts/worktree_create.sh`: `create_draft_pr` returns 0 after a failed push, so the script goes on to `cd "$ROOT_DIR"`, the next steps and the hook preflight. `pr_title` is computed above the push. The warning now prints, each quoted with `printf %q`: `cd <worktree>`, `git push -u origin <branch>`, `<scripts dir>/gh_create_pr.sh --draft [-R <repo>] [--base <parent>] --title <[PLAN] title> --body <Closes #N[ / Part of #P] or the skill text>`, and when a plan file was given, "The plan was not posted" with `gh pr comment <branch> [-R <repo>] --body-file <absolute plan>`. It names `set_git_identity_env.sh` (path quoted), since `gh_create_pr.sh` stops when `AGENT_NAME`/`AGENT_MODEL` are unset.
+- `.agent/scripts/tests/test_worktree_create.sh`: a bare origin whose `pre-receive` hook (written after the set-up push, `chmod +x`) refuses pushes; `--issue 71 --plan-file` asserts exit 0, the worktree on `feature/issue-71`, "Push failed", the quoted `cd`, the push line, the absolute `gh_create_pr.sh --draft` line with the `printf %q` form of `Closes #71`, `set_git_identity_env.sh`, the not-posted plan line and "To enter this worktree"; a second sandbox with `--print-path-only` asserts exit 0 and stdout exactly the worktree path. With `return 1` put back temporarily all three checks fail (checked).
+- `.agent/WORKTREE_GUIDE.md`: one sentence under "Draft PRs with Plan File": a failed push warns, prints the commands, and the worktree is still made; the failed push alone does not make the script exit non-zero.
+- Paste trial: a sandbox workspace whose path has a space (`my ws`), all `.agent/scripts/*.sh` copied in, a local bare origin refusing pushes, `gh` stubbed to log its arguments. `worktree_create.sh --issue 81 --type workspace --plan-file "<sandbox>/plan 516.md"` exited 0 and printed the hint. After removing the hook, the four printed lines (cd, push, gh_create_pr.sh, gh pr comment) were saved as-is and run with `bash -e` with AGENT_NAME/AGENT_MODEL set: exit 0, the branch landed on origin, gh got `pr create --draft --title "[PLAN] Issue #81" --body "Closes #81" + signature` and `pr comment feature/issue-81 --body-file "<sandbox>/plan 516.md"` with the space intact. Sandbox removed.
+- Departures: the worktree directory name in the tests is `issue-origin11-71` / `issue-origin12-72` (the slug comes from the bare origin's name), not `issue-workspace-<N>`; the guide sentence is worded "does not make it exit non-zero" rather than "exits 0", which the code cannot promise for other failures.
+
+Suites run (each on its own with bash; the full pre-commit pass is left to the host):
+- test_worktree_create.sh: PASS: 93 / FAIL: 0
+- test_merge_pr.sh: Results: 170 passed, 0 failed
+- test_merge_pr_skill.sh: 132 passed, 0 failed
+- test_precommit_hook_path.sh: 19 passed, 0 failed
+- test_project_registry.sh: Results: 425 passed, 0 failed
+- test_validate_workspace_stale.sh: 126 passed, 0 failed
+- test_user_tier_install.sh: 276 passed, 0 failed
+- test_records_write_gate.sh: 68 passed, 0 failed
+- test_ros2_colcon.sh: Results: 1375 passed, 0 failed, 0 skipped
+- test_skill_paths.sh: 163 passed, 0 failed
+- test_user_tier_guard.sh: 64 passed, 0 failed
+- test_package_issue_loop.sh: 220 passed, 0 failed
