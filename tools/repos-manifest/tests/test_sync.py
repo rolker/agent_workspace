@@ -265,9 +265,11 @@ def test_a_resolved_directory_that_cannot_be_written_is_named_without_resolves_o
     else:
         resolved.write_text("a person's file\n")
     assert run(system, "sync", "--distro", "rolling") == 1
-    err = capsys.readouterr().err
-    assert f"the resolved files' directory {resolved}: " in err, err
-    assert "--out" not in err and "resolve" not in err.replace("resolved", ""), err
+    out = capsys.readouterr().out
+    assert f"ERROR: the resolved files' directory {resolved}: " in out, out
+    assert "None of this distro's repos was touched" in out
+    assert "distro rolling:\n  reported above; nothing of it was changed" in out
+    assert "--out" not in out and "resolve" not in out.replace("resolved", ""), out
 
 
 @pytest.mark.parametrize(
@@ -377,11 +379,12 @@ def test_sync_from_inside_the_resolved_files_says_where_to_run_it(two_distros, c
     inside = system / ".repos-manifest" / "resolved" / "jazzy"
     capsys.readouterr()
     assert run(inside, "sync", "--distro", "jazzy") == 1
-    err = capsys.readouterr().err
-    assert err.endswith(
+    out = capsys.readouterr().out
+    assert (
         "which replacing it would delete from under this shell; run `sync` from the system"
-        " directory or from below it, outside .repos-manifest/\n"
-    ), err
+        " directory or from below it, outside .repos-manifest/. None of this distro's repos was"
+        " touched\ndistro jazzy:\n  reported above; nothing of it was changed\n"
+    ) in out, out
 
 
 @pytest.mark.parametrize("argv", [["sync"], ["init", "/m.manifest.yaml", "--yes"]])
