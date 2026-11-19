@@ -1149,11 +1149,43 @@ def test_a_hook_that_edits_a_tracked_file_stops_a_two_step_move_after_its_switch
     hook.write_text("#!/bin/sh\necho edited by a hook >>README\nexit 0\n")
     hook.chmod(0o755)
     _pin(manifest, "dev")
+    was = head(clone)
     out = _sync(sys_dir, capsys, 1)
-    assert "`git switch` exited 0 and left the repo half-changed: HEAD was at" in out, out
-    assert f"is at {local[:12]} (refs/heads/dev); changed, not staged: M README" in out, out
+    assert (
+        "the move left the repo half-changed. What ran, in order: 1. `git switch` (exit 0): HEAD"
+        f" from main at {was[:12]} to dev at {local[:12]}. HEAD is now dev at {local[:12]};"
+        " changed, not staged: M README. These changes were made by git or a hook it ran"
+    ) in out, out
     assert head(clone) == local  # not fast-forwarded on a tree a hook changed
     assert "moving" not in state_of(sys_dir)["a"]
+
+
+def test_a_post_merge_hook_that_edits_a_file_is_reported_with_the_fast_forward(system, capsys):
+    """Case 1a of the round-3 review: the fast-forward ran, then a hook edited a file. The
+    report says the local branch was fast-forwarded, from and to which commit, and the tree a
+    hook changed is not switched back (so the edit is not carried onto main)."""
+    sys_dir, manifest, remote, clone = system
+    git("branch", "-q", "dev", "origin/dev", cwd=clone)
+    local = git("rev-parse", "dev", cwd=clone)
+    new = push_commit(remote, "more", "x\n", "dev")
+    hook = clone / ".git" / "hooks" / "post-merge"
+    hook.write_text("#!/bin/sh\necho by-hook >>README\n")
+    hook.chmod(0o755)
+    _pin(manifest, "dev")
+    was = head(clone)
+    out = _sync(sys_dir, capsys, 1)
+    assert (
+        "the move left the repo half-changed. What ran, in order: 1. `git switch` (exit 0): HEAD"
+        f" from main at {was[:12]} to dev at {local[:12]}; 2. `git merge --ff-only` (exit 0)"
+        f" fast-forwarded dev from {local[:12]} to {new[:12]}. HEAD is now dev at {new[:12]};"
+        " changed, not staged: M README. These changes were made by git or a hook it ran"
+    ) in out, out
+    assert branch(clone) == "dev" and head(clone) == new
+    assert git("diff", "--name-only", "main", "--", "README", cwd=clone) == "README"
+    git("checkout", "--", "README", cwd=clone)
+    # Cleaned up by the person: the repo is on the manifest's version, and is recorded.
+    assert "up to date (1)" in _sync(sys_dir, capsys)
+    assert state_of(sys_dir)["a"]["version"] == "dev"
 
 
 # --- The record and the layer ----------------------------------------------------------------

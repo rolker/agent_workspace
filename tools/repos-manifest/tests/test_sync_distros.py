@@ -439,9 +439,15 @@ def test_a_switch_that_leaves_a_half_change_says_what_it_left(two, tmp_path, cap
     done = _sync_with_stub(tmp_path, system, "switch", "half", clone, "refs/heads/main")
     assert done.returncode == 1, done.stdout + done.stderr
     assert (
-        f"ERROR: jazzy/core/src/a: `git switch` exited 128 and left the repo half-changed: HEAD is"
-        f" still at {was[:12]} (refs/heads/main); staged: A BRANCH. These changes are git's,"
-        " not a person's (there were none before); sync does not put them back"
+        "ERROR: jazzy/core/src/a: the move left the repo half-changed. What ran, in order: 1."
+        f" `git switch` (exit 128): HEAD stayed main at {was[:12]}. HEAD is now main at"
+        f" {was[:12]}; staged: A BRANCH. These changes were made by git or a hook it ran (the"
+        " repo had no tracked changes before); sync does not put them back"
+    ) in done.stdout, done.stdout
+    # The branch the switch made has no upstream, and the report says so with the commands.
+    assert (
+        "jazzy/core/src/a: branch dev has no upstream configured: the move did not finish, so it"
+        " was not set; to set one by hand:"
     ) in done.stdout, done.stdout
     assert "moving" not in state_of(system, "jazzy")["a"]
     capsys.readouterr()
@@ -449,3 +455,33 @@ def test_a_switch_that_leaves_a_half_change_says_what_it_left(two, tmp_path, cap
     out = capsys.readouterr().out
     assert "left alone: has uncommitted changes (1 files)\n" in out, out
     assert "a sync was stopped" not in out
+
+
+def test_a_switch_back_that_a_hook_changes_is_reported_in_order(two, tmp_path, capsys):
+    # A two-step move whose fast-forward fails on a clean tree is switched back; a hook that
+    # edits a file on that switch back leaves a half-change, and the report lists all three
+    # calls in order, with where HEAD is now.
+    system, manifest, remote = two
+    clone = system / "jazzy/core/src/a"
+    git("branch", "-q", "dev", "origin/dev", cwd=clone)
+    local = git("rev-parse", "dev", cwd=clone)
+    push_commit(remote, "more", "x\n", "dev")
+    was = head(clone)
+    hook = clone / ".git" / "hooks" / "post-checkout"
+    hook.write_text(
+        "#!/bin/sh\n"
+        '[ "$(git symbolic-ref HEAD)" = refs/heads/main ] && echo hook >>README\nexit 0\n'
+    )
+    hook.chmod(0o755)
+    rewrite_manifest(manifest, lambda d: d["repositories"]["a"].update(version="dev"))
+    done = _sync_with_stub(tmp_path, system, "merge", "fail")
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert (
+        "the move left the repo half-changed. What ran, in order: 1. `git switch` (exit 0): HEAD"
+        f" from main at {was[:12]} to dev at {local[:12]}; 2. `git merge` (exit 1): HEAD stayed"
+        f" dev at {local[:12]}; 3. `git switch` (exit 0): HEAD from dev at {local[:12]} to main"
+        f" at {was[:12]}. HEAD is now main at {was[:12]}; changed, not staged: M README. These"
+        " changes were made by git or a hook it ran"
+    ) in done.stdout, done.stdout
+    assert "nothing after the steps above was run here" in done.stdout
+    assert branch(clone) == "main" and git("rev-parse", "dev", cwd=clone) == local

@@ -901,16 +901,21 @@ def _change(
     except (OSError, ManifestError) as exc:
         return Done(FAILED, f"its record cannot be written ({exc}); not updated", notes)
     before = Before.read(git, turn.git_dir)
+    ran: List[str] = []  # what ran, in order, for a report of a move that did not finish
     for index, (step, end) in enumerate(steps):
+        was = _position(git)
         status, printed, error = git.run(*step, change=True)
         said_by_git = (printed + error).rstrip()
+        ran.append(_what_ran(step, status, was, _position(git)))
         # Judged by the state the step leaves, whatever its exit status: a step that exited 0
         # but left tracked changes (a hook that edits files) stops the move here too.
         if _arrived(git, end, want):
             if status != 0:
                 notes.append(f"moved, but `git {step[0]}` exited {status}:\n{said_by_git}")
             continue
-        if index > 0:  # undo the first step: back where it was
+        if index > 0 and tracked_changes(git) == 0:
+            # Back where it was, from a clean tree only: a change git or a hook made is never
+            # carried back onto the branch the repo was on.
             back = ["switch", "-q", "--no-overwrite-ignore", "--detach", before.head]
             if before.symbolic is not None:
                 back = [
@@ -919,7 +924,10 @@ def _change(
                     "--no-overwrite-ignore",
                     before.symbolic[len("refs/heads/") :],
                 ]
-            git.run(*back, change=True)
+            was = _position(git)
+            back_status, back_out, back_err = git.run(*back, change=True)
+            ran.append(_what_ran(back, back_status, was, _position(git)))
+            said_by_git = "\n".join(t for t in (said_by_git, (back_out + back_err).rstrip()) if t)
         after = Before.read(git, turn.git_dir)
         if after == before:
             # The record without the moving line; a repo that had none is recorded as one
@@ -933,7 +941,14 @@ def _change(
         # What git left is said as it is; the record loses its moving line, so the next sync
         # does not take this for a run that was stopped.
         turn.put(turn.record if turn.record is not None else turn.new_record(head))
-        return Done(FAILED, _half_changed(git, step[0], status, before, after, said_by_git), notes)
+        if upstream is not None and git.out(
+            "rev-parse", "--verify", "-q", f"refs/heads/{upstream}"
+        ):
+            if not git.out("config", "--get", f"branch.{upstream}.merge"):
+                notes.append(
+                    _no_upstream(git, upstream, "the move did not finish, so it was not set")
+                )
+        return Done(FAILED, _half_changed(git, ran, after, said_by_git), notes)
     if upstream is not None:
         _set_upstream(git, upstream, notes)
     if (git.place / ".gitmodules").is_file():
@@ -942,16 +957,35 @@ def _change(
     return Done(UPDATED, said, notes, commit=target)
 
 
-def _half_changed(git: Git, command: str, status: int, before: Before, after: Before, said: str):
-    """The error for a call that did not get where it was to go and did not leave the repo as
-    it was: where `HEAD` is, and the files that now differ from it, staged or not, which are
-    git's, not a person's (the repo had no tracked changes before)."""
-    where = (
-        f"HEAD is still at {after.head[:12]} ({after.symbolic or 'detached'})"
-        if (after.head, after.symbolic) == (before.head, before.symbolic)
-        else f"HEAD was at {before.head[:12]} ({before.symbolic or 'detached'}) and is at"
-        f" {after.head[:12]} ({after.symbolic or 'detached'})"
-    )
+def _position(git: Git) -> Tuple[str, Optional[str]]:
+    return git.out("rev-parse", "HEAD") or "", git.out("symbolic-ref", "-q", "HEAD")
+
+
+def _shown(position: Tuple[str, Optional[str]]) -> str:
+    commit, symbolic = position
+    if symbolic is not None and symbolic.startswith("refs/heads/"):
+        return f"{symbolic[len('refs/heads/'):]} at {commit[:12]}"
+    return f"detached at {commit[:12]}"
+
+
+def _what_ran(
+    step: Sequence[str], status: int, was: Tuple[str, Optional[str]], now: Tuple[str, Optional[str]]
+) -> str:
+    """One call of a move, as the report of a move that did not finish gives it."""
+    if step[0] == "merge" and was[1] == now[1] and was[0] != now[0] and now[1] is not None:
+        return (
+            f"`git merge --ff-only` (exit {status}) fast-forwarded"
+            f" {now[1][len('refs/heads/'):]} from {was[0][:12]} to {now[0][:12]}"
+        )
+    moved = f"from {_shown(was)} to {_shown(now)}" if was != now else f"stayed {_shown(now)}"
+    return f"`git {step[0]}` (exit {status}): HEAD {moved}"
+
+
+def _half_changed(git: Git, ran: Sequence[str], after: Before, said: str) -> str:
+    """The error for a move that did not get where it was to go and did not leave the repo as
+    it was: what ran, in order, where `HEAD` is, and the files that now differ from it, staged
+    or not, which git or a hook it ran made (the repo had no tracked changes before)."""
+    steps = "; ".join(f"{n}. {what}" for n, what in enumerate(ran, 1))
     staged = (git.out("diff", "--cached", "--name-status", "HEAD") or "").splitlines()
     changed = (git.out("diff", "--name-status") or "").splitlines()
     files = ""
@@ -960,11 +994,13 @@ def _half_changed(git: Git, command: str, status: int, before: Before, after: Be
             shown = ", ".join(" ".join(line.split("\t", 1)) for line in lines[:SHOWN_PATHS])
             more = f" and {len(lines) - SHOWN_PATHS} more" if len(lines) > SHOWN_PATHS else ""
             files += f"; {label}: {shown}{more}"
+    where = _shown((after.head, after.symbolic))
     return (
-        f"`git {command}` exited {status} and left the repo half-changed: {where}{files}. These"
-        " changes are git's, not a person's (there were none before); sync does not put them"
-        f" back, as it runs no reset or forced checkout: `git -C {quoted(git.place)} status`"
-        f" shows them, and nothing more was run here:\n{said}"
+        f"the move left the repo half-changed. What ran, in order: {steps}. HEAD is now"
+        f" {where}{files}. These changes were made by git or a hook it ran (the repo had no"
+        " tracked changes before); sync does not put them back, as it runs no reset or forced"
+        f" checkout: `git -C {quoted(git.place)} status` shows them, and nothing after the"
+        f" steps above was run here:\n{said}"
     )
 
 
@@ -997,8 +1033,12 @@ def _set_upstream(git: Git, branch: str, notes: List[str]) -> None:
         if not _fetch_covers(git, branch)
         else f"`git branch --set-upstream-to` exited {status}: {(printed + error).strip()}"
     )
+    notes.append(_no_upstream(git, branch, why))
+
+
+def _no_upstream(git: Git, branch: str, why: str) -> str:
     place = quoted(git.place)
-    notes.append(
+    return (
         f"branch {branch} has no upstream configured: {why}; to set one by hand: git -C {place}"
         f" config branch.{branch}.remote origin && git -C {place} config branch.{branch}.merge"
         f" refs/heads/{branch}"

@@ -803,7 +803,9 @@ check and the call (a build writing a log) makes git refuse, and the repo is lef
 
 Every `git` that changes a repo's tree is one call (a switch, or a fast-forward) that does
 all of what it is for or nothing, except the switch to a local branch followed by its
-fast-forward, whose first step is undone if the second does not get there. After each call,
+fast-forward, whose first step is undone (a switch back) if the second does not get there and
+the tree is clean, so a change git or a hook made is never carried back onto the branch the
+repo was on. After each call,
 whatever its exit status, `sync` reads the repo's state: success is `HEAD` where that call was
 to put it (for the switch of a two-step move, the local branch) with no tracked changes (a
 `post-checkout` hook that fails makes `git switch` exit non-zero after it has switched; that
@@ -811,11 +813,14 @@ is reported, and the step counts, so a two-step move goes on to its fast-forward
 exits 0 but changes tracked files stops the move there). A call that did not get there and
 left the repo as it was (`HEAD`, the branch, the configuration, the index and the tracked
 status compared) is reported and the repo left. One that left it otherwise is an error that
-says what git left: where `HEAD` is (or that it is still where it was) and the files that now
-differ from it, staged or not, which are git's, since the repo had no tracked changes before;
-`sync` does not put them back, and nothing more runs in that repo. Its record loses the
-`moving` line, so the next `sync` reports the uncommitted changes and does not take them for a
-run that was stopped. `sync` never runs `reset`, `checkout -f`,
+says what ran, in order (each call with its exit status and where it took `HEAD`, a
+fast-forward naming the branch and both commits, and the switch back when it ran), where
+`HEAD` is now, and the files that now differ from it, staged or not, which git or a hook it ran
+made, since the repo had no tracked changes before; `sync` does not put them back, and nothing
+after those calls runs in that repo. A branch such a move made is left without an upstream,
+and the same report says so, with the two `git config` commands that set one. Its record loses
+the `moving` line, so the next `sync` reports the uncommitted changes and does not take them
+for a run that was stopped. `sync` never runs `reset`, `checkout -f`,
 `clean`, `stash`, `rebase`, `pull`, `push`, `gc` or `prune`, never deletes a branch, and passes
 no `--force` or `--no-verify`. Each `git` runs with automatic `gc` and `maintenance` off and
 with `submodule.recurse` off.
