@@ -107,9 +107,13 @@ its repos; `sync` clones the ones that are missing and updates the ones that are
 version the manifest named before is moved to the one it names now. A clone a person has
 changed is left as it is and reported: one with uncommitted changes, commits not on `origin`,
 another branch checked out, an operation in progress, or a file git does not track (untracked
-or ignored) where an incoming file goes. Untracked files elsewhere do not stop an update. An
+or ignored) where an incoming file goes. Untracked files elsewhere do not stop an update. So
+is a clone where the update would remove or replace a checked-out submodule, or move the
+commit of one a person has moved; submodules are never updated, and a sparse checkout is left
+as it is. A version given as a commit is followed only when `origin` holds it. An
 `origin` a person set is left as set; the manifest's new url replaces `origin` only when the
-clone still has the url `sync` recorded and no local branch has commits it lacks. A repo the
+clone still has the url `sync` recorded and no local branch has commits it lacks. No line
+`sync` prints shows a url's user name and password. A repo the
 manifest moves to another layer is not moved: `sync` prints the `mv` command. A clone with
 commits not on `origin` is not rebased yet; `sync` prints the `git pull --rebase` command for a
 person to run. Both need `git`, and `vcs` from vcs2l or vcstool, on `PATH`.
