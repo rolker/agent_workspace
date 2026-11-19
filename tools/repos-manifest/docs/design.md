@@ -1028,7 +1028,11 @@ the manifest. It stays with `colcon`:
   `=value` form; of an option given
   more than once only the last occurrence counts (`--packages-skip a --packages-skip b` leaves
   out only `b`), and one whose last occurrence has no values leaves nothing out and is not
-  recorded. A regex is recorded as text, not as the names it matched. The list says what the
+  recorded. A regex is recorded as text, not as the names it matched. A value that holds a
+  control or invisible character (a newline, a tab, a bidirectional override; the rule a
+  manifest's names and values follow) or that is not UTF-8 is refused before anything runs,
+  the record and `setup.bash` untouched, since the record could not hold it as one line of text;
+  the message shows it with such characters escaped. The list says what the
   last run left out, not what `install/` holds: `colcon` does not clean `install/`, so a package
   an earlier build installed stays there when a later run leaves it out (`--packages-skip b`,
   then `--packages-skip d`, left a, b, c and d installed). A rebuild with another list is a

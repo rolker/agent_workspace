@@ -57,7 +57,7 @@ from .system import (
     setup_parts,
     warn,
 )
-from .yamlload import ManifestError
+from .yamlload import ManifestError, has_unsafe_char
 
 # The variables a sourced colcon `setup.bash` extends.
 PREFIX_VARIABLES = ("COLCON_PREFIX_PATH", "AMENT_PREFIX_PATH", "CMAKE_PREFIX_PATH")
@@ -658,6 +658,44 @@ def left_out(colcon_args: Sequence[str]) -> Dict[str, List[str]]:
     return {option: found[option] for option in LEFT_OUT if found.get(option)}
 
 
+def _shown(value: str) -> str:
+    """`value` quoted, with each character that a line cannot show as itself written as an
+    escape: a control or invisible character as `\\uXXXX` (`\\xXX` below 0x100), and a byte of
+    the argument that is not UTF-8 (Python holds it as a lone surrogate) as `\\xXX`."""
+    out = []
+    for ch in value:
+        code = ord(ch)
+        if 0xDC80 <= code <= 0xDCFF:
+            out.append(f"\\x{code - 0xDC00:02x}")
+        elif ch == "\\" or has_unsafe_char(ch):
+            out.append(f"\\x{code:02x}" if code < 0x100 else f"\\u{code:04x}")
+        else:
+            out.append(ch)
+    return "'" + "".join(out) + "'"
+
+
+def refused_values(colcon_args: Sequence[str]) -> None:
+    """Refuse, before anything runs, a skip or ignore value the record cannot hold as one line
+    of plain text: one that holds a control or invisible character (the rule names and values
+    of a manifest follow) or that is not UTF-8. Such a value would be written into the layer's
+    record, which `read_built` then refuses, or would break the report that names it."""
+    for option, values in left_out(colcon_args).items():
+        for value in values:
+            try:
+                value.encode("utf-8")
+            except UnicodeEncodeError:
+                what = "is not UTF-8"
+            else:
+                if not has_unsafe_char(value):
+                    continue
+                what = "holds a control or invisible character"
+            raise Refusal(
+                f"the {option} value {_shown(value)} {what}, which the layer's record cannot"
+                " hold as one line of text; nothing was run",
+                "Give the package name or pattern in plain text",
+            )
+
+
 def without_text(without: Dict[str, List[str]]) -> str:
     """A record's `without` as the report names it: `--packages-skip a b; --packages-ignore c`."""
     if not without:
@@ -709,6 +747,7 @@ def refused_arguments(colcon_args: Sequence[str]) -> None:
             else:
                 given = f"{name} (colcon would reject it as ambiguous, and it could be {option})"
             raise Refusal(f"{given} is not passed to colcon: {why}; nothing was run", next_step)
+    refused_values(colcon_args)
 
 
 def package_selection(colcon_args: Sequence[str], to_build: Sequence[str]) -> str:

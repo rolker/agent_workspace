@@ -1178,6 +1178,124 @@ def test_a_record_with_a_list_written_by_build_reads_back_for_the_next_build(sys
     assert run(system, "build", "top", "--", "--packages-select", "t") == 0
 
 
+@pytest.mark.parametrize(
+    "given, shown, what",
+    [
+        (
+            ["--packages-skip", "grid\nmap"],
+            "--packages-skip value 'grid\\x0amap'",
+            "holds a control",
+        ),
+        (
+            ["--packages-skip-regex", "^a\t"],
+            "--packages-skip-regex value '^a\\x09'",
+            "holds a control",
+        ),
+        # A byte that is not UTF-8 reaches Python as a lone surrogate (`surrogateescape`).
+        (
+            ["--packages-ignore=grid\udcffmap"],
+            "--packages-ignore value 'grid\\xffmap'",
+            "is not UTF-8",
+        ),
+        # Beside package selection too: the report would name it.
+        (["--packages-select", "m", "--packages-skip", "a\u202eb"], "'a\\u202eb'", "holds a"),
+    ],
+)
+def test_a_skip_value_the_record_cannot_hold_is_refused_and_the_old_record_survives(
+    system, stub, capsys, given, shown, what
+):
+    assert run(system, "build", "--", "--packages-skip", "x") == 0
+    before = (system / ".repos-manifest/built-jazzy.yaml").read_text()
+    setup = (system / "setup.bash").read_text()
+    count = len(runs(stub))
+    capsys.readouterr()
+    assert run(system, "build", "--", *given) == 1
+    out, err = capsys.readouterr()
+    assert f"{shown} {what}" in err and "nothing was run" in err
+    assert err.isascii()
+    assert out == ""  # no report: nothing ran
+    assert len(runs(stub)) == count
+    assert (system / ".repos-manifest/built-jazzy.yaml").read_text() == before
+    assert (system / "setup.bash").read_text() == setup
+    assert run(system, "build") == 0  # the record still reads
+
+
+AWKWARD = [
+    "",
+    " ",
+    "  x",
+    "x ",
+    "a b",
+    "yes",
+    "no",
+    "on",
+    "1",
+    "0x1",
+    "1e3",
+    "~",
+    "null",
+    "a: b",
+    "- x",
+    "-x",
+    "-1",
+    "#c",
+    "x #c",
+    "'q'",
+    '"q"',
+    "\\",
+    "a\\nb",
+    "*",
+    "&a",
+    "*a",
+    "!tag",
+    "%x",
+    "@x",
+    "`x",
+    "{x",
+    "[x",
+    "|",
+    ">",
+    "?",
+    ",",
+    "\u00e9",
+    "\u65e5\u672c",
+    "\U0001f600",
+    "x" * 300,
+    "\n",
+    "\r",
+    "\t",
+    "\x00",
+    "\x1b[31m",
+    "\x7f",
+    "\x85",
+    "\u2028",
+    "\u200b",
+    "\u202e",
+    "\ufeff",
+    "\xa0",
+    "\udcff",
+    "\ud800",
+]
+
+
+@pytest.mark.parametrize("value", AWKWARD, ids=[ascii(value)[:20] for value in AWKWARD])
+@pytest.mark.parametrize("option", ["--packages-skip", "--packages-ignore-regex"])
+def test_build_never_writes_a_list_its_own_reader_refuses(system, stub, capsys, option, value):
+    from repos_manifest.system import read_built
+
+    assert run(system, "build", "--", "--packages-skip", "x") == 0
+    before = read_built(system, "jazzy")
+    status = run(system, "build", "--", option, value, "--packages-skip-regex", "z")
+    records = read_built(system, "jazzy")  # never refused
+    if status == 0:
+        expected = build.left_out([option, value, "--packages-skip-regex", "z"])
+        assert all(record.without == expected for record in records.values())
+    else:
+        assert records == before
+        assert "nothing was run" in capsys.readouterr().err
+    assert run(system, "build") == 0
+
+
 def test_the_lock_file_is_written_before_it_is_cut_to_length(system, monkeypatch):
     from repos_manifest import system as system_module
 
