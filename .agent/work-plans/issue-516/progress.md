@@ -445,3 +445,51 @@ Suites run (each on its own with bash; the full pre-commit pass is left to the h
 - test_project_registry.sh: Results: 425 passed, 0 failed
 - test_merge_pr.sh: Results: 170 passed, 0 failed
 - test_ros2_colcon.sh: Results: 1375 passed, 0 failed, 0 skipped
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-19 13:56 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent ab8fe1f4c5985ec5a, resume 2 of 3)
+
+**PR**: #526 at `e1b99bf1`
+**Depth**: Deep (reason: whole-PR diff over 200 lines with plan/progress; same specialists as Standard)
+**Must-fix**: 1 | **Suggestions**: 4
+
+Verified by hand at e1b99bf1:
+- test_worktree_create.sh: 103 passed / 0 failed. test_skill_paths.sh: 163 passed / 0 failed. shellcheck --severity=warning: clean on both scripts.
+- Relative --plan-file: sandboxes running origin/main (dd53c590) and HEAD side by side, with a registered single-repository project and a gh stub that records calls. On HEAD, each of these cases found its plan, and the comment read it:
+  - from the workspace root (`plan-root.md`);
+  - from a subdirectory (`sub/` with `plan-sub.md`);
+  - from the project root (`--type project --project demo`, `plan-proj.md`);
+  - through start-task step 3's own invocation shape (`set -f`, an unquoted `$ARGUMENTS` with `--print-path-only`) from the project root, which also printed the right WT.
+- On main the same cases gave:
+  - the workspace root: the plan comment missing (it ran inside the worktree);
+  - the other three: "Plan file not found", with the PR still titled [PLAN].
+- No caller in the repo depends on the old root-relative resolution. The --plan-file mentions in WORKTREE_GUIDE, WORKFORCE_PROTOCOL and docs/design.md use absolute example paths. The usage text and the start-task SKILL.md:230 sentence match the code, and start-task step 3 runs the script from the session's directory without a cd.
+- CI at e1b99bf1: Validate Documentation, Validate Adapter Contract and repos-manifest tests (3.10, 3.14) pass in both runs; Lint (pre-commit) still pending in both. No GitHub reviews or comments.
+
+Outside reviewers:
+- Claude adversarial (fresh subagent): ran, no must-fix, 2 suggestions; the tracking-line one has substance.
+- gemini: ran, EXIT=0, 6 suggestions.
+  - Wrong: the pre-push hook stdout point (git runs hooks with stdout sent to stderr), and the cwd-after-return point (the caller runs `cd "$ROOT_DIR"`).
+  - Trivial: whitespace-only stderr and the `//` path from `/`.
+  - Repeated from earlier rounds: the test path quoting and the gh_create_pr.sh flags (already verified by paste trials).
+- codex: ran, EXIT=0.
+  - It repeated the deferred user-tier guard finding (not raised again).
+  - It made a GH_REPO-override point. Not raised: the success path's `gh pr create` without --repo honours GH_REPO the same way, so the hint matches it.
+  - Control characters in remote hook output: low; git already relays remote sideband output to the terminal on an ordinary push.
+  - The plan-drift notes are folded into the last finding below.
+
+### Findings
+- [ ] (must-fix) The PR body (its Decision summary) has sentences that are now false or stale; fixing it is a body edit, no code change:
+  - "Left open, on purpose: Five suggestions from the last review..." lists the guide sentence, the relative --plan-file, the dangling "said:" and the test points as open, but all four are fixed at e1b99bf1. Only the `**Authored-By**:` title point (with the user-tier guard) is still open.
+  - "Also fixed... The path is now made absolute once" leaves out that a relative path is now relative to the caller's directory. That is a behaviour change: a path relative to the workspace root, given from elsewhere, is no longer found.
+  - "Unchanged: the success path... apart from the relative-path fix": the four sandbox cases predate the caller-relative change, and the push's stdout is now hidden too (next finding).
+  - "Reviews and outcomes: ... Two pre-push code reviews ... test_worktree_create.sh: 101 passed" omits the integrated review, its fix round and this PR review, and the suite now passes 103.
+  — PR #526 body
+- [ ] (suggestion) A successful push no longer shows git's stdout line "branch '<b>' set up to track 'origin/<b>'." The push used `2>/dev/null` before and now uses `2>&1 >/dev/null` on every path; reproduced by the adversarial reviewer. Harmless, but undisclosed: either say so, or drop only stderr on success (Claude adversarial) — `.agent/scripts/worktree_create.sh:1290`
+- [ ] (suggestion) The parse case uses `$PWD`; `CALLER_DIR` (line 40) holds the same value and exists for this purpose, which would keep "caller's directory" in one place (Claude adversarial) — `.agent/scripts/worktree_create.sh:307`
+- [ ] (suggestion) Remote hook output is relayed raw, so terminal control characters in it reach the screen; stripping them with `tr -d` or `cat -v` before indenting would keep the pasted lines legible (codex, low) — `.agent/scripts/worktree_create.sh:1296-1299`
+- [ ] (suggestion) The plan does not mention the caller-relative --plan-file change, the start-task SKILL.md edit, or the full Summary body in the hint; a line under the plan's Approach or the PR body's "what changes" would record the scope (codex) — `.agent/work-plans/issue-516/plan.md`
