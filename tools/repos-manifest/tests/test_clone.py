@@ -12,6 +12,7 @@ import pytest
 import yaml
 
 from helpers import dead_pid, head, make_remote, repo, run, snapshot, temporaries, write_manifest
+from repos_manifest import sync
 from repos_manifest.sync import rename_failure, sweep_temporaries
 from repos_manifest.system import place_problem
 
@@ -197,10 +198,32 @@ def test_a_place_filled_while_cloning_is_left_as_it_is(setup, tmp_path, monkeypa
     _stub_vcs(
         tmp_path,
         monkeypatch,
-        f'cat >/dev/null; mkdir -p "$2/d" "{place}"; echo theirs > "{place}/theirs.txt"',
+        'cat >/dev/null; git init -q "$2/d"; git -C "$2/d" commit -q --allow-empty -m one;'
+        f' mkdir -p "{place}"; echo theirs > "{place}/theirs.txt"',
     )
     assert run(system, "sync") == 1
     assert os.listdir(place) == ["theirs.txt"]
+    assert "ERROR: src/d: appeared meanwhile; left as it is" in capsys.readouterr().out
+    assert temporaries(system) == []
+    assert _recorded(system) == {"a"}
+
+
+def test_a_place_made_while_the_clones_head_is_read_is_left_as_it_is(setup, monkeypatch, capsys):
+    # Reading the clone's HEAD runs a git; the last check of the place comes after it, so an
+    # empty directory made meanwhile is found, not replaced by the rename.
+    system, add = setup
+    add("d")
+    place = system / "src" / "d"
+    read_head = sync._head
+
+    def head_while_a_place_is_made(path, env):
+        place.mkdir()
+        return read_head(path, env)
+
+    monkeypatch.setattr(sync, "_head", head_while_a_place_is_made)
+    capsys.readouterr()
+    assert run(system, "sync") == 1
+    assert os.listdir(place) == []
     assert "ERROR: src/d: appeared meanwhile; left as it is" in capsys.readouterr().out
     assert temporaries(system) == []
     assert _recorded(system) == {"a"}

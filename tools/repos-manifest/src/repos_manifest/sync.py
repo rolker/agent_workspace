@@ -239,16 +239,16 @@ def _put_in_place(
         if status != 0:
             detail = f"vcs import exited {status}:\n{printed.rstrip()}"
             return RepoResult(shown, FAILED, detail, fetch=True)
-        problem = place_problem(system, parts)
-        if problem is not None:
-            return RepoResult(shown, FAILED, problem)
-        if os.path.lexists(place):
-            return RepoResult(shown, FAILED, "appeared meanwhile; left as it is")
         commit = _head(temporary.joinpath(*key_parts), env)
         if commit is None:
             # A remote with no commits yet clones with no HEAD; a later sync gets past it.
             detail = "the clone's HEAD cannot be read; not put in place"
             return RepoResult(shown, FAILED, detail, fetch=True)
+        problem = place_problem(system, parts)
+        if problem is not None:
+            return RepoResult(shown, FAILED, problem)
+        if os.path.lexists(place):
+            return RepoResult(shown, FAILED, "appeared meanwhile; left as it is")
         try:
             place.parent.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
