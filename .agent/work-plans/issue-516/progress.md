@@ -137,3 +137,45 @@ The host takes the Plan Review's three findings as written. (1) The recovery hin
 **Plan**: `.agent/work-plans/issue-516/plan.md` at `6c93e19a`
 
 Revision after the plan review: the recovery hint is built from repo_flag, base_flag and pr_title and names gh_create_pr.sh --draft; the test hook is executable and a --print-path-only run checks stdout.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-19 12:53 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #516 — worktree_create.sh exits 1 when only the draft pull request's push failed
+**Plan**: `.agent/work-plans/issue-516/plan.md` at `6c93e19a`
+**Branch**: `feature/issue-516`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One function, one test file, one guide sentence. |
+| Issue alignment | Good | The first review's three findings are taken as the checkpoint decided: the hint is built from `repo_flag`, `base_flag` and `pr_title` with `gh_create_pr.sh --draft` and mentions the unposted plan, and the test asserts `gh_create_pr.sh` (finding 1); the hook gets `chmod +x`, "Push failed" stays, the preflight block is gone (finding 2); a `--print-path-only` run with stdout captured on its own is added (finding 3). Serves: "A safeguard has to earn its cost (a message that says non-fatal must act non-fatal); Isolated worktrees for every task: `docs/design.md#worktrees`", unchanged and checked in the first review. |
+| File targeting | Good | Same three files. |
+| Consequences | Good | Unchanged from the first review; callers checked there. |
+| Principle alignment | Needs work | The printed recovery line does not run as written (finding 1). |
+| ADR compliance | Good | None triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+Checked against `.agent/scripts/gh_create_pr.sh`: it takes `-R`/`--repo` itself (and skips its repo-safety check when given), passes `--draft`, `--base` and `--title` through to `gh pr create`, and reads `--body-file`, signing the body (it hard-fails without `AGENT_NAME`/`AGENT_MODEL`). So the flags are right for all four cases, and the `-R`/`--base` mapping per case in the plan matches the call sites (lines 1357-1365: workspace skill `""`; workspace issue `"" "$PR_PARENT_BASE"`; project skill `"$PROJECT_GH_SLUG"`; project issue `"$PROJECT_GH_SLUG" "$PR_PARENT_BASE"`). `[PLAN] Skill update: <skill>` matches: `ISSUE_TITLE` is set to `Skill update: $SKILL_NAME` before the call and `PLAN_FILE` is always set on this path.
+
+### Findings
+
+1. **[Principle alignment] (needs-work)** — The printed line will not run as written, and following it opens a PR that does not close the issue. (a) `--body-file <file>`: no body file exists at that point. `BODY_FILE` is made by `mktemp` after the push (line 1291) and the function removes it at the end, so the hint can only print a placeholder, and the body the function would have used (`Closes #N`, plus `Part of #<parent>` for a `--parent-issue` worktree) is lost; someone writing their own file can easily leave out `Closes`. Print the body inline instead, e.g. `--body "Closes #N"` (with `Part of #P` when `PARENT_ISSUE_NUM` is set; for a skill worktree the skill line), since `gh_create_pr.sh` adds the signature. (b) Directory and script path: `git push -u origin <branch>` and `gh_create_pr.sh` (which lets `gh pr create` take the head branch from the current checkout) must both run in the worktree, and the plan does not say so. The planned `.agent/scripts/gh_create_pr.sh` is a relative path that exists in a workspace worktree but not in a single-repository project worktree, which is the project's own repository. Print `cd <WORKTREE_DIR>` (or name the directory) and the script as `$SCRIPT_DIR/gh_create_pr.sh`, an absolute path that works from every worktree type. Have the test assert the absolute script path and the `Closes #N` body in the hint.
+
+Notes for the implementer (not blocking):
+- Quote the title with `printf '%q'` (or single quotes with escaping) when printing it: an issue title with `"`, `$` or a backtick would break a double-quoted line.
+- In the test, add the `pre-receive` hook to the bare origin after the initial `push origin main` (as `add_origin_ahead` does it), or that setup push is refused too.
+- When `HAS_PLAN` is true the hint could also print the `gh pr comment <url> --body-file <plan file>` step, using the plan file's absolute path; saying it was not posted is the minimum the checkpoint asked for.
+
+### Summary
+
+The three findings of the first review are resolved as the checkpoint decided, and the `gh_create_pr.sh` flags are right for all four worktree kinds. The recovery line still cannot be run as printed: it points at a body file that does not exist and at a relative script path that a project worktree lacks, and it does not say to run it in the worktree.
+
+### Recommended Actions
+
+- [ ] Print the body inline (`Closes #N`, `Part of #P` when set; the skill line for a skill worktree) instead of `--body-file <file>`.
+- [ ] Print the worktree directory to run from and the script as `$SCRIPT_DIR/gh_create_pr.sh`; assert both and the `Closes` body in the test.
