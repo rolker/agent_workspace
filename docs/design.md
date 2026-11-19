@@ -526,7 +526,7 @@ probe, not a description to keep current.
 | `gh_create_pr.sh` | The repo-safety check accepts the workspace slug and every registered root's slug (`registry_repo_slugs`, #295); the `project/` slug branch went in #265 part 4 | 131-176 |
 | `worktree_list.sh` | A workspace worktree is recognised by the path `*/worktrees/workspace/*` | 171 |
 | `_project_registry.sh` | `registry_derive_type_from_dir`: `project <name>` when the cwd is under a registered root or its `worktrees=` dir, else `workspace` when inside the workspace checkout | 654-669 |
-| `run-issue` skill and `agent start-task` | `--type` defaults to `workspace` and is passed on to `dispatch_phase.sh`, `worktree_create.sh`, `gh_create_pr.sh` targeting and `merge_pr.sh --type` | `SKILL.md` 47-54; `agent` 63, 90 |
+| `run-issue` skill and `agent start-task` | The skill's `--type` defaults to the type of the session's root, `agent start-task`'s to `workspace`; it is passed on to `dispatch_phase.sh`, `worktree_create.sh`, `gh_create_pr.sh` targeting and `merge_pr.sh --type` (a package pull request passes `--pr <owner/repo#M>`, no `--type`) | `SKILL.md` 45-58, 152-159; `agent` 63, 90 |
 
 Checked and found with no workspace-or-project branch: `review_progress.sh` (it finds the records from
 the cwd's git top level, through the records gate, lines 138-140 and 340-350), `progress_append.sh` (lines 78,

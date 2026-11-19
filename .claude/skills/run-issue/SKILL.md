@@ -52,8 +52,10 @@ For the rest of the run, `<type>` below is the user's `--type`, or the
 printed `type=` when none was given. When `<type>` is `project` and the
 printed `project=` is not empty, pass `--project <project>` wherever this
 skill passes `--type <type>` (start-task's arguments, every
-`dispatch_phase.sh` call and `merge_pr.sh`), so every script resolves the
-same project the check did.
+`dispatch_phase.sh` call and a workspace or single-repository issue's
+`merge_pr.sh`), so every script resolves the same project the check did.
+A package issue's `merge_pr.sh` passes no `--type` (step 11); it passes
+`--project <project>` whenever `project=` is not empty.
 
 ## Skill names in this session
 
@@ -152,7 +154,9 @@ script, not here — see "Action tokens" below for where to read it.
   ("This session's root" above). It must name this session's root, or the
   run stops before step 1. Threaded to every `dispatch_phase.sh` call,
   `worktree_create.sh` at entry, `gh_create_pr.sh` targeting at publish,
-  and `merge_pr.sh --type` at merge, with `--project` for a project root.
+  and `merge_pr.sh --type` at merge, with `--project` for a project root;
+  a package issue's merge passes `--pr <owner/repo#M>` and `--project`
+  (when `project=` is not empty) and no `--type`.
 - `--resume` — re-asks the newest `## Checkpoint` entry when it answered
   `stop` (see "Resume" below). Without it, a `stop` checkpoint ends the run.
 
@@ -1022,9 +1026,14 @@ owning checkout), which the merge removes.
 cd "<root>"
 ```
 
-then run `$WS_ROOT/.agent/scripts/merge_pr.sh --pr <M> --type <type>`, or
-`--pr <owner/repo#M>` for a package issue, so the script targets the
-package repository and finds the package worktree. For the owning
+then run `$WS_ROOT/.agent/scripts/merge_pr.sh --pr <M> --type <type>` for
+a workspace or single-repository issue (with `--project <project>` when the
+session's `project=` is not empty). For a package issue run
+`$WS_ROOT/.agent/scripts/merge_pr.sh --pr <owner/repo#M>`, with
+`--project <project>` when the session's `project=` is not empty, and never
+`--type`: the script derives the kind from the repository and refuses a
+`--type` that differs, so the call targets the package repository and finds
+the package worktree. For the owning
 repository's pull request the gate reads the review from the owning
 checkout's committed timeline at origin's branch head (never the working
 copy), and commits and pushes its record there only when the working
@@ -1203,7 +1212,8 @@ issue 429:
   `progress.md` is the committed one. Package pull requests stay report-only at the gate (enforcement
   is for workspace pull requests). Sibling repositories in the package
   worktree are for building against: a sibling's own pull request is
-  merged with `--pr <owner/sibling#M>`, its gate reads no timeline and its
+  merged with `--pr <owner/sibling#M>` (with `--project <project>` when
+  `project=` is not empty, and no `--type`), its gate reads no timeline and its
   record goes on that pull request. The records gate (`records_path` in
   `_resolve_work_plans_dir.sh`) refuses the siblings, and the worktree's
   top folder, for every records read and write a script makes:
