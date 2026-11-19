@@ -27,13 +27,14 @@ my_system/
     config.yaml      what init recorded
     state.yaml       the version and commit sync last put each repo on
     resolved/        the .repos files from the last resolve, and the layer order
+    built.yaml       the layers build built, and the layer each was built on
   underlay/
     src/             the repos of the layer
     build/ install/ log/
   core/
     src/
     ...
-  setup.bash         sources the layers that are built
+  setup.bash         sources the last layer of the built run
 ```
 
 This is the layout of a flat system, the default. A system set up with a directory per
@@ -199,8 +200,8 @@ again, to move the system directory aside and run `init` in an empty directory. 
 with an empty entry for each distro) is the same error, naming the key and what is wrong; any
 other key is named with the words that this version does not read it.
 
-Until `build` is built, `init` writes a `setup.bash` that says nothing is built yet and fails
-when sourced, and `sync` writes it for a distro whose `setup.bash` is missing. It is created in one step only where no file is, so one made meanwhile is left
+`init` writes a `setup.bash` that says nothing is built yet and fails when sourced, and `sync`
+writes it for a distro whose `setup.bash` is missing; `build` replaces it (see "build"). It is created in one step only where no file is, so one made meanwhile is left
 as it is, and one that cannot be written whole is removed, never left empty or partial. One
 that cannot be created is reported for that distro, with its path and the
 reason, after that distro's report; the other distros go on, and the exit status is 1.
@@ -694,25 +695,120 @@ access to.
 
 ### build
 
-For each layer in order, run `colcon build` in the layer's directory with the layers before
-it sourced. `colcon` is given the paths of the repos the resolved files list for the layer
-(`--base-paths`), not the whole of `src/`. A repo that is still on disk but no longer part
-of the system for this machine, because a group was switched off or the manifest dropped it,
-is not built. What an earlier build of it installed stays in the layer's `install/` until
-that layer is built afresh, and `build` says so. Then write `setup.bash` in the system directory, or in the distro's directory
-when there is one per distro. It sources the setup file of
-the last layer, in the manifest's order, that has been built, whichever layers this run
-built.
+```
+repos-manifest build [--distro <name>] [<layer> ...] [-- <colcon arguments>]
+```
+
+`build` acts on one distro, chosen as under "Which distro a command uses"; `--distro` is given
+at most once. It reads the layer order and each layer's repos from the resolved files `sync`
+wrote, not from the manifest, so it needs no network; without them it says to run `sync`.
+
+For each layer in order, it runs `colcon build` in the layer's directory: the distro's
+directory for the unnamed first layer, so that its `build/`, `install/` and `log/` sit beside
+the named layers' directories, and `<layer>/` for a named one. `colcon` is given the paths of
+the repos the resolved files list for the layer and that are on disk (`--base-paths`), not
+the whole of `src/`, so the unnamed layer's colcon never sees the named layers' repos. A repo
+skipped as optional is left out, and a layer left with no repos on this machine, because all
+of them were left out by the role or skipped as optional, is skipped. A repo that is still on
+disk but no longer part of the system for this machine, because a group was switched off or
+the manifest dropped it, is not built. What an earlier build of it installed stays in the
+layer's `install/` until that layer is built afresh; before it builds a layer whose
+`install/` is there, `build` names each repo the layer's last build had that the layer no
+longer has, and each repo that is new since.
+
+`colcon` writes `install/setup.bash` after a failed, a partial and
+even an empty build, and exits non-zero when any package fails, `--continue-on-error`
+included (checked with colcon-core 0.21.3). So whether a layer is built is kept in a record of
+its own, `.repos-manifest/built.yaml`, and the record is the only thing `build` trusts:
+
+```yaml
+format: 1
+distros:
+  jazzy:                  # _unnamed when the manifest has no distros
+    layers:
+      core:
+        time: '2026-11-19T14:40:00-05:00'
+        repos: [project11/core, marine_msgs]   # the repos it was built from
+        base: underlay    # the layer sourced when it was built; null when none was
+```
+
+Before `colcon` starts on a layer, the layer's record is removed and the file written; it is
+written again with the layer's record only when `colcon` exits with 0. So a `colcon` or a
+`build` killed outright leaves that layer not built, never a "built" over a half-written
+`install/`. Other layers' records are not touched by a build of one layer; records of layers
+the resolved files no longer list are dropped at the next write. The file is written whole by
+one rename, and one without exactly this shape is an error that names it. A system built by
+other means, such as another tool or by hand, has no record, and a plain `build`
+builds it from the bottom.
+
+A layer counts as built when its record is there, its `install/setup.bash` is there (a person
+may have deleted `install/`), and its base is the last layer of the built run below it as
+things stand now. The built run is the distro's layers from the bottom up to the first
+layer with repos that is not built; layers with no repos are passed over. The base matters
+because the setup file `colcon` writes for a layer brings in only what was sourced when it
+was built: a layer built while the one below it was empty, failed or missing stays blind to
+that layer, even after it is filled or fixed, so it is not built until it is built again. The
+record does not say that a layer is up to date with `sync`.
+
+Three things read the one built run, so they agree:
+
+- A layer is built with the run's last layer below it sourced: `bash` sources that layer's
+  `install/setup.bash` and then runs `colcon`, the arguments passed as arguments, never put
+  into the script's text. A layer with nothing built below it, normally the first, runs
+  `colcon` directly, so the environment `build` is run in reaches it unchanged.
+- `build` with layer names builds only those layers, in the manifest's order whatever the
+  order they are named in. A name the distro does not have is an error that lists its
+  layers. When a layer with repos below a named one is outside the built run and not named
+  too, `build` refuses before anything runs, names that layer, and says that a plain
+  `repos-manifest build` fixes it. Without names every layer is built.
+- `setup.bash`, in the system directory or the distro's directory, sources the run's last
+  layer's `install/setup.bash`, by its absolute real path. When nothing is built it is the
+  text `init` writes, which fails when sourced.
+
+`build` stops at the first layer that fails; later layers are not tried, and the exit status
+is 1. Records of layers above the failed one are kept, but they are outside the built run, so
+`setup.bash` sources the layer below the failed one. Once the failed layer is built again
+with `build <layer>`, the run reaches the layers above it again, and `setup.bash` sources the
+last of them with no rebuild of theirs. A rebuild of a lower layer whose own base is
+unchanged keeps the layers above it built in the same way; a layer whose base no longer
+matches, such as one above a layer that was empty and now has repos, is not built and is
+built again by the next plain `build`.
+
+`setup.bash` is rewritten from the record, in one step, at the end of every run that started
+a layer, a run stopped by a signal included. It is replaced only where nothing is or where the
+file there is one this tool wrote (its first line says so). A file with other text, a link of
+any kind, a directory or anything else that is not a file is left as it is and named in a
+warning, and the exit status is 1: writing `setup.bash` is part of what `build` promises.
+That differs from `sync`, which creates `setup.bash` only where nothing is and does not change
+its exit status for what it finds there.
+
+The closing report, after `colcon`'s own output, gives the layers built; the layer that
+failed, with `colcon`'s exit status, where its log is and the command that sources what it
+did build; the layers not tried; the layers skipped for having no repos; the layers built
+before and in the run, saying when they were built on the earlier output of a layer this run
+rebuilt; a layer with repos that is not built and why; the layers recorded built but not used
+because they are above a layer that is not built; and last which layer `setup.bash` sources,
+or that nothing is built. The exit status is 0 when every layer asked for was built or
+skipped, and 1 after a failure, a refusal, a `setup.bash` left alone, or a `colcon` that cannot
+be found. `colcon` is looked for on `PATH` and beside the Python running the tool.
 
 The first layer is built in the environment `build` is run in. The person sets that up
 first. For a ROS project that means sourcing the setup file of the ROS distro. `build` does
-not do it for them.
+not do it for them. If `COLCON_PREFIX_PATH`, `AMENT_PREFIX_PATH` or `CMAKE_PREFIX_PATH`
+already holds one of this system's own `install/` directories, `build` warns that the layers
+would be built with that output already on their path and says to build in a shell that has
+not sourced `setup.bash`. It is a warning, not a refusal: the build still works.
 
 Sourcing the one `setup.bash` is enough to use the system. The setup file `colcon` writes for
 a layer also sets up every environment that was sourced when the layer was built, so the
 last layer brings in the layers under it and the environment the first layer was built in.
 
-`build` with layer names builds only those layers.
+`colcon` runs in the tool's own process group, so a Ctrl-C at a terminal reaches it directly.
+A SIGINT, SIGTERM or SIGHUP sent to the tool alone is passed on to `colcon` (a SIGINT while
+the tool is in the terminal's foreground group is not, since the terminal sent it to `colcon`
+too), and the tool waits for `colcon` to end. Only then does it write `setup.bash` from the
+record, in which the stopped layer is not built, and print one line with the layers built in
+the run. No file is written while `colcon` runs.
 
 How the code is built, such as a debug or a release build, is not a distro and not part of
 the manifest. It stays with `colcon`:
@@ -721,9 +817,6 @@ the manifest. It stays with `colcon`:
 - `colcon` reads a `colcon_defaults.yaml` file from the directory it is run in. A person
   who wants a layer always built a certain way puts that file in the layer's directory.
   `build` does nothing special for it. (Checked with colcon-defaults 0.2.9.)
-
-A layer that has no repos on this machine, because all of them were left out by the role or
-skipped as optional, is skipped.
 
 ### status
 
@@ -1062,10 +1155,14 @@ recorded in `config.yaml`, taken from the system directory. A repo that is there
 not touched, and `sync` says that updating it is not built yet. Two names that a disk which
 ignores case treats as one are not checked yet on the real destination.
 
+`build` is built as "build" describes, for one distro at a time, stopping at the first layer
+that fails. It reads the resolved files `sync` wrote and needs `colcon` on `PATH` or beside the
+Python running it.
+
 Not built yet: updating repos that are there (step 1 of "sync" and its rules),
 `local_manifest`, the git and URL forms of a manifest's location with `--manifest-ref` and
-`--manifest-path`, arguments after `--`, `add-distro`, `show`, `build`, `status`, `freeze`,
-fetching from another place and extra remotes.
+`--manifest-path`, arguments after `--` for `init` and `sync`, `add-distro`, `show`, `status`,
+`freeze`, fetching from another place and extra remotes.
 
 ## Open questions
 
@@ -1080,6 +1177,7 @@ fetching from another place and extra remotes.
 - How a distro is removed from a system with a directory per distro.
 - What a distro's manifest that lacks the system's role or one of its groups gives at
   `add-distro`.
-- Whether `build` should stop at the first layer that fails or carry on with layers that do
-  not depend on it. The manifest does not say which layers depend on which, only their
-  order, so stopping is the safe rule.
+- Whether `build` should carry on with later layers after one fails. It stops at the first
+  layer that fails: the manifest does not say which layers depend on which, only their
+  order, so stopping is the safe rule. Carrying on, if it is wanted, is an option a person
+  asks for.

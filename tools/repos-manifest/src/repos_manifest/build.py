@@ -372,7 +372,7 @@ def refusal(layers: Sequence[Layer], chosen: Sequence[str], run: Run) -> None:
                 f"{above[0]} is built on {layer.name}, which is not built{detail}; nothing was"
                 " run",
                 f"`build` trusts only its own record in {SYSTEM_DIR}/{BUILT_FILE}, and a system"
-                " built by other means (the workspace adapter, by hand) has none. Run a plain"
+                " built by other means (another tool, by hand) has none. Run a plain"
                 f" `repos-manifest build`, or name {layer.name} too",
             )
 

@@ -103,14 +103,23 @@ as paths on the local disk; a `base` at a URL or in a git repo is not read yet.
 
 `init` sets up a system directory from a manifest given as a path on the local disk and clones
 its repos; `sync` clones the ones that are missing. Neither updates a repo that is already
-there yet, and nothing builds yet. Both need `git`, and `vcs` from vcs2l or vcstool, on
-`PATH`. [docs/design.md](docs/design.md#what-is-built) says how far they go.
+there yet. Both need `git`, and `vcs` from vcs2l or vcstool, on `PATH`.
+[docs/design.md](docs/design.md#what-is-built) says how far they go.
+
+`build` builds one distro's layers in order with `colcon`, each on top of the ones below it,
+stops at the first layer that fails, and writes the one `setup.bash` to source. It keeps a
+record of what it built in `.repos-manifest/built.yaml` and trusts nothing else;
+[docs/design.md](docs/design.md#build) says what it builds, what it refuses and what
+`setup.bash` sources. It needs `colcon` on `PATH`, or installed in the same virtual environment
+as repos-manifest.
 
 ```bash
 repos-manifest resolve --manifest project11.manifest.yaml --role robot --distro jazzy --out ./out
 repos-manifest validate --manifest project11.manifest.yaml
 repos-manifest init ../project11.manifest.yaml --role developer --distro rolling --distro-dirs
 repos-manifest sync
+repos-manifest build -- --symlink-install
+source rolling/setup.bash
 ```
 
 A manifest in the prototype's earlier shape still goes to the prototype's reader, which
@@ -142,4 +151,7 @@ ignored `tools/ros-manifest/` directory after pulling (its egg-info and
 ```
 
 The test extra installs vcs2l. The tests clone from local git repositories, need `git`, and
-fail when no `vcs` is found; a `vcs` already on `PATH` is used first.
+fail when no `vcs` is found; a `vcs` already on `PATH` is used first. Most tests of `build` use
+a stand-in for `colcon`; the ones marked `colcon` build small CMake packages with the real one,
+need `colcon` and `cmake` on `PATH`, and are skipped when either is missing, unless
+`REPOS_MANIFEST_REQUIRE_COLCON=1` is set, which makes that a failure.
