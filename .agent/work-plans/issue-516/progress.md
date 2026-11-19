@@ -348,3 +348,25 @@ Suites run (each on its own with bash; the full pre-commit pass is left to the h
 - test_project_registry.sh: Results: 425 passed, 0 failed
 - test_merge_pr.sh: Results: 170 passed, 0 failed
 - test_ros2_colcon.sh: Results: 1375 passed, 0 failed, 0 skipped
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 13:34 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent ab8fe1f4c5985ec5a, resume 1 of 3)
+
+**Branch**: feature/issue-516 at `47666fbf`
+**Base**: main
+**Depth**: Deep (reason: whole-branch diff over 200 lines with plan/progress; same specialists as Standard)
+**Must-fix**: 0 | **Suggestions**: 5
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Verified by hand: test_worktree_create.sh 101 passed / 0 failed; shellcheck --severity=warning clean on both scripts. I compared the success path against origin/main (dd53c590) in sandboxes with a working origin and a recording gh stub, using four cases: a workspace worktree and a single-repository project worktree, each with an absolute and a relative --plan-file. The issue title was `T $(x) 'q' %s`. In all four cases gh got the same calls and arguments (pr list, pr create --draft --title "[PLAN] ..." --body-file [--repo acme/...]), and the body file was byte-identical. The only difference was the intended fix: on main, a relative plan path made the plan comment read `notes/plan rel.md` from inside the worktree, so the comment failed; on the branch it reads the absolute path, and the comment posts. Credential check: with origin set to `https://user:s3cretTOKEN@127.0.0.1:9/...` and --allow-unverified-branch, the warning showed git's error as `unable to access 'https://127.0.0.1:9/acme/x.git/'`, and the token appeared 0 times in the output (git strips credentials from URLs in its messages; the script's existing fetch error already prints the same form). Paste check: the multi-line body survived printf %q (`$'## Summary\n\nT $(x) \'q\' %s\n\nCloses #202'`). The pasted lines ran under bash -e (exit 0), and gh_create_pr.sh passed gh a body equal to the body file's. Outside reviewers: Claude adversarial (fresh subagent) ran, no must-fix; it found the body bytes identical for titles with %s, $(x), backticks and \\, and made 4 suggestions. gemini ran (EXIT=0) with 5 suggestions, 2 of substance. Its pre-push hook stdout point does not hold, because git sends hook stdout to stderr. codex ran (EXIT=0). It repeated the deferred user-tier guard finding (not raised again, per host decision) and made 1 suggestion.
+
+### Findings
+- [ ] (suggestion) The guide sentence says the script prints the command to "post the plan", but that line is printed only when the plan file was found (HAS_PLAN); "and, if the plan file was found, post the plan" would be exact (Claude adversarial) — `.agent/WORKTREE_GUIDE.md:394`
+- [ ] (suggestion) Pre-existing, now encoded by the new comment and test: a relative --plan-file is resolved against the workspace root (cd at line 852), not the caller's cwd, so a relative path given from a project root or a subdirectory is "not found" and the PR is still titled [PLAN]. Making the path absolute at parse time would match what callers expect (Claude adversarial) — `.agent/scripts/worktree_create.sh:302,1231-1233`
+- [ ] (suggestion) When git prints nothing on stderr, the warning ends in a dangling "said:"; gate that phrase on a non-empty push_err (Claude adversarial, gemini) — `.agent/scripts/worktree_create.sh:1294-1296`
+- [ ] (suggestion) An issue title containing `**Authored-By**:` now appears in the hint's --body, so gh_create_pr.sh treats the body as already signed and the pasted PR goes unsigned, while the success path always signs (codex) — `.agent/scripts/worktree_create.sh:1276-1285,1303`
+- [ ] (suggestion) Tests: the body-file check after the SB13 case reuses the previous check's fail label and prints the wrong log; the `grep -q "^pr comment ... $SB13/..."` treats the sandbox path as a regex (use -xF); the --print-path-only case does not check that the warning reached stderr (Claude adversarial, gemini) — `.agent/scripts/tests/test_worktree_create.sh:1227,1253-1262`
