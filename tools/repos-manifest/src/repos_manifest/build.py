@@ -697,10 +697,11 @@ def refused_values(colcon_args: Sequence[str]) -> None:
 
 
 def without_text(without: Dict[str, List[str]]) -> str:
-    """A record's `without` as the report names it: `--packages-skip a b; --packages-ignore c`."""
+    """A record's `without` as the report names it, as colcon's arguments:
+    `--packages-skip a b --packages-ignore c`."""
     if not without:
         return "none"
-    return "; ".join(
+    return " ".join(
         " ".join([option, *(shlex.quote(value) for value in values)])
         for option, values in without.items()
     )
@@ -919,13 +920,14 @@ class Progress:
     wrote_setup: List[str] = field(default_factory=list)  # layers whose colcon wrote it this run
     ready: bool = False  # the checks have passed: every way the run ends now settles
     selection: str = ""  # what in the arguments builds part of a layer (`package_selection`)
-    # Layer: what the run left out of it (`left_out`), for each layer built leaving some out.
+    # Layer: the skip and ignore options given to its colcon (`left_out`), for each layer built
+    # with some.
     without: Dict[str, Dict[str, List[str]]] = field(default_factory=dict)
-    # Layer: what its record left out before and what it leaves out now, when they differ.
+    # Layer: the options its record had before and those it has now, when they differ.
     without_changed: Dict[str, Tuple[Dict[str, List[str]], Dict[str, List[str]]]] = field(
         default_factory=dict
     )
-    # Packages left out given beside `selection`: not recorded, since such a run gives each
+    # Skip and ignore options given beside `selection`: not recorded, since such a run gives each
     # layer back the record it had.
     unrecorded: Dict[str, List[str]] = field(default_factory=dict)
 
@@ -1222,17 +1224,21 @@ def report(progress: Progress, run: Optional[Run]) -> None:
     used = [name for name in progress.built if name in run.layers]
     if used:
         print(f"  {_built_label(progress)}: {', '.join(used)}")
-    leaving = [name for name in progress.built if name in progress.without]
-    for text in dict.fromkeys(without_text(progress.without[name]) for name in leaving):
-        names = [name for name in leaving if without_text(progress.without[name]) == text]
-        print(f"  built leaving out: {', '.join(names)} ({text})")
+    given = [name for name in progress.built if name in progress.without]
+    for text in dict.fromkeys(without_text(progress.without[name]) for name in given):
+        names = [name for name in given if without_text(progress.without[name]) == text]
+        print(f"  built with {text} given to colcon: {', '.join(names)}")
     for name in progress.built:
         if name in progress.without_changed:
             was, now = progress.without_changed[name]
-            line = f"  skip list changed: {name} (was {without_text(was)}, now {without_text(now)})"
+            line = (
+                f"  skip and ignore options given to colcon changed: {name} (was"
+                f" {without_text(was)}, now {without_text(now)})"
+            )
             if now:
                 line += (
-                    "; what an earlier build installed of a package left out now is still in"
+                    "; what an earlier build installed of a package they skip or ignore now"
+                    " stays in"
                     f" {by_name[name].directory / 'install'}/"
                 )
             print(line)

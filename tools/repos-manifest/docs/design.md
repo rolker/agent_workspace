@@ -735,7 +735,7 @@ layers:
     time: '2026-11-19T14:40:00-05:00'
     repos: [project11/core, marine_msgs]   # the repos it was built from
     below: [_unnamed, underlay]   # the built run below it when it was built; [] when none
-    without:                      # only when the run left packages out
+    without:                      # only when skip or ignore options were given
       --packages-skip: [core_demos, core_docs]
 ```
 
@@ -743,14 +743,16 @@ layers:
 from the bottom up, the last of them the one that was sourced. A record in the form of an
 unreleased draft, with only the layer that was sourced (`base`), is read as not built.
 
-`without` holds the options given after `--` that left named packages out of the layer
-(`--packages-skip`, `--packages-ignore` and their `-regex` forms, see "Packages left out"
-below), each named in full with its values as given. It is written only when the run left
-something out, so a record written before the field existed reads as before, leaving nothing
-out. A version of the tool from before the field refuses a record that has it, as it refuses any
+`without` holds the skip and ignore options given after `--` to the layer's `colcon` when it
+was last built (`--packages-skip`, `--packages-ignore` and their `-regex` forms, see "Packages
+left out" below), each named in full with its values as `colcon` read them, whether or not the
+layer has packages they name: a run gives the same options to the `colcon` of every layer it
+builds, and `build` does not ask which packages a layer has. It is written only when such an
+option was given, so a record written before the field existed reads as before, with none. A
+version of the tool from before the field refuses a record that has it, as it refuses any
 key it does not read ("repair or remove it"); `format` stays 1, since this version reads every
 record the earlier one wrote. A skip set in a file of `colcon` defaults or a mixin is not seen
-by `build` and is not in `without`, so the list may be shorter than what `colcon` left out.
+by `build` and is not in `without`, so the list may be shorter than what `colcon` was given.
 
 Before `colcon` starts on a layer, the layer's record is removed and the file written, and
 `setup.bash` is brought into line with it, so it no longer sources that layer or one built on
@@ -836,8 +838,8 @@ is 1. Records of layers above the failed one are kept, but they are outside the 
 `setup.bash` sources the layer below the failed one. Once the failed layer is built again
 with `build <layer>`, the run reaches the layers above it again, and `setup.bash` sources the
 last of them with no rebuild of theirs. A rebuild of a lower layer on its own chain keeps
-the layers above it built in the same way, also when it was rebuilt leaving out other packages
-than before (see "Packages left out" below); a layer whose chain no longer matches, such as
+the layers above it built in the same way, also when it was rebuilt with other skip or ignore
+options than before (see "Packages left out" below); a layer whose chain no longer matches, such as
 one anywhere above a layer that was empty and now has repos, is not built and is built again
 by the next plain `build`.
 
@@ -876,13 +878,14 @@ the run: it is not the tool's to keep in line.
 That differs from `sync`, which creates `setup.bash` only where nothing is and does not change
 its exit status for what it finds there.
 
-The closing report, after `colcon`'s own output, gives the layers built; the layers built leaving
-packages out, with the options that did ("built leaving out:", worded apart from the "built without
-sourcing" line below), a layer built under `--keep-going` and not used included; a layer whose
-list of packages left out differs from its record's, with both ("skip list changed:", `none` for
-no list), adding when it now leaves packages out that what an earlier build installed of them is
-still in its `install/`; the options leaving packages out given with package selection, as not
-recorded; a layer built on a shorter
+The closing report, after `colcon`'s own output, gives the layers built; the layers built with
+skip or ignore options given to their `colcon`, with the options ("built with <options> given to
+colcon:", whether or not a layer has packages they name, and worded apart from the "built
+without sourcing" line below), a layer built under `--keep-going` and not used included; a layer
+whose skip and ignore options differ from its record's, with both ("skip and ignore options given
+to colcon changed:", `none` for no options), adding when it now has options that what an earlier
+build installed of a package they skip or ignore stays in its `install/`; the skip and ignore
+options given with package selection, as not recorded; a layer built on a shorter
 chain than before, because a layer below it left the manifest or has no repos now, with that layer's
 `install/` when it is still there, since the build may have used what is left in it as the
 `--keep-going` line below says; a layer built with `--keep-going` without sourcing a failed layer,
@@ -1013,14 +1016,17 @@ the manifest. It stays with `colcon`:
   run whose only `--packages-` options are these and `--packages-skip-build-finished` is not
   package selection: without `--cmake-target` it builds a layer that is not built yet, and a
   layer whose `colcon` exits with 0 is recorded built with the options in its record's
-  `without`. That is the way to build
+  `without`. A run gives them to the `colcon` of every layer it builds, so every such layer
+  records them, also one that has no package they name (`colcon` only warns about a name it does
+  not find); the field says what `colcon` was given, not that the layer lacks those packages.
+  That is the way to build
   a layer one of whose packages does not build on a machine. An abbreviation counts when it
   stands for one of the four only (`--packages-skip-r` is `--packages-skip-regex`); one that
   could be several (`--packages-s`, `--packages-skip-`, `--packages-ig`), which `colcon`
   rejects as ambiguous, is read as package selection, so it is refused on a layer that is not
   built, before anything runs. Beside any other selection option the run is package selection,
   refused on a layer that is not built as before; on a built layer it gives back the record the
-  layer had, its list unchanged, and the report names the options leaving packages out as not
+  layer had, its list unchanged, and the report names the skip and ignore options given as not
   recorded. The record holds them as `colcon` reads them: each option named in full, its values
   up to the next argument `colcon` reads as one of its options (any other argument is a value,
   even one starting with `-`, such as `-1`, which the `-regex` forms take as a pattern and
@@ -1033,7 +1039,7 @@ the manifest. It stays with `colcon`:
   manifest's names and values follow) or that is not UTF-8 is refused before anything runs,
   the record and `setup.bash` untouched, since the record could not hold it as one line of text;
   the message shows it with such characters escaped. The list says what the
-  last run left out, not what `install/` holds: `colcon` does not clean `install/`, so a package
+  last run gave `colcon`, not what `install/` holds: `colcon` does not clean `install/`, so a package
   an earlier build installed stays there when a later run leaves it out (`--packages-skip b`,
   then `--packages-skip d`, left a, b, c and d installed). A rebuild with another list is a
   rebuild in place on the same chain, so the layers above stay in the built run: a package newly

@@ -114,7 +114,9 @@ layers below it are the ones it was built on. It sees only the `colcon` argument
 `--`, not package selection set in a file of `colcon` defaults or a mixin; it names each
 defaults file `colcon` will read, and no mixin. A run with package selection or
 `--cmake-target` after `--` only rebuilds layers that are built (not `--packages-skip` or
-`--packages-ignore`, which leave named packages out of a whole layer and are recorded). A
+`--packages-ignore`, which build a whole layer but the packages they name: each layer's record
+keeps the skip and ignore options given to its `colcon` when it was last built, whether or not
+the layer has such packages). A
 second `build` of the same distro while one (or the `colcon` it started) runs is refused, and
 so is a build of a layer with a repo missing from disk that is not optional; [docs/design.md](docs/design.md#build) says what it builds, what it
 refuses and what `setup.bash` sources. It needs `bash`, and `colcon` on `PATH` (empty and

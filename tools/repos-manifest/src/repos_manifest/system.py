@@ -543,13 +543,14 @@ class LayerRecord:
     time: str
     repos: List[str]
     below: List[str]
-    # The options given after `--` that left named packages out of the layer, each in full
-    # with its values as given (a regex as text); empty when the run left nothing out.
+    # The skip and ignore options (`LEFT_OUT`) given after `--` to the layer's colcon when it
+    # was last built, each in full with its values as colcon read them (a regex as text),
+    # whether or not the layer has packages they name; empty when none was given.
     without: Dict[str, List[str]] = field(default_factory=dict)
 
 
-# The options of `colcon build` that leave named packages out of a whole layer: the only keys
-# of a record's `without`.
+# The options of `colcon build` that leave the packages their values name out of a whole
+# layer: the only keys of a record's `without`.
 LEFT_OUT = (
     "--packages-skip", "--packages-skip-regex", "--packages-ignore", "--packages-ignore-regex",
 )  # fmt: skip
@@ -614,7 +615,8 @@ def read_built(system: Path, distro: Optional[str]) -> Dict[str, LayerRecord]:
 
 def _read_without(record: dict, at: str, bad) -> Dict[str, List[str]]:
     """A record's optional `without`, checked to the shape `put_built_layers` writes: absent
-    (nothing left out), or a mapping of some of `LEFT_OUT` to non-empty lists of strings."""
+    (no skip or ignore option given), or a mapping of some of `LEFT_OUT` to non-empty lists of
+    strings."""
     if "without" not in record:
         return {}
     without = record["without"]
@@ -622,7 +624,7 @@ def _read_without(record: dict, at: str, bad) -> Dict[str, List[str]]:
     if not isinstance(without, dict):
         raise bad(f"`{where}` is {_kind(without)}, not a mapping")
     if not without:
-        raise bad(f"`{where}` is empty; a record with nothing left out has no `without`")
+        raise bad(f"`{where}` is empty; a record with no skip or ignore option has no `without`")
     for option, values in without.items():
         if option not in LEFT_OUT:
             raise bad(f"`{where}` has {option!r}, which is not one of {', '.join(LEFT_OUT)}")

@@ -1028,16 +1028,16 @@ def test_a_skip_list_on_a_first_build_is_recorded_and_the_layers_above_build_on_
     assert built(system)["mid"]["without"] == {"--packages-skip": ["x", "y"]}
     out = capsys.readouterr().out
     assert f"  built: {BASE}, mid\n" in out
-    assert f"  built leaving out: {BASE}, mid (--packages-skip x y)\n" in out
-    assert "skip list changed" not in out and "built without sourcing" not in out
+    assert f"  built with --packages-skip x y given to colcon: {BASE}, mid\n" in out
+    assert "options given to colcon changed" not in out and "built without sourcing" not in out
     assert sourced_by_setup(system) == real(system / "mid")
-    # The layer above builds on it, with nothing left out of its own.
+    # The layer above builds on it, with no skip option given to its own colcon.
     assert run(system, "build", "top") == 0
     assert "without" not in built(system)["top"]
     assert runs(stub)[-1][1] == "mid"
     assert sourced_by_setup(system) == real(system / "top")
     out = capsys.readouterr().out
-    assert "built leaving out" not in out
+    assert "given to colcon:" not in out
 
 
 def test_the_same_skip_list_again_changes_nothing_and_another_is_named(system, stub, capsys):
@@ -1046,14 +1046,15 @@ def test_the_same_skip_list_again_changes_nothing_and_another_is_named(system, s
     assert run(system, "build", "mid", "--", "--packages-skip", "y", "x") == 0
     assert built(system)["mid"]["without"] == {"--packages-skip": ["y", "x"]}
     out = capsys.readouterr().out
-    assert "skip list changed" not in out
-    assert "  built leaving out: mid (--packages-skip y x)\n" in out
+    assert "options given to colcon changed" not in out
+    assert "  built with --packages-skip y x given to colcon: mid\n" in out
     # Another list: named, and the layers above stay in the built run (a rebuild in place).
     assert run(system, "build", "mid", "--", "--packages-skip", "z") == 0
     out = capsys.readouterr().out
     assert (
-        "  skip list changed: mid (was --packages-skip y x, now --packages-skip z); what an"
-        " earlier build installed of a package left out now is still in"
+        "  skip and ignore options given to colcon changed: mid (was --packages-skip y x, now"
+        " --packages-skip z); what an earlier build installed of a package they skip or ignore"
+        " now stays in"
         f" {system / 'mid/install'}/\n" in out
     )
     assert "  built before, in the run: _unnamed, top (on the earlier output of mid)\n" in out
@@ -1063,8 +1064,11 @@ def test_the_same_skip_list_again_changes_nothing_and_another_is_named(system, s
     assert run(system, "build", "mid") == 0
     assert "without" not in built(system)["mid"]
     out = capsys.readouterr().out
-    assert "  skip list changed: mid (was --packages-skip z, now none)\n" in out
-    assert "built leaving out" not in out
+    assert (
+        "  skip and ignore options given to colcon changed: mid (was --packages-skip z, now none)\n"
+        in out
+    )
+    assert "given to colcon:" not in out
     assert sourced_by_setup(system) == real(system / "top")
 
 
@@ -1109,7 +1113,7 @@ def test_an_option_whose_last_occurrence_has_no_values_leaves_nothing_out(
     capsys.readouterr()
     assert run(system, "build", "--", *given) == 0
     assert all("without" not in record for record in built(system).values())
-    assert "built leaving out" not in capsys.readouterr().out
+    assert "given to colcon:" not in capsys.readouterr().out
     assert run(system, "build") == 0  # the record reads
 
 
@@ -1154,7 +1158,7 @@ def test_a_selection_run_keeps_the_recorded_list_and_says_a_given_one_is_not_rec
         "  not recorded, given with package selection: --packages-skip y (a run that builds"
         " only part of a layer gives each layer back the record it had)\n" in out
     )
-    assert "built leaving out" not in out and "skip list changed" not in out
+    assert "given to colcon:" not in out and "options given to colcon changed" not in out
 
 
 def test_a_layer_built_leaving_out_under_keep_going_and_not_used_is_named(system, stub, capsys):
@@ -1163,8 +1167,22 @@ def test_a_layer_built_leaving_out_under_keep_going_and_not_used_is_named(system
     assert run(system, "build", "--keep-going", "--", "--packages-skip", "x") == 1
     assert built(system)["top"]["without"] == {"--packages-skip": ["x"]}
     out = capsys.readouterr().out
-    assert f"  built leaving out: {BASE}, top (--packages-skip x)\n" in out
+    assert f"  built with --packages-skip x given to colcon: {BASE}, top\n" in out
     assert "  built without sourcing mid (failed), so not used: top" in out
+
+
+def test_the_options_are_named_as_given_to_colcon_also_for_a_layer_without_such_packages(
+    system, stub, capsys
+):
+    # No layer of the system has a package `a` or `c`: the line says what colcon was given.
+    capsys.readouterr()
+    assert run(system, "build", "--", "--packages-ignore", "c", "--packages-skip", "a") == 0
+    out = capsys.readouterr().out
+    assert (
+        f"  built with --packages-skip a --packages-ignore c given to colcon: {BASE}, mid, top\n"
+        in out
+    )
+    assert "leaving out" not in out
 
 
 def test_a_record_with_a_list_written_by_build_reads_back_for_the_next_build(system, stub):
@@ -2190,11 +2208,12 @@ def test_real_colcon_a_skip_list_on_a_first_build(real_colcon, tmp_path, capsys)
     assert (system / "mid/install/mid2").is_dir() and (system / "top/install/top2").is_dir()
     assert sourced_by_setup(system) == real(system / "top")
     out = capsys.readouterr().out
-    assert f"  built leaving out: {BASE}, mid, top (--packages-skip bad)\n" in out
+    assert f"  built with --packages-skip bad given to colcon: {BASE}, mid, top\n" in out
     assert run(system, "build", "mid", "--", "--packages-skip-regex", "^ba") == 0
     out = capsys.readouterr().out
     assert (
-        "  skip list changed: mid (was --packages-skip bad, now --packages-skip-regex '^ba')" in out
+        "  skip and ignore options given to colcon changed: mid (was --packages-skip bad, now"
+        " --packages-skip-regex '^ba')" in out
     )
     assert sourced_by_setup(system) == real(system / "top")
 
