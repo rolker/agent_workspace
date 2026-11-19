@@ -577,3 +577,35 @@ Outside reviewers:
 - [x] (suggestion) No test checks that a successful push under --print-path-only keeps git's tracking line off stdout. The fd-4 redirection was checked by hand only (gemini) — `.agent/scripts/tests/test_worktree_create.sh`
 - [x] (suggestion) PR body, "Reviews and outcomes": "four small suggestions, fixed with tests". The CALLER_DIR refactor and the plan note have no test of their own. "fixed (two with new tests)" would be exact — PR #526 body (deferred: no code change here: the host corrected this sentence in the PR #526 body)
 - [x] (suggestion) This predates the PR and is out of scope: under --print-path-only, git push (and any ssh it starts) inherits fd 3, the caller's `$(...)` pipe. A lingering ssh ControlMaster could keep start-task's `WT=$(...)` waiting. `3>&-` on the push would close it (Claude adversarial) — `.agent/scripts/worktree_create.sh:168,1292`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 14:20 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent abcbbae1ea267062f, resume 3 of 3)
+
+**PR**: #526 at `76b2cf2f`
+**Addressed**: Local Review at `007b26db` (its entry committed as bea0b66b)
+**Commits**: 7059eb83, 76b2cf2f
+
+### Actions
+- [x] (must-fix) PR body "Also fixed..." sentence — PR #526 body (deferred: no code change here; the host corrected it on the pull request)
+- [x] The warning's filter runs `sed` and `tr` under `LC_ALL=C`, and the pipeline ends in `|| true`, so it can never end the script under set -e. Test: a pre-receive hook prints an invalid byte (`\377`), and a sed double plays BSD sed on the indent filter (`STUB_SED=locale` fails on the byte unless LC_ALL=C; `STUB_SED=always` fails in any locale). Both cases exit 0 and print the hint, and the locale case shows the line. Dropping `LC_ALL=C` fails the locale case, and dropping `|| true` fails the always case (rc=1) — `.agent/scripts/worktree_create.sh` create_draft_pr (7059eb83)
+- [x] Whole CSI sequences (`ESC [ params intermediates final`, e.g. colour codes) and the UTF-8 C1 controls (U+0080–U+009F) are removed. A carriage return becomes a line break, and the remaining control characters other than tab and newline are dropped. sed uses \001 as its delimiter, since the CSI ranges cover every printable character. The control-character test now expects `remote: red alert` with no `[31m`/`[0m`, ESC or CR; it fails without the fix — `.agent/scripts/worktree_create.sh` create_draft_pr (7059eb83, one commit with the item above because both change the same filter and the byte ranges need LC_ALL=C)
+- [x] Test: a successful push under --print-path-only leaves stdout exactly the worktree path, and stderr has git's `branch 'feature/issue-75' set up to track 'origin/feature/issue-75'.` line — `.agent/scripts/tests/test_worktree_create.sh` (76b2cf2f)
+- [x] (PR body) "four small suggestions, fixed with tests" — PR #526 body (deferred: no code change here; the host corrected it on the pull request)
+- [x] Under --print-path-only the script opens fd 3 (`exec 3>&1` at line 168; the `exec 1>&2` after it only redirects fd 1). The push now closes fd 3 (`3>&-`), as well as fd 4, which it already closed. Test: a git double records `/proc/$$/fd` at the push. Without the fix it started with `0 1 2 255 3`; with the fix fd 3 is absent. The test skips where /proc is missing. Other git calls in the script (fetch, ls-remote) still inherit fd 3; they were not in the finding and are not changed — `.agent/scripts/worktree_create.sh` create_draft_pr (76b2cf2f)
+
+Suites run (each on its own with bash; the full pre-commit pass is left to the host):
+- test_worktree_create.sh: PASS: 109 / FAIL: 0
+- test_precommit_hook_path.sh: 19 passed, 0 failed
+- test_merge_pr_skill.sh: 132 passed, 0 failed
+- test_user_tier_guard.sh: 64 passed, 0 failed
+- test_validate_workspace_stale.sh: 126 passed, 0 failed
+- test_user_tier_install.sh: 276 passed, 0 failed
+- test_package_issue_loop.sh: 220 passed, 0 failed
+- test_records_write_gate.sh: 68 passed, 0 failed
+- test_skill_paths.sh: 163 passed, 0 failed
+- test_project_registry.sh: Results: 425 passed, 0 failed
+- test_merge_pr.sh: Results: 170 passed, 0 failed
+- test_ros2_colcon.sh: Results: 1375 passed, 0 failed, 0 skipped
