@@ -539,3 +539,12 @@ Suites, each run with `bash`: test_gh_create_issue PASS 88 FAIL 0; test_worktree
 - [ ] (suggestion) Outside git, the same-repository duplicate pattern `(^|[^0-9])#N` also matches `other/repo#N` in the body, so the reference is taken as present (the in-git pattern has the same weakness, pre-existing) — `.agent/scripts/gh_create_issue.sh:291`
 - [ ] (suggestion) `-R` and the parent slug are compared case-sensitively: `-R Foo/Bar` with `foo/bar#5` gives a qualified reference rather than `#5` (still a correct link) — `.agent/scripts/gh_create_issue.sh:289`
 - [ ] (suggestion) Outside git a `WORKTREE_ISSUE` that is neither a number nor `owner/repo#N` adds nothing and says nothing; an `else` warning would close it — `.agent/scripts/gh_create_issue.sh:315`
+
+## Checkpoint
+**When**: 2026-11-18 19:12 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 approved with no must-fix, and the full pre-commit pass, every script suite included, passed at 2912d5a6)
+**After**: publish
+**Decision**: publish
+
+The full pass (every hook, no SKIP, over the files the branch changes) passed on 2912d5a6. Published as part 1A: the pull request says "Part of #503" and does not close the issue. Part 1B (the adapter's route for a directory the manifest tool set up, registration, the approved one-sentence edit to AGENTS.md) is built after issue 500 part 1 has merged. The owner's merge is asked for after an outside-model read of this pull request's final state.
