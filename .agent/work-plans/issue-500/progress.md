@@ -896,3 +896,26 @@ Checks: CI at 824e1d2b, push and pull_request runs, every job pass: Lint (pre-co
 - `bash .agent/scripts/check_design_anchors.sh`: exit 0.
 - Hand check: `init "../m<NBSP>dir/m.yaml" --yes` in an empty directory printed `ERROR: refusing to write the head comment: the manifest's location or a name holds a control or invisible character`, exit 1; `ls -A` empty.
 - Full pre-commit pass over the branch left to the host; commits made with `SKIP=validate-script-tests`.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-18 20:01 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #512 at `39e1cfb4`
+**Depth**: Deep (reason: round 3 convergence check per handoff; whole-diff tier Deep, scope the round 2 findings and `git diff b6f52636..HEAD -- tools/`)
+**Must-fix**: 0 | **Suggestions**: 3
+
+Cross-model: skipped (round-3 convergence check, per handoff). Static analysis (flake8 F, E501, E9 on the five changed Python files: clean), governance, plan drift and a fresh Claude adversarial ran.
+
+The round 2 must-fix is fixed. `init` reaches `make_system_dir` only after reading the manifest, `check_distros`, resolving and `plan_distros` (every distro's files, head comment included), the exists-checks of `paths_init_creates`, `require_tools` and the terminal/--yes check. After the system's record is made, what can still raise: `sweep_temporaries`'s directory read (an OS error), `read_state` (state.yaml cannot exist in the folder just made unless something writes it meanwhile), `write_output`'s checks on `.repos-manifest/resolved/<distro>` (inside the folder just made: never the cwd or above, a distro name starts with a letter so never a temporary's name, a link or file there only if made meanwhile; otherwise OS errors), each clone (per repo, a failure not a refusal) and its `state.yaml` record (an OS error), and `create_setup` (returns a reason, does not raise). None could be known earlier. Hand runs with local remotes in the scratchpad: `init` through a no-break-space folder, in an empty directory and beside an unrelated file, refused with exit 1 and `ls -A` the same; the same through a base reached by a link to that folder; `sync` with the recorded path through it: "the manifest's output is what failed; nothing was changed", exit 1, tree and state.yaml unchanged (a missing clone and a missing setup.bash not made). Ordinary case: `init --distro-dirs --distro jazzy --distro rolling --role full --yes` with a `base` manifest, then `sync`, then a clone removed and `sync`: exit 0 each, the clone back; head comments hold `# manifest:`, `# base:`, `# role:`, `# distro:`. `resolve` and `validate`, eight argument sets, print and write exactly what the code at b6f52636 does; no test of theirs changed. The unsafe-character check exists once (`head_comment`). The recorded-manifest note ends the read error, the flat-gains-distros error and the wrapped resolver errors, and reads right from `jazzy/core`; design.md says the same.
+
+### Findings
+- [ ] (suggestion) The "whose process is still running (another init may be setting up here)" warning is taken whenever `process_has_ended` is False, before the contents are looked at: a live pid's directory holding a file init never writes, and a pid of 0 or one too large for `os.kill`, get it too (both reproduced). Take it only for a directory holding nothing or only `config.yaml` whose pid is found running; the rest get "named like ..., but not what init leaves" (Claude adversarial, review hand check) — `tools/repos-manifest/src/repos_manifest/init.py:140`
+- [ ] (suggestion) `sync`'s "the manifest's output is what failed" error names no path, though the likeliest bad location is the recorded manifest path; end it with `recorded_manifest(system)` too (Claude adversarial) — `tools/repos-manifest/src/repos_manifest/sync.py:461`
+- [ ] (suggestion) `init`'s head-comment refusal does not say that nothing was set up, as its other phase-one errors do (Claude adversarial) — `tools/repos-manifest/src/repos_manifest/init.py:246`
+
+Dropped: adversarial 4 (design.md does not place the output check in the refusal table's order: it runs where resolution already ran; no claim is false).
+
+Checks: CI at 39e1cfb4, push and pull_request runs, every job pass: Lint (pre-commit), Validate Adapter Contract, Validate Documentation, repos-manifest tests Python 3.10 and 3.14 (each header `vcs 1.1.7`, `1018 passed`). Local: `pytest tools/repos-manifest/tests` 1018 passed (/usr/bin/vcs, vcstool 0.3.0); `test_ros2_colcon.sh` 1030 passed, 0 failed, 0 skipped. `git diff b6f52636..HEAD --stat -- tools/` lists only the three fix commits' six files. Mergeable: MERGEABLE.
