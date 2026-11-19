@@ -964,3 +964,11 @@ The owner chose "Merge and carry on (Recommended)" in a dialog (2026-11-18) for 
 **Decision**: revise
 
 Part 1 merged as pull request 512; the issue is open because part 2 (sync against clones that exist) is not delivered. The plan for part 2 is to be written out in full and reviewed. The owner answered the three questions the outline held for him, in a dialog on 2026-11-19, each with the options and what they change shown. His answers, verbatim: untracked files: "Update it (Recommended)" (untracked files do not count as local work; the clone is fast-forwarded as if clean; if an incoming commit would overwrite one of those files git itself refuses, and the clone is then left as it was and reported). A changed url in the manifest for a cloned repo: "Repoint origin (Recommended)" (sync sets the clone's origin to the new URL, keeps every local branch and file, then applies the ordinary rules; a clone with commits not on the new origin is left alone and reported). A repo given another layer: "Report, do not move (Recommended)" (sync leaves the clone where it is, reports it with the exact mv command, and clones nothing at the new place while the old one exists). New input since the outline: first real use (comment on the issue, 2026-11-19) showed that a changed version for a cloned repo is not followed, state.yaml keeps the old version, and the adapter's validate still passes; pull request 518 added build, its per-distro record and a per-distro build lock, and changed system.py.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-19 14:41 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-500/plan.md` at `5562540e`
+
+Part 2 written out in full: a 15-rung ladder for a repo that is there (the owner's three answers quoted and followed), the exact git commands and put-back checks, per-distro reports, the existing per-distro build lock taken by sync for a distro's phase two, a sync-written note for built layers whose repos moved, and the stop/kill table. Step 1, local_manifest, --local-manifest and the -- pass-through go to a part 3 (reason in the plan). Git behaviours relied on were run on git 2.53.0 (untracked clash refuses ff, rebase abort restores, tag clobber exit 1, url probe, insteadOf).
