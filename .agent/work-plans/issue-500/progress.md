@@ -1466,21 +1466,21 @@ The adversarial specialist found no lost work and no printed credential:
 - No credential appeared in stdout or stderr for manifest, origin, `foo::https://`, `%` or `insteadOf` urls.
 
 ### Findings
-- [ ] (suggestion) The half-change report says the changed files "are git's, not a person's", and the design says "which are git's, since the repo had no tracked changes before". When a person's `post-checkout` or `post-merge` hook made them, they are the hook's: reproduced by the specialist, cases 1a-1c in `adv3/s1_moves.py`. Say "made by git or a hook it ran". — `update.py:964-967`, `docs/design.md:815`
-- [ ] (suggestion) The two-step half-change report is inaccurate:
+- [x] (suggestion) The half-change report says the changed files "are git's, not a person's", and the design says "which are git's, since the repo had no tracked changes before". When a person's `post-checkout` or `post-merge` hook made them, they are the hook's: reproduced by the specialist, cases 1a-1c in `adv3/s1_moves.py`. Say "made by git or a hook it ran". — `update.py:964-967`, `docs/design.md:815`
+- [x] (suggestion) The two-step half-change report is inaccurate:
   - It says "nothing more was run here" after the undo switch ran, and that switch carried a hook's edit back onto main.
   - It says HEAD "is still at main" when it went to dev and back.
   - It does not say that the local `dev` was fast-forwarded.
 
   No commit was lost (`adv3/s1_moves.py` 1a). — `update.py:913-922`, `update.py:955-970`
-- [ ] (suggestion) A new branch whose move ends half-changed returns before `_set_upstream`. It is left without an upstream, and once the person cleans up, nothing says so (`adv3/s1c_next.py`). — `update.py:936-937`
-- [ ] (suggestion) Registered user information is replaced wherever `<info>@` appears.
+- [x] (suggestion) A new branch whose move ends half-changed returns before `_set_upstream`. It is left without an upstream, and once the person cleans up, nothing says so (`adv3/s1c_next.py`). — `update.py:936-937`
+- [x] (suggestion) Registered user information is replaced wherever `<info>@` appears.
   - A `file://` path holding `@` masks the system's own path in printed commands: `git -C ***@x/...`.
   - A user such as `git` or `main` turns `git@github.com:...` or `origin/main@{upstream}` into `***@...`.
 
   No leak, and the design says "more masked, never less". Register nothing for `file://` urls, or for user information holding `/`, and anchor the replacement after `://`. (`adv3/s4_mask.py`) — `masking.py:56-57`, `masking.py:71-72`
-- [ ] (suggestion) After a `sync` is killed, its orphaned fetch holds the lock, and the next run says "a sync is still running" naming a dead pid. A fetch stopped at a password prompt may hold the lock until killed. The design says "until the fetch ends"; say that this may need a kill, and name the git child in the refusal. (`adv3/s5_lock.py`) — `system.py:505-512`, `docs/design.md:909`
-- [ ] (suggestion) Add `--prune` (and fetch's `-p`) to the forbidden words, now that the design says sync prunes nothing. — `update.py` `NEVER`, `tests/test_update_safety.py`
+- [x] (suggestion) After a `sync` is killed, its orphaned fetch holds the lock, and the next run says "a sync is still running" naming a dead pid. A fetch stopped at a password prompt may hold the lock until killed. The design says "until the fetch ends"; say that this may need a kill, and name the git child in the refusal. (`adv3/s5_lock.py`) — `system.py:505-512`, `docs/design.md:909`
+- [x] (suggestion) Add `--prune` (and fetch's `-p`) to the forbidden words, now that the design says sync prunes nothing. — `update.py` `NEVER`, `tests/test_update_safety.py`
 
 ## Checkpoint
 **Status**: complete
