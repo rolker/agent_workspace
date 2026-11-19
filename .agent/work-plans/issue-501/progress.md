@@ -465,3 +465,13 @@ Round 2's must-fix, re-run: (1) gone — after a SIGKILL of the tool's whole gro
 - [ ] (suggestion) colcon's resume options (`--packages-skip-build-finished`, `--packages-select-build-failed`) make a run a selection run, so a layer completed that way is never recorded and the report says "not all of it was built" (Claude adversarial) — `tools/repos-manifest/src/repos_manifest/build.py` `package_selection`
 - [ ] (suggestion) `note_lock_holders` truncates and then writes, so a second build reading in between sees no pid and gives the `fuser` hint while the tool is alive; write then truncate to length (Claude adversarial, from the code) — `tools/repos-manifest/src/repos_manifest/system.py` `note_lock_holders`
 - [ ] (suggestion) A colcon usage error in the forwarded arguments (e.g. ambiguous `-- --packages-ign d`, exit 2) is found only after the first layer's record is removed, so `setup.bash` drops to "nothing is built" until a plain build (reproduced; not new in this round) — `tools/repos-manifest/src/repos_manifest/build.py` `build_layers`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 11:42 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 found two must-fix, both in the package-selection rule the host itself decided in round 2; a branch with a reproduced wrong result is not published)
+**After**: rounds
+**Decision**: address
+
+Round 3 confirmed all four round 2 must-fix gone and found two new ones, both reproduced, both in the rule for runs with a package-selection option. The host replaces its round 2 rule with the reviewer's: (1) a run with a package-selection option is refused, before anything runs, when it would build a layer that is not built; the message names those layers and says to build them without selection first; such a run then only rebuilds layers already built and exits 0. (2) After a successful selection run a layer gets back the record it had (its repos list unchanged), and a layer whose repos on disk differ from its record is treated as not built for a selection run. Suggestion 1: --packages-skip-build-finished is not package selection (it finishes a layer, and is how a failed layer is resumed during a port); --packages-select-build-failed stays selection, since packages never tried are not built by it. Suggestion 2 (write the lock file's pids, then cut to length) is fixed. Suggestion 3 (a colcon usage error found only after the first layer's record is removed) is not fixed: telling a usage error from a build failure after the fact is not reliable; design.md says a build <layer> restores it, and the pull request names it. This is the host's first address at this checkpoint.
