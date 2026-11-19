@@ -539,3 +539,30 @@ Round 3's must-fix, re-run: (1) gone — on a fresh system `build -- --packages-
 **Decision**: address
 
 Round 4 confirmed both round 3 must-fix gone and the fixer's --keep-going choice sound. Its three must-fix are fixed as follows. (1) The colcon log files committed under tools/repos-manifest/log/ are removed from the branch. (2) design.md says what --packages-skip-build-finished really does (colcon skips every package whose most recent build finished, whichever run that was, so changed sources of such a package are not rebuilt) and that a layer recorded after such a run means every package has been built at some point, not that it is up to date; the code is not changed. (3) design.md says that only a build of that layer without package selection brings back a layer lost to a rejected argument. The three suggestions are fixed too: the report says "rebuilt with selection" in a selection run; the selection refusal separates layers that are not built from layers whose repos differ from their record; the clause about the "new since" note that now describes nothing is removed or corrected.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 12:04 -05:00
+**By**: claude-code (claude-opus-5-5)
+**Dispatch**: resumed (agent a87bbb2d0d4e6df83, resume 3 of 3)
+
+**Branch**: feature/issue-501 at `153db946`
+**Addressed**: Local Review (Pre-Push) at `7d8e5261` (2026-11-19 11:57 -05:00), with the Checkpoint of 2026-11-19 11:57 -05:00
+**Commits**: e3c53245, 153db946
+
+### Actions
+- [x] (must-fix) The four colcon log files under `tools/repos-manifest/log/` are removed by `git rm` (e3c53245). Their `logger_all.log` records `/usr/bin/colcon version-check` at 11:36:24, after my round 2 hand-back (11:34) and during the round 3 review (entry 11:41); none of my commands ran `version-check`, and they reached the branch through my `git add -A tools/repos-manifest` in dfbd1936. I now stage files by name. No test writes there: every colcon a test starts runs in a layer directory under pytest's tmp_path (checked: after the whole suite no `log/`, `build/` or `install/` directory is in the worktree). `git diff --stat origin/main...HEAD` lists no other non-source file (plan.md and progress.md, the CI workflow, docs, src, tests, the stub fixture, the adapter)
+- [x] (must-fix) design.md says what `--packages-skip-build-finished` does (colcon reads each package's last result in `build/` and skips every package whose last build finished, whichever run; checked in colcon-package-selection's source) and that a record after it says only that every package was built at some point. Hand run with real colcon: a changed source of `x` was not rebuilt ("0 packages finished"), and after `x` failed and was fixed the dependent `y` was left on its old build. No code change; README makes no such claim — `docs/design.md`
+- [x] (must-fix) design.md says only a build of that layer without package selection brings back a layer lost to an argument colcon rejected; hand run: `--packages-sel x` (colcon exit 2) lost top, `-- --packages-select x` was refused as not built, plain `build top` restored it — `docs/design.md`
+- [x] (suggestion) The report says "rebuilt with selection: X" in a selection run — `build.py` `report`, `Progress.selection`
+- [x] (suggestion) The selection refusal names "not built: ..." apart from "built, but its repos differ from its record: ...", and says for the second kind that a build without selection records the change — `build.py` `not_built_for_selection`
+- [x] (suggestion) The "new since" clause is gone; the sentence now says the time keeps saying when the whole layer was last built without selection — `docs/design.md`
+
+### Re-reading the build section
+Each sentence that states what happens was traced to a test or a hand run. Already covered by tests: the record and its shape, setup.bash before and after each layer and on each way a run ends, the lock and its messages, the built run and refusals, named layers, failure and `--keep-going`, the report lines, PATH handling, prefix warnings, stop signals, Ctrl-Z, hangup, reaping, argument refusals and order, `--merge-install`, the selection rules, resolving selection, resuming. Run by hand now with the real colcon: (1) jobs in a new session cannot open `/dev/tty` ("No such device or address" under a pty, while the same command in the session opens it); (2) `--packages-skip-build-finished` skipping a changed package; (3) the stale dependent after a failed and fixed dependency; (4) a layer lost to `--packages-sel` refused for a corrected selection and restored by a plain build; (5) a `colcon_defaults.yaml` with `install-base` in the layer: colcon exits 0, the layer is "not built" naming the missing `install/setup.bash`, and removing the file and building restores it. Changes made on re-reading: the package-selection bullet and two paragraphs reflowed; no other false sentence found.
+
+### Tests
+Each code fix has a test that fails with the fix reverted (2 reverted copies, both caught).
+- Tool suite: `REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest` — `1107 passed in 202.70s` (real colcon, none skipped)
+- After the suite: no `log/`, `build/` or `install/` directory in the worktree; `git status --porcelain` empty after the commits
+- No workspace script or adapter changed, so no `.agent/scripts/tests` suite applies; pre-commit (SKIP=validate-script-tests) on the changed files clean; the full pass was left to the host.
