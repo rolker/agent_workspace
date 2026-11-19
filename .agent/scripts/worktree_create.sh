@@ -1293,8 +1293,12 @@ elif [ -n "$PLAN_FILE" ]; then
             # rejection may come from a branch origin already has), then
             # lines that can be pasted to push and open the draft PR by
             # hand, quoted with printf %q.
-            echo "  ⚠️  Push failed — skipping draft PR (non-fatal). git push -u origin $BRANCH_NAME said:"
-            [ -n "$push_err" ] && printf '%s\n' "$push_err" | sed 's/[[:space:]]*$//; s/^/       /'
+            if [ -n "$push_err" ]; then
+                echo "  ⚠️  Push failed — skipping draft PR (non-fatal). git push -u origin $BRANCH_NAME said:"
+                printf '%s\n' "$push_err" | sed 's/[[:space:]]*$//; s/^/       /'
+            else
+                echo "  ⚠️  Push failed — skipping draft PR (non-fatal)."
+            fi
             echo "     Once the cause is fixed, push and open the draft PR by running these"
             echo "     in a shell where AGENT_NAME and AGENT_MODEL are set"
             echo "     (first: source $(printf '%q' "$SCRIPT_DIR/set_git_identity_env.sh") --agent <framework> \"<model-id>\"):"

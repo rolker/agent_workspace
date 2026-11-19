@@ -80,7 +80,8 @@ newest_branch() {  # <repo> <ref pattern>
 # fetch's last argument (its refspec); STUB_FETCH=fail fails every fetch
 # fast, STUB_FETCH=noop exits 0 having fetched nothing; STUB_LS_HANG,
 # STUB_LS_OK and STUB_LS_FAIL make `ls-remote` for that ref hang, say
-# found, or fail fast. STUB_RACE_BRANCH plays a second run for the same
+# found, or fail fast. STUB_PUSH=silent-fail makes every push fail with
+# nothing on stderr. STUB_RACE_BRANCH plays a second run for the same
 # issue: at the first fetch or ls-remote (the origin lookup) it creates
 # that branch in STUB_RACE_REPO from main, with a worktree on it at
 # STUB_RACE_DEST.
@@ -104,6 +105,8 @@ if [ "\$sub" = fetch ]; then
         fail) echo "fatal: stub fetch failed" >&2; exit 128 ;;
         noop) exit 0 ;;
     esac
+elif [ "\$sub" = push ] && [ "\${STUB_PUSH:-}" = silent-fail ]; then
+    exit 1
 elif [ "\$sub" = ls-remote ]; then
     [ "\$last" = "\${STUB_LS_HANG:-}" ] && exec sleep 30
     [ "\$last" = "\${STUB_LS_OK:-}" ] && exit 0
@@ -1260,6 +1263,24 @@ if [[ "$(cat "$GH_LOG13.body" 2>/dev/null)" == $'## Summary\n\nIssue #73\n\nClos
     pass "push succeeds: the draft PR's body file is the Summary, the title, Closes and the signature"
 else
     fail "relative --plan-file, push succeeds: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG13" 2>/dev/null)] out=${OUT:0:1200}"
+fi
+
+# Integrated review, PR 526: a push that fails with nothing on stderr
+# gets a warning without a dangling "said:".
+SB16="$SANDBOX/ws16"
+make_ws_repo "$SB16"
+gitq init -q --bare -b main "$SANDBOX/origin16.git"
+gitq -C "$SB16" remote add origin "$SANDBOX/origin16.git"
+gitq -C "$SB16" push -q origin main
+gitq -C "$SB16" remote set-head origin main
+OUT="$(cd "$SB16" && env PATH="$GITSTUB:$SB16/stubbin:$PATH" STUB_PUSH=silent-fail "$SB16/.agent/scripts/worktree_create.sh" \
+    --issue 76 --type workspace --plan-file "$PLAN11" 2>&1)"
+RC=$?
+if [[ "$RC" -eq 0 && "$OUT" == *"  ⚠️  Push failed — skipping draft PR (non-fatal)."$'\n'"     Once the cause is fixed"* \
+      && "$OUT" != *"said:"* ]]; then
+    pass "silent push failure: the warning says the push failed, with no dangling said:"
+else
+    fail "silent push failure: rc=$RC out=${OUT:0:1200}"
 fi
 
 # Integrated review, PR 526: a relative --plan-file given from a directory
