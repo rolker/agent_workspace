@@ -768,14 +768,16 @@ def _move(turn: _Turn, head: str, found: Version, said: Optional[str] = None) ->
     want = f"refs/heads/{found.name}"
     local = git.out("rev-parse", "--verify", "-q", want)
     if local is None:
-        track = f"refs/remotes/origin/{found.name}"
+        # The branch is made at origin's commit with no tracking, so the switch either does it
+        # all or nothing; the upstream is set after, a step whose failure is a note.
         steps = [
             (
-                ["switch", "-q", "--no-overwrite-ignore", "-c", found.name, "--track", track],
+                ["switch", "-q", "--no-overwrite-ignore", "-c", found.name, "--no-track"]
+                + [found.target],
                 found.target,
             )
         ]
-        return _change(turn, head, [found.target], steps, want, said)
+        return _change(turn, head, [found.target], steps, want, said, upstream=found.name)
     if not ancestor(git, local, found.target):
         return turn.left(f"a local branch {found.name} has commits not on origin; not switched")
     holder = worktree_holding(git, found.name)
@@ -796,6 +798,7 @@ def _change(
     steps: Sequence[Tuple[Sequence[str], str]],
     want: Optional[str],
     said: str,
+    upstream: Optional[str] = None,
 ) -> Done:
     """Run `steps`, the calls that change the work tree, after the submodule and paths checks:
     each call with the commit it puts `HEAD` on; `want` is the symbolic `HEAD` (None: detached)
@@ -804,7 +807,8 @@ def _change(
     Each call is judged by the state it leaves, not its exit status: one that exited non-zero
     (a failing hook) but left `HEAD` where it was to go, with no tracked changes, counts, with a
     note. A call that did not get there is put back (the second of two is undone by switching
-    back); if the repo is then not as it was, the result is an error with what git left."""
+    back); if the repo is then not as it was, the result is an error that says what git left.
+    `upstream` names a new branch whose upstream (origin's branch of that name) is set last."""
     git, notes = turn.git, turn.notes
     target = steps[-1][1]
     submodules = submodules_in_the_way(git, head, targets)
@@ -826,10 +830,11 @@ def _change(
     for index, (step, end) in enumerate(steps):
         status, printed, error = git.run(*step, change=True)
         said_by_git = (printed + error).rstrip()
-        if status == 0:
-            continue
+        # Judged by the state the step leaves, whatever its exit status: a step that exited 0
+        # but left tracked changes (a hook that edits files) stops the move here too.
         if _arrived(git, end, want):
-            notes.append(f"moved, but `git {step[0]}` exited {status}:\n{said_by_git}")
+            if status != 0:
+                notes.append(f"moved, but `git {step[0]}` exited {status}:\n{said_by_git}")
             continue
         if index > 0:  # undo the first step: back where it was
             back = ["switch", "-q", "--no-overwrite-ignore", "--detach", before.head]
@@ -851,25 +856,79 @@ def _change(
                 f"`git {step[0]}` exited {status}; left as it was:\n{said_by_git}",
                 notes,
             )
-        return Done(
-            FAILED,
-            f"`git {step[0]}` exited {status} and left the repo changed: HEAD was"
-            f" {before.head[:12]} ({before.symbolic or 'detached'}), is {after.head[:12]}"
-            f" ({after.symbolic or 'detached'}); `git status` shows the rest, and nothing more"
-            f" was run here:\n{said_by_git}",
-            notes,
-        )
-    if not _arrived(git, target, want):
-        return Done(
-            FAILED,
-            f"git exited 0, and the repo is not on {target[:12]} with no tracked changes;"
-            " `git status` shows what it left, and nothing more was run here",
-            notes,
-        )
+        # What git left is said as it is; the record loses its moving line, so the next sync
+        # does not take this for a run that was stopped.
+        turn.put(turn.record if turn.record is not None else turn.new_record(head))
+        return Done(FAILED, _half_changed(git, step[0], status, before, after, said_by_git), notes)
+    if upstream is not None:
+        _set_upstream(git, upstream, notes)
     if (git.place / ".gitmodules").is_file():
         notes.append(f"submodules not updated: git -C {quoted(git.place)} submodule update")
     turn.put(turn.new_record(target))
     return Done(UPDATED, said, notes, commit=target)
+
+
+def _half_changed(git: Git, command: str, status: int, before: Before, after: Before, said: str):
+    """The error for a call that did not get where it was to go and did not leave the repo as
+    it was: where `HEAD` is, and the files that now differ from it, staged or not, which are
+    git's, not a person's (the repo had no tracked changes before)."""
+    where = (
+        f"HEAD is still at {after.head[:12]} ({after.symbolic or 'detached'})"
+        if (after.head, after.symbolic) == (before.head, before.symbolic)
+        else f"HEAD was at {before.head[:12]} ({before.symbolic or 'detached'}) and is at"
+        f" {after.head[:12]} ({after.symbolic or 'detached'})"
+    )
+    staged = (git.out("diff", "--cached", "--name-status", "HEAD") or "").splitlines()
+    changed = (git.out("diff", "--name-status") or "").splitlines()
+    files = ""
+    for label, lines in (("staged", staged), ("changed, not staged", changed)):
+        if lines:
+            shown = ", ".join(" ".join(line.split("\t", 1)) for line in lines[:SHOWN_PATHS])
+            more = f" and {len(lines) - SHOWN_PATHS} more" if len(lines) > SHOWN_PATHS else ""
+            files += f"; {label}: {shown}{more}"
+    return (
+        f"`git {command}` exited {status} and left the repo half-changed: {where}{files}. These"
+        " changes are git's, not a person's (there were none before); sync does not put them"
+        f" back, as it runs no reset or forced checkout: `git -C {quoted(git.place)} status`"
+        f" shows them, and nothing more was run here:\n{said}"
+    )
+
+
+def _fetch_covers(git: Git, branch: str) -> bool:
+    """Whether a `remote.origin.fetch` refspec of the clone maps origin's `branch`."""
+    printed = git.out("config", "--get-all", "remote.origin.fetch") or ""
+    ref = f"refs/heads/{branch}"
+    for spec in printed.splitlines():
+        source = spec.lstrip("+").split(":", 1)[0]
+        if source == ref or (
+            source.count("*") == 1
+            and ref.startswith(source.split("*")[0])
+            and ref.endswith(source.split("*")[1])
+        ):
+            return True
+    return False
+
+
+def _set_upstream(git: Git, branch: str, notes: List[str]) -> None:
+    """Set the new branch's upstream to origin's branch; a failure is a note, since the move is
+    done and nothing else depends on it."""
+    status, printed, error = git.run(
+        "branch", f"--set-upstream-to=refs/remotes/origin/{branch}", branch, change=True
+    )
+    if status == 0:
+        return
+    why = (
+        "the clone's fetch settings (remote.origin.fetch, as a --single-branch or --depth clone"
+        f" has them) do not cover origin's {branch}"
+        if not _fetch_covers(git, branch)
+        else f"`git branch --set-upstream-to` exited {status}: {(printed + error).strip()}"
+    )
+    place = quoted(git.place)
+    notes.append(
+        f"branch {branch} has no upstream configured: {why}; to set one by hand: git -C {place}"
+        f" config branch.{branch}.remote origin && git -C {place} config branch.{branch}.merge"
+        f" refs/heads/{branch}"
+    )
 
 
 def _arrived(git: Git, target: str, want: Optional[str]) -> bool:

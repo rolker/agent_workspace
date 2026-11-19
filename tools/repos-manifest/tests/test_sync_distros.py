@@ -226,13 +226,14 @@ if [ "$sub" = "$STUB_ON" ]; then
     term-during) kill -TERM "$PPID"; sleep 0.3; exec "$REAL_GIT" "$@";;
     fail) echo "stub refuses" >&2; exit 1;;
     plant) printf 'precious\n' >"$STUB_PLANT"; exec "$REAL_GIT" "$@";;
+    half) "$REAL_GIT" "$@"; "$REAL_GIT" -C "$STUB_PLANT" symbolic-ref HEAD "$STUB_BACK"; exit 128;;
   esac
 fi
 exec "$REAL_GIT" "$@"
 """
 
 
-def _sync_with_stub(tmp_path, system, on, do, plant=""):
+def _sync_with_stub(tmp_path, system, on, do, plant="", back=""):
     """`sync` in a process of its own, with a `git` first on PATH that acts on the subcommand
     `on` as `do` says (`plant`: write the file `plant` just before it); returns the process."""
     stub = tmp_path / "stub-bin" / "git"
@@ -246,6 +247,7 @@ def _sync_with_stub(tmp_path, system, on, do, plant=""):
         "STUB_ON": on,
         "STUB_DO": do,
         "STUB_PLANT": str(plant),
+        "STUB_BACK": back,
         "PYTHONPATH": os.path.dirname(os.path.dirname(repos_manifest.__file__)),
     }
     done = subprocess.run(
@@ -396,3 +398,41 @@ def test_resolved_files_that_cannot_be_written_are_reported_for_that_distro(two,
     assert "distro jazzy:\n  reported above; nothing of it was changed" in out
     assert head(system / "rolling/core/src/a") == new
     assert head(system / "jazzy/core/src/a") != new
+
+
+def test_an_upstream_that_cannot_be_set_is_a_note_and_the_move_stands(two, tmp_path, capsys):
+    system, manifest, remote = two
+    clone = system / "jazzy/core/src/a"
+    rewrite_manifest(manifest, lambda d: d["repositories"]["a"].update(version="dev"))
+    done = _sync_with_stub(tmp_path, system, "branch", "fail")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert (
+        "jazzy/core/src/a: branch dev has no upstream configured: `git branch --set-upstream-to`"
+        " exited 1: stub refuses; to set one by hand:"
+    ) in done.stdout, done.stdout
+    assert "updated (1): jazzy/core/src/a" in done.stdout
+    assert branch(clone) == "dev" and head(clone) == git("rev-parse", "dev", cwd=remote)
+    assert git("status", "--porcelain", cwd=clone) == ""
+
+
+def test_a_switch_that_leaves_a_half_change_says_what_it_left(two, tmp_path, capsys):
+    # A switch that writes the new tree and then fails with HEAD where it was (what a
+    # `--track` that git refuses did): the report names HEAD and the staged files, and the
+    # next sync does not take it for a stopped run.
+    system, manifest, remote = two
+    clone = system / "jazzy/core/src/a"
+    rewrite_manifest(manifest, lambda d: d["repositories"]["a"].update(version="dev"))
+    was = head(clone)
+    done = _sync_with_stub(tmp_path, system, "switch", "half", clone, "refs/heads/main")
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert (
+        f"ERROR: jazzy/core/src/a: `git switch` exited 128 and left the repo half-changed: HEAD is"
+        f" still at {was[:12]} (refs/heads/main); staged: A BRANCH. These changes are git's,"
+        " not a person's (there were none before); sync does not put them back"
+    ) in done.stdout, done.stdout
+    assert "moving" not in state_of(system, "jazzy")["a"]
+    capsys.readouterr()
+    assert run(system, "sync", "--distro", "jazzy") == 0
+    out = capsys.readouterr().out
+    assert "left alone: has uncommitted changes (1 files)\n" in out, out
+    assert "a sync was stopped" not in out

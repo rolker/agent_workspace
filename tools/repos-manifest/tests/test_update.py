@@ -949,6 +949,61 @@ def test_a_shallow_clone_is_followed_and_stays_shallow(vcs, tmp_path, capsys):
     assert "up to date (1)" in _sync(sys_dir, capsys)
 
 
+def _narrow_clone(clone, remote, how):
+    """Clone `remote` again at `clone` as a person would with `how`: a --single-branch clone,
+    or a --depth 1 one (which is single-branch too); its fetch settings cover main only."""
+    subprocess.run(["rm", "-rf", str(clone)], check=True)
+    if how == "--single-branch":
+        git("clone", "-q", "--single-branch", "-b", "main", str(remote), str(clone))
+    else:
+        git("clone", "-q", "--depth", "1", "-b", "main", f"file://{remote}", str(clone))
+        git("remote", "set-url", "origin", str(remote), cwd=clone)
+    (clone / "local.log").write_text("a person's ignored file\n")
+
+
+@pytest.mark.parametrize("how", ["--single-branch", "--depth 1"])
+@pytest.mark.parametrize("to", ["dev", "v1", "commit"])
+def test_a_narrow_clone_is_moved_whole_or_not_at_all(system, capsys, how, to):
+    sys_dir, manifest, remote, clone = system
+    _narrow_clone(clone, remote, how)
+    target = {
+        "dev": git("rev-parse", "dev", cwd=remote),
+        "v1": git("rev-parse", "v1^{commit}", cwd=remote),
+        "commit": git("rev-parse", "other", cwd=remote),
+    }[to]
+    _pin(manifest, target if to == "commit" else to)
+    before = snapshot_repo(clone)
+    out = _sync(sys_dir, capsys)
+    assert "updated (1): src/a" in out and "ERROR" not in out, out
+    after = snapshot_repo(clone)
+    assert head(clone) == target
+    # Nothing staged or changed: only the person's file, untracked or ignored on the target.
+    status = git("status", "--porcelain", "--untracked-files=all", "--ignored", cwd=clone)
+    assert status in ("?? local.log", "!! local.log"), status
+    assert after["files"]["local.log"] == before["files"]["local.log"]
+    assert after["config"] == before["config"]
+    if to == "dev":
+        assert git("symbolic-ref", "HEAD", cwd=clone) == "refs/heads/dev"
+        assert (
+            f"src/a: branch dev has no upstream configured: the clone's fetch settings"
+            f" (remote.origin.fetch, as a --single-branch or --depth clone has them) do not"
+            f" cover origin's dev; to set one by hand: git -C {clone} config branch.dev.remote"
+            f" origin && git -C {clone} config branch.dev.merge refs/heads/dev"
+        ) in out, out
+    else:
+        assert branch(clone) == "HEAD"
+    assert state_of(sys_dir)["a"]["commit"] == target and "moving" not in state_of(sys_dir)["a"]
+    assert "up to date (1)" in _sync(sys_dir, capsys)
+
+
+def test_a_new_branch_gets_its_upstream_when_the_fetch_settings_cover_it(system, capsys):
+    sys_dir, manifest, _, clone = system
+    _pin(manifest, "dev")
+    out = _sync(sys_dir, capsys)
+    assert "no upstream" not in out
+    assert git("rev-parse", "--abbrev-ref", "dev@{upstream}", cwd=clone) == "origin/dev"
+
+
 def test_a_failing_post_checkout_hook_after_the_switch_still_counts_as_moved(system, capsys):
     sys_dir, manifest, remote, clone = system
     hook = clone / ".git" / "hooks" / "post-checkout"

@@ -754,7 +754,11 @@ and `FETCH_HEAD`. No local branch, `HEAD`, index or work-tree file changes befor
     it is. A tag or a commit has nothing to follow: `sync` leaves it where it is.
 11. On the recorded version, which the manifest has changed (on the recorded branch, or
     detached at the recorded commit): moved to the new version. A branch not yet local is
-    made with `git switch -c <version> --track origin/<version>`; a tag or a commit is checked
+    made with `git switch -c <version> --no-track <origin's commit>`, which does all of it or
+    nothing, and its upstream (`origin/<version>`) is set after the switch, as a step of its
+    own: when git refuses it, as it does in a `--single-branch` or `--depth` clone whose fetch
+    settings do not cover that branch, the move stands and the report says the branch has no
+    upstream, why, and the two `git config` commands that set one. A tag or a commit is checked
     out detached. A local branch of that name is used when `origin/<version>` contains it: it
     is switched to and then fast-forwarded. If that local branch has commits not on `origin`,
     or is checked out in another work tree, the repo is left as it is. The branch left behind
@@ -780,16 +784,21 @@ says which are ignored. Git's own refusal stays behind that check: every `git me
 accept it in git 2.53.0), so an ignored file written where an incoming file goes between the
 check and the call (a build writing a log) makes git refuse, and the repo is left as it was.
 
-Every `git` that changes a repo is one call (a switch, or a fast-forward), except the switch to
-a local branch followed by its fast-forward, whose first step is undone if the second fails.
-After each call `sync` reads the repo's state: success is `HEAD` where that call was to put it
-(for the switch of a two-step move, the local branch) with no tracked changes, whatever git's
-exit status (a `post-checkout` hook that fails makes `git switch` exit non-zero after it has
-switched; that is reported, and the step counts, so a two-step move goes on to its
-fast-forward). A call that failed and
+Every `git` that changes a repo's tree is one call (a switch, or a fast-forward) that does
+all of what it is for or nothing, except the switch to a local branch followed by its
+fast-forward, whose first step is undone if the second does not get there. After each call,
+whatever its exit status, `sync` reads the repo's state: success is `HEAD` where that call was
+to put it (for the switch of a two-step move, the local branch) with no tracked changes (a
+`post-checkout` hook that fails makes `git switch` exit non-zero after it has switched; that
+is reported, and the step counts, so a two-step move goes on to its fast-forward; a hook that
+exits 0 but changes tracked files stops the move there). A call that did not get there and
 left the repo as it was (`HEAD`, the branch, the configuration, the index and the tracked
-status compared) is reported and the repo left; one that left it otherwise is an error with
-what git left, and nothing more runs in that repo. `sync` never runs `reset`, `checkout -f`,
+status compared) is reported and the repo left. One that left it otherwise is an error that
+says what git left: where `HEAD` is (or that it is still where it was) and the files that now
+differ from it, staged or not, which are git's, since the repo had no tracked changes before;
+`sync` does not put them back, and nothing more runs in that repo. Its record loses the
+`moving` line, so the next `sync` reports the uncommitted changes and does not take them for a
+run that was stopped. `sync` never runs `reset`, `checkout -f`,
 `clean`, `stash`, `rebase`, `pull`, `push`, `gc` or `prune`, never deletes a branch, and passes
 no `--force` or `--no-verify`. Each `git` runs with automatic `gc` and `maintenance` off and
 with `submodule.recurse` off.
