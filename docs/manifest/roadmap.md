@@ -26,6 +26,7 @@ checks are relative to the workspace's root.
 | The tool's design covers starting with one distro in a directory of its own and adding a distro later (#495) | `gh-issue 495 closed` |
 | The tool's design gives what the adapter relies on today: a status a script can read with an exit status, protection against two runs at once, time limits on fetches, a resolve that changes nothing when it fails, and a manifest named by a commit | |
 | The tool has the commands the adapter calls: `show`, `init`, `add-distro`, `sync`, `build` and `status` | |
+| The adapter reads a root the tool set up with a directory per distro, its distro from the directory the call comes from, and its `setup` and `sync` run the tool's `sync` (#503 part 1) | `file-contains .agent/project_types/ros2_colcon/adapter.sh .repos-manifest/resolved` |
 | Project11 has a manifest in the new format, with its layers, groups, roles and distros | |
 | Registration passes the manifest's location, role, distro and fetch settings to `init` | |
 | The adapter's `setup`, `sync`, `build` and `validate` call the tool, and its own manifest fetch and generated directories are removed | |

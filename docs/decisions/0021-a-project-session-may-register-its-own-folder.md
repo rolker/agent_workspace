@@ -94,6 +94,12 @@ does not take (a name, a type, a parent root, `--remove`).
   but registration's gate (`adapter validate`) still requires a git
   repository. Its dry run does not run the gate, so it looks clean until
   the real run refuses and rolls back. This is a named gap, not fixed here.
+
+  Note (2026-11-18): issue #503 narrowed this gap. A root the manifest
+  tool set up (it holds `.repos-manifest/`) registers from its own session
+  though it is in no git repository, since the gate's `adapter validate`
+  checks its clones, not the root. A single-repository folder in no git
+  repository is still refused.
 - **The session that registers lacks the workspace layer** the
   `SessionStart` hook gives a registered root: it started before the
   registration. A new session at the root has it.

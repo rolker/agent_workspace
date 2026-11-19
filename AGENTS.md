@@ -8,7 +8,7 @@ setup (environment, identity, features), see your framework's adapter file:
 ## Terminology
 
 - **Project**: what is being built: any folder registered with the workspace (`register_project.sh`),
-  wherever it lives. A hosting service is optional; git is meant to be, but registration still needs it.
+  wherever it lives. A hosting service is optional; git is meant to be, and today only a single-repository project's own folder needs it.
   Features, deployment and user-facing behavior are project scope.
 - **Workspace**: the agent infrastructure in this repo — skills, governance,
   scripts, worktrees, docs, and configuration.

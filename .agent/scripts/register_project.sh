@@ -30,8 +30,9 @@
 #                  directory exists.
 #   <type>         single_project, ros2_colcon, or the pseudo-type project
 #                  (a parent root grouping instances). Omitted: ros2_colcon
-#                  when <path>/configs/manifest exists or --set
-#                  bootstrap_url=... is given, else single_project. A
+#                  when <path>/configs/manifest or <path>/.repos-manifest
+#                  (a root the manifest tool set up; issue 503) exists or
+#                  --set bootstrap_url=... is given, else single_project. A
 #                  --set source=... does not choose the type: pass
 #                  ros2_colcon with it (issue #436).
 #   --name N       the project's name (default: the directory's name)
@@ -620,7 +621,10 @@ if [ "$ADOPT" -eq 1 ]; then
     fi
 elif [ -n "$TYPE_ARG" ]; then
     TYPE="$TYPE_ARG"
-elif [ -d "$PROJECT_ROOT/configs/manifest" ] || set_value bootstrap_url >/dev/null; then
+# .repos-manifest is tested as the adapter's route test does (there, or a
+# link, even a dangling one), so a link to nothing is typed as it is routed.
+elif [ -d "$PROJECT_ROOT/configs/manifest" ] || [ -e "$PROJECT_ROOT/.repos-manifest" ] || [ -L "$PROJECT_ROOT/.repos-manifest" ] \
+    || set_value bootstrap_url >/dev/null; then
     TYPE="ros2_colcon"
 else
     TYPE="single_project"

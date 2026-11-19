@@ -299,6 +299,27 @@ package repos, and issue are all explicit:
     future release.
 - `--plan-file` draft-PR creation is not supported for package worktrees (the
   aggregate dir is not itself a git repo); open PRs per package repo by hand.
+- A root the manifest tool set up (`repos-manifest init --distro-dirs`; issue
+  503) takes the same flags. Its layers are `<root>/<distro>/<layer>` and the
+  base is the pin in the tool's resolved `<layer>.repos`, for the distro the
+  directory the call comes from chooses (with one distro set up, that one).
+  With several distros set up, call `worktree_create.sh --project <name>`
+  from inside `<root>/<distro>/`: every adapter call it makes comes from that
+  directory, so the pin, the layers and `env.sh` are that distro's; from the
+  root it is refused before anything is made, listing the distros. A session
+  is still started at the root, so on a root with several distros
+  `/run-issue` and `/start-task`, run from that session, cannot make a
+  package worktree yet: run `worktree_create.sh` from inside
+  `<root>/<distro>/`. See `docs/manifest/design.md`, "The tool
+  route". Its environment is `adapter env`, not the tool's
+  `<root>/<distro>/setup.bash`, which is a stub until the tool builds. A lower
+  layer not built yet is named in a note when the worktree is made. After a
+  package pull request merges, `merge_pr.sh` fast-forwards the root's clone
+  when it is clean and on the base; otherwise it fetches only and prints
+  "fetched only: <reason>" (no base known, a detached HEAD, another branch,
+  or not clean). You can then bring the clone up to date yourself, for example with
+  `git -C <clone> pull` once it is clean and on the base. That layer is
+  rebuilt by hand until the tool builds.
 
 ### Merging Package-Worktree PRs
 

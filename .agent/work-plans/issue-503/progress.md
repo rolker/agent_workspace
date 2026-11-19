@@ -609,3 +609,440 @@ PR body check against the host's account: Decision summary, Part of #503 (does n
 **Decision**: merge
 
 The owner chose "Merge (Recommended)" in a dialog (2026-11-18) for pull request 513 (part 1A: a project root need not be a git repository), with the nested-plain-root weakness left out of it as described to him: already so on main, not touching a root that is outside every repository, and a change of its own. The host proposes a separate issue for it afterwards. The issue stays open: part 1B and later parts remain.
+
+## Checkpoint
+**When**: 2026-11-18 20:13 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan file is unchanged since its last review, at 3f2dae10, and names a part not yet delivered; the owner chose "Merge and carry on" at the merge of pull request 512, naming part 1B)
+**After**: plan
+**Decision**: proceed
+
+Pull request 513 (part 1A: a project root need not be a git repository) merged on 2026-11-18. The issue stays open. This pull request is part 1B ("Part of #503"): the adapter's route for a directory the manifest tool set up, and its registration. The tool's init and sync are on main since pull request 512 merged the same day, so the command line is checked against main.
+
+Build the plan's part 1 except what part 1A delivered, with the second Plan Review's findings and the points below. Where this entry and the plan differ, this entry wins.
+
+1. In scope: the dispatcher's calling-directory variable; the route chosen by .repos-manifest/ at the root, never falling back to a route that fetches; the distro rule in one place; the path helpers; setup and sync calling the tool's sync from the root; build and test with today's loop over the tool's layers (said to be interim); validate against the tool's last resolved files, refusing a second record; type detection in registration; the documents; tests with fixtures outside every git repository.
+2. The owner's decisions, in his words (2026-11-18): one registration for the project, and "yes, the directory the session is started in decides" the distro; "yes, starting at ~/project11 is fine for the first cut" (a session started in <root>/<distro>/ is a later part); "yes to the AGENTS.md edit": the one sentence in Terminology becomes "A hosting service is optional; git is meant to be, and today only a single-repository project's own folder needs it." as its own commit, and nothing else in AGENTS.md changes.
+3. The acceptance section and every document and test state the acceptance generically: a multi-repo project that the tool set up with a directory per distro is registered as one project; a session at its root runs the issue workflow on an issue of one of its package repos; the worktree's build script builds against the layers. No porting pattern, no order of work, and no project's repo names beyond the workspace's existing acceptance case. The owner (2026-11-18): how a project's port is handled is the project's, and he has not decided it: "Let me see once I get the project registered and have an agent working in it." The plan's example commands for a port are not carried into any tracked file.
+4. From the second Plan Review: the two reworded rows of the table; the design says that a merge fast-forwards the root's clone of a package repo past the commit recorded in the tool's state.yaml, by the same move the tool's own sync would make, and that the tool's status should treat that as expected; the merge script's update of the clone stays as it is; the two-distro inconsistency between calls made from the caller's directory and the one made after a cd is named in the part 3 outline; the distro rule compares physical paths; worktree_env prints a note on stderr naming each lower layer with no install directory; the by-hand build steps use --continue-on-error per layer.
+5. Carried from part 1A's reviews: the bare --issue test in test_worktree_create.sh for a root outside git asserts its exit status and that the worktree was made (a new assertion appended; no existing line changed). The sentences part 1A left because registration made them true only now: the header of register_session_root.sh, its row in script_reference.md, docs/design.md's "Registration needs a git repository today" and the onboarding bullet's known gap. Change each only if this part makes it untrue, and test what the new sentence claims.
+6. A repo key with a directory in it (grp/repo): the tool supports it and part 1 of issue 500 tests it. The plan refused it by name because worktree_create.sh names a repo by the last part of its path. Keep that refusal for this part, by name, in validate and in the worktree verbs, and say so in the design; reading it is a later part.
+7. Every assertion of today's suites stays as it is; today's routes are untouched; no project type's name in a general script; nothing under .github/.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 20:41 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-503 at `a53288dc`
+
+Part 1B (Checkpoint of 20:13): the ros2_colcon tool route for a root the manifest tool set up, and its registration. Commits, each "Part of #503":
+
+- `87d3e633` adapter.sh and the dispatcher. `_rc_route` (the one route choice: `.repos-manifest/` at the root, else `source`, else bootstrap); `_rc_tool_distro_select` (the one distro rule: the calling directory, physical on both sides, else the one resolved distro, else refuse listing them); `_rc_layer_dir` (`<root>/<d>/<layer>`, `<root>/<d>` for `_unnamed`); `_rc_repos_file` (the one place a layer's `.repos` file is named, used by every caller); `_rc_is_optional_repo` (optional.txt); `_rc_tool_refuse_nested_keys`; `_rc_tool_sync` (setup and sync: the tool's `sync [--distro d]` in the root, status passed through, nothing pulled or fetched, the layers-changed line); `_rc_tool_validate` (checkouts against the last resolve, refuses role=/distro=/source/source_ref/source_path/bootstrap_url, says it did not read the manifest again); `_rc_colcon` (`--base-paths src` on the tool route). Tool branches added at the top of `_rc_manifest_dir`, `_rc_pin_manifest_dir`, `_rc_require_manifest`, `_rc_is_optional_layer`, `_rc_distro`, setup, sync, validate; the old branches unchanged. `worktree_env` notes each unbuilt lower layer on stderr (every route). The bootstrap no-URL refusal gains a line naming `init --distro-dirs`. Dispatcher: `ACTIVE_PROJECT_FROM`.
+- `32b0f3b6` registration: type detected from `.repos-manifest/`; registration.conf comment; register_session_root.sh header and its script_reference row narrowed to a single-repository folder.
+- `bfb30e84` test_worktree_create.sh: the SB10 bare --issue case asserts exit 0 and the worktree (part 1A review carry-over).
+- `2028774d` docs: docs/manifest/design.md (three routes, "The tool route" section, the merge's fast-forward past state.yaml's commit, route order corrected, "Not decided" narrowed), roadmap (one new line, checked by `file-contains`, true), docs/design.md (three routes, ACTIVE_PROJECT_FROM, the registration/onboarding gap narrowed; change-log row), WORKTREE_GUIDE.
+- `9fcccd91` AGENTS.md: the owner-approved sentence, nothing else (200 lines).
+- `a53288dc` plan.md: the two table rows the second Plan Review reworded. It landed after the AGENTS.md commit; reordering (reset and cherry-pick) was denied by the permission system, so the host may reorder before the push.
+
+New tests: test_ros2_colcon.sh test_tool_route_order, test_tool_unusable_root_is_an_error_never_a_fetch, test_tool_nested_key_refused_by_name, test_tool_distro_rule, test_tool_setup_and_sync_run_the_tool, test_tool_build_and_test_over_the_resolved_layers, test_tool_validate, test_tool_repos_pin_and_worktree_verbs, test_worktree_env_names_unbuilt_lower_layers, test_tool_package_worktree, test_bootstrap_no_url_names_the_tool, test_tool_real_init_and_sync (real tool and vcs; skipped with a message without vcs; ran here). Fixtures outside every git repository, resolved by this checkout's `repos-manifest resolve`. test_register_project.sh and test_register_session_root.sh: a tool root outside git registers (from the workspace, from its session); an unresolved one is refused and rolled back.
+
+Suites, each with `bash` on the committed tree: test_ros2_colcon 1166 passed 0 failed 0 skipped; test_adapter 248/0; test_register_project 209/0; test_register_session_root 71/0; test_worktree_create 90/0; test_session_root 71/0; test_project_registry 425/0; test_package_issue_loop 220/0; test_merge_pr 170/0; test_skill_paths 163/0; validate_adapter.sh pass; check_design_anchors.sh exit 0; `git diff origin/main -- .agent/scripts/tests | grep -c '^-[^-]'`: 0. Hand run in a sandboxed workspace copy in the session scratchpad (its own registry): init, register, validate, sync, repos, repo_pin, env from the root and from rolling/, all exit 0. Full pre-commit pass left to the host.
+
+Not built from the Checkpoint's points: none. Deviation: a nested repo key is refused by `_rc_require_manifest`, so by every verb except setup and sync, not only validate and the worktree verbs.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 20:47 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-503 at `a08e7ab3`
+**Base**: origin/main
+**Depth**: Deep (reason: enforcement scripts, the ros2_colcon adapter, AGENTS.md and design documents; ~1100 lines over 15 files)
+**Must-fix**: 5 | **Suggestions**: 9
+**Round**: 1 | **Ship**: continue — round 1: 5 must-fix; first round always re-reviews after fixes
+
+Part 1B (after the Checkpoint of 20:13). Cross-model: Gemini and Codex both completed. Owner's use run by hand in the session scratchpad (sandboxed workspace copy, its own registry, local file remotes, real /opt/ros/rolling and colcon): a one-distro root registers from the workspace outside git, validate/sync/repos/repo_pin/env/worktree_repos pass from the root and from <root>/rolling/mid, build builds core, mid, top, worktree_create for a mid-layer repo starts its branch at origin/<pin> (base=dev recorded), env.sh sources distro, core, root's mid, the worktree's mid in that order, the NOTE for an unbuilt lower layer goes to stderr only, build.sh builds the package against the layers, enter and remove work. A root with two distros: registration refuses from the workspace and from its session; worktree_create from <root>/<d>/ fails at worktree_env (both deferred to part 3 by the plan's "Later parts", but no tracked document says so). All 10 suites, validate_adapter.sh and check_design_anchors.sh pass; tests diff removes 0 lines; AGENTS.md diff is exactly the approved sentence; --base-paths src only on the tool route; today's routes differ only by the two named changes.
+
+### Findings
+- [x] (must-fix) ADR-0021 still says "A folder in no git repository cannot be registered this way yet ... registration's gate (`adapter validate`) still requires a git repository"; a root the manifest tool set up now registers outside git from its session. The ADR is the owner's: add a dated note for him (or ask) — `docs/decisions/0021-a-project-session-may-register-its-own-folder.md:92`
+- [x] (must-fix) onboard-project step 1 tells the agent a folder in no git repository is refused and "cannot be registered yet"; narrow to a single-repository folder, as register_session_root.sh, script_reference.md and docs/design.md were — `.claude/skills/onboard-project/SKILL.md:238`
+- [x] (must-fix) "That is the move the tool's own `sync` makes to a clean repo" is untrue today: the tool's sync leaves a present repo untouched ("updating a repo that is there is not built yet", seen in the hand run); the Checkpoint said "would make" (Codex) — `docs/manifest/design.md:168`
+- [x] (must-fix) A root with several distros: registration refuses it (gate runs validate from the workspace; the refusal advises "run from inside <root>/<distro>/ or pass --from", which registration cannot do), and worktree_create.sh from inside <root>/<d>/ picks d for worktree_repos/pr_base_for, then worktree_env after `cd "$ROOT_DIR"` refuses and rolls back. WORKTREE_GUIDE ("the distro the directory the call comes from chooses") and design.md's tool-route registration sentence claim more than is built. Either pass --from (the caller's directory) on worktree_create's later adapter call, or state the one-distro limit and the part 3 deferral in the documents and in the refusal (adversarial, Gemini, Codex) — `.agent/WORKTREE_GUIDE.md:302`, `docs/manifest/design.md:121`, `.agent/scripts/worktree_create.sh:1043`, `.agent/project_types/ros2_colcon/adapter.sh:795`
+- [x] (must-fix) A root with nothing resolved (also a .repos-manifest that is a file, a dangling link or unreadable) is refused at registration with "Run: .agent/scripts/adapter --project <name> sync" for a project the rollback just removed; that command refuses ("not under a registered project root"). Name the tool's own `repos-manifest sync` in the root as the next step (adversarial; the new test asserts the wrong text) — `.agent/project_types/ros2_colcon/adapter.sh:773`, `.agent/scripts/tests/test_register_project.sh:1087`
+- [x] (suggestion) One rule for repo keys on the tool route: refuse by name every key line `_rc_repos_entries` cannot read (a key with a directory in it is one case; a quoted key such as 'on', or one with other characters, is now silently passed over by validate, repos and repo_pin) (Codex) — `.agent/project_types/ros2_colcon/adapter.sh:809`
+- [x] (suggestion) The comment "the tool replaces resolved/<distro>/ whole, by rename" implies an atomic swap; the tool renames twice, so a run during a sync can mix generations or see no layers (a build loop of zero layers then reports success). Correct the comment; optionally re-check layers.txt in the loops (Codex, adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:160`
+- [x] (suggestion) Type detection tests `-e .repos-manifest` while `_rc_route` tests `-e || -L`: a dangling link is typed single_project at registration but routed to the tool by the adapter; use one test (Gemini, adversarial) — `.agent/scripts/register_project.sh:624`
+- [x] (suggestion) validate on the tool route names a settings-file source as a second record but says nothing of a leftover configs/manifest or configs/project_bootstrap.url, which the route ignores silently — `.agent/project_types/ros2_colcon/adapter.sh:881`
+- [x] (suggestion) A .repos-manifest that is a file, dangling or unreadable is reported as "nothing is resolved ... run sync"; only the tool's sync then says the record cannot be read. Say so directly (low value) — `.agent/project_types/ros2_colcon/adapter.sh:772`
+- [x] (suggestion) The roadmap line's check is a string grep of adapter.sh; it is true but checks presence, not that the adapter reads a tool root. Prefer a check naming a behaviour (e.g. the tool-route tests) — `docs/manifest/roadmap.md:29` (deferred: host decision: no action; the check is a presence grep of adapter.sh, a limit the pull request body names)
+- [x] (suggestion) worktree_env's NOTE tests the install/ directory while env.sh sources install/local_setup.bash; test the same file (Gemini) — `.agent/project_types/ros2_colcon/adapter.sh:2049`
+- [x] (suggestion) A user's own --base-paths after the route's `--base-paths src` wins and on the unnamed layer brings back nested layers; not worth doing unless someone passes it (adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:1581` (deferred: host decision: no action; the review's own reason: not worth doing unless someone passes their own --base-paths)
+- [x] (suggestion) ACTIVE_PROJECT_FROM's `cd` has no `--` and honours CDPATH (a relative --from with CDPATH set gives two lines); `CDPATH= cd --`; low value (adversarial, Gemini) — `.agent/scripts/adapter:273` (deferred: host decision: no action; the review's own reason: low value (a relative --from with CDPATH set))
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 21:09 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-503 at `34112d18`
+**Addressed**: Local Review (Pre-Push) at `a08e7ab3` (2026-11-18 20:47 -05:00)
+**Commits**: `4bd7a300` (code and tests), `ca45f435` (ADR-0021 note), `a7d09ef0` and `34112d18` (onboard-project), `7aab63af` (docs)
+
+The fix round for part 1B. Each must-fix as the host decided it (listed for the owner's veto); each code fix stated as one rule, with a test that fails on the code before it (checked by running the new tests against the previous adapter.sh, worktree_create.sh and register_project.sh).
+
+### Actions
+- [x] (must-fix 1, host decision) ADR-0021: the owner's consequence is left as written; a dated note under it, in the commonest form of this repository's records ("Note (YYYY-MM-DD): ... (issue #N)"): "Note (2026-11-18): issue #503 narrowed this gap. A root the manifest tool set up (it holds `.repos-manifest/`) registers from its own session though it is in no git repository, since the gate's `adapter validate` checks its clones, not the root. A single-repository folder in no git repository is still refused." The pull request body names it for the owner — `docs/decisions/0021-a-project-session-may-register-its-own-folder.md:96`
+- [x] (must-fix 2, host decision) onboard-project step 1 narrowed to a single-repository folder; the phrase test_skill_paths.sh checks ("registration needs a git repository today, a known gap") is kept. Grep for "no git repository", "cannot be registered", "needs a git repository" over skills, knowledge, WORKTREE_GUIDE and the design documents: no other sentence made untrue by this part (register_session_root.sh, script_reference.md and docs/design.md were narrowed in the implementation pass) — `.claude/skills/onboard-project/SKILL.md:238`
+- [x] (must-fix 3, host decision) The merge's fast-forward is "the move the tool's `sync` is designed to make to a clean repo that is still on the manifest's version, and that part of `sync` is not built yet". Rest of the diff's documents checked: the NOTE's file and the "each act on one distro" sentence corrected — `docs/manifest/design.md:184`
+- [x] (must-fix 4, host decision) Rule a: `validate` with no distro chosen checks every resolved distro, one after another, and fails naming each failing one ("failing distro: ..."); with a distro chosen, or one set up, that one; every other verb still refuses and lists the distros. The decision is `_rc_tool_distro_select --every`, where the distro rule lives; `_rc_require_manifest` is split into the selection and `_rc_check_manifest`. Rule b: `worktree_create.sh` makes every adapter call for one worktree from the directory it was called from (`CALLER_DIR`, passed with the dispatcher's `--from` on the `worktree_env` call after `cd "$ROOT_DIR"`). On today's routes this changes nothing: only the tool route's distro rule reads `ACTIVE_PROJECT_FROM` (grep), every project worktree's adapter calls carry `--project`, so discovery is not used, and the dispatcher's guard on `--from` sees the directory the earlier `worktree_repos` call was already guarded on. Tests: two-distro registration from the workspace and from its own session; validate from the root covers both and names the failing one; a package worktree from inside `<root>/fakefox/` succeeds with base=fakefox and env.sh naming only `<root>/fakefox/` layers; from the root refused before anything is made, listing the distros. WORKTREE_GUIDE and docs/manifest/design.md say which calls work from where, and that a session still starts at the root — `.agent/project_types/ros2_colcon/adapter.sh`, `.agent/scripts/worktree_create.sh:40,1046`, `.agent/WORKTREE_GUIDE.md:302`, `docs/manifest/design.md:132`
+- [x] (must-fix 5, host decision) One helper, `_rc_tool_unusable`, refuses an unusable `.repos-manifest/`, saying what is wrong (not a directory; a link to nothing; cannot be read; nothing resolved yet; a flat layout) and naming the manifest tool's own command in the root by the workspace's installed path: "Run the manifest tool in the root: cd <root> && <main checkout>/.venv/bin/repos-manifest sync (then register it, or run the call again)"; for a flat layout its init --distro-dirs in an empty directory. The branch's register test assertion changed to it — `.agent/project_types/ros2_colcon/adapter.sh`, `.agent/scripts/tests/test_register_project.sh`
+- [x] (suggestion 1) Every key line of a resolved .repos file that the reader cannot read is refused by name (`_rc_tool_refuse_unread_keys`, the reader's own pattern); a key with a directory in it is one case. Tested with 'on' and pkg+x — `.agent/project_types/ros2_colcon/adapter.sh`
+- [x] (suggestion 2) The comment says the tool replaces resolved/<distro>/ in two renames, not one atomic step; a build or test loop that goes over no layer on the tool route is an error (`_rc_tool_no_layers_seen`), tested by an underlay that moves the resolved directory aside between the check and the loop — `.agent/project_types/ros2_colcon/adapter.sh`
+- [x] (suggestion 3) Registration types a root by `.repos-manifest` with the adapter's route test (there, or a link, even a dangling one); a dangling link is now typed ros2_colcon and refused with "is a link to nothing" — `.agent/scripts/register_project.sh:624`
+- [x] (suggestion 4) `validate` on the tool route notes, without failing, a leftover configs/manifest or configs/project_bootstrap.url — `.agent/project_types/ros2_colcon/adapter.sh`
+- [x] (suggestion 5) Covered by must-fix 5 — `.agent/project_types/ros2_colcon/adapter.sh`
+- [x] (suggestion 7) worktree_env's NOTE tests install/local_setup.bash, the file env.sh sources (its branch-added test assertions updated) — `.agent/project_types/ros2_colcon/adapter.sh`
+- [x] (suggestion 6) roadmap check — `docs/manifest/roadmap.md:29` (deferred: host decision, no action; the check is a presence grep of adapter.sh, a limit the pull request body is to name)
+- [x] (suggestion 8) a user's own --base-paths — `.agent/project_types/ros2_colcon/adapter.sh` (deferred: host decision, no action; the review's reason: not worth doing unless someone passes it)
+- [x] (suggestion 9) CDPATH in ACTIVE_PROJECT_FROM — `.agent/scripts/adapter:273` (deferred: host decision, no action; the review's reason: low value)
+
+### Checks
+Suites, each with `bash` on the committed tree: test_ros2_colcon 1241 passed 0 failed 0 skipped; test_adapter 248/0; test_register_project 213/0; test_register_session_root 72/0; test_worktree_create PASS 90 FAIL 0; test_session_root 71/0; test_project_registry 425/0; test_package_issue_loop 220/0; test_merge_pr 170/0; test_skill_paths 163/0 (it failed once on the first skill wording, which dropped a phrase it checks; fixed in `34112d18`). validate_adapter.sh: all 13 verbs for both types; check_design_anchors.sh exit 0; `git diff origin/main...HEAD -- .agent/scripts/tests | grep -c '^-[^-]'`: 0. shellcheck (the hook) passed on every changed script. Full pre-commit pass left to the host. AGENTS.md, CLAUDE.md and .github/ untouched; no project type's name added to a general script.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 21:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-503 at `a1a3a4a8`
+**Base**: origin/main
+**Depth**: Deep (reason: whole-branch classification: enforcement scripts, the ros2_colcon adapter, AGENTS.md, ADR and design documents; ~1500 lines over 18 files)
+**Must-fix**: 2 | **Suggestions**: 7
+**Round**: 2 | **Ship**: continue — round 2: 2 must-fix include a design/correctness concern (not mechanical)
+
+Part 1B, fix-round re-review. Cross-model: Gemini and Codex both completed (EXIT=0); Claude adversarial completed. Round-1 findings: must-fix 1-5 fixed (ADR-0021 note true and in the repository's usual "Note (date): ... issue #N" form; onboard-project narrowed; "designed to make" matches design.md's sync section; several distros: validate covers all and names the failing one, worktree_create from inside <root>/<d>/ reads d throughout, refused from the root leaving nothing; _rc_tool_unusable names the tool's sync), suggestions 1-5 and 7 fixed; but the rule of must-fix 5 (name the tool, not an adapter verb) was applied to one helper only (must-fix 2 below). Hand run in the session scratchpad (sandboxed workspace copy, HOME and registry; two-distro root made by the installed `repos-manifest init --distro-dirs --distro rolling --distro jazzy --yes`, local remotes via a GIT_SSH_COMMAND stub): registers from the workspace and from its own session; validate from the root checks both, with a clone removed in jazzy fails "failing distro: jazzy", from inside rolling/ checks rolling only; setup, sync, build, test, repos, repo_pin, worktree_repos, env from the root refuse listing the distros (project_root and install answer); worktree_create from the root refused, no branch, no worktrees/ directory; from inside jazzy/ exit 0, base=jazzy, branch at origin/jazzy, env.sh names only jazzy paths; from rolling/ base=dev; --layer _unnamed works; enter works from jazzy/, rolling/ and the root; remove works from the root and from either distro directory. Unusable roots: the five messages are true; for nothing resolved the named sync fixes it; for a flat layout the init step is right. Tool-written keys my.pkg, pkg-x, 9pkg, MixedCase pass; setup still runs the tool on unread keys. A root with only the unnamed layer builds. Type detection and _rc_route use the same test. Today's routes: _rc_require_manifest split is identical on the old path (same body and messages); _rc_tool_no_layers_seen returns 0 off the tool route; --from "$CALLER_DIR" changes nothing there (guard already passed on the same directory at worktree_repos; ACTIVE_PROJECT_FROM read only by the tool route); output-only differences are the two named ones (worktree_env NOTE, bootstrap no-URL line). AGENTS.md diff is exactly the approved sentence. Suites (each with bash): test_ros2_colcon 1241/0/0 skipped; test_adapter 248/0; test_register_project 213/0; test_register_session_root 72/0; test_worktree_create PASS 90 FAIL 0; test_session_root 71/0; test_project_registry 425/0; test_package_issue_loop 220/0; test_merge_pr 170/0; test_skill_paths 163/0; validate_adapter.sh both types all 13 verbs; check_design_anchors.sh exit 0; tests diff removes 0 lines; no new project-type name in a general script beyond the in-scope detection line and a comment.
+
+### Findings
+- [x] (must-fix) The distro rule silently acts on another distro: step 1 matches only distros with resolved/<d>/layers.txt, so a call from inside <root>/<d2>/ whose resolve is missing, unreadable or mid-sync falls to step 2 and uses the one other distro (validate from rolling/core with resolved/rolling aside: "✅ ... for distro jazzy", rc 0; repo_pin answers jazzy; sync runs --distro jazzy). Also `validate --every` skips such a distro without a word and setup/sync never reach a distro the tool recorded but did not resolve. One rule: the distros the tool recorded (not only resolved) decide step 1, and a recorded distro without a usable resolve is refused naming the tool's sync for it (adversarial, Codex; reproduced) — `.agent/project_types/ros2_colcon/adapter.sh:826`
+- [x] (must-fix) Next steps that fail when run literally: the unread-key refusal and validate's missing-.repos and not-checked-out lines say "run: .agent/scripts/adapter --project <name> sync"; at registration the project has just been rolled back ("not registered", reproduced), and on a root with several distros that sync refuses from the root or the workspace (reproduced). Apply must-fix 5's rule to every tool-route next step: `cd <root> && <bin> sync [--distro <d>]` from one helper (lead, adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:894,970,979`
+- [x] (suggestion) Keys the tool writes quoted (yaml.safe_dump: '123', '1.5', 'on', 'yes', 'true', 'null') are refused, and the message says the adapter reads "letters, digits, '.', '_' and '-' alone", which these are; strip single quotes on the tool route (cheap) (adversarial; '123'/'on'/'yes' reproduced) — `.agent/project_types/ros2_colcon/adapter.sh:874`
+- [x] (suggestion) For "not a directory", "a link to nothing" and "cannot be read", the named `repos-manifest sync` (then register) cannot repair it: the tool then refuses with its own reason (reproduced); name repairing it or the init step, keeping sync for "nothing resolved" (lead) — `.agent/project_types/ros2_colcon/adapter.sh:779`
+- [x] (suggestion) validate's per-distro loop can pass having read no layer during a sync's two renames (the race build/test now guard); cases are piling up: one rule, read layers.txt once per distro on the tool route and refuse an empty read there, instead of a guard per loop (Gemini, Codex) — `.agent/project_types/ros2_colcon/adapter.sh:966`
+- [x] (suggestion) The several-distros refusal says "or pass --from <root>/<distro>", which worktree_create.sh (worktree_repos, pr_base_for) and dispatch_phase.sh do not take; name only "from inside" when no --from can be passed, or both scripts' situation (adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:857`
+- [x] (suggestion) The init steps named in the flat-layout and bootstrap no-URL messages omit --yes, which an agent without a terminal needs (adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:561,780` (deferred: host decision: no message names init for a run without a terminal (the flat-layout and bootstrap no-URL steps are for a person at a terminal, where the tool asks before fetching, as the owner intends), so no --yes added)
+- [x] (suggestion) WORKTREE_GUIDE could say that /run-issue and /start-task, run from a session at the root, cannot make a package worktree on a root with several distros today (the worktree script is run from inside <root>/<distro>/) (adversarial) — `.agent/WORKTREE_GUIDE.md:302`
+- [x] (suggestion) The pin reader leaves a YAML escape the resolver writes for a non-ASCII branch ("topic/\xE9", reproduced) undecoded; pre-existing reader, fails loudly; not worth doing now (Codex) — `.agent/project_types/ros2_colcon/adapter.sh:2396` (deferred: host decision: no action; the review's own reason: pre-existing reader, fails loudly, not worth doing now)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 21:39 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-503 at `967995b7`
+**Addressed**: Local Review (Pre-Push) at `a1a3a4a8` (2026-11-18 21:31 -05:00)
+**Commits**: `dad3e40e` (adapter.sh and tests), `967995b7` (docs)
+
+The second fix round for part 1B, each decision the host's (listed for the owner's veto). Fewer rules: the distro rule, the one read of layers.txt and the one sync step replace the per-loop guards and the per-message commands. Each code fix has a test that fails on the adapter.sh before it (run against HEAD's adapter.sh: 59+ failures in test_ros2_colcon, 5 in test_register_project).
+
+### Actions
+- [x] (must-fix 1, host decision) `_rc_tool_distro_select`: from inside `<root>/<x>/` (a top-level directory other than `worktrees` and dot names, both sides physical) the distro is x and only x; elsewhere the one directory under `resolved/` (dot names, the tool's temporary ones, left out), else validate checks each and every other call is refused, listed. `layers.txt` is read once per distro per call (`_rc_tool_read_layers`, from `_rc_check_manifest`; `_rc_layers` gives that read on the tool route), an empty or missing read refused naming `cd <root> && <tool> sync --distro <d>`, so validate fails by name on a half-written `resolved/<d>/`. setup/sync choose by the same steps without the read (`--sync`). The host's rule differs from the review's wording (the tool's recorded distros): the adapter does not read config.yaml, so a non-distro top-level directory is taken as one and refused; docs/manifest/design.md says so and why. Tests: test_tool_distro_rule_never_moves_on, test_tool_layers_read_once_per_call — `.agent/project_types/ros2_colcon/adapter.sh`, `docs/manifest/design.md`
+- [x] (must-fix 2, host decision) One helper, `_rc_tool_sync_step [d]`, prints `cd <root> && <tool> sync [--distro d]` for: the unread-key refusal, validate's missing .repos and not-checked-out lines, nothing resolved, and the unusable-resolve refusal. No tool-route message names `adapter --project <name> sync` (the remaining ones are on the manifest route). Tests run each printed step literally: test_tool_sync_steps_run_literally (stub tool, two distros: not checked out, missing .repos, unread key), nothing resolved in test_tool_unusable_root_is_an_error_never_a_fetch, and in test_register_project the real tool after a refused, rolled-back registration (nothing resolved; a clone missing): the step exits 0 and registration then passes — `.agent/project_types/ros2_colcon/adapter.sh`, `.agent/scripts/tests/test_register_project.sh`
+- [x] (suggestion 1) On the tool route the reader takes a key in single quotes, unquoted; the unread-key refusal says "bare or in single quotes". test_tool_quoted_keys_from_the_tool: keys '123', 'on', '1.5' written by this checkout's resolver; validate, repos and repo_pin read them — `.agent/project_types/ros2_colcon/adapter.sh`
+- [x] (suggestion 2) Inside `_rc_tool_unusable`: not a directory, a link to nothing, cannot be read name fixing or removing the path and setting up again with `init --distro-dirs`; only nothing resolved names sync — `.agent/project_types/ros2_colcon/adapter.sh`
+- [x] (suggestion 3) Covered by must-fix 1's single read; the build/test guard `_rc_tool_no_layers_seen` and its counters came out (adapter_build/adapter_test back to main's loop, but for `_rc_colcon`) — `.agent/project_types/ros2_colcon/adapter.sh`
+- [x] (suggestion 4) The several-distros refusal: "Run the command from inside <root>/<distro>/ (a call to .agent/scripts/adapter itself may instead give its own --from ...)" — `.agent/project_types/ros2_colcon/adapter.sh`
+- [x] (suggestion 5) No message is about a run without a terminal: no change — `.agent/project_types/ros2_colcon/adapter.sh` (deferred: host decision)
+- [x] (suggestion 6) One sentence in WORKTREE_GUIDE — `.agent/WORKTREE_GUIDE.md`
+- [x] (suggestion 7) pin reader escape — (deferred: host decision, the review's own reason)
+
+### Checks
+Suites, each with `bash` on the committed tree: test_ros2_colcon 1314 passed 0 failed 0 skipped; test_adapter 248/0; test_register_project 222/0; test_register_session_root 72/0; test_worktree_create PASS 90 FAIL 0; test_session_root 71/0; test_project_registry 425/0; test_package_issue_loop 220/0; test_merge_pr 170/0; test_skill_paths 163/0. validate_adapter.sh: all 13 verbs for both types; check_design_anchors.sh exit 0; `git diff origin/main...HEAD -- .agent/scripts/tests | grep -c '^-[^-]'`: 0. shellcheck (the hook) passed. Full pre-commit pass left to the host. AGENTS.md, CLAUDE.md, docs/decisions/ and .github/ untouched; no project type's name in a general script; config.yaml and state.yaml not read.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 21:47 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-503 at `a7975c41`
+**Base**: origin/main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 4
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Part 1B, round-3 convergence check on the round-2 findings and the fix diff since ce15236c (dad3e40e, 967995b7). Cross-model: skipped (round-3 convergence check, per handoff). Specialists: static analysis (shellcheck --severity=warning on adapter.sh and the two suites: clean), governance, plan drift, a fresh Claude adversarial reviewer. Round-2 findings: must-fix 1 fixed (from inside <root>/<d>/ every verb answers d or refuses naming `cd <root> && <tool> sync --distro d`; validate from the root fails by name on a resolved/<d>/ with no usable layers.txt), must-fix 2 fixed (every tool-route sync step from _rc_tool_sync_step; the remaining `adapter --project` lines, 291, 1082, 1656-1694, 1948, are on the manifest and bootstrap routes only), suggestions 1-4 and 6 fixed, 5 and 7 no action (host). Hand run in the session scratchpad (sandboxed workspace copy, HOME and registry; one- and two-distro roots by the installed `repos-manifest init --distro-dirs --yes`, file:// remotes, gh/git-bug stubbed offline): two distros with resolved/rolling moved aside or its layers.txt emptied: validate, build, test, env, repos, repo_pin, worktree_repos, worktree_env from inside rolling/ refuse naming rolling and `sync --distro rolling`, none answers lyrical; setup and sync there run `sync --distro rolling`; validate from the root fails "failing distro: rolling" on the emptied file; the printed step run literally from / exits 0 and validate then passes; from <root>/worktrees/x one distro is chosen, two refused. After a rolled-back registration (nothing resolved; a clone missing in lyrical; rolling's layers.txt emptied) the printed step run literally exits 0 and registration then passes. One distro: register; validate/sync/repos/repo_pin/env from the root, rolling/ and rolling/mid/src/pkg_mid; build and test; a package worktree for pkg_mid from the root (env.sh: distro, _unnamed, core, mid, the worktree's mid_ws in that order; build.sh builds; enter; remove). Misfires: manifest file at the root, symlinked root (and a registry line through a link), trailing slash and `.`, a resolve whose <root>/<d>/ is missing: correct; a deleted cwd and a --from to a deleted directory are refused by the dispatcher. Single-quoted keys read; double-quoted and escaped keys refused by name. adapter_build/adapter_test equal main but for `_rc_colcon`; no tool-route build/test/validate can pass having read no layer. Today's routes: no changed line since ce15236c is reachable there (the _rc_check_manifest if/elif chain is equivalent; quoted=0 and the gsub is a no-op off the tool route); differences from main stay the two named. Tests diff removes 0 lines; AGENTS.md is exactly the approved sentence; CLAUDE.md and .github/ untouched; docs/decisions/ only the ADR-0021 note. Suites (each with bash): test_ros2_colcon 1314 passed 0 failed 0 skipped; test_adapter 248/0; test_register_project 222/0; test_register_session_root 72/0; test_worktree_create PASS 90 FAIL 0; test_session_root 71/0; test_project_registry 425/0; test_package_issue_loop 220/0; test_merge_pr 170/0; test_skill_paths 163/0; validate_adapter.sh all 13 verbs for both types; check_design_anchors.sh exit 0.
+
+### Findings
+- [x] (suggestion) From the root or the workspace, a distro whose resolve is aside (between the tool's two renames, `.<d>.old-*`, or left so by a kill until its next run; or resolved/<d>/ removed) is not counted: step 2 picks the other distro and validate passes for it alone (reproduced; registration's gate would pass). Inside the host's rule as written; cheap: count `.<d>.old-*`/`.<d>.new-*` as d, unusable (adversarial, lead) — `.agent/project_types/ros2_colcon/adapter.sh:793`
+- [x] (suggestion) From a top-level directory that is not a distro (notes/, or a link such as current -> jazzy, which also sorts before the distro it points to), the refusal blames "a sync cut short" and names `sync --distro notes`, which the tool refuses ("does not record it"); when resolved/<x>/ does not exist, say so and name running from the root or a distro's directory too (lead, adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:842`
+- [x] (suggestion) `sync` from inside <root>/<d>/ with no previous resolve prints "the layers of distro d changed; existing package worktrees keep their old env.sh" though none existed; print it only when there was a previous read; low value (lead) — `.agent/project_types/ros2_colcon/adapter.sh:991` (deferred: host decision (Checkpoint 2026-11-18 21:48): no action)
+- [x] (suggestion) _rc_tool_unusable's repair line says "the directory the manifest tool made there" also when .repos-manifest is a file or a link to nothing; cosmetic, not worth doing alone (adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:827` (deferred: host decision (Checkpoint 2026-11-18 21:48): no action)
+
+## Checkpoint
+**When**: 2026-11-18 21:48 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the round-3 review approved with 0 must-fix; two of its suggestions are a wrong answer and an untrue message inside the host's own distro rule, cheap to fix before publishing)
+**After**: publish
+**Decision**: address
+
+Fix suggestions 1 and 2 of the round-3 review before the push; 3 and 4 take no action.
+
+1. A distro whose resolve the tool has set aside (a directory .<d>.old-* or .<d>.new-* under .repos-manifest/resolved/, between the tool's two renames or after a kill there) counts as distro <d> with an unusable resolve: a call from outside every distro's directory does not pick "the one other distro" past it, and validate over every distro fails on it by name with the tool's sync step. Read how the tool names those directories (tools/repos-manifest/src) and match exactly that; one rule in the function that lists the distros.
+2. A call from inside a top-level directory <x> of the root for which the tool has no resolve at all (no resolved/<x>/ and nothing set aside for it) gets a true message: <x> is not a distro the tool has resolved here; run the command from the root or from inside a distro's directory (listing them), or, if <x> is a distro being added, run the tool's sync for it. It does not say a sync was cut short.
+
+Each with a test that fails before it; the documents' sentence on the rule is updated to match. Nothing else changes.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 21:53 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-503 at `f84bbd0a`
+**Addressed**: Local Review (Pre-Push) at `a7975c41` (2026-11-18 21:47 -05:00)
+**Commits**: `f84bbd0a` (adapter.sh, test_ros2_colcon.sh, docs/manifest/design.md; both fixes, one commit: they change the same distro list and step 1)
+
+The third fix round for part 1B, per the host's Checkpoint (2026-11-18 21:48). Each fix has a test that failed on the adapter.sh before it (a filtered run of the four distro-rule tests: 23 failures before, 0 after).
+
+### Actions
+- [x] (suggestion 1) `_rc_tool_distros` counts a directory the tool set aside while replacing `resolved/<d>/` as d. Names matched to the tool's `_TEMP_NAME` in tools/repos-manifest/src/repos_manifest/output.py (`.<d>.new-<pid>-<random>` / `.<d>.old-...`, random = mkdtemp's 8 of `[a-z0-9_]`, made in resolved/ beside the out directory); other dot names still left out. Both the one-distro choice and validate's every-distro list see it; usability stays `_rc_tool_read_layers`'s. Test test_tool_set_aside_resolve_is_a_distro: two distros, fakefox set aside as `.old-` and as `.new-`: env from the root refused listing both, nothing for fakefox2; validate from the root exit 1, "(failing distro: fakefox)", `cd <root> && repos-manifest sync --distro fakefox`; one distro set aside and no other: refused naming it with that step; a dot name not the tool's is not counted — `.agent/project_types/ros2_colcon/adapter.sh`
+- [x] (suggestion 2) From `<root>/<x>/` with nothing under resolved/ for x (no resolved/<x>/, nothing set aside): "ERROR: <x> is not a distro the manifest tool has resolved in <root> (nothing under <root>/.repos-manifest/resolved/ for it)" / "Run the command from <root> or from inside a distro's directory (<root>/<d>, ...); if <x> is a distro being added, run: cd <root> && repos-manifest sync --distro <x>". The link case: the calling directory is physical, so before this a call from `<root>/current -> fakefox2` and from `<root>/fakefox2` itself both matched "current" first (name order) and were refused; step 1 now takes a resolved distro first where two names lead to the calling directory, so both are fakefox2 and answer. Test test_tool_not_a_distro_directory (notes/: env and validate; the link: validate from current/, env from fakefox2/core). test_tool_distro_rule_never_moves_on (this branch's) now sets fakefox aside under the tool's own name, as a resolve that cannot be used, and its notes/ lines moved to the new test — `.agent/project_types/ros2_colcon/adapter.sh`, `docs/manifest/design.md`
+- [x] (suggestion 3) no action (deferred: host decision)
+- [x] (suggestion 4) no action (deferred: host decision)
+
+### Checks
+Suites, each with `bash` on the committed tree: test_ros2_colcon 1340 passed 0 failed 0 skipped; test_adapter 248/0; test_register_project 222/0; test_register_session_root 72/0; test_worktree_create PASS 90 FAIL 0; test_package_issue_loop 220/0. validate_adapter.sh: all 13 verbs for both types; check_design_anchors.sh exit 0; `git diff origin/main...HEAD -- .agent/scripts/tests | grep -c '^-[^-]'`: 0. shellcheck (the hook) passed. Full pre-commit pass left to the host. AGENTS.md, CLAUDE.md, docs/decisions/ and .github/ untouched; config.yaml and state.yaml not read; today's routes untouched (every change is in the tool-route functions).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 22:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-503 at `e637161e`
+**Base**: origin/main
+**Depth**: Deep (reason: round 4 convergence check per handoff)
+**Must-fix**: 1 | **Suggestions**: 6
+**Round**: 4 | **Ship**: continue — round 4: must-fix rising (0 -> 1); the one must-fix is a mechanical rewording of one design sentence
+
+Part 1B, round-4 convergence check on the round-3 findings and the fix diff since a7975c41 (f84bbd0a: adapter.sh, test_ros2_colcon.sh, docs/manifest/design.md). Cross-model: skipped (round-4 convergence check, per handoff). Specialists: static analysis (shellcheck --severity=warning on adapter.sh and test_ros2_colcon.sh: clean), governance and plan drift (the diff is the Checkpoint's two fixes and nothing else; the link rule beyond its wording is the host's, accepted), a fresh Claude adversarial reviewer. Round-3 findings: suggestions 1 and 2 fixed; 3 and 4 no action (host). Hand run in the session scratchpad (sandboxed workspace copy, registry and HOME; roots by the installed `repos-manifest init --distro-dirs --yes`, file:// remotes, gh stubbed): the match is output.py's _TEMP_SUFFIX exactly, and the tool's distro names are `[a-z][a-z0-9_]*` (schema.py), so a dotted capture cannot come from the tool and a made-up one (.ro.lling.old-...) is refused by name, uppercase or 7-char randoms are not counted. Two distros, rolling set aside as .old- and as .new-: env, repos, repo_pin, build from the root refuse listing both (exit 1); validate from the root exit 1 "(failing distro: rolling)" with `cd <root> && repos-manifest sync --distro rolling`, which run literally from / exits 0, after which validate passes for both; from lyrical/ env answers lyrical. Mid-swap (resolved/rolling and .rolling.new-* together): listed once, validate passes, rolling/ answers. Registration's gate with one set aside: refused naming rolling and the step. From notes/: the new message, exit 1; from a link current -> lyrical: lyrical (env, validate); a link to outside the root and outside itself: the dispatcher's existing refusal; worktrees/x: several distros, refused. One distro: validate, sync, repos, repo_pin, env from the root and from rolling/ all correct; a package worktree for nav_core made from the root (env.sh: distro, underlay, core, the worktree's core_ws in order; removed). The three changed functions are called only on the tool route; tests diff vs origin/main removes 0 lines (7 lines removed vs a7975c41 are this branch's own test, moved). Suites (each with bash): test_ros2_colcon 1340 passed 0 failed 0 skipped; test_adapter 248/0; test_register_project 222/0; test_register_session_root 72/0; test_worktree_create PASS 90 FAIL 0; test_package_issue_loop 220/0; validate_adapter.sh all 13 verbs for both types; check_design_anchors.sh exit 0.
+
+### Findings
+- [x] (must-fix) "a link there to a distro's directory is that distro" is false where the target has nothing under resolved/ (reproduced: link aaa -> rolling, resolved/rolling gone: from rolling/ the call is taken as aaa and names `sync --distro aaa`, which the tool refuses) and where the link's own name is a resolved distro (link abc_x -> lyrical with resolved/abc_x: from lyrical/ abc_x answers); state it as the code has it, e.g. "a link there to a distro's directory is that distro when the target is under resolved/ and the link's name is not" (the header's "so a link is its target", adapter.sh:68 and 905, likewise) — `docs/manifest/design.md:141`
+- [x] (suggestion) Two names under resolved/ both leading to the calling directory: the first by name wins without a word (pre-existing, contrived: a distro's directory replaced by a link); refusing then closes the only silent-wrong-distro case left; cheap (adversarial, reproduced) — `.agent/project_types/ros2_colcon/adapter.sh:910`
+- [x] (suggestion) A set-aside .<d>.new-*/.old-* left after resolved/<d>/ was deleted by hand keeps d counted, and the refusal says "a sync cut short, or one running now"; naming the leftover directory would help; low value (adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:862` (deferred: host decision (Checkpoint 2026-11-18 22:00): no action)
+- [x] (suggestion) The comment on the tool-route setup/sync ("nothing resolved ... sync runs with no --distro") does not say a set-aside resolve now counts as resolved (only .<d>.old-* runs `sync --distro d`); low value (adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:997`
+- [x] (suggestion) "if <x> is a distro being added, run: ... sync --distro <x>" works only when config.yaml already records x; the installed tool has no add-distro and refuses it otherwise ("this system does not record it"); the host's wording, not worth changing alone (lead) — `.agent/project_types/ros2_colcon/adapter.sh:860` (deferred: host decision (Checkpoint 2026-11-18 22:00): no action)
+- [x] (suggestion) validate from notes/ ends "(failing distro: notes)" right after "notes is not a distro"; cosmetic, not worth doing alone (lead) — `.agent/project_types/ros2_colcon/adapter.sh:1089` (deferred: host decision (Checkpoint 2026-11-18 22:00): no action)
+- [x] (suggestion) Not worth doing: `sort -u` follows the caller's collation (line 251 uses LC_ALL=C; same order for [a-z0-9_] names), and a resolved/<x> that is a file gets "nothing under resolved/ for it" (the tool never makes one) (adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:811` (deferred: host decision (Checkpoint 2026-11-18 22:00): no action)
+
+## Checkpoint
+**When**: 2026-11-18 22:00 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (first host answer at rounds for this pull request; the one must-fix is a sentence that says more than the code does, and it comes from a link rule that has grown cases; one simpler rule removes them)
+**After**: rounds
+**Decision**: address
+
+Replace the link handling in step 1 of the distro rule by one rule, and state exactly that rule in the design paragraph and the adapter's header:
+
+Step 1 looks only at real directories directly under the root (the root taken as a physical path; entries that are links are not candidates; worktrees and dot names excluded as now). The calling directory, as a physical path, is inside at most one of them: that one is <x>. A call that arrives through a link to a distro's directory is therefore inside the directory the link points to, and no name-order or "which of two names is resolved" choice exists. A calling directory under the root but inside none of them (the root itself, worktrees/, a link's target outside the root) goes to step 2 as now.
+
+This fixes the must-fix (docs/manifest/design.md:141 and the header's "so a link is its target", reworded to the rule above) and suggestion 1 (two names leading to one directory can no longer pick by name order). Remove the code the earlier preference needed. Suggestions 2 to 6 take no action, except 3: the comment on setup/sync says a set-aside resolve counts as resolved.
+
+Tests: a link current -> <distro> with the distro resolved: a call from current/ and from the distro's own directory both answer for the distro; with the distro's resolve set aside or gone, both name the distro (never the link's name); a link whose own name has a directory under resolved/ does not make a call from its target answer for the link's name. Each fails before the change where the behaviour changes.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 22:04 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-503 at `e18bdcc8`
+**Addressed**: Local Review (Pre-Push) at `e637161e` (2026-11-18 22:08 -05:00)
+**Commits**: `e18bdcc8` (adapter.sh, test_ros2_colcon.sh, docs/manifest/design.md: one rule, one commit)
+
+The fourth fix round for part 1B, per the host's Checkpoint (2026-11-18 22:00). Step 1 of the distro rule now looks only at real directories directly under the physical root (a link there is never a candidate; worktrees and dot names excluded as before); the calling directory, physical, is inside at most one, which is <x>. The name-order and "prefer the name under resolved/" code is gone (adapter.sh: 19 added, 28 removed). The header and the design paragraph state the rule as "a real directory (not a link) directly under the physical root", and the design sentence "a link there to a distro's directory is that distro" is removed.
+
+### Actions
+- [x] (must-fix) The design sentence and the header's "so a link is its target" replaced by the rule itself — `docs/manifest/design.md:134`, `.agent/project_types/ros2_colcon/adapter.sh:58`
+- [x] (suggestion 1) Two names leading to one directory cannot pick by name order: a link is no candidate. Test test_tool_links_are_not_candidates: link current -> fakefox2, from current/ and fakefox2/: resolved, both answer fakefox2; resolve set aside, both name fakefox2 unusable, never "current"; resolve gone, both "fakefox2 is not a distro ...", never "current"; link abc_x -> fakefox2 with resolved/abc_x, from fakefox2/ and abc_x/: fakefox2's underlay, not abc_x's. On the adapter before the change: 10 failures (the gone and abc_x cases; the set-aside case already named fakefox2); after: 0 — `.agent/project_types/ros2_colcon/adapter.sh:899`
+- [x] (suggestion 3) The setup/sync comment says a resolve the tool set aside counts as resolved — `.agent/project_types/ros2_colcon/adapter.sh:991`
+- [x] (suggestion 2) no action (deferred: host decision)
+- [x] (suggestion 4) no action (deferred: host decision)
+- [x] (suggestion 5) no action (deferred: host decision)
+- [x] (suggestion 6) no action (deferred: host decision)
+
+### Checks
+Suites, each with `bash` on the working tree of e18bdcc8: test_ros2_colcon 1362 passed 0 failed 0 skipped; test_adapter 248 passed 0 failed; test_register_project 222/0; test_register_session_root 72/0; test_worktree_create PASS 90 FAIL 0; test_package_issue_loop 220/0. validate_adapter.sh: all 13 verbs for both types; check_design_anchors.sh exit 0; `git diff origin/main...HEAD -- .agent/scripts/tests | grep -c '^-[^-]'`: 0. shellcheck passed in the commit hook (not on PATH for a direct run). Full pre-commit pass left to the host. AGENTS.md, CLAUDE.md, docs/decisions/ and .github/ untouched; config.yaml and state.yaml not read; today's routes untouched (the change is inside _rc_tool_distro_select and its comments).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-18 22:10 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-503 at `93e2693b`
+**Base**: origin/main
+**Depth**: Deep (reason: round 5 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 2
+**Round**: 5 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Part 1B, round-5 convergence check on the round-4 findings and the fix diff since 497427c5 (e18bdcc8: adapter.sh, test_ros2_colcon.sh, docs/manifest/design.md). Cross-model: skipped (round-5 convergence check, per handoff). Specialists: static analysis (shellcheck --severity=warning on adapter.sh and test_ros2_colcon.sh: clean), governance and plan drift (the diff is the Checkpoint's one rule and the setup/sync comment, nothing else; the rule is the host's), a fresh Claude adversarial reviewer (no must-fix; `(a || b) && continue` precedence, `"$x"/*` prefix match, no dotglob, `list` and `_rc_tool_distros` still used; the new test fails on the old code in the gone and abc_x cases). Round-4 must-fix and suggestions 1 and 3: fixed; 2, 4, 5, 6: no action (host). Hand run in the session scratchpad (sandboxed workspace copy, registry and HOME; roots by the installed `repos-manifest init --distro-dirs --yes`, file:// remotes, gh stubbed): link aaa -> rolling with resolved/rolling gone: env and validate from rolling/ and aaa/ refuse naming rolling and `sync --distro rolling`, never aaa; sync from aaa/ runs `sync --distro rolling`, after which both answer rolling. Link abc_x -> lyrical with resolved/abc_x: env and repos from lyrical/ and abc_x/ answer lyrical. Registry line through a link (lk -> <H>/lklink): env from the link root and its rolling/, with and without --project, and validate: correct. Session dir through a link to a two-distro root: from twolink/lyrical lyrical; from twolink refused listing both; validate checks both. A distro directory that is a link to outside the root (two and one distro): the dispatcher's existing refusal ("<target> is neither inside the workspace nor under a registered project root"), true. worktrees/x and the root on two distros: refused listing both; deep package dirs: the right distro. One distro: validate, sync, repos, repo_pin, env from the root and rolling/ correct; package worktree for nav_core from the root: env.sh distro, underlay, core, the worktree's core_ws in order; entered; env from it rolling; removed. Two distros: each from its own directory right; from the root validate checks both, env, repos, repo_pin, sync, build refuse listing both (exit 1). The change is inside _rc_tool_distro_select (tool route only); `git diff origin/main...HEAD -- .agent/scripts/tests | grep -c '^-[^-]'`: 0. Suites (each with bash): test_ros2_colcon 1362 passed 0 failed 0 skipped; test_adapter 248/0; test_register_project 222/0; test_register_session_root 72/0; test_worktree_create PASS 90 FAIL 0; test_package_issue_loop 220/0; validate_adapter.sh all 13 verbs for both types; check_design_anchors.sh exit 0.
+
+### Findings
+- [ ] (suggestion) The design paragraph says "the physical root" but not that the calling directory is taken as a physical path too, so a reader cannot tell that a call from a link <root>/aaa -> rolling is for rolling (the header says it); one phrase, and reflow the 24- and 131-character lines; not a false sentence (lead, adversarial) — `docs/manifest/design.md:133`
+- [ ] (suggestion) Not worth doing: a root that can be entered but not listed makes the glob empty, so step 1 is skipped and a call from a non-distro directory on a one-distro root goes to that distro; the tool never makes such a root (adversarial, from the code) — `.agent/project_types/ros2_colcon/adapter.sh:902`
+
+## Checkpoint
+**When**: 2026-11-18 22:14 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the round-5 pre-push review approved with 0 must-fix; the full pre-commit pass over the branch's files passed)
+**After**: publish
+**Decision**: publish
+
+Publish part 1B as its own pull request ("Part of #503"). Carried into the first round on the pull request: the round-5 suggestion that the design's distro paragraph also say the calling directory is taken as a physical path.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-18 22:26 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #514 at `3dd61876`
+**Depth**: Deep (reason: whole-diff classification: the ros2_colcon adapter, the dispatcher, registration and worktree scripts, AGENTS.md, an ADR note and design documents; 2162 lines over 20 files)
+**Must-fix**: 0 | **Suggestions**: 5
+
+PR mode, round 1. Cross-model: Gemini completed (EXIT=0), Codex completed (EXIT=0) (run with --issue 503: the body says "Part of", no closing keyword); a fresh Claude adversarial reviewer completed. Static analysis: shellcheck --severity=warning on the nine changed scripts: clean. Hand run in the session scratchpad (a clone of the branch as its own main checkout and registry, HOME sandboxed, gh and git-bug stubbed, remotes local over file:// and an ssh stub), following docs/manifest/design.md, WORKTREE_GUIDE and the onboarding skill: one distro, three layers (installed `repos-manifest init --distro-dirs --yes`): register_session_root.sh --dry-run then real, STATUS=registered outside git; validate, sync (the tool's "present, not touched"), build.sh and test.sh over core, mid, top with real colcon on /opt/ros/rolling: exit 0; package worktree for mid_a from the root: base=rolling, branch feature/issue-11 at origin/rolling, NOTE for the unbuilt core layer on stderr only; env.sh distro, core, mid, the worktree's mid in order; build.sh builds against the layers; enter; remove. Two distros (rolling, lyrical), registered from the workspace with register_project.sh: validate from the root checks both; sync and build from the root refused listing both; from lyrical/ validate, sync, build, test pass; worktree from the root refused, nothing made; from lyrical/ base=lyrical, env.sh lyrical only, build.sh and test.sh pass, entered from the root and rolling/, removed; from rolling/ base=rolling, no lyrical path, removed from lyrical/. Documents and behaviour agreed throughout. Today's routes: no unnamed difference (the old _rc_require_manifest checks and messages unchanged in _rc_check_manifest; _rc_repos_file gives the same path; quoted keys read only on the tool route; --from "$CALLER_DIR" passes the directory the dispatcher already guarded for worktree_repos and pr_base_for); tests diff removes 0 lines. AGENTS.md diff is exactly the approved sentence. Dead code: none (every new helper called; removed helpers referenced nowhere; every new test function run). Suites (each with bash): test_ros2_colcon 1362 passed 0 failed 0 skipped; test_adapter 248/0; test_register_project 222/0; test_register_session_root 72/0; test_worktree_create PASS 90 FAIL 0; test_session_root 71/0; test_project_registry 425/0; test_package_issue_loop 220/0; test_merge_pr 170/0; test_skill_paths 163/0; validate_adapter.sh all 13 verbs for both types; check_design_anchors.sh exit 0. CI: all five jobs pass on both runs. Not findings: Gemini 1 and the adversarial's "distro being added" step (round-3 s3 and round-4 s5, no action recorded); Codex 2 and 5 and Gemini 2 (the tool's schema: distros [a-z][a-z0-9_]*, repo names not starting with '.' or '-'); Gemini 4 (the dispatcher refuses a --from that is not a directory); Gemini 3, 5, 6, Codex 3, 4 (shapes the tool never writes, or the same -d and reader semantics as the other two routes): not worth doing. PR body: "Each reviewer set up systems with the installed tool ... and ran registration, every verb and a package worktree" is untrue of Gemini and Codex, which read the diff.
+
+### Findings
+- [ ] (suggestion) The distro paragraph does not say the calling directory is taken as a physical path too (carried from round 5); and "or `sync` with no `--distro` when nothing is resolved yet" (also the header) holds only from outside every distro's directory: from <root>/<x>/ it passes --distro x (lead, adversarial) — `docs/manifest/design.md:133,159`, `.agent/project_types/ros2_colcon/adapter.sh:72`
+- [ ] (suggestion) The header's opening still says the adapter "reads the manifest from the hosting dir only" and "Two routes to that directory (issue #436)", while the tool route is checked first (line 22); say three routes (adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:5-11`
+- [ ] (suggestion) "(else it says it fetched only: `git -C <clone> pull`)" reads as merge_pr.sh's output; it prints "fetched only: <reason>" and no command (adversarial, merge_pr.sh:2301) — `.agent/WORKTREE_GUIDE.md:318`
+- [ ] (suggestion) _rc_tool_distros globs `*/` before `.*/`: a root-level call on a two-distro root whose first glob falls between the tool's two renames and second after the old directory's removal sees neither name and silently takes the other distro; a microsecond window during a concurrent sync; globbing `.*/` first closes it but for a descheduled shell; one line (Codex, checked against output.py) — `.agent/project_types/ros2_colcon/adapter.sh:797`
+- [ ] (suggestion) Not worth doing now: a worktrees= override directly under the root (e.g. <root>/wt) is taken as a distro by step 1, so calls from inside a package worktree there are refused (truly); registry_worktree_dir would close it (adversarial) — `.agent/project_types/ros2_colcon/adapter.sh:906`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-18 22:35 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #514 at `7ac39c89`
+**Sources**: 3 (Local Review @ `3dd61876` (covers 7ac39c89 via bookkeeping; Gemini, Codex and a fresh Claude reviewer completed), Local Review (Pre-Push) @ `93e2693b` (covers 7ac39c89 via bookkeeping), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+PR mode, round 1 triage. Hosted reviews: none (0 reviews, 0 inline comments, 0 conversation comments on the pull request). CI: code head e18bdcc8 has no run of its own; 3dd61876, whose tree differs from it only in progress.md, passed every job (Validate Adapter Contract, Lint (pre-commit), Validate Documentation, repos-manifest tests 3.10 and 3.14, on both the push and pull_request runs). At the record-only head 7ac39c89, after about 5 minutes: Validate Adapter Contract, Validate Documentation and both repos-manifest test jobs pass; Lint (pre-commit) still pending on both runs. Mergeable: MERGEABLE. Each finding below was checked against the cited lines (adapter.sh:1-25, 72, 797, 902-912; docs/manifest/design.md:133, 159; WORKTREE_GUIDE.md:318 against merge_pr.sh:2301). Pre-push round 5's first suggestion is the same as this round's first, and is recorded once; its second was not ruled by the Checkpoint and is ruled below. Four findings remain open, to be fixed in this pull request before the owner's merge decision.
+
+### Findings
+- [x] (suggestion, Local Review + Local Review (Pre-Push) round 5) The distro paragraph and the adapter header do not say the calling directory is taken as a physical path too; and "or `sync` with no `--distro` when nothing is resolved yet" holds only from outside every distro's directory (from <root>/<x>/ it passes --distro x). Say both — `docs/manifest/design.md:133,159`, `.agent/project_types/ros2_colcon/adapter.sh:72`
+- [x] (suggestion, Local Review) The header's opening still says the adapter "reads the manifest from the hosting dir only" and "Two routes to that directory (issue #436)", while the tool route is checked first; say three routes — `.agent/project_types/ros2_colcon/adapter.sh:5-11`
+- [x] (suggestion, Local Review) "(else it says it fetched only: `git -C <clone> pull`)" reads as merge_pr.sh's output; it prints "fetched only: <reason>" and no command. Reword so the command is the reader's next step, not the script's output — `.agent/WORKTREE_GUIDE.md:318`
+- [x] (suggestion, Local Review (Codex)) `_rc_tool_distros` globs `*/` before `.*/`, so a call during the tool's swap can see neither name and silently take the other distro; glob the set-aside `.*/` names first — `.agent/project_types/ros2_colcon/adapter.sh:797`
+
+### False positives
+- (Local Review, suggestion 5: no action, host ruling) A `worktrees=` override placed directly under the root is taken as a distro by step 1 and calls from a package worktree there are refused — neither the tool nor the workspace places it there by default, and the refusal it gives is true, not a wrong answer.
+- (Local Review (Pre-Push) round 5, suggestion 2: no action, triage ruling) A root that can be entered but not listed skips step 1 — then step 2 decides: on a one-distro root it answers the only distro, the same answer step 1 would give from that distro's directory and the same as any call from outside it; on a root with several it refuses. No call gets a wrong distro, and the tool never makes such a root.
+
+## Checkpoint
+**When**: 2026-11-18 22:34 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the four open findings are three sentences that say something other than the code and a one-line order change; fixing them is mechanism)
+**After**: findings
+**Decision**: address
+
+Fix the four open findings of the Integrated Review, each as small as it can be: sentences only for 1 to 3 (state what the code does and nothing more); for 4, list the set-aside names before the plain names in the one function that lists the distros, with a comment giving the reason in one line. No other change.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 22:40 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #514 at `d95cd89b`
+**Addressed**: Integrated Review at `7ac39c89` (2026-11-18 22:35 -05:00)
+**Commits**: 95f49169, d2be335f, a8edd315, 28057981, d95cd89b
+
+Per the Checkpoint (After: findings, Decision: address): sentences only for 1 to 3, checked against _rc_tool_sync, _rc_tool_distro_select, the dispatcher's ACTIVE_PROJECT_FROM (pwd -P) and merge_pr.sh:2268-2301; the order change for 4 with a one-line comment and a test of the both-exist case (the only-set-aside case is test_tool_set_aside_resolve_is_a_distro's). Suites (each with bash): test_ros2_colcon 1368 passed 0 failed 0 skipped; test_adapter 248/0; test_register_project 222/0; test_worktree_create PASS 90 FAIL 0; validate_adapter.sh all 13 verbs for both types; check_design_anchors.sh exit 0; removed-or-changed lines in .agent/scripts/tests vs origin/main: 0. Full pre-commit pass left to the host.
+
+### Actions
+- [x] Distro paragraph and header: calling directory taken as a physical path; setup/sync pass --distro <x> from inside <root>/<x>/, the one resolved distro's name from elsewhere, no --distro only from outside every distro's directory when nothing is resolved — `docs/manifest/design.md:133,163`, `.agent/project_types/ros2_colcon/adapter.sh:61,90`
+- [x] Header opening: three routes, tool route checked first; manifest read from the hosting dir on the two older routes, from the tool's resolved files on the tool route — `.agent/project_types/ros2_colcon/adapter.sh:8-13`
+- [x] merge_pr.sh's "fetched only: <reason>" output separated from the reader's own `git -C <clone> pull` — `.agent/WORKTREE_GUIDE.md:318`
+- [x] _rc_tool_distros globs the set-aside .*/ names before */, one-line comment; test_tool_distro_listed_once_beside_its_set_aside — `.agent/project_types/ros2_colcon/adapter.sh:803`, `.agent/scripts/tests/test_ros2_colcon.sh`
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-18 22:59 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #514 at `a1f50cbd`
+**Depth**: Deep (reason: whole-diff classification, fix-round rule: the ros2_colcon adapter, the dispatcher, registration and worktree scripts, AGENTS.md, an ADR note and design documents; 2268 insertions over 20 files)
+**Must-fix**: 1 | **Suggestions**: 3
+
+PR mode, round 2 (fix-round re-review of 95f49169..d95cd89b). Cross-model: Gemini completed (EXIT=0), Codex completed (EXIT=0) (run with --pr 514 --issue 503); a fresh Claude adversarial reviewer completed. Static analysis: shellcheck --severity=warning on adapter.sh and test_ros2_colcon.sh: clean. Point 1, a stub tool in the session scratchpad (own dispatcher copy and registry): nothing resolved: from the root `sync` (no --distro), from <root>/fakefox/sub `sync` and `setup` --distro fakefox; one resolved: from the root and from inside --distro fakefox, through an outside link to fakefox --distro fakefox (physical); two resolved: from the root refused listing both, from inside fakefox2 --distro fakefox2. Each matches the reworded design.md bullet and header. The header's three routes match _rc_route (tool first, then source, then bootstrap). merge_pr.sh:2277-2301: the four fetched-only reasons are the guide's. Point 2: _rc_tool_distros ends in `sort -u`, so no answer changes in any state and each distro is listed once; the adversarial's run with `sort` instead of `sort -u` failed the new test. Point 3, a new sandbox (a clone of the head as its own main checkout and registry, HOME sandboxed, gh and git-bug stubbed, ssh served from local bare repos): the installed `repos-manifest init --distro-dirs --distro rolling --yes`, register_project.sh --dry-run then real (VERIFY=pass, STATUS=registered, the root in no git repository), and from both the root and rolling/core: validate, sync (the tool's "present, not touched"), repos, repo_pin (core_a rolling branch; top_a --layer top main branch) and env, all exit 0; a package worktree for core_a made from the root (base rolling, the branch at origin/rolling), entered, removed (also removed from rolling/). Point 4: tests diff removes 0 lines; AGENTS.md is the approved sentence; CLAUDE.md and .github/ untouched; docs/decisions/ only the ADR-0021 note. CI at a1f50cbd: all five jobs pass on both runs. Suites (each with bash): test_ros2_colcon 1368 passed 0 failed 0 skipped; test_adapter 248/0; test_register_project 222/0; test_register_session_root 72/0; test_worktree_create PASS 90 FAIL 0; test_package_issue_loop 220/0; validate_adapter.sh all 13 verbs for both types; check_design_anchors.sh exit 0. Not findings: Gemini 1 (CDPATH, --from: host no action and round 1), 3 (host no action 21:48), 2, 4, 5, 6 and Codex 4, 5 (shapes the tool never writes, the tool's schema, bash 4.3), Gemini 7 (build and test skip a layer with no src/); Codex 2 (a `heads/`/`tags/` version: _rc_pin_kind is unchanged by this PR and the same on every route: an issue of its own if wanted); Codex 3 (an emptied clone directory passes validate: the same -d check as before; not worth doing here).
+
+### Findings
+- [x] (must-fix) PR body untrue of the head: "test_ros2_colcon.sh 1362 passed" (now 1368) and "On the pull request, Gemini, Codex and a fresh Claude reviewer read the final state: approved, 0 must-fix, 5 suggestions" (that was 3dd61876; four suggestions were fixed since); update the body — PR #514 body
+- [x] (suggestion) The order change narrows the race but does not close it: `[ -d "$d" ] || continue` runs after both globs, so a .<d>.new captured before the second rename is dropped while the plain glob landed between the renames; filter the unmatched pattern (nullglob) instead of re-testing each name (Codex, adversarial, lead) — `.agent/project_types/ros2_colcon/adapter.sh:802-804`
+- [x] (suggestion) The new test's comment says the set-aside names are listed first and its last block is labelled "(one distro)", but neither is checked (it passes on the old order and, its last block, without the dedupe); reword or assert no "several" (adversarial) — `.agent/scripts/tests/test_ros2_colcon.sh:4738,4756-4759`
+- [x] (suggestion) "otherwise it fetches only and prints \"fetched only: <reason>\"" leaves out a failed fetch ("Could not fetch origin ...", cleanup marked incomplete, merge_pr.sh:2303); optional "(or says the fetch failed)" (adversarial) — `.agent/WORKTREE_GUIDE.md:318` (deferred: host: no action, low value (the review's own grading))
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 23:09 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #514 at `45af2d11`
+**Addressed**: Local Review at `a1f50cbd` (2026-11-18 22:59 -05:00)
+**Commits**: 436dfeae, 45af2d11
+
+Round 2 fix pass on the pull request; the decisions are the host's. `_rc_tool_distros` (tool route only: called from `_rc_tool_read_layers` and `_rc_tool_distro_select`, reached through `_rc_route` = tool) now globs once with nullglob set for the two globs and restored (`restore="$(shopt -p nullglob)" || true`, since `shopt -p` exits 1 when the option is off and the dispatcher runs `set -euo pipefail`; a first version without `|| true` failed 49 checks of test_ros2_colcon and 11 of test_register_project, found and fixed before commit) and no longer re-tests each name with `-d`. The test helper `tool_distros` runs the function under `set -euo pipefail` as the dispatcher does. The new test's disappearance case is staged by a `[` function that removes the set-aside directory when it is tested: run against the old loop it lists nothing, against the new one fakefox; `sort` in place of `sort -u` lists fakefox twice, which the one-distro block now fails on. Suites (each with bash, the worktree's copy): test_ros2_colcon 1375 passed 0 failed 0 skipped; test_adapter 248 passed 0 failed; test_register_project 222 passed 0 failed; test_worktree_create PASS 90 FAIL 0; test_project_file 701/0; test_project_registry 425/0; validate_adapter.sh all 13 verbs for both types; shellcheck --severity=warning on adapter.sh and test_ros2_colcon.sh clean. `git diff origin/main...HEAD -- .agent/scripts/tests | grep -c '^-[^-]'`: 0. Outside work-plans since ff93f570: adapter.sh and test_ros2_colcon.sh only. Full pre-commit pass left to the host.
+
+### Actions
+- [x] (must-fix) PR body: fixed by the host, who owns the body; verified with `gh pr view 514`: it says `test_ros2_colcon.sh` 1368 passed and that Gemini, Codex and a fresh Claude reviewer read the pull request twice (first read approved, 0 must-fix, 5 suggestions, four fixed; second read nothing wrong in the code). The count is now 1375 after this round's tests, for the host to update — PR #514 body
+- [x] (suggestion 1) `_rc_tool_distros` counts every name its globs returned, skips only an unmatched pattern (nullglob scoped to the two globs, restored); its comment now says what is and is not guaranteed — `.agent/project_types/ros2_colcon/adapter.sh:801-821`
+- [x] (suggestion 2) test_tool_distro_listed_once_beside_its_set_aside: comment and labels say only what it checks; `_rc_tool_distros` output asserted exactly (fails with `sort`); new test_tool_distros_counts_each_name_globbed: only a set-aside directory lists its distro; one gone once globbed still listed (fails on the old loop); empty and missing resolved/ list nothing, no literal pattern — `.agent/scripts/tests/test_ros2_colcon.sh` (in 436dfeae with suggestion 1, the same file's tests)
+- [x] (suggestion 3) WORKTREE_GUIDE failed fetch — `.agent/WORKTREE_GUIDE.md:318` (deferred: host: no action, low value)
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-18 23:24 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #514 at `d5eead98`
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 2
+
+PR mode, round 3: the round-2 review's findings and the fix diff since it (ff93f570..HEAD outside work-plans: `_rc_tool_distros` in adapter.sh and two tests in test_ros2_colcon.sh, commit 436dfeae). Cross-model: skipped (round-3 convergence check, per handoff). Static analysis: shellcheck --severity=warning on adapter.sh and test_ros2_colcon.sh clean; governance: only those two files changed, tests diff removes 0 lines. Point 1: nullglob is set only around the one array assignment and restored by `eval "$restore"`, whose string is `shopt -p nullglob`'s own output (`shopt -s|-u nullglob`), safe; run under `set -euo pipefail` with nullglob on before, it stays on, off before, it stays off, no early exit; empty and absent resolved/ list nothing; every globbed name is counted, `sort -u` lists each once; `.`/`..` fail the set-aside regex. The comment is true of output.py's order (mkdtemp .<d>.new, files written, mkdtemp .<d>.old, rename <d> to old, rename new to <d>): a first glob after the new copy exists sees .<d>.new or <d>; the gap left is a first glob before that and a second glob between the two renames, a microsecond race. Point 2: callers only on the tool route (`_rc_tool_read_layers`, `_rc_tool_distro_select`). Staged `.ghost.old-4242-abcd1234` with no plain directory, harness from the test file's own helpers: with one distro, validate from the root exit 1 naming ghost's missing layers.txt and the tool's `sync --distro ghost`, fakefox checked ✅; env and sync from the root refuse "several distros (fakefox, ghost)" (the counting rule from test_tool_set_aside_resolve_is_a_distro, unchanged by this round); validate from inside <root>/ghost names ghost and the tool's sync; with two distros the same, listing fakefox, fakefox2, ghost. Point 3: the tests' subshells (`bash -c`) keep the `[` override out of other tests; but at this head `_rc_tool_distros` never calls `[`, so the stage never fires (checked: the directory is still there afterwards), see suggestion 1. Point 4, a new sandbox (a clone of the head as its own checkout and registry, HOME and git config sandboxed, gh and git-bug stubbed, ssh served from local bare repos): installed `repos-manifest init --distro-dirs --distro rolling --yes` cloned top_a and core/core_a; register_project.sh --dry-run then real (STATUS=registered, root in no git repository); from the root and rolling/core: validate, sync ("present, not touched"), repos, env all exit 0; package worktree for core_a made from the root (base=rolling, feature/issue-7 at origin/rolling 1a04cd3), removed (git worktree list of the clone back to one entry). Point 5: no false sentence; see suggestion 2. CI at d5eead98, push and pull_request runs: Lint (pre-commit), Validate Adapter Contract, Validate Documentation, repos-manifest tests 3.10 and 3.14 all pass. Suites (each with bash): test_ros2_colcon 1375 passed 0 failed 0 skipped; test_adapter 248/0; test_register_project 222/0; test_register_session_root 72/0; test_worktree_create PASS 90 FAIL 0; test_package_issue_loop 220/0; validate_adapter.sh all 13 verbs for both types; check_design_anchors.sh exit 0; tests diff vs origin/main removed lines: 0.
+
+### Findings
+- [ ] (suggestion) The "gone once globbed" block stages nothing at this head: the `[` override never fires because `_rc_tool_distros` no longer calls `[`, so the label "a set-aside directory gone once globbed: its distro still listed" checks a directory that is still there; it guards only against a return to a `[ -d ]` re-test (not `test -d` or `[[ -d ]]`); reword the comment and label to say that. Low value — `.agent/scripts/tests/test_ros2_colcon.sh:4775-4793`
+- [ ] (suggestion) PR body out of date, not false: "**Recommendation**: review on the pull request with the outside models, then the owner's merge decision." (that review has run twice; what remains is the merge decision), and "one of its suggestions (...) was done" (two were: the test comment and labels too). Optional — PR #514 body
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-18 23:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #514 at `ac032538`
+**Sources**: 2 (Local Review @ `d5eead98` (covers ac032538 via bookkeeping; round 3, approved, 0 must-fix, 2 suggestions; reviewing the code at 436dfeae), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+PR mode, round 3 triage, final before the owner's merge decision. Hosted reviews: none (0 reviews, 0 inline comments, 0 conversation comments). CI at the code-and-record head d5eead98: every job passed on both the push and pull_request runs (Lint (pre-commit), Validate Adapter Contract, Validate Documentation, repos-manifest tests 3.10 and 3.14). At the record-only head ac032538 (436dfeae..ac032538 changes only progress.md), after about 5 minutes: Validate Adapter Contract, Validate Documentation and both repos-manifest test jobs pass on both runs; Lint (pre-commit) still pending on both. Mergeable: MERGEABLE. PR body checked with `gh pr view 514 --json body`: the Recommendation line says "ready for the owner's merge decision", the reviews paragraph says two of the second read's suggestions were done, and it names the test-label note for a later part; no sentence found untrue (the "full pre-commit pass over the branch's files passed" claim is the host's and was not re-run here). Open boxes after the `## Checkpoint` with After: merge (line 608): only the two below, both ruled here; the earlier open boxes at lines 893-894 and 918-922 were ruled by the round-1 Integrated Review. Carried from round 2, not part of this pull request: suggestion 3 (the worktree guide and a failed fetch) was ruled no action; Codex's two findings about code this pull request does not change (a `heads/` or `tags/` version and `_rc_pin_kind`; an emptied clone directory passing validate) are to be proposed to the owner as a separate issue. Nothing remains open before the owner's merge decision but Lint (pre-commit) at the record-only head, which `merge_pr.sh` gates on.
+
+### Findings
+- [x] (suggestion, Local Review @ `d5eead98`) The "a set-aside directory gone once globbed" block stages nothing at this head (the `[` override never fires; checked at `.agent/scripts/tests/test_ros2_colcon.sh:4787-4790`) — no action in this pull request (host ruling): the label overstates, the check is still a valid guard against a return of the old `[ -d ]` re-check, and the PR body names it for a later part of #503 — `.agent/scripts/tests/test_ros2_colcon.sh:4775-4793`
+- [x] (suggestion, Local Review @ `d5eead98`) PR body out of date (Recommendation line; "one of its suggestions was done") — fixed by the host, who owns the body; verified: "ready for the owner's merge decision" and "two of its suggestions were done" — PR #514 body
+
+### False positives
+
+## Checkpoint
+**When**: 2026-11-19 00:38 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner chose "Merge (Recommended)" in a dialog for pull request 514 (part 1B: the adapter's route for a root the manifest tool set up, and its registration), which named the AGENTS.md sentence, the dated note under ADR-0021 and the rule that a folder of the user's own directly under the root is treated as a distro. The issue stays open: later parts are a session started inside a distro's directory, /run-issue from the root of a project with several distros, and the switch to the tool's build, status and show when they exist. Noted for a later part: the test block labelled "a set-aside directory gone once globbed" does not stage a real disappearance.

@@ -303,6 +303,61 @@ check "real run: exit 1, not a git repository" \
 check "rolled back: no registry line, no settings file" \
     bash -c '[ -z "$(grep -E "^notes[[:space:]]" "$1")" ] && [ ! -e "$2" ]' _ "$REGISTRY" "$(pfile notes)"
 
+# ------------------------------------- a root the manifest tool set up ---
+echo "TEST: a root the manifest tool set up, in no git repository, registers from its own session (issue 503)"
+# Its resolved files are written by THIS checkout's resolver, run by the
+# first python that imports it and yaml; with none, a failure where the
+# resolver is meant to be present, a loud skip elsewhere.
+MR_SRC="$REAL_ROOT/tools/repos-manifest/src"
+MR_PY=""
+_common="$(git -C "$REAL_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+for _py in ${_common:+"${_common%/.git}/.venv/bin/python3"} "$(command -v python3 2>/dev/null || true)"; do
+    [ -n "$_py" ] && [ -x "$_py" ] || continue
+    if PYTHONPATH="$MR_SRC" "$_py" -c 'import sys, yaml, repos_manifest; sys.exit(0 if repos_manifest.__file__.startswith(sys.argv[1] + "/") else 3)' "$MR_SRC" 2>/dev/null; then
+        MR_PY="$_py"; break
+    fi
+done
+if [ -n "$MR_PY" ]; then
+    TS="$SANDBOX/toolsys"
+    TROOT="$TS/tsys"
+    mkdir -p "$TROOT/.repos-manifest/resolved"
+    printf 'format: 1\ndistros: [fakefox]\nlayers: [core]\nrepositories:\n  pkg_a:\n    type: git\n    url: file:///nonexistent/pkg_a.git\n    version: main\n    layer: core\n' > "$TS/m.manifest.yaml"
+    (cd "$TS" && PYTHONPATH="$MR_SRC" "$MR_PY" -m repos_manifest.cli resolve --manifest m.manifest.yaml \
+        --distro fakefox --out "$TROOT/.repos-manifest/resolved/fakefox" >/dev/null)
+    mkdir -p "$TROOT/fakefox/core/src/pkg_a"
+    gitq -C "$TROOT/fakefox/core/src/pkg_a" init --quiet
+    check "precondition: the root is in no git repository" bash -c '! git -C "$1" rev-parse --git-dir >/dev/null 2>&1' _ "$TROOT"
+    out="$(rsr "$TROOT")"; rc=$?
+    check "the real call registers it: STATUS=registered, type ros2_colcon from .repos-manifest/" \
+        bash -c '[ "$1" -eq 0 ] && [ "$2" = registered ] && [[ "$(grep -E "^tsys[[:space:]]" "$3")" == "tsys  ros2_colcon  $4" ]]' _ "$rc" "$(status_of "$out")" "$REGISTRY" "$TROOT"
+    check "its gate passed through the tool route's validate" \
+        bash -c '[[ "$1" == *"OK: adapter validate passed"* && "$1" == *"VERIFY=pass"* ]]' _ "$out"
+    check "nothing written in the root" bash -c '[ ! -e "$1/configs" ] && [ ! -e "$1/.claude" ]' _ "$TROOT"
+    out="$("$WS/.agent/scripts/session_root.sh" --dir "$TROOT" 2>&1)"; rc=$?
+    check "session_root.sh resolves a session at the root: project=tsys" \
+        bash -c '[ "$1" -eq 0 ] && [[ "$2" == *"project=tsys"* ]]' _ "$rc" "$out"
+    echo "TEST: a root the manifest tool set up with two distros, in no git repository, registers from its own session"
+    T2="$TS/t2"
+    mkdir -p "$T2/.repos-manifest/resolved"
+    printf 'format: 1\ndistros: [fakefox, fakefox2]\nlayers: [core]\nrepositories:\n  pkg_a:\n    type: git\n    url: file:///nonexistent/pkg_a.git\n    version: main\n    layer: core\n' > "$TS/m2.manifest.yaml"
+    for _d in fakefox fakefox2; do
+        (cd "$TS" && PYTHONPATH="$MR_SRC" "$MR_PY" -m repos_manifest.cli resolve --manifest m2.manifest.yaml \
+            --distro "$_d" --out "$T2/.repos-manifest/resolved/$_d" >/dev/null)
+        mkdir -p "$T2/$_d/core/src/pkg_a"
+        gitq -C "$T2/$_d/core/src/pkg_a" init --quiet
+    done
+    out="$(rsr "$T2")"; rc=$?
+    check "the real call registers it: STATUS=registered, its gate's adapter validate passed" \
+        bash -c '[ "$1" -eq 0 ] && [ "$2" = registered ] && [[ "$3" == *"OK: adapter validate passed"* ]] && [[ "$(grep -E "^t2[[:space:]]" "$4")" == "t2  ros2_colcon  $5" ]]' _ "$rc" "$(status_of "$out")" "$out" "$REGISTRY" "$T2"
+else
+    if command -v repos-manifest >/dev/null 2>&1 || [ -n "${CI:-}" ] \
+        || { [ -n "$_common" ] && [ -x "${_common%/.git}/.venv/bin/repos-manifest" ]; }; then
+        fail "no python imports both yaml and $MR_SRC, though the resolver is meant to be present here"
+    else
+        echo "  SKIPPED: PyYAML not importable with this checkout's resolver source ($MR_SRC)"
+    fi
+fi
+
 # ------------------------------------------------ copy in a worktree ---
 echo "TEST: the copy in a linked worktree of the workspace registers in the main checkout"
 EPS="$(make_proj "$P" epsilon)"

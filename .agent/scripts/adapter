@@ -46,7 +46,9 @@
 # shims can forward them after the verb (no contract verb takes flags with
 # these names). The resolved project is exposed to the sourced adapter as
 # shell variables (not exported): ACTIVE_PROJECT_NAME (empty only for the
-# workspace-only sync), ACTIVE_PROJECT_ROOT, ACTIVE_PROJECT_FILE (the per-project settings file
+# workspace-only sync), ACTIVE_PROJECT_ROOT, ACTIVE_PROJECT_FROM (the
+# directory the call comes from, --from <dir> or else the cwd, as a
+# physical path), ACTIVE_PROJECT_FILE (the per-project settings file
 # .agent/projects.d/<name>, issue #332; grammar in _project_registry.sh),
 # ACTIVE_PROJECT_BUILD / _TEST / _INSTALL / _BOOTSTRAP_URL / _SOURCE /
 # _SOURCE_REF / _SOURCE_PATH (its keys; empty when unset). The settings file
@@ -264,6 +266,11 @@ if [ "$PROJECT_TYPE_NAME" = "$REGISTRY_PARENT_TYPE" ] && [ -n "$ACTIVE_PROJECT_N
     ACTIVE_PROJECT_ROOT="$(cut -f2 <<< "$_ENTRY")"
 fi
 
+# The directory the call comes from, physical: --from <dir>, else the cwd,
+# in both the --project and the discovery case (ros2_colcon's tool route
+# chooses its distro from it; issue 503).
+# shellcheck disable=SC2034
+ACTIVE_PROJECT_FROM="$(cd "${FROM_DIR:-$PWD}" 2>/dev/null && pwd -P || true)"
 # shellcheck disable=SC2034
 ACTIVE_PROJECT_ROLE=""
 # shellcheck disable=SC2034

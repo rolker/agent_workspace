@@ -1051,6 +1051,119 @@ else
     echo "  SKIP: flock is not available (the registry lock needs it)"
 fi
 
+# ------------------------------------- a root the manifest tool set up ---
+echo "TEST: a root the manifest tool set up, in no git repository (issue 503): type detected, the gate passes, no role= or distro="
+# Its resolved files are written by THIS checkout's resolver (MR_PY, found
+# above); each repo is a git repository at <root>/<distro>/<layer>/src.
+if [ -n "$MR_PY" ]; then
+    TS="$(mktemp -d -p "$SANDBOX")"
+    TROOT="$TS/tsys"
+    mkdir -p "$TROOT/.repos-manifest/resolved"
+    printf 'format: 1\ndistros: [fakefox]\nlayers: [core]\nrepositories:\n  pkg_u:\n    type: git\n    url: file:///nonexistent/pkg_u.git\n    version: main\n  pkg_a:\n    type: git\n    url: file:///nonexistent/pkg_a.git\n    version: main\n    layer: core\n' > "$TS/m.manifest.yaml"
+    (cd "$TS" && PYTHONPATH="$MR_SRC" "$MR_PY" -m repos_manifest.cli resolve --manifest m.manifest.yaml \
+        --distro fakefox --out "$TROOT/.repos-manifest/resolved/fakefox" >/dev/null)
+    for _d in fakefox/src/pkg_u fakefox/core/src/pkg_a; do
+        mkdir -p "$TROOT/$_d"
+        gitq -C "$TROOT/$_d" init --quiet
+    done
+    check "precondition: the root is in no git repository" bash -c '! git -C "$1" rev-parse --git-dir >/dev/null 2>&1' _ "$TROOT"
+    : > "$STUB_LOG"
+    out="$(reg "$WS" "$TROOT")"; rc=$?
+    check "exit 0, STATUS=registered" [ "$rc" -eq 0 -a "$(status_of "$out")" = registered ]
+    check "type ros2_colcon detected from .repos-manifest/, no setup run" \
+        bash -c '[[ "$(grep -E "^tsys[[:space:]]" "$1")" == "tsys  ros2_colcon  $2" ]] && [[ "$3" != *"== adapter --project tsys setup"* ]]' _ "$WS/.agent/projects.local" "$TROOT" "$out"
+    check "the gate passed through the tool route's validate" \
+        bash -c '[[ "$1" == *"OK: adapter validate passed"* && "$1" == *"VERIFY=pass"* ]]' _ "$out"
+    check "the user-tier check accepts a session at the root" \
+        bash -c '[[ "$1" == *"a session started at $2 has root '"'"'tsys'"'"'"* ]]' _ "$out" "$TROOT"
+    check "no settings file, nothing written in the root, no CLI call" \
+        bash -c '[ ! -e "$1" ] && [ ! -e "$2/configs" ] && [ ! -e "$2/.claude" ] && [ ! -s "$3" ]' _ "$(pfile "$WS" tsys)" "$TROOT" "$STUB_LOG"
+    out="$(reg "$WS" --remove tsys)"
+    echo "TEST: a root the tool set up that the adapter cannot use (nothing resolved) is refused and rolled back, with no setup"
+    TBAD="$TS/tbad"
+    mkdir -p "$TBAD/.repos-manifest/resolved"
+    out="$(reg "$WS" "$TBAD")"; rc=$?
+    check "exit 1, STATUS=refused, naming the next step" \
+        bash -c '[ "$1" -eq 1 ] && [ "$2" = refused ] && [[ "$3" == *"holds nothing resolved for any distro yet"* && "$3" == *"cd $4 && "*"/repos-manifest sync"* && "$3" != *"--project tbad sync"* ]]' _ "$rc" "$(status_of "$out")" "$out" "$TBAD"
+    check "rolled back, and setup was not run" \
+        bash -c '! grep -q "^tbad " "$1" && [ ! -e "$2/configs" ] && [[ "$3" != *"== adapter --project tbad setup"* ]]' _ "$WS/.agent/projects.local" "$TBAD" "$out"
+    echo "TEST: a dangling .repos-manifest link is typed ros2_colcon, as the adapter routes it, and refused, saying so"
+    TDANGLE="$TS/tdangle"
+    mkdir -p "$TDANGLE"
+    ln -s "$TS/nowhere" "$TDANGLE/.repos-manifest"
+    out="$(reg "$WS" "$TDANGLE")"; rc=$?
+    check "exit 1, STATUS=refused, the link to nothing named, fixing or removing it the next step" \
+        bash -c '[ "$1" -eq 1 ] && [ "$2" = refused ] && [[ "$3" == *".repos-manifest is a link to nothing"* && "$3" == *"Fix $4/.repos-manifest"* && "$3" == *"/repos-manifest init <manifest> --distro-dirs"* && "$3" != *"/repos-manifest sync"* ]]' _ "$rc" "$(status_of "$out")" "$out" "$TDANGLE"
+    check "rolled back" bash -c '! grep -q "^tdangle " "$1"' _ "$WS/.agent/projects.local"
+    echo "TEST: a root the manifest tool set up with two distros, in no git repository, registers from the workspace: validate covers both"
+    T2="$TS/t2"
+    mkdir -p "$T2/.repos-manifest/resolved"
+    printf 'format: 1\ndistros: [fakefox, fakefox2]\nlayers: [core]\nrepositories:\n  pkg_a:\n    type: git\n    url: file:///nonexistent/pkg_a.git\n    version: main\n    layer: core\n' > "$TS/m2.manifest.yaml"
+    for _d in fakefox fakefox2; do
+        (cd "$TS" && PYTHONPATH="$MR_SRC" "$MR_PY" -m repos_manifest.cli resolve --manifest m2.manifest.yaml \
+            --distro "$_d" --out "$T2/.repos-manifest/resolved/$_d" >/dev/null)
+        mkdir -p "$T2/$_d/core/src/pkg_a"
+        gitq -C "$T2/$_d/core/src/pkg_a" init --quiet
+    done
+    out="$(reg "$WS" "$T2")"; rc=$?
+    check "exit 0, STATUS=registered, its gate's adapter validate passed" \
+        bash -c '[ "$1" -eq 0 ] && [ "$2" = registered ] && [[ "$3" == *"OK: adapter validate passed"* && "$3" == *"VERIFY=pass"* ]]' _ "$rc" "$(status_of "$out")" "$out"
+    out="$(cd "$WS" && "$WS/.agent/scripts/adapter" --project t2 validate 2>&1)"; rc=$?
+    check "validate from the workspace, as the gate runs it, covers both distros" \
+        bash -c '[ "$1" -eq 0 ] && [[ "$2" == *"for distro fakefox ("* && "$2" == *"for distro fakefox2 ("* ]]' _ "$rc" "$out"
+    out="$(reg "$WS" --remove t2)"
+    echo "TEST: after a refused, rolled-back registration of a root the real tool set up, the printed next step, run literally, fixes it"
+    if command -v vcs >/dev/null 2>&1; then
+        TR="$TS/treal"
+        for _n in pkg_u pkg_a; do
+            mkdir -p "$TS/rremote/$_n"
+            gitq -C "$TS/rremote/$_n" init --quiet -b main
+            echo "$_n" > "$TS/rremote/$_n/README"
+            gitq -C "$TS/rremote/$_n" add README
+            gitq -C "$TS/rremote/$_n" commit --quiet -m first
+        done
+        printf 'format: 1\ndistros: [fakefox]\nlayers: [core]\nrepositories:\n  pkg_u:\n    type: git\n    url: file://%s\n    version: main\n  pkg_a:\n    type: git\n    url: file://%s\n    version: main\n    layer: core\n' \
+            "$TS/rremote/pkg_u" "$TS/rremote/pkg_a" > "$TS/mreal.manifest.yaml"
+        mkdir -p "$TR"
+        (cd "$TR" && "$WS/.venv/bin/repos-manifest" init ../mreal.manifest.yaml --distro-dirs --distro fakefox --yes >/dev/null 2>&1)
+        check "precondition: the real tool set the root up" [ -f "$TR/.repos-manifest/resolved/fakefox/layers.txt" -a -d "$TR/fakefox/core/src/pkg_a" ]
+        # Nothing resolved (an init cut short).
+        rm -r "$TR/.repos-manifest/resolved/fakefox"
+        out="$(reg "$WS" "$TR")"; rc=$?
+        check "nothing resolved: refused and rolled back" \
+            bash -c '[ "$1" -eq 1 ] && [ "$2" = refused ] && ! grep -q "^treal " "$3"' _ "$rc" "$(status_of "$out")" "$WS/.agent/projects.local"
+        _step="$(grep -oE 'cd [^ ]+ && [^ ]+ sync( --distro [a-z0-9_]+)?' <<< "$out" | head -n1 || true)"
+        check "nothing resolved: the step is the tool's sync in the root" [ "$_step" = "cd $TR && $WS/.venv/bin/repos-manifest sync" ]
+        (cd "$SANDBOX" && bash -c "$_step" >/dev/null 2>&1); rc=$?
+        check "nothing resolved: the step, run literally, exits 0" [ "$rc" -eq 0 ]
+        out="$(reg "$WS" "$TR")"; rc=$?
+        check "nothing resolved: registration then passes" [ "$rc" -eq 0 -a "$(status_of "$out")" = registered ]
+        out="$(reg "$WS" --remove treal)"
+        # A clone missing: validate's not-checked-out line at the gate.
+        rm -rf "$TR/fakefox/core/src/pkg_a"
+        out="$(reg "$WS" "$TR")"; rc=$?
+        check "a clone missing: refused and rolled back, no adapter verb named" \
+            bash -c '[ "$1" -eq 1 ] && [ "$2" = refused ] && ! grep -q "^treal " "$3" && [[ "$4" == *"not checked out"* && "$4" != *"--project treal sync"* ]]' _ "$rc" "$(status_of "$out")" "$WS/.agent/projects.local" "$out"
+        _step="$(grep "not checked out" <<< "$out" | grep -oE 'cd [^ ]+ && [^ ]+ sync( --distro [a-z0-9_]+)?' | head -n1 || true)"
+        check "a clone missing: the step is the tool's sync for fakefox in the root" \
+            [ "$_step" = "cd $TR && $WS/.venv/bin/repos-manifest sync --distro fakefox" ]
+        (cd "$SANDBOX" && bash -c "$_step" >/dev/null 2>&1); rc=$?
+        check "a clone missing: the step, run literally, exits 0 and clones it" [ "$rc" -eq 0 -a -d "$TR/fakefox/core/src/pkg_a/.git" ]
+        out="$(reg "$WS" "$TR")"; rc=$?
+        check "a clone missing: registration then passes" [ "$rc" -eq 0 -a "$(status_of "$out")" = registered ]
+        out="$(reg "$WS" --remove treal)"
+    else
+        echo "  SKIPPED: vcs is not on PATH; the real tool's sync needs it"
+    fi
+else
+    if command -v repos-manifest >/dev/null 2>&1 || [ -n "${CI:-}" ] \
+        || { [ -n "$_common" ] && [ -x "${_common%/.git}/.venv/bin/repos-manifest" ]; }; then
+        fail "no python imports both yaml and $MR_SRC, though the resolver is meant to be present here"
+    else
+        echo "  SKIPPED: PyYAML not importable with this checkout's resolver source ($MR_SRC)"
+    fi
+fi
+
 # ------------------------------------------------------- linked worktree ---
 echo "TEST: refused from a linked worktree of the workspace"
 gitq -C "$WS" worktree add --quiet "$SANDBOX/ws-linked" 2>/dev/null

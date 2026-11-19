@@ -5,11 +5,12 @@
 # Hosts a project shaped like rolker/ros2_agent_workspace: ordered colcon
 # layers under layers/main/<layer>_ws/, driven by an in-tree manifest at
 # configs/manifest/ (layers.txt, optional_layers.txt, repos/<layer>.repos,
-# bootstrap.yaml). Manifest-repo formalization is #172 step 4; this adapter
-# reads the manifest from the hosting dir only.
+# bootstrap.yaml). Manifest-repo formalization is #172 step 4. Three
+# routes, the tool route (below) checked first: the adapter reads the
+# manifest from the hosting dir on the two older ones (issue #436) and from
+# the tool's resolved files on the tool route.
 #
-# Two routes to that directory (issue #436). The bootstrap route (below) is
-# today's bootstrap.yaml flow. The manifest route is taken when the
+# The bootstrap route (below) is today's bootstrap.yaml flow. The manifest route is taken when the
 # project's settings file sets `source` (with source_ref and source_path for
 # a git URL), and needs role= and distro= on the registry line: the
 # manifest, in the new format, is resolved by the workspace-installed
@@ -18,6 +19,83 @@
 # (see "Manifest route" below for the fetch, staleness and network rules).
 # Package worktrees' env.sh is written once at create time: after a sync
 # that changes the layers, sync says to recreate them.
+#
+# The tool route (issue 503 part 1), checked first: a root that holds
+# .repos-manifest/ is a system directory the manifest tool set up
+# (`repos-manifest init --distro-dirs`), and every verb takes this route,
+# whatever the settings file sets. The order is _rc_route's: the tool route,
+# else the manifest route (source set), else the bootstrap route. A
+# .repos-manifest/ the adapter cannot use is an error, never another route
+# (the bootstrap route would curl a URL). One helper, _rc_tool_unusable,
+# says what is wrong as far as the adapter can tell (it is not a
+# directory, or a link to nothing; it cannot be read; nothing is resolved
+# yet, no directory under .repos-manifest/resolved/; the layout is flat,
+# resolved/layers.txt from a set-up without --distro-dirs) and names the
+# way out: the tool's sync for nothing resolved; fixing or removing the
+# path, then the tool's init --distro-dirs in an empty directory,
+# otherwise. Every next step on this route that is the tool's sync is
+# written by one helper, _rc_tool_sync_step (`cd <root> && <tool> sync
+# [--distro <d>]`), never an adapter verb: registration refuses such a
+# root and rolls the project back before anyone could run one, and from
+# the root of a system with several distros the adapter's sync refuses.
+# Every key line of a resolved .repos file that the adapter's reader
+# (_rc_repos_entries) cannot read is refused by name; it reads a key of
+# letters, digits, '.', '_' and '-', bare or in the single quotes the tool
+# writes around a key YAML would read as a number or a boolean ('123',
+# 'on'). A key with a directory in it (grp/repo) is not read (a worktree
+# names a repo by the last part of its path; reading such keys is a later
+# part).
+# The adapter reads only the tool's resolved files, its stated output, for
+# one distro: .repos-manifest/resolved/<distro>/ holds layers.txt (in build
+# order; the unnamed layer is "_unnamed"), <layer>.repos and optional.txt
+# (the optional repos, by key). It never reads config.yaml or state.yaml.
+# A layer's directory is <root>/<distro>/<layer>, the unnamed layer's
+# <root>/<distro>; its repos are in its src/. A repo's pin is the version
+# of its entry in <layer>.repos. No layer is optional; validate passes over
+# a missing repo optional.txt names.
+#
+# The distro on the tool route (owner, 2026-11-18: "the directory the
+# session is started in decides"), chosen by _rc_tool_distro_select alone:
+#   1. the directory the call comes from (ACTIVE_PROJECT_FROM: --from, else
+#      the cwd, taken as a physical path) is <root>/<x> or below it, where
+#      <x> is a real directory (not a link) directly under the physical
+#      root, other than
+#      worktrees and names starting with a dot: x, and only x. The adapter
+#      does not read the tool's settings, so a directory there that is not
+#      a distro is taken as one and refused below: a wrong distro chosen
+#      silently is worse than a refusal (one with nothing under resolved/
+#      is refused as not a distro the tool resolved).
+#   2. otherwise (the root itself, <root>/worktrees/..., outside the root):
+#      the one distro under resolved/ (a directory resolved/<d>/, or one
+#      the tool set aside while replacing it, .<d>.new-* or .<d>.old-*,
+#      which counts as d with no usable resolve), when there is exactly one;
+#   3. otherwise refuse, listing them; except `validate`, which then checks
+#      every one, one after another, and fails if any fails, naming it (so
+#      registration's gate, run from the workspace, passes on a root with
+#      several distros).
+# The chosen distro's resolved/<d>/layers.txt is read once per call
+# (_rc_tool_read_layers), and every layer loop of the call goes over that
+# read; a missing file or one that lists no layer is refused, naming the
+# tool's sync for d, never answered from another distro. `setup` and
+# `sync` choose by the same steps without reading it (they make it).
+# Which distros a call covers is decided there too (its --every).
+# Every verb follows it; nothing in the registry or the settings file holds
+# the distro, and validate refuses a role=, distro=, source, source_ref,
+# source_path or bootstrap_url there (a second record beside the tool's).
+# The distro's name is the ROS distribution's (/opt/ros/<distro>).
+#
+# On the tool route `setup` and `sync` run the tool's sync in the root
+# (<main checkout>/.venv/bin/repos-manifest sync --distro <d>: --distro <x>
+# from inside <root>/<x>/, from elsewhere the one resolved distro's name;
+# with no --distro only from outside every distro's directory when nothing
+# is resolved yet) and pass its output and exit
+# status through: the adapter never pulls, fetches or moves a clone here.
+# `build` and `test` are today's colcon loops over the resolved layers,
+# with --base-paths src so the unnamed layer's build in <root>/<distro>
+# does not take in the named layers below it; `build` is interim until
+# the tool's own build, and stops at the first failing layer. The tool's
+# <root>/<distro>/setup.bash is its stub until then: the instance's
+# environment is `adapter env`.
 #
 # Fresh hosting dir (#237, step 6 phase 2): `setup` bootstraps the manifest
 # when configs/manifest is absent, porting ros2's setup_layers.sh flow
@@ -36,7 +114,8 @@
 # path, PATH) reaches it: environment setup belongs in the script the key
 # points at.
 #
-# Distro handling (new capability — the ros2 scripts hardcoded jazzy):
+# Distro handling on the bootstrap and manifest routes (new capability —
+# the ros2 scripts hardcoded jazzy; the tool route's rule is above):
 #   1. distro=<name> on the project's registry line
 #   2. `distro:` field in configs/manifest/bootstrap.yaml (the two must
 #      agree when both are set)
@@ -74,8 +153,18 @@ _rc_root() {
 # from an earlier bootstrap is then ignored). On the manifest route, once
 # _rc_pin_manifest_dir has run (_rc_require_manifest runs it), it is the
 # generated directory the link pointed at then, so a run reads one result
-# throughout even when another run swaps the link meanwhile.
+# throughout even when another run swaps the link meanwhile. On the tool
+# route it is .repos-manifest/resolved/<distro>, for the distro
+# _rc_tool_distro_select chose (_rc_require_manifest runs it).
 _rc_manifest_dir() {
+    if [ "$(_rc_route)" = tool ]; then
+        if [ -z "${_RC_TOOL_DISTRO:-}" ]; then
+            echo "ERROR: internal: the tool route's distro was not chosen before its resolved files were read" >&2
+            return 1
+        fi
+        echo "$(_rc_root)/.repos-manifest/resolved/$_RC_TOOL_DISTRO"
+        return 0
+    fi
     if [ -n "${ACTIVE_PROJECT_SOURCE:-}" ]; then
         if [ -n "${_RC_MDIR_PIN:-}" ]; then
             echo "$_RC_MDIR_PIN"
@@ -99,6 +188,12 @@ _rc_manifest_dir() {
 # colcon, the resolver) run through _rc_nofd, so none inherits fd 8.
 _rc_pin_manifest_dir() {
     local configs link target i
+    # The tool route has no link to pin. The tool replaces resolved/<distro>/
+    # in two renames, not one atomic step, so a run during a sync may find
+    # no layers or a mix of two resolves: layers.txt is read once per call
+    # and an empty read refused (_rc_tool_read_layers), and a run during a
+    # sync is to be run again.
+    [ "$(_rc_route)" = tool ] && return 0
     [ -n "${ACTIVE_PROJECT_SOURCE:-}" ] || return 0
     configs="$(_rc_root)/configs"
     link="$configs/manifest-resolved"
@@ -177,15 +272,30 @@ _rc_remove_generated() {
 # layer defined. Errors with guidance — an empty layers.txt must not let
 # the layer loops run zero times and report success.
 _rc_require_manifest() {
+    # The tool route: the distro rule first (it refuses a root the adapter
+    # cannot use, naming the next step).
+    if [ "$(_rc_route)" = tool ]; then
+        _rc_tool_distro_select || return 1
+    fi
+    _rc_check_manifest
+}
+
+# _rc_require_manifest's checks once the distro is chosen (validate runs
+# them for each distro it covers). A repo key the reader cannot read is
+# refused at the end, once the layer names are checked.
+_rc_check_manifest() {
     local mdir
     _rc_pin_manifest_dir
     mdir="$(_rc_manifest_dir)"
-    if [ -n "${ACTIVE_PROJECT_SOURCE:-}" ] && { [ ! -d "$mdir" ] || [ ! -f "$mdir/layers.txt" ]; }; then
+    # The tool route: the chosen distro's layers.txt, read here once for
+    # the call, an empty read refused (the file is not looked at again).
+    if [ "$(_rc_route)" = tool ]; then
+        _rc_tool_read_layers || return 1
+    elif [ -n "${ACTIVE_PROJECT_SOURCE:-}" ] && { [ ! -d "$mdir" ] || [ ! -f "$mdir/layers.txt" ]; }; then
         echo "ERROR: no resolved manifest at $mdir (project '${ACTIVE_PROJECT_NAME:-?}' sets source, so the manifest is resolved from it)" >&2
         echo "Run: .agent/scripts/adapter --project ${ACTIVE_PROJECT_NAME:-<name>} setup" >&2
         return 1
-    fi
-    if [ ! -d "$mdir" ] || [ ! -f "$mdir/layers.txt" ]; then
+    elif [ ! -d "$mdir" ] || [ ! -f "$mdir/layers.txt" ]; then
         echo "ERROR: no manifest at $mdir (expected layers.txt)" >&2
         echo "The hosting dir must contain configs/manifest/ with layers.txt," >&2
         echo "repos/<layer>.repos, and optionally bootstrap.yaml — the" >&2
@@ -207,21 +317,31 @@ _rc_require_manifest() {
             return 1
         fi
     done < <(_rc_layers)
+    if [ "$(_rc_route)" = tool ]; then
+        _rc_tool_refuse_unread_keys || return 1
+    fi
 }
 
 # Ordered layer names from layers.txt (comments/blanks stripped, whitespace
 # trimmed — a stray trailing space must not produce a "<layer> _ws" path).
 _rc_layers() {
     local mdir
+    # The tool route: the one read of the call (_rc_tool_read_layers).
+    if [ "$(_rc_route)" = tool ]; then
+        [ -n "${_RC_TOOL_LAYERS:-}" ] && printf '%s\n' "$_RC_TOOL_LAYERS"
+        return 0
+    fi
     mdir="$(_rc_manifest_dir)"
     grep -v '^[[:space:]]*#' "$mdir/layers.txt" 2>/dev/null \
         | grep -v '^[[:space:]]*$' \
         | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
 }
 
-# True if the layer is listed in optional_layers.txt.
+# True if the layer is listed in optional_layers.txt. The tool route has
+# no optional layers (its optional repos are _rc_is_optional_repo's).
 _rc_is_optional_layer() {
     local layer="$1" mdir
+    [ "$(_rc_route)" = tool ] && return 1
     mdir="$(_rc_manifest_dir)"
     [ -f "$mdir/optional_layers.txt" ] || return 1
     grep -v '^[[:space:]]*#' "$mdir/optional_layers.txt" 2>/dev/null \
@@ -229,8 +349,42 @@ _rc_is_optional_layer() {
         | grep -qx "$layer"
 }
 
+# Tool route only: true if the resolved optional.txt names the repo key.
+_rc_is_optional_repo() {
+    local key="$1" mdir
+    mdir="$(_rc_manifest_dir)" || return 1
+    [ -f "$mdir/optional.txt" ] || return 1
+    grep -v '^[[:space:]]*#' "$mdir/optional.txt" 2>/dev/null \
+        | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
+        | grep -qxF -- "$key"
+}
+
+# The directory a layer is built in, its repos in src/ below it:
+# layers/main/<layer>_ws on the bootstrap and manifest routes;
+# <root>/<distro>/<layer> on the tool route, and <root>/<distro> for the
+# unnamed layer, "_unnamed" in the tool's layers.txt.
 _rc_layer_dir() {
+    if [ "$(_rc_route)" = tool ]; then
+        if [ "$1" = _unnamed ]; then
+            echo "$(_rc_root)/${_RC_TOOL_DISTRO:?}"
+        else
+            echo "$(_rc_root)/${_RC_TOOL_DISTRO:?}/$1"
+        fi
+        return 0
+    fi
     echo "$(_rc_root)/layers/main/${1}_ws"
+}
+
+# A layer's .repos file: <layer>.repos in the tool's resolved directory,
+# repos/<layer>.repos in the manifest directory on the other two routes.
+_rc_repos_file() {
+    local mdir
+    mdir="$(_rc_manifest_dir)" || return 1
+    if [ "$(_rc_route)" = tool ]; then
+        echo "$mdir/${1}.repos"
+    else
+        echo "$mdir/repos/${1}.repos"
+    fi
 }
 
 # Resolve the ROS distro: the registry's distro= field first (#265), then
@@ -241,6 +395,15 @@ _rc_layer_dir() {
 # the distro. Errors loudly.
 _rc_distro() {
     local mdir distro="" manifest_distro=""
+    # The tool route: the distro _rc_tool_distro_select chose (run here
+    # when no verb has run it yet; within $(...) its choice is not kept).
+    if [ "$(_rc_route)" = tool ]; then
+        if [ -z "${_RC_TOOL_DISTRO:-}" ]; then
+            _rc_tool_distro_select || return 1
+        fi
+        echo "$_RC_TOOL_DISTRO"
+        return 0
+    fi
     # The manifest route (issue #436) takes the registry's distro= only: the
     # generated directory has no bootstrap.yaml, and resolving needs the
     # distro before any other config (one source).
@@ -323,19 +486,23 @@ _rc_underlay() {
 # written, which YAML may type as a number, bool or null) or "none" (no
 # version: key, version empty: vcstool checks out the default branch, and
 # such entries are emitted only with --detail).
+# On the tool route a key in single quotes is read too, unquoted: the tool
+# writes a key YAML would read as a number or a boolean so ('123', 'on').
 _rc_repos_entries() {
-    local repos_file="$1" detail=0
+    local repos_file="$1" detail=0 quoted=0
     [ "${2:-}" = "--detail" ] && detail=1
+    [ "$(_rc_route)" = tool ] && quoted=1
     [ -f "$repos_file" ] || return 0
-    awk -v detail="$detail" '
+    awk -v detail="$detail" -v quoted="$quoted" '
         function flush() {
             if (name != "" && detail) printf "%s\t\tnone\n", name
             name = ""
         }
         /^[[:space:]]*#/ { next }
-        /^  [A-Za-z0-9_.-]+:[[:space:]]*$/ {
+        /^  [A-Za-z0-9_.-]+:[[:space:]]*$/ || (quoted && /^  \047[A-Za-z0-9_.-]+\047:[[:space:]]*$/) {
             flush()
             name = $1; sub(/\r$/, "", name); sub(/:$/, "", name)
+            gsub(/\047/, "", name)
             next
         }
         /^    version:/ && name != "" {
@@ -426,6 +593,7 @@ _rc_bootstrap_manifest() {
         if [ -n "${ACTIVE_PROJECT_NAME:-}" ]; then
             echo "Or use a manifest in the new format (issue #436): .agent/scripts/project_setting.sh set $ACTIVE_PROJECT_NAME source=<git URL or absolute path> [source_ref=<branch|tag|commit>] [source_path=<file in the repo>], with role= and distro= on its registry line" >&2
         fi
+        echo "Or set the root up with the manifest tool: in $root, run $(_rc_resolver_bin) init <manifest> --distro-dirs --distro <distro> [--role <role>]; the adapter then takes it as a root the tool set up" >&2
         return 1
     fi
     if ! command -v curl >/dev/null 2>&1; then
@@ -608,9 +776,321 @@ _rc_bootstrap_manifest() {
 # and the run says so once. Programs the adapter starts (git, vcs,
 # colcon, the resolver) run through _rc_nofd and inherit neither lock.
 
-# "manifest" when the settings file sets source, else "bootstrap".
+# The route, chosen here alone (see the header): "tool" when the root holds
+# .repos-manifest/ (a link included, even a dangling one, as the tool
+# itself finds it), else "manifest" when the settings file sets source,
+# else "bootstrap".
 _rc_route() {
+    if [ -n "${ACTIVE_PROJECT_ROOT:-}" ] \
+        && { [ -e "$ACTIVE_PROJECT_ROOT/.repos-manifest" ] || [ -L "$ACTIVE_PROJECT_ROOT/.repos-manifest" ]; }; then
+        echo tool
+        return 0
+    fi
     if [ -n "${ACTIVE_PROJECT_SOURCE:-}" ]; then echo manifest; else echo bootstrap; fi
+}
+
+# --- Tool route (issue 503 part 1; see the header) -------------------------
+
+# The distros under the tool's resolved/: each directory resolved/<d>/,
+# and each the tool has set aside while replacing it, named as the tool's
+# output.py names them (_TEMP_NAME: .<d>.new-<pid>-<8 of [a-z0-9_]> or
+# .<d>.old-...), counted as d; other dot names left out. In name order,
+# one per line. Whether one is usable is _rc_tool_read_layers's question,
+# not this list's (a set-aside one with no resolved/<d>/ is not).
+_rc_tool_distros() {
+    local d res restore
+    local -a names
+    res="$(_rc_root)/.repos-manifest/resolved"
+    # Set-aside names first, and every name a glob returned counts even if gone since: a sync's
+    # swap of <d> during the call lists <d>, unless the first glob ran before the sync wrote its new copy.
+    restore="$(shopt -p nullglob)" || true  # exit 1 when unset
+    shopt -s nullglob
+    names=("$res"/.*/ "$res"/*/)
+    eval "$restore"
+    for d in ${names[@]+"${names[@]}"}; do
+        d="${d%/}"
+        d="${d##*/}"
+        if [[ "$d" == .* ]]; then
+            [[ "$d" =~ ^\.(.+)\.(new|old)-[0-9]+-[a-z0-9_]{8}$ ]] || continue
+            d="${BASH_REMATCH[1]}"
+        fi
+        echo "$d"
+    done | sort -u
+}
+
+# The next step when it is the manifest tool's sync, written here alone
+# for every message on the tool route: the command as it can be run from
+# anywhere, `cd <root> && <tool> sync`, with --distro <d> when $1 names
+# the distro. The tool is the workspace's installed one.
+_rc_tool_sync_step() {
+    printf 'cd %q && %q sync' "$(_rc_root)" "$(_rc_resolver_bin)"
+    [ -n "${1:-}" ] && printf ' --distro %q' "$1"
+    return 0
+}
+
+# A .repos-manifest/ the adapter cannot use (see the header), refused in
+# one place: what is wrong ($1), and the way out ($2): sync, the tool's
+# sync (nothing resolved yet); init, a new set-up with the tool's init
+# --distro-dirs in an empty directory (a flat layout); repair, the
+# default, fixing the path or removing it and setting up again so (it is
+# not a directory, a link to nothing, or cannot be read: the tool's sync
+# would refuse it too). Returns 1.
+_rc_tool_unusable() {
+    local root bin what="$1" step="${2:-repair}" init
+    root="$(_rc_root)" || return 1
+    bin="$(_rc_resolver_bin)"
+    init="set it up again in an empty directory: cd <dir> && $bin init <manifest> --distro-dirs --distro <distro> [--role <role>]; then register that directory"
+    echo "ERROR: $root/.repos-manifest $what, so the adapter cannot read what the manifest tool set up there" >&2
+    case "$step" in
+        sync) echo "Run the manifest tool in the root: $(_rc_tool_sync_step) (then register it, or run the call again)" >&2 ;;
+        init) echo "Move $root aside and $init" >&2 ;;
+        *) echo "Fix $root/.repos-manifest, the directory the manifest tool made there; or remove it, move $root aside and $init" >&2 ;;
+    esac
+    return 1
+}
+
+# The chosen distro's layers.txt, read once for the call into
+# _RC_TOOL_LAYERS (what _rc_layers gives on the tool route). A file that
+# is missing or lists no layer is refused, naming the tool's sync for the
+# distro: the call never moves on to another distro. Returns 1 then.
+_rc_tool_read_layers() {
+    local file
+    file="$(_rc_manifest_dir)/layers.txt" || return 1
+    _RC_TOOL_LAYERS="$(_rc_layer_lines "$file" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    [ -n "$_RC_TOOL_LAYERS" ] && return 0
+    if ! _rc_tool_distros | grep -qxF "$_RC_TOOL_DISTRO"; then
+        local root d list=""
+        root="$(_rc_root)"
+        while IFS= read -r d; do
+            list="${list:+$list, }$root/$d"
+        done < <(_rc_tool_distros)
+        echo "ERROR: $_RC_TOOL_DISTRO is not a distro the manifest tool has resolved in $root (nothing under $root/.repos-manifest/resolved/ for it)" >&2
+        echo "Run the command from $root or from inside a distro's directory (${list:-none resolved yet}); if $_RC_TOOL_DISTRO is a distro being added, run: $(_rc_tool_sync_step "$_RC_TOOL_DISTRO")" >&2
+        return 1
+    fi
+    echo "ERROR: the manifest tool's last resolve for distro $_RC_TOOL_DISTRO cannot be used: $file is missing or lists no layer (a sync cut short, or one running now)" >&2
+    echo "Run: $(_rc_tool_sync_step "$_RC_TOOL_DISTRO")" >&2
+    return 1
+}
+
+# The distro rule (the header's three steps), in one place: sets
+# _RC_TOOL_DISTRO, or refuses, naming the next step. Run outside a
+# subshell so the choice holds for the rest of the run. Which distros a
+# call covers is decided here too: with --every (validate), when steps 1
+# and 2 choose none, _RC_TOOL_DISTROS is every distro under resolved/ and
+# _RC_TOOL_DISTRO is left empty for the caller to set to each in turn;
+# with --sync (setup and sync), nothing under resolved/ chooses none (the
+# tool's sync then syncs every distro it recorded); otherwise
+# _RC_TOOL_DISTROS is the one chosen. Nothing here reads a layers.txt
+# (_rc_check_manifest does, through _rc_tool_read_layers).
+_rc_tool_distro_select() {
+    local root resolved d x real from list mode="${1:-}"
+    local -a distros=()
+    _RC_TOOL_DISTRO=""
+    _RC_TOOL_DISTROS=()
+    root="$(_rc_root)" || return 1
+    resolved="$root/.repos-manifest/resolved"
+    if [ -L "$root/.repos-manifest" ] && [ ! -e "$root/.repos-manifest" ]; then
+        _rc_tool_unusable "is a link to nothing"
+        return 1
+    fi
+    if [ ! -d "$root/.repos-manifest" ]; then
+        _rc_tool_unusable "is not a directory"
+        return 1
+    fi
+    if [ ! -r "$root/.repos-manifest" ] || [ ! -x "$root/.repos-manifest" ] \
+        || { [ -e "$resolved" ] && { [ ! -d "$resolved" ] || [ ! -r "$resolved" ] || [ ! -x "$resolved" ]; }; }; then
+        _rc_tool_unusable "cannot be read (it or its resolved/ is not a readable directory)"
+        return 1
+    fi
+    if [ -f "$resolved/layers.txt" ]; then
+        _rc_tool_unusable "has a flat layout (it was set up without --distro-dirs: $resolved/layers.txt); the adapter reads a system with a directory per distro only" init
+        return 1
+    fi
+    # 1. The calling directory, both sides physical, inside a real
+    # directory <root>/<x>/ (not a link): x and only x.
+    from="${ACTIVE_PROJECT_FROM:-}"
+    real="$(cd "$root" 2>/dev/null && pwd -P)" || real=""
+    if [ -n "$from" ] && [ -n "$real" ]; then
+        for x in "$real"/*/; do
+            x="${x%/}"
+            [ "${x##*/}" = worktrees ] || [ -L "$x" ] && continue
+            if [ "$from" = "$x" ] || [[ "$from" == "$x"/* ]]; then
+                _RC_TOOL_DISTRO="${x##*/}"
+                break
+            fi
+        done
+    fi
+    if [ -z "$_RC_TOOL_DISTRO" ]; then
+        while IFS= read -r d; do
+            [ -n "$d" ] && distros+=("$d")
+        done < <(_rc_tool_distros)
+        # 2. The one distro under resolved/.
+        if [ "${#distros[@]}" -eq 1 ]; then
+            _RC_TOOL_DISTRO="${distros[0]}"
+        elif [ "${#distros[@]}" -eq 0 ]; then
+            [ "$mode" = --sync ] && return 0
+            _rc_tool_unusable "holds nothing resolved for any distro yet (no directory under $resolved/)" sync
+            return 1
+        fi
+    fi
+    # 3. Several, and the calling directory in none of them: validate
+    # covers every one; any other call is refused.
+    if [ -z "$_RC_TOOL_DISTRO" ]; then
+        if [ "$mode" = --every ]; then
+            for d in "${distros[@]}"; do
+                if ! [[ "$d" =~ ^[a-z0-9_]+$ ]]; then
+                    echo "ERROR: invalid ROS distro name '$d' (from $resolved/$d)" >&2
+                    _RC_TOOL_DISTROS=()
+                    return 1
+                fi
+            done
+            _RC_TOOL_DISTROS=("${distros[@]}")
+            return 0
+        fi
+        list="$(printf '%s, ' "${distros[@]}")"
+        echo "ERROR: $root holds several distros (${list%, }), and the call comes from ${from:-an unknown directory}, which is in none of them; the directory a call comes from chooses the distro" >&2
+        echo "Run the command from inside $root/<distro>/ (a call to .agent/scripts/adapter itself may instead give its own --from $root/<distro> before the verb)" >&2
+        return 1
+    fi
+    if ! [[ "$_RC_TOOL_DISTRO" =~ ^[a-z0-9_]+$ ]]; then
+        echo "ERROR: invalid ROS distro name '$_RC_TOOL_DISTRO' (the directory $root/$_RC_TOOL_DISTRO, or $resolved/$_RC_TOOL_DISTRO)" >&2
+        _RC_TOOL_DISTRO=""
+        return 1
+    fi
+    _RC_TOOL_DISTROS=("$_RC_TOOL_DISTRO")
+}
+
+# Every key line (two spaces in, under repositories:) of a resolved .repos
+# file of the chosen distro that the adapter's reader, _rc_repos_entries,
+# cannot read is refused by name, so none is passed over without a word.
+# A key with a directory in it (grp/repo) is one such line: the adapter's
+# own reading of .repos files, `repos` and worktree_create.sh take a repo
+# by one directory name. The pattern is the reader's.
+_rc_tool_refuse_unread_keys() {
+    local layer file keys found=""
+    while IFS= read -r layer; do
+        file="$(_rc_repos_file "$layer")" || return 1
+        [ -f "$file" ] || continue
+        keys="$(awk '
+            /^[[:space:]]*#/ { next }
+            /^  [^ ]/ {
+                k = $0
+                sub(/\r$/, "", k)
+                if (k ~ /^  [A-Za-z0-9_.-]+:[[:space:]]*$/) next
+                if (k ~ /^  \047[A-Za-z0-9_.-]+\047:[[:space:]]*$/) next
+                sub(/^  /, "", k)
+                sub(/[[:space:]]+$/, "", k)
+                sub(/:$/, "", k)
+                print k
+            }' "$file")"
+        [ -n "$keys" ] && found="${found:+$found; }$layer: $(tr '\n' ' ' <<< "$keys" | sed 's/ $//')"
+    done < <(_rc_layers)
+    [ -z "$found" ] && return 0
+    echo "ERROR: a repo key line the adapter does not read ($found, in $(_rc_manifest_dir)); it reads a key of letters, digits, '.', '_' and '-', bare or in single quotes (a key with a directory in it, such as grp/repo, is not read yet)" >&2
+    echo "Name each such repo so in the manifest and run: $(_rc_tool_sync_step "$_RC_TOOL_DISTRO"); or work in this system with repos-manifest by hand" >&2
+    return 1
+}
+
+# `setup` and `sync` on the tool route: the tool's sync in the root, its
+# output and exit status passed through (0; 1 when a repo that is not
+# optional failed, or on a refusal; 128+n on a signal). Nothing else: no
+# pull, fetch or vcs of the adapter's own. The distro is the rule's (its
+# --sync: no resolve needed); with nothing resolved (a resolve the tool set
+# aside counts as resolved) and the call from no distro's directory (an
+# init cut short), sync runs with no --distro and
+# the tool syncs every distro it recorded.
+_rc_tool_sync() {
+    local root bin before="" after="" rc=0
+    local -a args=()
+    root="$(_rc_root)" || return 1
+    bin="$(_rc_resolver_bin)"
+    if [ ! -x "$bin" ]; then
+        echo "ERROR: the manifest tool is not installed at $bin; run: make install-repos-manifest (from the workspace main checkout)" >&2
+        return 1
+    fi
+    _rc_tool_distro_select --sync || return 1
+    if [ -n "$_RC_TOOL_DISTRO" ]; then
+        args=(--distro "$_RC_TOOL_DISTRO")
+        before="$(_rc_layer_lines "$(_rc_manifest_dir)/layers.txt")"
+    fi
+    echo "Running: $bin sync ${args[*]} (in $root)"
+    (cd "$root" && _rc_nofd "$bin" sync ${args[@]+"${args[@]}"}) || rc=$?
+    if [ -n "$_RC_TOOL_DISTRO" ]; then
+        after="$(_rc_layer_lines "$(_rc_manifest_dir)/layers.txt")"
+        if [ "$after" != "$before" ]; then
+            echo "repos-manifest: the layers of distro $_RC_TOOL_DISTRO changed; existing package worktrees keep their old env.sh; recreate them"
+        fi
+    fi
+    return "$rc"
+}
+
+# `validate` on the tool route: the checkouts against the tool's last
+# resolved files, for each distro the call covers (_rc_tool_distro_select
+# --every: the chosen one, or every one under resolved/ when none is
+# chosen; one whose layers.txt is missing or empty fails, named), and no
+# second record of what the tool records. Fails if any distro fails,
+# naming it. Says what it did not check: the manifest is not read again.
+_rc_tool_validate() {
+    local name root mdir layer layer_dir repos_file entry key d n issues=0 failed="" leftover=""
+    local -a keys=() covered=() passed=()
+    _rc_tool_distro_select --every || return 1
+    covered=("${_RC_TOOL_DISTROS[@]}")
+    name="$(_rc_name)"
+    root="$(_rc_root)"
+    if [ -n "${ACTIVE_PROJECT_ROLE:-}" ] || [ -n "${ACTIVE_PROJECT_DISTRO:-}" ]; then
+        echo "❌ the registry line of '$name' carries${ACTIVE_PROJECT_ROLE:+ role=$ACTIVE_PROJECT_ROLE}${ACTIVE_PROJECT_DISTRO:+ distro=$ACTIVE_PROJECT_DISTRO}, a second record beside the manifest tool's .repos-manifest/ (the distro comes from the calling directory): remove it from the line in .agent/projects.local" >&2
+        issues=$((issues + 1))
+    fi
+    [ -n "${ACTIVE_PROJECT_SOURCE:-}" ] && keys+=(source)
+    [ -n "${ACTIVE_PROJECT_SOURCE_REF:-}" ] && keys+=(source_ref)
+    [ -n "${ACTIVE_PROJECT_SOURCE_PATH:-}" ] && keys+=(source_path)
+    [ -n "${ACTIVE_PROJECT_BOOTSTRAP_URL:-}" ] && keys+=(bootstrap_url)
+    if [ "${#keys[@]}" -gt 0 ]; then
+        echo "❌ the settings file ${ACTIVE_PROJECT_FILE:-of '$name'} sets ${keys[*]}, a second record of the manifest beside the manifest tool's .repos-manifest/: remove it with: .agent/scripts/project_setting.sh unset $name ${keys[*]}" >&2
+        issues=$((issues + 1))
+    fi
+    [ -e "$root/configs/manifest" ] && leftover="$root/configs/manifest"
+    [ -e "$root/configs/project_bootstrap.url" ] && leftover="${leftover:+$leftover and }$root/configs/project_bootstrap.url"
+    [ -n "$leftover" ] && echo "NOTE: $leftover, left from another route, is not read on the tool route (.repos-manifest/ at the root); remove it if nothing else needs it" >&2
+    for d in "${covered[@]}"; do
+        _RC_TOOL_DISTRO="$d"
+        if ! _rc_check_manifest; then
+            failed="${failed:+$failed, }$d"
+            issues=$((issues + 1))
+            continue
+        fi
+        mdir="$(_rc_manifest_dir)"
+        n=0
+        while IFS= read -r layer; do
+            repos_file="$(_rc_repos_file "$layer")"
+            layer_dir="$(_rc_layer_dir "$layer")"
+            if [ ! -f "$repos_file" ]; then
+                echo "❌ layer '$layer': missing $repos_file (run: $(_rc_tool_sync_step "$d"))" >&2
+                n=$((n + 1))
+                continue
+            fi
+            while IFS= read -r entry; do
+                [ -z "$entry" ] && continue
+                key="${entry%%$'\t'*}"
+                [ -d "$layer_dir/src/$key" ] && continue
+                _rc_is_optional_repo "$key" && continue
+                echo "❌ layer '$layer': repo '$key' in ${layer}.repos but not checked out at $layer_dir/src/$key (run: $(_rc_tool_sync_step "$d"))" >&2
+                n=$((n + 1))
+            done < <(_rc_repos_entries "$repos_file" --detail | cut -f1)
+        done < <(_rc_layers)
+        if [ "$n" -gt 0 ]; then
+            failed="${failed:+$failed, }$d"
+            issues=$((issues + n))
+        else
+            passed+=("✅ ros2_colcon checkout matches the tool's last resolve for distro $d ($mdir); the manifest itself was not read again (there is no repos-manifest status yet)")
+        fi
+    done
+    [ "${#passed[@]}" -gt 0 ] && printf '%s\n' "${passed[@]}"
+    if [ "$issues" -gt 0 ]; then
+        echo "Validation failed: $issues issue(s)${failed:+ (failing distro: $failed)}." >&2
+        return 1
+    fi
 }
 
 # Is the source a git URL (else an absolute path to the manifest file)?
@@ -1253,7 +1733,7 @@ _rc_validate_manifest_route() {
         for d in "$ws/src"/*; do
             [ -d "$d" ] || continue
             n="$(basename "$d")"
-            if ! _rc_repos_entries "$mdir/repos/${layer}.repos" | cut -f1 | grep -qxF -- "$n"; then
+            if ! _rc_repos_entries "$(_rc_repos_file "$layer")" | cut -f1 | grep -qxF -- "$n"; then
                 echo "⚠️  WARNING: layer '$layer': '$n' is checked out but not in the resolved manifest (role '${ACTIVE_PROJECT_ROLE:-}', distro '${ACTIVE_PROJECT_DISTRO:-}'); nothing removes it: remove $d by hand if it is not needed" >&2
             fi
         done
@@ -1274,6 +1754,20 @@ _rc_source_setup() {
     if [ "$rc" -ne 0 ]; then
         echo "ERROR: failed to source $setup_file" >&2
         return "$rc"
+    fi
+}
+
+# colcon <verb> [args...] in a layer directory, through _rc_nofd. On the
+# tool route --base-paths src comes first, so the unnamed layer's run in
+# <root>/<distro> does not take in the named layers below it (and the
+# --cmake-args a build passes last still take the rest).
+_rc_colcon() {
+    local verb="$1"
+    shift
+    if [ "$(_rc_route)" = tool ]; then
+        _rc_nofd colcon "$verb" --base-paths src "$@"
+    else
+        _rc_nofd colcon "$verb" "$@"
     fi
 }
 
@@ -1304,7 +1798,11 @@ adapter_setup() {
     # Bootstrap the manifest into a fresh hosting dir when needed, then
     # import each layer's repos with vcs. Optional layers
     # (optional_layers.txt) may fail — e.g. private repos; everything else
-    # aborts loudly.
+    # aborts loudly. On the tool route: the tool's sync, nothing else.
+    if [ "$(_rc_route)" = tool ]; then
+        _rc_tool_sync
+        return
+    fi
     if [ "$(_rc_route)" = manifest ]; then
         # vcs first: a missing tool is reported before any remote is
         # contacted.
@@ -1325,7 +1823,7 @@ adapter_setup() {
     local mdir layer layer_dir repos_file
     mdir="$(_rc_manifest_dir)"
     while IFS= read -r layer; do
-        repos_file="$mdir/repos/${layer}.repos"
+        repos_file="$(_rc_repos_file "$layer")"
         layer_dir="$(_rc_layer_dir "$layer")"
         if [ ! -f "$repos_file" ]; then
             if _rc_is_optional_layer "$layer"; then
@@ -1368,7 +1866,7 @@ adapter_build() {
         echo "----------------------------------------"
         rc=0
         (cd "$layer_dir" \
-            && _rc_nofd colcon build --symlink-install \
+            && _rc_colcon build --symlink-install \
                 --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@") || rc=$?
         if [ "$rc" -ne 0 ]; then
             echo "ERROR: build failed for layer: $layer" >&2
@@ -1403,7 +1901,7 @@ adapter_test() {
         echo "----------------------------------------"
         rc=0
         (cd "$layer_dir" \
-            && _rc_nofd colcon test --event-handlers console_direct+ \
+            && _rc_colcon test --event-handlers console_direct+ \
                 --return-code-on-test-failure "$@") || rc=$?
         if [ "$rc" -ne 0 ]; then
             echo "ERROR: tests failed for layer: $layer" >&2
@@ -1421,9 +1919,14 @@ adapter_sync() {
     # Per package repo: pull --rebase when clean and on its .repos-pinned
     # branch; fetch otherwise. Never touches dirty or detached checkouts.
     # On the manifest route (issue #436) the source is fetched and resolved
-    # first; a failure there stops sync with nothing changed.
+    # first; a failure there stops sync with nothing changed. On the tool
+    # route: the tool's sync, nothing else (it pulls and fetches nothing).
     local route missing=0
     route="$(_rc_route)"
+    if [ "$route" = tool ]; then
+        _rc_tool_sync
+        return
+    fi
     if [ "$route" = manifest ]; then
         _rc_manifest_prepare || return 1
     fi
@@ -1432,7 +1935,7 @@ adapter_sync() {
     mdir="$(_rc_manifest_dir)"
     while IFS= read -r layer; do
         layer_dir="$(_rc_layer_dir "$layer")"
-        repos_file="$mdir/repos/${layer}.repos"
+        repos_file="$(_rc_repos_file "$layer")"
         if [ ! -d "$layer_dir/src" ]; then
             # A layer never set up (new after a role or distro change):
             # every repository in it is still to be checked out.
@@ -1483,6 +1986,10 @@ adapter_sync() {
 adapter_validate() {
     # Checkout shape vs manifest: every non-optional layer has a repos file
     # and every repo pinned in it is checked out. Distro must resolve.
+    if [ "$(_rc_route)" = tool ]; then
+        _rc_tool_validate
+        return
+    fi
     local mdir layer layer_dir repos_file entry name issues=0
     if ! _rc_require_manifest; then
         return 1
@@ -1497,7 +2004,7 @@ adapter_validate() {
         issues=$((issues + ${route_issues:-1}))
     fi
     while IFS= read -r layer; do
-        repos_file="$mdir/repos/${layer}.repos"
+        repos_file="$(_rc_repos_file "$layer")"
         layer_dir="$(_rc_layer_dir "$layer")"
         if [ ! -f "$repos_file" ]; then
             if _rc_is_optional_layer "$layer"; then
@@ -1723,6 +2230,12 @@ adapter_worktree_env() {
         layer_dir="$(_rc_layer_dir "$l")"
         printf 'if [ -f %q ]; then source %q; fi\n' \
             "$layer_dir/install/local_setup.bash" "$layer_dir/install/local_setup.bash"
+        # Said once, at creation, on stderr (stdout is env.sh): a lower
+        # layer not built yet leaves this worktree's build without its
+        # packages, which CMake reports only by package name.
+        if [ ! -f "$layer_dir/install/local_setup.bash" ]; then
+            echo "NOTE: layer $l is not built ($layer_dir/install/local_setup.bash missing); this worktree's build will not find its packages until it is" >&2
+        fi
     done < <(_rc_layers)
     if [ "$found_target" != true ]; then
         echo "ERROR: layer '$layer' (from $worktree) is not defined in layers.txt" >&2
@@ -1965,7 +2478,7 @@ adapter_repo_pin() {
                 hits+=("$l"$'\t'"$version")
                 forms+=("$form")
             fi
-        done < <(_rc_repos_entries "$mdir/repos/${l}.repos" --detail)
+        done < <(_rc_repos_entries "$(_rc_repos_file "$l")" --detail)
     done < <(_rc_layers)
     local where="the manifest"
     [ -n "$layer" ] && where="layer '$layer' of the manifest"

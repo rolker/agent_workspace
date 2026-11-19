@@ -33,6 +33,11 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
+# The directory this script was called from. Every adapter call for one
+# worktree comes from it: the calls made before the `cd "$ROOT_DIR"` below
+# run in it, and the one after passes it with the dispatcher's --from, so
+# a type that reads the calling directory reads the same one each time.
+CALLER_DIR="$PWD"
 
 source "$SCRIPT_DIR/_worktree_helpers.sh"
 source "$SCRIPT_DIR/_issue_helpers.sh"
@@ -1038,7 +1043,7 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
     # point for a shell that must keep the overlay; build.sh/test.sh are
     # one-shot wrappers that source it fresh.
     if [ -n "$LAYER" ]; then
-        WE_ADAPTER_ARGS=()
+        WE_ADAPTER_ARGS=(--from "$CALLER_DIR")
         [ -n "$PROJECT_NAME" ] && WE_ADAPTER_ARGS+=(--project "$PROJECT_NAME")
         WE_OUTPUT="$("$SCRIPT_DIR/adapter" "${WE_ADAPTER_ARGS[@]}" worktree_env --worktree "$WORKTREE_DIR")" || {
             echo "Error: worktree_env failed for the new worktree" >&2

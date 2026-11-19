@@ -27,8 +27,8 @@ machine: the owner's development machine, a field machine, a collaborator's mach
 ## What exists today
 
 This section describes the code as it is. It was checked against
-`.agent/project_types/ros2_colcon/adapter.sh`, `.agent/scripts/_project_registry.sh` and the
-`Makefile`.
+`.agent/project_types/ros2_colcon/adapter.sh`, `.agent/scripts/adapter`,
+`.agent/scripts/register_project.sh`, `.agent/scripts/_project_registry.sh` and the `Makefile`.
 
 ### What is recorded for a project instance
 
@@ -41,10 +41,17 @@ This section describes the code as it is. It was checked against
   out). Work on a manifest that is on the local disk uses the path form.
 - `register_project.sh` writes both, with `--role`, `--distro` and `--set source=...`.
 
-### Two routes
+### Three routes
 
-The `ros2_colcon` adapter has two routes to the list of repos, chosen by one fact: whether
-`source` is set.
+The `ros2_colcon` adapter has three routes to the list of repos, taken in this order:
+
+- **The tool route** (the root holds `.repos-manifest/`). The root is a system directory the
+  manifest tool set up, and the adapter reads the tool's resolved files. It is taken whatever
+  the settings file sets. Its own section is below.
+- **The manifest route** (no `.repos-manifest/`, and `source` set).
+- **The bootstrap route** (neither).
+
+The last two:
 
 - **The bootstrap route** (no `source`). The adapter fetches a `bootstrap.yaml` with `curl`
   from a URL, clones the repo it names, and links `configs/manifest` to a directory in that
@@ -109,12 +116,107 @@ What the route guarantees, and how far each guarantee goes:
   base runs no user hook or filter driver and is bounded by `REPOS_MANIFEST_GIT_TIMEOUT`.
 - **Nothing is deleted.** The adapter removes no checkout and edits no ignore file.
 
+### The tool route
+
+The first cut of the design below (issue 503 part 1): a directory set up by hand with
+`repos-manifest init <manifest> --distro-dirs --distro <distro> [--role <role>]` is registered
+as one `ros2_colcon` project, from the workspace (`register_project.sh <root>`, the type
+detected from `.repos-manifest/`) or from a session at the root (`register_session_root.sh`).
+The root need not be a git repository. The registry line holds its name, type and path only.
+
+- **What it reads.** Only the tool's resolved files for one distro,
+  `.repos-manifest/resolved/<distro>/`: `layers.txt` (the layers in order, the unnamed layer
+  as `_unnamed`), `<layer>.repos` and `optional.txt` (the optional repos, by key). It does not
+  read `config.yaml` or `state.yaml`. A layer is built in `<root>/<distro>/<layer>`, the
+  unnamed layer in `<root>/<distro>`, its repos in `src/` below it. A repo's pin, and so the
+  base of a package worktree's branch, is the `version` of its entry in `<layer>.repos`.
+- **The distro.** The directory the call comes from decides (the owner, 2026-11-18). A call
+  from inside `<root>/<x>/` (the calling directory taken as a physical path), where `<x>` is a
+  real directory (not a link) directly under the physical root, other than `worktrees` and names starting with a dot, is for distro `<x>`,
+  and only `<x>`: if the
+  tool's last resolve for `<x>` cannot be used (no `resolved/<x>/layers.txt`, or it lists no
+  layer), the call is refused, naming the tool's own `cd <root> && repos-manifest sync
+  --distro <x>`; it never moves on to another distro. `setup` and `sync` from there run that
+  sync without needing the resolve. The adapter does not read the tool's settings, so it
+  cannot tell a distro's directory from another directory there: a directory under the root
+  that is not a distro is taken as one and refused (as not a distro the tool resolved), since
+  a wrong distro chosen without a word is worse than a refusal. A call from anywhere else (the root itself, `<root>/worktrees/...`,
+  outside the root) is for the one distro under `resolved/` when there is exactly one, a
+  resolve the tool has set aside while replacing it (`.<d>.old-*`, `.<d>.new-*`) counting as
+  `<d>` with no usable resolve;
+  otherwise `validate` checks every one, one after another, and fails naming each that fails
+  (a `resolved/<d>/` with no usable `layers.txt` included, so a half-written resolve is not
+  passed over), and every other call is refused and the distros listed. A call reads
+  `layers.txt` once per distro, and every layer loop of the call goes over that read, so a
+  `sync` that replaces `resolved/<distro>/` meanwhile (in two renames) cannot leave a loop with
+  no layer. The rule, and which distros a call covers, is stated once, in the header of
+  `adapter.sh`; the dispatcher passes the calling directory, `--from` or the current
+  directory, as `ACTIVE_PROJECT_FROM`. On a root with several distros, then: registration passes from the
+  workspace or a session at the root, since its gate runs `validate`; a package worktree is
+  made with `worktree_create.sh --project <name>` called from inside `<root>/<distro>/`
+  (every adapter call it makes comes from that directory, so all read that distro), and
+  from the root it is refused before anything is made; any other verb is run from inside
+  `<root>/<distro>/` (a call to the adapter itself may give its own `--from <root>/<distro>`
+  instead). A session is still started at the
+  root; a session started inside a distro's directory is a later part (ADR-0020 refuses a
+  subdirectory of a root in no git repository).
+- **`setup` and `sync`** run `repos-manifest sync --distro <distro>` in the root: `--distro
+  <x>` from inside `<root>/<x>/`, from elsewhere the one resolved distro's name; `sync` with
+  no `--distro` only from outside every distro's directory when nothing is resolved yet. They
+  pass its output and exit status through
+  (0; 1 when a repo that is not optional failed, or on a refusal; 128+n on a signal). The
+  adapter pulls, fetches and moves no clone on this route. The tool's `sync` clones what is
+  missing and leaves a repo that is there as it is. When the layers changed, `sync` says that
+  package worktrees made before keep their old environment script.
+- **`build` and `test`** are the colcon loops of the other routes, over the resolved layers,
+  with `--base-paths src`. `build` is interim until the tool's own `build`, and stops at the
+  first failing layer; a tree that does not build yet is built by hand, a layer at a time, with
+  `colcon build --symlink-install --base-paths src --continue-on-error` in
+  `<root>/<distro>/<layer>`. The tool's `<root>/<distro>/setup.bash` is its stub until its
+  `build` lands and returns an error, so the instance's environment is `adapter env`.
+- **`validate`** checks, for each distro it covers, that each layer's `.repos` file is there
+  and that every repo it lists is a directory at `<layer dir>/src/<key>`, passing over a
+  missing repo that `optional.txt` names. It fails when the registry line carries `role=` or
+  `distro=`, or the settings file `source`, `source_ref`, `source_path` or `bootstrap_url`:
+  each is a second record beside the tool's. A leftover `configs/manifest` or
+  `configs/project_bootstrap.url`, which this route does not read, is noted without failing.
+  Its success line, one per distro, says it checked the tool's last resolve and did not read
+  the manifest again; there is no `repos-manifest status` yet.
+- **`env`, `repos`, `repo_pin`, `worktree_repos` and `worktree_env`** read the same files and
+  directories, so package worktrees work as on the other routes.
+- **A `.repos-manifest/` the adapter cannot use** is an error, never another route, so a root
+  the tool set up never reaches the bootstrap route's fetch. One message says what is wrong as
+  far as the adapter can tell (it is not a directory, or a link to nothing; it cannot be read;
+  nothing is resolved yet; the layout is flat, set up without `--distro-dirs`) and names the
+  way out: the tool's `sync` in the root when nothing is resolved; otherwise fixing or
+  removing that path and setting up again with the tool's `init --distro-dirs` in an empty
+  directory (the tool's `sync` would refuse such a path too).
+- **Every next step that is the tool's `sync`**, on this route, is written by one helper as
+  `cd <root> && <tool> sync`, with `--distro <d>` when the distro is known, the tool by the
+  workspace's installed path: never an adapter verb, because registration refuses such a root
+  and rolls the project back before one could run, and from the root of a system with several
+  distros the adapter's `sync` refuses.
+- **A repo key line the adapter's reader cannot read** in a resolved `.repos` file is refused
+  by name, so none is passed over without a word. It reads a key of letters, digits, `.`, `_`
+  and `-`, bare or in the single quotes the tool writes around a key YAML would read as a
+  number or a boolean (`'123'`, `'on'`). A key with a directory in it, such as
+  `grp/repo`, which the tool allows, is one case: the adapter and `worktree_create.sh` do not
+  read it yet (a later part reads it).
+
+After a package pull request merges, `merge_pr.sh` fast-forwards the root's clone of that
+repo, when it is clean and on the pull request's base, past the commit the tool recorded for
+it in `state.yaml`. That is the move the tool's `sync` is designed to make to a clean repo
+that is still on the manifest's version, and that part of `sync` is not built yet; the tool's
+`status`, when it is built, should treat such a clone as expected. The layer is then rebuilt by hand until the tool builds.
+
 ### Worktrees
 
 For issue work in a package repo, the adapter makes a worktree of that repo and writes an
 environment script for it. The script sources the ROS distro, then each lower layer of the
 main checkout, then the main checkout's copy of the same layer, then the worktree's own
-build. `layers/main` holds the default checkouts, and no issue work is done there.
+build. `layers/main` holds the default checkouts on the bootstrap and manifest routes, and
+`<root>/<distro>/<layer>` on the tool route; no issue work is done there. A lower layer with no
+`install/local_setup.bash` when the worktree is made is named in a note on its creation.
 
 ### Installing the resolver
 
@@ -124,11 +226,11 @@ editable into the workspace's shared `.venv` in the main checkout. The adapter r
 
 ## The design we are working towards
 
-Nothing in this section is built. It depends on two things outside the workspace's own
-code:
+Nothing in this section is built beyond its first cut, the tool route under "What exists
+today". It depends on two things outside the workspace's own code:
 
-- tool commands that are not built yet (`init`, `show`, `sync`, `build`, `status`,
-  `add-distro`), which the tool's roadmap has;
+- tool commands that are not built yet (`show`, `build`, `status`, `add-distro`; `init` and
+  `sync` are), which the tool's roadmap has;
 - some of what the adapter relies on today, which the tool's design does not promise yet. It
   is listed under "What the tool has to give".
 
@@ -195,20 +297,22 @@ instance's directory, for one distro.
 | `test` | `colcon test` per layer | Stays in the adapter: `colcon test` per layer, over the layers the tool resolved. The tool has no test command |
 | `validate` | Fail when what is on disk was resolved from something else, or a checkout is missing | Fail when `repos-manifest status` says a repo the manifest calls for is missing, or cannot say |
 
-`setup`, `sync`, `build`, `test` and `validate` each act on one distro of the instance: the
-one the session is working on. How a session says which is not decided yet.
+`setup`, `sync`, `build`, `test` and `validate` each act on one distro of the instance: for
+the adapter's commands, the one the directory the call comes from chooses, except that
+`validate` from outside every distro's directory checks each distro in turn (under "The tool
+route"). A session started inside a distro's directory is a later part.
 
 Which route an instance is on is decided in this order, until the older routes are removed:
 
-1. The tool answers `repos-manifest status` in the instance's directory: the instance is on
-   the tool.
+1. The instance's directory holds `.repos-manifest/`: the instance is on the tool.
 2. Otherwise `source` is set: today's manifest route, reading `configs/manifest-resolved`.
 3. Otherwise: the bootstrap route.
 
-The test is the tool answering, not the `.repos-manifest/` folder being there: a folder whose
-record cannot be read is an error from the tool. That error counts as the tool not
-answering, so the instance is not treated as set up. A `status` that reports a missing repo has
-answered: the instance is on the tool, and `validate` fails. The tool's design has `init`
+Until `status` is built, the test is the folder being there, as built today. A folder the
+adapter or the tool cannot use, one whose record cannot be read included, is an error that
+names the next step, not a sign that the instance is on another route: falling through would
+send a root the tool set up to the bootstrap route's fetch. A `status` that reports a missing
+repo has answered: the instance is on the tool, and `validate` fails. The tool's design has `init`
 make the folder and its record in one step and then sync, so an interrupted `init` leaves
 either nothing, and registration is run again, or a system whose first sync is finished
 with `sync`.
@@ -274,10 +378,11 @@ manifest's location, the role, the first distro, extra groups, where to fetch fr
 remotes. After that the tool's record in `.repos-manifest/` is the one record. The workspace
 asks the tool for the role and the distros when it needs them, through `status`, and keeps no
 second copy that could disagree. The one thing it reads from `.repos-manifest/` directly is
-the resolved `.repos` files and layer order, which are the tool's stated output. Until the
-adapter's verbs have moved to the tool, and a session can say which distro it works on, they
-still read `role=` and `distro=` from the registry line, so those stay until then, and so do `source`, `source_ref` and `source_path` in the settings
-file. All five go together.
+the resolved `.repos` files and layer order, which are the tool's stated output. On the tool
+route none of the five records below is read, and `validate` refuses each one it finds. Until
+every instance is on the tool, the older routes still read `role=` and `distro=` from the
+registry line, so those stay until then, and so do `source`, `source_ref` and `source_path` in
+the settings file. All five go together.
 
 Today's settings keys map onto the manifest's location in its git form:
 
@@ -329,11 +434,13 @@ no user and is removed, with `bootstrap_url` and `configs/manifest`.
 
 ## Not decided
 
-- How a session says which distro it is working on, when its root holds several, and how it
-  gives the version of the manifest for a distro it adds whose manifest is on a branch of its
-  own (`add-distro --manifest-ref`). Today a
-  distro is recorded once per instance, on the registry line, and a worktree's environment
-  script is written for that one distro.
+- How a session started inside a distro's directory is accepted (ADR-0020 refuses a
+  subdirectory of a root in no git repository today), how the distro a worktree is for is
+  carried into it, and how a session gives the version of the manifest for a distro it adds
+  whose manifest is on a branch of its own (`add-distro --manifest-ref`). Which distro the
+  adapter's commands act on is decided: the directory the call comes from (under "The tool
+  route"). A worktree's environment script is written for one distro, the one its creation
+  chose.
 - Which distro runs on the host and which in a container. That is a fact about a machine. It
   would be recorded with the instance, and the adapter would use it to decide where `build`
   runs.
