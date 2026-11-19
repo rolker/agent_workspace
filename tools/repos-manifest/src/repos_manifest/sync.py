@@ -22,6 +22,7 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 import yaml
 
 from . import selection, update
+from .masking import mask_urls
 from .output import make_writable, output_files, process_has_ended, signals_held, write_output
 from .selection import Resolved, Selected
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
@@ -322,7 +323,7 @@ class DistroResult:
 def _say(done: RepoResult) -> None:
     """The line for a repo as it is handled; an up-to-date or present repo has none. A url's
     user name and password, in what `sync` or git says, are never printed."""
-    detail = update.mask_urls(done.detail)
+    detail = mask_urls(done.detail)
     if done.outcome == FAILED:
         print(f"ERROR: {done.path}: {detail}", flush=True)
     elif done.outcome == SKIPPED:
@@ -414,7 +415,7 @@ def present_repo(
             f"{place}: the repo may have been changed and was not recorded: {exc}"
         ) from None
     for note in done.notes:
-        print(f"{shown}: {update.mask_urls(note)}", flush=True)
+        print(f"{shown}: {mask_urls(note)}", flush=True)
     outcome = done.outcome
     if outcome == FAILED and repo.optional:
         outcome = SKIPPED
@@ -624,14 +625,14 @@ def sync_distros(
     for planned in plan:
         if isinstance(planned, Reported):
             result = DistroResult(planned.distro, reported=planned.problem)
-            print(f"ERROR: {planned.problem}", flush=True)
+            print(f"ERROR: {mask_urls(planned.problem)}", flush=True)
         else:
             try:
                 result = sync_distro(system, config, planned, env)
             except Refusal as exc:
                 distro = planned.resolved.distro
                 result = DistroResult(distro, reported=str(exc))
-                print(f"ERROR: {exc}", flush=True)
+                print(f"ERROR: {mask_urls(str(exc))}", flush=True)
         report(result)
         results.append(result)
     return results

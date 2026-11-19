@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .yamlload import ManifestError, _load_yaml, _refuse_unsafe_chars, first_unsafe_in_text
+from .masking import remember_url
 
 FORMAT = 1
 
@@ -262,6 +263,7 @@ class _Checker:
         return seen
 
     def url(self, value, where: str) -> str:
+        remember_url(value)  # before any message that quotes it
         url = self.not_an_option(self.string(value, where), where)
         if _TRANSPORT_FORM.match(url):
             raise self.error(

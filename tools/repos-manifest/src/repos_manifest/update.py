@@ -25,6 +25,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
+from .masking import mask_url, mask_urls, remember_url  # noqa: F401 (mask_urls: callers)
 from .output import signals_held
 from .selection import Selected
 from .system import RepoRecord
@@ -149,29 +150,10 @@ def quoted(text: object) -> str:
     return shlex.quote(str(text))
 
 
-# A url's `scheme://userinfo@`: the user info runs to the last `@` before a `/`, a space or a
-# quote, so a password holding `@` is masked whole.
-USERINFO = re.compile(r"([A-Za-z][A-Za-z0-9+.-]*://)([^\s/'\"]+)@")
-
-
-def _masked(match: "re.Match[str]") -> str:
-    scheme, userinfo = match.group(1), match.group(2)
-    if "ssh" in scheme.lower() and ":" not in userinfo:
-        return match.group(0)  # an ssh user name names an account, as in ssh://git@host/...
-    return f"{scheme}***@"
-
-
-def mask_urls(text: str) -> str:
-    """`text` with the user name and password of every `scheme://user:password@host` url in
-    it replaced by `***`: what `sync` prints never holds them. An ssh url's user name alone is
-    kept; any other user name is masked, since an https one is often a token."""
-    return USERINFO.sub(_masked, text)
-
-
 def set_url_command(place: Path, url: str, key: str) -> str:
     """The command that sets `origin` to `url`. When the url holds credentials, they are not
     printed: the command says where the whole url is."""
-    shown = mask_urls(url)
+    shown = mask_url(url)
     command = f"git -C {quoted(place)} remote set-url origin {quoted(shown)}"
     if shown != url:
         command += f", with the url of {key} as the manifest gives it in place of the one shown"
@@ -632,6 +614,8 @@ def update_repo(
     if len(urls) != 1:
         return Done(LEFT, "has no single origin")
     origin = urls[0]
+    for known in (origin, repo.url, record.url if record is not None else None):
+        remember_url(known)
     delete_probe_refs(git)
     url = repo.url
     notes: List[str] = []
@@ -648,10 +632,10 @@ def update_repo(
         # new url read as one a person set.
         record = replace(record, url=url)
         write(record)
-        notes.append(f"origin repointed from {mask_urls(origin)} to {mask_urls(url)}")
+        notes.append(f"origin repointed from {mask_url(origin)} to {mask_url(url)}")
     else:
         by_hand = (
-            f"origin is {mask_urls(origin)}, the manifest says {mask_urls(url)}; left as set"
+            f"origin is {mask_url(origin)}, the manifest says {mask_url(url)}; left as set"
             f" (to use the manifest's: {set_url_command(place, url, repo.key)})"
         )
         notes.append(by_hand)
