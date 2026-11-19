@@ -869,8 +869,30 @@ The four suggestions taken (HEAD before the last check, state.yaml not recorded,
 - [x] (must-fix) A refusal after `.repos-manifest/` is made: `head_comment`'s unsafe-character check first runs in `sync_distro`, after `make_system_dir`, so a manifest whose path holds a no-break space or control character makes the system and then prints "refusing to write the head comment ...; the system is set up: run `repos-manifest sync` to finish", and every `sync` fails the same way. False against init.py's docstring and design.md:182 ("before anything is created"). Build `output_files` for each resolved distro in phase one (init and `resolve_all`) and pass them on; add a test (Claude adversarial; reproduced) — `tools/repos-manifest/src/repos_manifest/init.py:262`, `tools/repos-manifest/src/repos_manifest/sync.py:294`
 - [x] (suggestion, worth doing) A live process's aside, which is exactly what init leaves (a second init at the same moment, or a crashed init's pid reused), is warned as "named like a temporary of repos-manifest, but not what init leaves"; say its process may still be running (Claude adversarial; hand check) — `tools/repos-manifest/src/repos_manifest/init.py:146`
 - [x] (suggestion) The flat-gains-distros message and the wrapped resolver errors start with `manifest` as recorded (relative to the system directory); from a subdirectory `../m.yaml` points elsewhere. Add the "taken from the system directory" note the read error has (Claude adversarial) — `tools/repos-manifest/src/repos_manifest/sync.py:424`
-- [ ] (suggestion) Not worth doing beyond wording: a failed `os.rename` of init's aside (something made at `.repos-manifest` after the check) gives a bare error naming the removed aside, without "nothing was set up" (Claude adversarial, read from code) — `tools/repos-manifest/src/repos_manifest/init.py:183`
+- [x] (suggestion) Not worth doing beyond wording: a failed `os.rename` of init's aside (something made at `.repos-manifest` after the check) gives a bare error naming the removed aside, without "nothing was set up" (Claude adversarial, read from code) — `tools/repos-manifest/src/repos_manifest/init.py:183` (deferred: no action: the review ruled it not worth doing beyond wording (a failed rename of init's aside needs something made at .repos-manifest after the check))
 
 Dropped: codex 1 (no-replace rename / parent swapped for a link: ruled suggestion, not worth doing, last round; reason still true); codex 2 (clone in place but unrecorded after a failed state write: the run now says so, and design's rule records an unrecorded repo on the manifest's version when part 2 is built); codex 3 (link at `.repos-manifest/resolved`: ruled last round); codex 4 (setup.bash empty for an instant: ruled not worth doing); codex 5 (staging in `.repos-manifest/`: host decision); codex 6 (present-entry rule differs from the plan: recorded in design.md and the Checkpoints).
 
 Checks: CI at 824e1d2b, push and pull_request runs, every job pass: Lint (pre-commit), Validate Adapter Contract, Validate Documentation, repos-manifest tests Python 3.10 (header `vcs 1.1.7`, `1015 passed`) and Python 3.14 (`vcs 1.1.7`, `1015 passed`), none skipped. Local: `pytest tools/repos-manifest/tests` 1015 passed (vcstool 0.3.0); `test_ros2_colcon.sh` 1014 passed, 0 failed, 0 skipped; flake8 (F, E501, E9) clean on the changed files. Mergeable: MERGEABLE.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 19:47 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #512 at `51a70dfa`
+**Addressed**: Local Review at `824e1d2b` (2026-11-18 19:33 -05:00)
+**Commits**: 62f61361, bd7faebf, 8a1024bb; merge of origin/main 51a70dfa (clean)
+
+### Actions
+- [x] (must-fix) A refusal after `.repos-manifest/` is made: the text of every distro's resolved files, head comment included, is now built in phase one by `sync.plan_distros` (called by `init` right after resolving, and by `sync.resolve_all`), carried as `Planned(resolved, files)`; `sync_distro` only writes `planned.files`. `init` with a manifest reached through a folder with a no-break space is refused with the existing message, exit 1, nothing created; `sync` there changes nothing and says "the manifest's output is what failed; nothing was changed". Both tests fail on the code before. design.md "Setting up with init" and the part-1 paragraph on `sync` updated — `tools/repos-manifest/src/repos_manifest/init.py:244`, `tools/repos-manifest/src/repos_manifest/sync.py:290`
+- [x] (suggestion) A live process's aside is now warned as "a temporary of repos-manifest whose process is still running (another init may be setting up here); left as it is"; other entries keep "not what init leaves". Test with a running child's pid; design.md sentence updated — `tools/repos-manifest/src/repos_manifest/init.py:140`
+- [x] (suggestion) One helper, `sync.recorded_manifest`, gives the "taken from the system directory" note; the read error, the flat-gains-distros error and the wrapped resolver errors end with it. Tests' expected text updated; design.md says so — `tools/repos-manifest/src/repos_manifest/sync.py:430`
+- [x] (suggestion) A failed `os.rename` of init's aside — `tools/repos-manifest/src/repos_manifest/init.py:183` (deferred: no action: the review ruled it not worth doing beyond wording)
+
+### Checks
+- `PYTHONPATH=tools/repos-manifest/src python3 -m pytest -q tools/repos-manifest/tests`: 1018 passed (vcs from /usr/bin/vcs, python3-vcstool 0.3.0).
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: 1030 passed, 0 failed, 0 skipped.
+- `bash .agent/scripts/check_design_anchors.sh`: exit 0.
+- Hand check: `init "../m<NBSP>dir/m.yaml" --yes` in an empty directory printed `ERROR: refusing to write the head comment: the manifest's location or a name holds a control or invisible character`, exit 1; `ls -A` empty.
+- Full pre-commit pass over the branch left to the host; commits made with `SKIP=validate-script-tests`.
