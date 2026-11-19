@@ -302,14 +302,19 @@ package repos, and issue are all explicit:
 - A root the manifest tool set up (`repos-manifest init --distro-dirs`; issue
   503) takes the same flags. Its layers are `<root>/<distro>/<layer>` and the
   base is the pin in the tool's resolved `<layer>.repos`, for the distro the
-  directory the call comes from chooses (with one distro set up, that one);
-  `docs/manifest/design.md`, "The tool route". Its environment is
-  `adapter env`, not the tool's `<root>/<distro>/setup.bash`, which is a stub
-  until the tool builds. A lower layer not built yet is named in a note when
-  the worktree is made. After a package pull request merges, `merge_pr.sh`
-  fast-forwards the root's clone when it is clean and on the base (else it
-  says it fetched only: `git -C <clone> pull`), and that layer is rebuilt by
-  hand until the tool builds.
+  directory the call comes from chooses (with one distro set up, that one).
+  With several distros set up, call `worktree_create.sh --project <name>`
+  from inside `<root>/<distro>/`: every adapter call it makes comes from that
+  directory, so the pin, the layers and `env.sh` are that distro's; from the
+  root it is refused before anything is made, listing the distros. A session
+  is still started at the root. See `docs/manifest/design.md`, "The tool
+  route". Its environment is `adapter env`, not the tool's
+  `<root>/<distro>/setup.bash`, which is a stub until the tool builds. A lower
+  layer not built yet is named in a note when the worktree is made. After a
+  package pull request merges, `merge_pr.sh` fast-forwards the root's clone
+  when it is clean and on the base (else it says it fetched only:
+  `git -C <clone> pull`), and that layer is rebuilt by hand until the tool
+  builds.
 
 ### Merging Package-Worktree PRs
 

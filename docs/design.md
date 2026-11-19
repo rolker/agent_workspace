@@ -472,11 +472,12 @@ Status: `decided`
 - `ros2_colcon` has three routes to that directory. The tool route is checked first (issue 503 part 1):
   a root holding `.repos-manifest/`, a system directory the manifest tool set up with `--distro-dirs`,
   is read from the tool's resolved files for one distro, chosen by the directory the call comes from
-  (the dispatcher's `ACTIVE_PROJECT_FROM`), else the one distro resolved, else refused; its `setup` and
+  (the dispatcher's `ACTIVE_PROJECT_FROM`), else the one distro resolved, else refused (`validate`
+  then checks every distro); its `setup` and
   `sync` run the tool's `sync`, `build` and `test` are the colcon loop over its layers, and `validate`
   checks the last resolve and refuses a `role=`, `distro=` or manifest source recorded beside the
-  tool's. A `.repos-manifest/` the adapter cannot use is an error naming the next step, never another
-  route. The other two (#436) are chosen by one fact, the settings file setting
+  tool's. A `.repos-manifest/` the adapter cannot use is an error naming the tool's own command to run
+  in the root, never another route. The other two (#436) are chosen by one fact, the settings file setting
   `source`. The bootstrap route is the `bootstrap.yaml` flow. On the manifest route the manifest, in the
   new format, is named by `source` (an absolute path, or a git repository with `source_ref` and,
   if the file is not `manifest.yaml`, `source_path`) and is resolved for the registry line's `role=` and `distro=` (both required) by the
