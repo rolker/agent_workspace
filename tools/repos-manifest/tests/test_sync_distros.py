@@ -532,3 +532,30 @@ def test_a_half_change_with_no_tracked_changes_names_none(two, tmp_path, capsys)
     ) in done.stdout, done.stdout
     assert "These changes" not in done.stdout
     assert branch(clone) == "dev" and (clone / "mainonly").read_text() == "hook\n"
+
+
+def test_a_sync_whose_process_cannot_be_checked_is_not_called_ended(two, capsys, monkeypatch):
+    # No /proc, or a sync run by another user: the process runs and its open files cannot be
+    # read. The refusal says it cannot tell, names the pid and how to look, and advises no kill.
+    from repos_manifest import system as system_module
+
+    system, _, _ = two
+    fd = hold_build_lock(system, "jazzy", holder="sync")
+    try:
+        os.pwrite(fd, b"sync 4242\n", 0)
+        os.ftruncate(fd, len(b"sync 4242\n"))
+        monkeypatch.setattr(system_module, "_holds", lambda pid, path: None)
+        capsys.readouterr()
+        assert run(system, "sync", "--distro", "jazzy") == 1
+    finally:
+        os.close(fd)
+    out = capsys.readouterr().out
+    lock = build_lock_file(system, "jazzy")
+    assert (
+        "ERROR: a sync of distro jazzy holds its lock; its lock file names process 4242, which"
+        " runs but whose open files this tool cannot read (no /proc here, or a process of another"
+        " user), so whether it is that sync cannot be told; nothing was changed for it. `ps -p"
+        f" 4242 -o user,args` shows what that process is, and `fuser -v {lock}` names what holds"
+        " the lock; when the sync has ended, run this again"
+    ) in out, out
+    assert "kill" not in out and "ended (" not in out

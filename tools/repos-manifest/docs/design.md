@@ -912,10 +912,12 @@ until a lock for every command is designed, this is that lock reused. A distro w
 repo, its fetches included, is given the lock, so a `sync` killed while one runs does not
 release it early. A fetch goes on after the `sync` that started it is killed, and holds the
 lock until it ends: one waiting at a password prompt holds it until it is killed. A `sync` or
-`build` refused meanwhile says that the `sync` has ended (or may have, when its process cannot
-be checked) and that a git it started, such as a fetch, may still hold the lock, gives the
-`fuser -v` command that names it, and says that it ends on its own or, at a prompt, when it is
-killed; the lock
+`build` refused meanwhile says that the `sync` has ended and that a git it started, such as a
+fetch, may still hold the lock, gives the `fuser -v` command that names it, and says that it
+ends on its own or, at a prompt, when it is killed. When the process the lock file names runs
+but its open files cannot be read (no `/proc`, or a process of another user), the refusal
+says it cannot tell whether that is the sync, names the process and the `ps` and `fuser`
+commands that show what it is, and advises no kill; the lock
 file names only the `sync`. A `sync` writes no build record; after a distro's repos, for each
 layer `build` has built and some of whose repos this run cloned or moved, it says that the
 layer is behind and that `build` brings it up to date. When the manifest's own file is in a
