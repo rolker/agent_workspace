@@ -925,6 +925,184 @@ else
 fi
 
 echo
+echo "=== A single-repository project whose root is no git repository: refused as before, nothing made (issue 503) ==="
+# The root is a sibling of the workspace sandbox, in no git repository; its
+# one repository is the root itself, so the check of each repository the
+# worktree is made of refuses it with today's message.
+SB5="$SANDBOX/ws5"
+make_ws_repo "$SB5"
+P5="$(mktemp -d -p "$SANDBOX")/plain"
+mkdir -p "$P5"
+echo "a file" > "$P5/README"
+printf 'plain single_project %s\n' "$P5" >> "$SB5/.agent/projects.local"
+if git -C "$P5" rev-parse --git-dir >/dev/null 2>&1; then
+    fail "single-repository root outside git: precondition failed, $P5 is in a git repository"
+fi
+OUT="$(cd "$SB5" && PATH="$SB5/stubbin:$PATH" "$SB5/.agent/scripts/worktree_create.sh" --issue 51 --type project --project plain 2>&1)"
+RC=$?
+if [[ "$RC" -ne 0 && "$OUT" == *"Error: project checkout is not a git repository: $P5"$'\n'"Clone the project there or fix .agent/projects.local"* ]]; then
+    pass "single-repository root outside git: exit $RC, today's message"
+else
+    fail "single-repository root outside git: rc=$RC: ${OUT:0:600}"
+fi
+if [[ "$(ls -A "$P5")" = "README" && ! -e "$SB5/worktrees/project" ]]; then
+    pass "single-repository root outside git: nothing made under the root or the workspace's worktrees/"
+else
+    fail "single-repository root outside git: made [$(ls -A "$P5" | tr '\n' ' ')], workspace worktrees/project: $([ -e "$SB5/worktrees/project" ] && echo present || echo absent)"
+fi
+
+echo
+echo "=== A multi-repository root in no git repository: one repository that is no git repository refuses before anything is made (issue 503) ==="
+# A test-only project type whose worktree_repos names two repositories under
+# the root, the first a git repository, the second a plain directory, and
+# checks neither itself: worktree_create.sh's own check must refuse, before
+# the first repository's worktree or branch is made.
+SB6="$SANDBOX/ws6"
+make_ws_repo "$SB6"
+mkdir -p "$SB6/.agent/project_types/twofold"
+cat > "$SB6/.agent/project_types/twofold/adapter.sh" <<'TWOFOLD_EOF'
+adapter_project_root() { printf '%s\n' "$ACTIVE_PROJECT_ROOT"; }
+adapter_worktree_repos() {
+    local num="${2##*#}"
+    printf '%s\ta\tfeature/issue-%s\n%s\tb\tfeature/issue-%s\n' \
+        "$ACTIVE_PROJECT_ROOT/a" "$num" "$ACTIVE_PROJECT_ROOT/b" "$num"
+}
+TWOFOLD_EOF
+P6="$(mktemp -d -p "$SANDBOX")/multi"
+mkdir -p "$P6/a" "$P6/b"
+gitq -C "$P6/a" init -q -b main
+gitq -C "$P6/a" commit -q --allow-empty -m "a init"
+printf 'multi twofold %s\n' "$P6" >> "$SB6/.agent/projects.local"
+if git -C "$P6" rev-parse --git-dir >/dev/null 2>&1; then
+    fail "multi-repository root outside git: precondition failed, $P6 is in a git repository"
+fi
+OUT="$(cd "$SB6" && PATH="$SB6/stubbin:$PATH" "$SB6/.agent/scripts/worktree_create.sh" --issue 52 --type project --project multi 2>&1)"
+RC=$?
+if [[ "$RC" -ne 0 && "$OUT" == *"ERROR: manifest entry is not a git repository: $P6/b"* \
+      && "$OUT" != *"project checkout is not a git repository"* ]]; then
+    pass "multi-repository root outside git, one repository not git: exit $RC, names that repository"
+else
+    fail "multi-repository root outside git, one repository not git: rc=$RC: ${OUT:0:600}"
+fi
+if [[ ! -e "$P6/worktrees" ]] && ! has_branch "$P6/a" feature/issue-52 \
+   && [[ "$(git -C "$P6/a" worktree list --porcelain | grep -c '^worktree ')" = 1 ]]; then
+    pass "multi-repository root outside git, one repository not git: no worktrees/, no branch, no worktree made"
+else
+    fail "multi-repository root outside git, one repository not git: worktrees/ $([ -e "$P6/worktrees" ] && echo made || echo absent), branch $(has_branch "$P6/a" feature/issue-52 && echo made || echo none)"
+fi
+
+echo
+echo "=== A project root that does not exist is reported as not existing (issue 503) ==="
+SB7="$SANDBOX/ws7"
+make_ws_repo "$SB7"
+P7="$(mktemp -d -p "$SANDBOX")/gone"
+printf 'gone single_project %s\n' "$P7" >> "$SB7/.agent/projects.local"
+OUT="$(cd "$SB7" && PATH="$SB7/stubbin:$PATH" "$SB7/.agent/scripts/worktree_create.sh" --issue 53 --type project --project gone 2>&1)"
+RC=$?
+if [[ "$RC" -ne 0 && "$OUT" == *"Error: project root does not exist: $P7"* \
+      && "$OUT" != *"not a git repository"* && ! -e "$P7" && ! -e "$SB7/worktrees/project" ]]; then
+    pass "missing project root: exit $RC, says it does not exist, with the path; nothing made"
+else
+    fail "missing project root: rc=$RC: ${OUT:0:600}"
+fi
+
+echo
+echo "=== A repository the worktree is made of must be the top of its own git repository, not a directory inside an enclosing one (issue 503) ==="
+# A single-repository root that is a plain directory inside an enclosing
+# git repository: refused with today's message, and no worktree or branch
+# of the enclosing repository is made.
+SB8="$SANDBOX/ws8"
+make_ws_repo "$SB8"
+E8="$(mktemp -d -p "$SANDBOX")/enclosing"
+mkdir -p "$E8/inner"
+gitq -C "$E8" init -q -b main
+gitq -C "$E8" commit -q --allow-empty -m "enclosing init"
+printf 'inner single_project %s\n' "$E8/inner" >> "$SB8/.agent/projects.local"
+OUT="$(cd "$SB8" && PATH="$SB8/stubbin:$PATH" "$SB8/.agent/scripts/worktree_create.sh" --issue 54 --type project --project inner 2>&1)"
+RC=$?
+if [[ "$RC" -ne 0 && "$OUT" == *"Error: project checkout is not a git repository: $E8/inner"$'\n'"Clone the project there or fix .agent/projects.local"* ]] \
+   && ! has_branch "$E8" feature/issue-54 \
+   && [[ "$(git -C "$E8" worktree list --porcelain | grep -c '^worktree ')" = 1 && ! -e "$E8/inner/worktrees" ]]; then
+    pass "single-repository root inside an enclosing repository: refused with today's message, nothing made in the enclosing one"
+else
+    fail "single-repository root inside an enclosing repository: rc=$RC: ${OUT:0:600}"
+fi
+# A multi-repository root inside an enclosing repository whose second entry
+# is a plain directory: refused, naming it, before anything is made.
+SB9="$SANDBOX/ws9"
+make_ws_repo "$SB9"
+mkdir -p "$SB9/.agent/project_types/twofold"
+cp "$SB6/.agent/project_types/twofold/adapter.sh" "$SB9/.agent/project_types/twofold/"
+E9="$(mktemp -d -p "$SANDBOX")/enclosing"
+mkdir -p "$E9/multi/a" "$E9/multi/b"
+gitq -C "$E9" init -q -b main
+gitq -C "$E9" commit -q --allow-empty -m "enclosing init"
+gitq -C "$E9/multi/a" init -q -b main
+gitq -C "$E9/multi/a" commit -q --allow-empty -m "a init"
+printf 'multi twofold %s\n' "$E9/multi" >> "$SB9/.agent/projects.local"
+OUT="$(cd "$SB9" && PATH="$SB9/stubbin:$PATH" "$SB9/.agent/scripts/worktree_create.sh" --issue 55 --type project --project multi 2>&1)"
+RC=$?
+if [[ "$RC" -ne 0 && "$OUT" == *"ERROR: manifest entry is not a git repository: $E9/multi/b"* ]] \
+   && ! has_branch "$E9" feature/issue-55 && ! has_branch "$E9/multi/a" feature/issue-55 \
+   && [[ ! -e "$E9/multi/worktrees" ]]; then
+    pass "multi-repository root inside an enclosing repository, a plain directory entry: refused, naming it, nothing made"
+else
+    fail "multi-repository root inside an enclosing repository: rc=$RC: ${OUT:0:600}"
+fi
+
+echo
+echo "=== A root outside git: a bare --issue is not looked up in the workspace's repository (issue 503) ==="
+# The workspace has a GitHub origin and gh, stubbed, records every call and
+# would answer for the workspace's repository (a title, and "a pull
+# request"). A single-repository root outside git is refused with today's
+# message as the first line, before any gh call; a multi-repository one
+# makes no gh call for a bare --issue and says why it was not looked up.
+SB10="$SANDBOX/ws10"
+make_ws_repo "$SB10"
+gitq -C "$SB10" remote add origin https://github.com/ws-owner/ws.git
+GH_LOG10="$SANDBOX/gh10.log"
+cat > "$SB10/stubbin/gh" <<GH10_EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$GH_LOG10"
+case "\$1 \$2" in
+    "issue view") echo "A workspace issue"; exit 0 ;;
+    "pr view") echo "OPEN"; exit 0 ;;
+esac
+exit 1
+GH10_EOF
+chmod +x "$SB10/stubbin/gh"
+P10="$(mktemp -d -p "$SANDBOX")/plain"
+mkdir -p "$P10"
+printf 'plain10 single_project %s\n' "$P10" >> "$SB10/.agent/projects.local"
+rm -f "$GH_LOG10"
+OUT="$(cd "$SB10" && PATH="$SB10/stubbin:$PATH" "$SB10/.agent/scripts/worktree_create.sh" --issue 61 --type project --project plain10 2>&1)"
+RC=$?
+if [[ "$RC" -ne 0 && "$(head -n1 <<< "$OUT")" == "Error: project checkout is not a git repository: $P10" \
+      && "$OUT" == *$'\n'"Clone the project there or fix .agent/projects.local"* && ! -s "$GH_LOG10" ]]; then
+    pass "single-repository root outside git, bare --issue: today's refusal first, gh not called"
+else
+    fail "single-repository root outside git, bare --issue: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG10" 2>/dev/null)] out=${OUT:0:600}"
+fi
+mkdir -p "$SB10/.agent/project_types/twofold"
+cp "$SB6/.agent/project_types/twofold/adapter.sh" "$SB10/.agent/project_types/twofold/"
+P10M="$(mktemp -d -p "$SANDBOX")/multi"
+for r in a b; do
+    mkdir -p "$P10M/$r"
+    gitq -C "$P10M/$r" init -q -b main
+    gitq -C "$P10M/$r" commit -q --allow-empty -m "$r init"
+done
+printf 'multi10 twofold %s\n' "$P10M" >> "$SB10/.agent/projects.local"
+rm -f "$GH_LOG10"
+OUT="$(cd "$SB10" && PATH="$SB10/stubbin:$PATH" "$SB10/.agent/scripts/worktree_create.sh" --issue 62 --type project --project multi10 2>&1)"
+RC=$?
+if [[ ! -s "$GH_LOG10" && "$OUT" == *"Issue #62 not looked up: the project root is not a git repository"* \
+      && "$OUT" != *"A workspace issue"* && "$OUT" != *"is a pull request"* ]]; then
+    pass "multi-repository root outside git, bare --issue: not looked up, gh not called"
+else
+    fail "multi-repository root outside git, bare --issue: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG10" 2>/dev/null)] out=${OUT:0:600}"
+fi
+
+echo
 echo "=== Summary ==="
 echo "  PASS: $PASS"
 echo "  FAIL: $FAIL"

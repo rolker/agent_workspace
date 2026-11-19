@@ -588,6 +588,192 @@ else
 fi
 
 echo
+echo "=== Outside a git repository: -R required, labels from the workspace checkout (issue 503) ==="
+# A sandbox workspace checkout with its own label list, and a registered
+# project root that is a plain directory holding clones, in no git
+# repository (a sibling of the workspace, under $SANDBOX, which is none).
+R503="$SANDBOX/r503"
+WS503="$R503/ws"
+mkdir -p "$WS503/.agent/scripts"
+cp "$SCRIPT_DIR/../gh_create_issue.sh" "$SCRIPT_DIR/../_project_registry.sh" \
+    "$SCRIPT_DIR/../_gh_create_args.sh" "$WS503/.agent/scripts/"
+printf '{"labels": ["bug", "enhancement"]}\n' > "$WS503/.agent/github_metadata.json"
+git -C "$WS503" init -q -b main
+git -C "$WS503" remote add origin https://github.com/ws-owner/ws.git
+ROOT503="$R503/root"
+mkdir -p "$ROOT503/clone"
+git init -q -b main "$ROOT503/clone"
+git -C "$ROOT503/clone" remote add origin https://github.com/pkg-owner/pkg.git
+echo "plainroot single_project $ROOT503" > "$WS503/.agent/projects.local"
+if git -C "$ROOT503" rev-parse --git-dir >/dev/null 2>&1; then
+    fail "outside git: precondition failed, $ROOT503 is in a git repository"
+fi
+run503() {  # <cwd> <args...>: run the sandbox copy there; sets OUT503 and RC503
+    local cwd="$1"
+    shift
+    rm -f "$ARGV_LOG"
+    OUT503=$(cd "$cwd" && env -u WORKTREE_ISSUE TMPDIR="$R503" \
+        bash "$WS503/.agent/scripts/gh_create_issue.sh" "$@" 2>&1)
+    RC503=$?
+}
+
+run503 "$ROOT503" -R pkg-owner/pkg --title T --body B --label bug
+if [[ "$RC503" -eq 0 ]] && gh_called && argv_has "pkg-owner/pkg" && argv_has "--label" && argv_has "bug" \
+   && sig_in "$ARGV_LOG"; then
+    pass "outside git, -R: gh issue create reached with -R, the label and the signature"
+else
+    fail "outside git, -R: rc=$RC503 argv=[$(tr '\n' ' ' < "$ARGV_LOG" 2>/dev/null)] out=${OUT503:0:300}"
+fi
+if [[ "$(grep -n -- 'pkg-owner/pkg' "$ARGV_LOG" 2>/dev/null | cut -d: -f1)" -gt 1 ]] \
+   && grep -qxE -- '-R|--repo' "$ARGV_LOG"; then
+    pass "outside git, -R: the repository is passed to gh as -R/--repo"
+else
+    fail "outside git, -R: no -R/--repo in argv=[$(tr '\n' ' ' < "$ARGV_LOG" 2>/dev/null)]"
+fi
+
+# A label list describes one repository: outside git, the workspace's list
+# is read only when -R names the workspace's own repository.
+run503 "$ROOT503" -R pkg-owner/pkg --title T --body B --label nope
+if [[ "$RC503" -eq 0 ]] && gh_called && argv_has "nope" \
+   && [[ "$OUT503" == *"Labels will be validated by GitHub."* && "$OUT503" != *"Invalid label"* ]]; then
+    pass "outside git, -R another repository: a label not in the workspace's list reaches gh, GitHub validates it"
+else
+    fail "outside git, -R pkg, label not in the workspace's list: rc=$RC503 out=${OUT503:0:300}"
+fi
+run503 "$ROOT503" -R ws-owner/ws --title T --body B --label nope
+if [[ "$RC503" -eq 1 && ! -f "$ARGV_LOG" && "$OUT503" == *"Invalid label(s) detected: nope"* \
+      && "$OUT503" == *"Valid labels (from $WS503/.agent/github_metadata.json)"* ]]; then
+    pass "outside git, -R the workspace's repository: labels are checked against the workspace checkout's list"
+else
+    fail "outside git, -R workspace, invalid label: rc=$RC503 out=${OUT503:0:300}"
+fi
+
+run503 "$ROOT503" --title T --body B --label bug
+if [[ "$RC503" -eq 2 && ! -f "$ARGV_LOG" \
+      && "$OUT503" == *"Not in a git repository: pass -R <owner/repo> to name the repository the issue is for"* ]]; then
+    pass "outside git, no -R: refused (exit 2), naming -R, before gh"
+else
+    fail "outside git, no -R: rc=$RC503 out=${OUT503:0:300}"
+fi
+
+# Inside a git repository, as before: no -R needed in the workspace
+# checkout; a clone under the root whose slug is no registered root's is
+# refused by the repo-safety check (-R is the way there, as today); with -R
+# its own (absent) label list is read, so validation is skipped.
+run503 "$WS503" --title T --body B --label bug --no-signature
+if [[ "$RC503" -eq 0 ]] && gh_called && ! grep -qxE -- '-R|--repo' "$ARGV_LOG"; then
+    pass "inside git, the workspace checkout: unchanged, no -R needed"
+else
+    fail "inside git, workspace: rc=$RC503 out=${OUT503:0:300}"
+fi
+run503 "$ROOT503/clone" --title T --body B --label bug --no-signature
+if [[ "$RC503" -eq 2 && ! -f "$ARGV_LOG" && "$OUT503" == *"gh would target 'pkg-owner/pkg'"* ]]; then
+    pass "inside git, a clone under the root, no -R: the repo-safety check refuses, as before"
+else
+    fail "inside git, clone, no -R: rc=$RC503 out=${OUT503:0:300}"
+fi
+run503 "$ROOT503/clone" -R pkg-owner/pkg --title T --body B --label bug --no-signature
+if [[ "$RC503" -eq 0 ]] && gh_called \
+   && [[ "$OUT503" == *"Warning: $ROOT503/clone/.agent/github_metadata.json not found"* ]]; then
+    pass "inside git, a clone with -R: its own label list is read, as before"
+else
+    fail "inside git, clone, -R: rc=$RC503 out=${OUT503:0:300}"
+fi
+
+echo
+echo "=== Parent reference outside a git repository: only from owner/repo#N (issue 503) ==="
+# Inside a git repository the parent reference is as before (the tests
+# above); outside one it is added only for a WORKTREE_ISSUE of the form
+# owner/repo#N, and nothing is taken from a remote.
+run503w() {  # <WORKTREE_ISSUE> <cwd> <args...>: as run503, with WORKTREE_ISSUE set
+    local wi="$1" cwd="$2"
+    shift 2
+    rm -f "$ARGV_LOG" "$BODY_CAPTURE"
+    OUT503=$(cd "$cwd" && WORKTREE_ISSUE="$wi" TMPDIR="$R503" \
+        bash "$WS503/.agent/scripts/gh_create_issue.sh" "$@" 2>&1)
+    RC503=$?
+}
+run503w ws-owner/ws#7 "$ROOT503" -R pkg-owner/pkg --title T --body B --no-signature
+if [[ "$RC503" -eq 0 ]] && gh_called && grep -qx 'Part of ws-owner/ws#7' "$ARGV_LOG"; then
+    pass "parent ref, outside git, qualified WORKTREE_ISSUE: Part of ws-owner/ws#7"
+else
+    fail "parent ref, outside git, qualified: rc=$RC503 argv=[$(tr '\n' ' ' < "$ARGV_LOG" 2>/dev/null)] out=${OUT503:0:300}"
+fi
+run503w pkg-owner/pkg#7 "$ROOT503" -R pkg-owner/pkg --title T --body B --no-signature
+if [[ "$RC503" -eq 0 ]] && gh_called && grep -qx 'Part of #7' "$ARGV_LOG"; then
+    pass "parent ref, outside git, qualified WORKTREE_ISSUE in the target repository: bare Part of #7"
+else
+    fail "parent ref, outside git, qualified same: rc=$RC503 argv=[$(tr '\n' ' ' < "$ARGV_LOG" 2>/dev/null)] out=${OUT503:0:300}"
+fi
+run503w 7 "$ROOT503" -R pkg-owner/pkg --title T --body B --no-signature
+if [[ "$RC503" -eq 0 ]] && gh_called && ! grep -q 'Part of' "$ARGV_LOG" \
+   && [[ "$OUT503" == *'Parent issue #7: no parent reference added, as its repository is not known outside a git repository; write "Part of owner/repo#7" in the body to add one'* ]] \
+   && [[ "$OUT503" != *"WORKTREE_ISSUE="* ]] && [[ "$(grep -c 'Parent issue' <<< "$OUT503")" -eq 1 ]]; then
+    pass "parent ref, outside git, bare WORKTREE_ISSUE: none added, one-line warning naming the body"
+else
+    fail "parent ref, outside git, bare: rc=$RC503 argv=[$(tr '\n' ' ' < "$ARGV_LOG" 2>/dev/null)] out=${OUT503:0:300}"
+fi
+run503 "$ROOT503" -R pkg-owner/pkg --title T --body B --no-signature
+if [[ "$RC503" -eq 0 ]] && gh_called && ! grep -q 'Part of' "$ARGV_LOG" && [[ "$OUT503" != *"Parent issue"* ]]; then
+    pass "parent ref, outside git, WORKTREE_ISSUE unset: none added, no warning"
+else
+    fail "parent ref, outside git, unset: rc=$RC503 out=${OUT503:0:300}"
+fi
+run503w ws-owner/ws#7 "$ROOT503" -R pkg-owner/pkg --title T --body "See ws-owner/ws#7." --no-signature
+if [[ "$RC503" -eq 0 ]] && gh_called && ! grep -q 'Part of' "$ARGV_LOG"; then
+    pass "parent ref, outside git, body already names owner/repo#N: not added again"
+else
+    fail "parent ref, outside git, already named: rc=$RC503 argv=[$(tr '\n' ' ' < "$ARGV_LOG" 2>/dev/null)]"
+fi
+run503w ws-owner/ws#7 "$ROOT503" -R pkg-owner/pkg --title T --body "Fixes #7 here." --no-signature
+if [[ "$RC503" -eq 0 ]] && gh_called && grep -qx 'Part of ws-owner/ws#7' "$ARGV_LOG"; then
+    pass "parent ref, outside git, body names the target's own #N: the qualified reference is still added"
+else
+    fail "parent ref, outside git, target's #N in body: rc=$RC503 argv=[$(tr '\n' ' ' < "$ARGV_LOG" 2>/dev/null)]"
+fi
+BODYF503="$R503/body503.md"
+printf 'From a file\n' > "$BODYF503"
+run503w ws-owner/ws#7 "$ROOT503" -R pkg-owner/pkg --title T --body-file "$BODYF503" --no-signature
+if [[ "$RC503" -eq 0 ]] && grep -qx 'Part of ws-owner/ws#7' "$BODY_CAPTURE" 2>/dev/null \
+   && [[ "$(cat "$BODYF503")" == "From a file" ]]; then
+    pass "parent ref, outside git, --body-file: appended to the copy, the caller's file untouched"
+else
+    fail "parent ref, outside git, body file: rc=$RC503 out=${OUT503:0:300}"
+fi
+rm -f "$BODYF503"
+
+# PARENT_REF in the environment with WORKTREE_ISSUE unset is ignored, as on
+# main (the round-2 rewrite read it outside its block and crashed under set -u).
+rm -f "$ARGV_LOG"
+OUT503=$(cd "$WS503" && env -u WORKTREE_ISSUE PARENT_REF='#9' TMPDIR="$R503" \
+    bash "$WS503/.agent/scripts/gh_create_issue.sh" --title T --body B --no-signature 2>&1)
+RC503=$?
+if [[ "$RC503" -eq 0 ]] && gh_called && ! grep -q 'Part of' "$ARGV_LOG"; then
+    pass "PARENT_REF exported without WORKTREE_ISSUE: ignored, gh reached"
+else
+    fail "PARENT_REF exported without WORKTREE_ISSUE: rc=$RC503 out=${OUT503:0:300}"
+fi
+
+# Labels outside git: the workspace's list is used only for an owner/repo
+# slug of its GitHub origin. A non-GitHub origin (an SSH host alias) gives
+# none, so even a -R spelled like that origin is validated by GitHub.
+WS503A="$R503/wsalias"
+mkdir -p "$WS503A/.agent/scripts"
+cp "$WS503/.agent/scripts/"*.sh "$WS503A/.agent/scripts/"
+cp "$WS503/.agent/github_metadata.json" "$WS503/.agent/projects.local" "$WS503A/.agent/"
+git -C "$WS503A" init -q -b main
+git -C "$WS503A" remote add origin git@gh-work:ws-owner/ws.git
+rm -f "$ARGV_LOG"
+OUT503=$(cd "$ROOT503" && env -u WORKTREE_ISSUE TMPDIR="$R503" bash "$WS503A/.agent/scripts/gh_create_issue.sh" \
+    -R git@gh-work:ws-owner/ws --title T --body B --label nope --no-signature 2>&1)
+RC503=$?
+if [[ "$RC503" -eq 0 ]] && gh_called && [[ "$OUT503" == *"Labels will be validated by GitHub."* ]]; then
+    pass "outside git, workspace origin not on GitHub: no local label list, GitHub validates"
+else
+    fail "outside git, workspace origin an SSH alias: rc=$RC503 out=${OUT503:0:300}"
+fi
+
+echo
 echo "=== Summary ==="
 echo "  PASS: $PASS"
 echo "  FAIL: $FAIL"

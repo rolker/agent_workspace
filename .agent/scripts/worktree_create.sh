@@ -542,10 +542,68 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
             exit 1
         fi
     fi
-    if [ ! -d "$PROJECT_DIR" ] || ! git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/null; then
+    # The root need only be a directory: a root holding clones need not be a
+    # git repository itself (issue 503). Each repository the worktree is made
+    # of is checked once the list is resolved, before anything is made; for
+    # a single-repository project that is the root itself, with this message.
+    if [ ! -e "$PROJECT_DIR" ]; then
+        echo "Error: project root does not exist: $PROJECT_DIR"
+        exit 1
+    fi
+    if [ ! -d "$PROJECT_DIR" ]; then
         echo "Error: project checkout is not a git repository: $PROJECT_DIR"
         [ -n "$PROJECT_NAME" ] && echo "Clone the project there or fix .agent/projects.local"
         exit 1
+    fi
+fi
+
+# The repositories a project worktree is made of (the adapter's
+# worktree_repos, ADR-0012), into REPO_LINES, each checked to be the top of
+# its own git repository before any directory, branch or worktree is made,
+# so a refusal leaves nothing behind. The "." entry is the project root
+# itself; a plain directory inside an enclosing repository is refused, not
+# taken for that enclosing repository (as the skill branch below checks).
+resolve_worktree_repos() {
+    WR_ADAPTER_ARGS=()
+    [ -n "$PROJECT_NAME" ] && WR_ADAPTER_ARGS+=(--project "$PROJECT_NAME")
+    WR_VERB_ARGS=(--issue "$ISSUE_REF")
+    [ -n "$LAYER" ] && WR_VERB_ARGS+=(--layer "$LAYER")
+    [ -n "$PACKAGE_REPOS" ] && WR_VERB_ARGS+=(--package-repos "$PACKAGE_REPOS")
+    if ! REPO_LINES="$("$SCRIPT_DIR/adapter" "${WR_ADAPTER_ARGS[@]}" worktree_repos "${WR_VERB_ARGS[@]}")"; then
+        exit 1
+    fi
+    if [ -z "$REPO_LINES" ]; then
+        echo "Error: worktree_repos returned no repos to worktree"
+        exit 1
+    fi
+    while IFS=$'\t' read -r WR_ORIGIN WR_REL _; do
+        [ -z "$WR_ORIGIN" ] && continue
+        _WR_TOP="$(git -C "$WR_ORIGIN" rev-parse --show-toplevel 2>/dev/null)" || _WR_TOP=""
+        [ -n "$_WR_TOP" ] && { _WR_TOP="$(cd "$_WR_TOP" 2>/dev/null && pwd -P)" || _WR_TOP=""; }
+        if [ -n "$_WR_TOP" ] && [ "$_WR_TOP" = "$(cd "$WR_ORIGIN" 2>/dev/null && pwd -P)" ]; then
+            continue
+        fi
+        if [ "$WR_REL" = "." ]; then
+            echo "Error: project checkout is not a git repository: $PROJECT_DIR"
+            [ -n "$PROJECT_NAME" ] && echo "Clone the project there or fix .agent/projects.local"
+        else
+            echo "ERROR: manifest entry is not a git repository: $WR_ORIGIN" >&2
+        fi
+        exit 1
+    done <<< "$REPO_LINES"
+}
+
+# A project root that is not a git repository (issue 503): its repositories
+# are resolved and checked now, before the issue lookup and any gh call, so
+# a single-repository project (its one repository is the root) is refused
+# first, as before; and a bare --issue is not looked up anywhere (below),
+# since no repository of the root names the issue's.
+REPO_LINES=""
+ROOT_NOT_GIT=false
+if [ "$WORKTREE_TYPE" == "project" ] && ! git -C "$PROJECT_DIR" rev-parse --git-dir &>/dev/null; then
+    ROOT_NOT_GIT=true
+    if [ -z "$SKILL_NAME" ]; then
+        resolve_worktree_repos
     fi
 fi
 
@@ -623,6 +681,10 @@ if [ -n "$ISSUE_NUM" ]; then
     # registered project's own remote).
     if [ -n "$ISSUE_OWNER_REPO" ]; then
         _LOOKUP_REPO="$ISSUE_OWNER_REPO"
+    elif [ "$ROOT_NOT_GIT" = true ]; then
+        # A bare --issue from a project root that is not a git repository:
+        # the issue's repository is not known, and the workspace's is not it.
+        _LOOKUP_REPO=""
     else
         # Look up issue via git-bug (with sync-on-miss) then gh fallback
         _LOOKUP_REPO="${GH_REPO_SLUG:-}"
@@ -635,15 +697,17 @@ if [ -n "$ISSUE_NUM" ]; then
     if [ -n "$_LOOKUP_REPO" ]; then
         issue_lookup "$ISSUE_NUM" --repo "$_LOOKUP_REPO" --root "$ROOT_DIR" || true
     fi
-    # Fallback: if slug extraction failed (non-GitHub remote), try gh without --repo
-    if [ -z "$ISSUE_TITLE" ] && [ -z "$_LOOKUP_REPO" ] && command -v gh &>/dev/null; then
+    # Fallback: if slug extraction failed (non-GitHub remote), try gh without
+    # --repo (not from a project root that is not a git repository: gh has
+    # no repository to resolve there).
+    if [ -z "$ISSUE_TITLE" ] && [ -z "$_LOOKUP_REPO" ] && [ "$ROOT_NOT_GIT" = false ] && command -v gh &>/dev/null; then
         ISSUE_TITLE=$(gh issue view "$ISSUE_NUM" --json title --jq '.title' 2>/dev/null || echo "")
         ISSUE_STATE=$(gh issue view "$ISSUE_NUM" --json state --jq '.state' 2>/dev/null || echo "")
     fi
 
     # PR check stays gh-only — git-bug doesn't track PRs. Same repo as the
     # lookup above: the qualified ref's own repo, or the fallback chain.
-    if command -v gh &>/dev/null; then
+    if command -v gh &>/dev/null && { [ -n "$_LOOKUP_REPO" ] || [ "$ROOT_NOT_GIT" = false ]; }; then
         _PR_CHECK=""
         if [ -n "$_LOOKUP_REPO" ]; then
             _PR_CHECK=$(gh pr view "$ISSUE_NUM" --repo "$_LOOKUP_REPO" --json state --jq '.state' 2>/dev/null || echo "")
@@ -662,6 +726,9 @@ if [ -n "$ISSUE_NUM" ]; then
         if [ "$ISSUE_STATE" = "CLOSED" ]; then
             echo "   ⚠️  Warning: Issue $ISSUE_DISPLAY_REF is CLOSED"
         fi
+    elif [ -z "$_LOOKUP_REPO" ] && [ "$ROOT_NOT_GIT" = true ]; then
+        echo "⚠️  Issue $ISSUE_DISPLAY_REF not looked up: the project root is not a git repository, so the issue's repository is not known (--issue owner/repo#N names it)"
+        echo "   Proceeding anyway — verify the issue number is correct."
     else
         echo "⚠️  Could not fetch issue $ISSUE_DISPLAY_REF title (offline or issue does not exist)"
         echo "   Proceeding anyway — verify the issue number is correct."
@@ -691,7 +758,6 @@ fi
 # worktree_repos is the single source of truth for which repos compose the
 # worktree and what to name their branches — this script never decides
 # that itself, and never checks the project type.
-REPO_LINES=""
 if [ "$WORKTREE_TYPE" == "project" ] && [ -n "$SKILL_NAME" ]; then
     # A skill worktree has no issue to key the manifest to: it is a
     # worktree of the project root's own repository, on the skill branch.
@@ -704,17 +770,10 @@ if [ "$WORKTREE_TYPE" == "project" ] && [ -n "$SKILL_NAME" ]; then
     REPO_LINES="$(printf '%s\t.\t%s' "$PROJECT_DIR" "$BRANCH_NAME")"
     unset _SK_TOP
 elif [ "$WORKTREE_TYPE" == "project" ]; then
-    WR_ADAPTER_ARGS=()
-    [ -n "$PROJECT_NAME" ] && WR_ADAPTER_ARGS+=(--project "$PROJECT_NAME")
-    WR_VERB_ARGS=(--issue "$ISSUE_REF")
-    [ -n "$LAYER" ] && WR_VERB_ARGS+=(--layer "$LAYER")
-    [ -n "$PACKAGE_REPOS" ] && WR_VERB_ARGS+=(--package-repos "$PACKAGE_REPOS")
-    if ! REPO_LINES="$("$SCRIPT_DIR/adapter" "${WR_ADAPTER_ARGS[@]}" worktree_repos "${WR_VERB_ARGS[@]}")"; then
-        exit 1
-    fi
+    # Already resolved, before the issue lookup, for a root that is not a
+    # git repository.
     if [ -z "$REPO_LINES" ]; then
-        echo "Error: worktree_repos returned no repos to worktree"
-        exit 1
+        resolve_worktree_repos
     fi
     # --base is the owning repository's base: without an entry on
     # $BRANCH_NAME it would be recorded for a branch this worktree does not
