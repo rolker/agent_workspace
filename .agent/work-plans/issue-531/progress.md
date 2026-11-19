@@ -96,3 +96,11 @@ Edge cases the plan must cover, since they decide whether the rule is whole:
 **Decision**: proceed
 
 The Issue Review confirmed the claim and tried each skip-like option with the real colcon. The host takes its findings as the plan's content: the skip pair and the ignore pair (--packages-skip, --packages-skip-regex, --packages-ignore, --packages-ignore-regex) build a whole layer minus named packages and stop counting as building part of a layer; the other three (--packages-skip-by-dep, --packages-skip-up-to, --packages-skip-test-passed) stay selection, since what they leave out comes from the dependency graph or from test results; the record gains an optional field holding the option text as given; a changed list is an ordinary rebuild that keeps the layers above and is named in the report; the report says "built without" and does not claim the tool checks dependents; design.md and the README say what colcon does. Adding the ignore pair is within the issue's own line "the other skip options are looked at one by one".
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-19 14:59 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-531/plan.md` at `e9c7c366`
+
+The four skip and ignore options stop counting as selection (only unambiguous spellings); the record gains an optional `without` mapping (option to values, last occurrence of a repeat wins as in colcon); the report says "built without" and names a changed list, which keeps the layers above. Documents and tests (stub and real colcon) change in the same PR.
