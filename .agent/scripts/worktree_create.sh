@@ -1284,13 +1284,17 @@ elif [ -n "$PLAN_FILE" ]; then
             [ -n "$PARENT_ISSUE_NUM" ] && pr_body+=$'\n'"Part of #${PARENT_ISSUE_NUM}"
         fi
 
-        if ! git push -u origin "$BRANCH_NAME" 2>/dev/null; then
+        local push_err
+        if ! push_err="$(git push -u origin "$BRANCH_NAME" 2>&1 >/dev/null)"; then
             # Non-fatal: the worktree exists, so the script goes on to its
-            # next steps (issue #516). Print lines that can be pasted to
-            # push and open the draft PR by hand, quoted with printf %q.
-            echo "  ⚠️  Push failed — skipping draft PR (non-fatal)"
-            echo "     The branch $BRANCH_NAME is not on origin. To push it and open the draft PR,"
-            echo "     run these in a shell where AGENT_NAME and AGENT_MODEL are set"
+            # next steps (issue #516). Show git's own error, indented (a
+            # rejection may come from a branch origin already has), then
+            # lines that can be pasted to push and open the draft PR by
+            # hand, quoted with printf %q.
+            echo "  ⚠️  Push failed — skipping draft PR (non-fatal). git push -u origin $BRANCH_NAME said:"
+            [ -n "$push_err" ] && printf '%s\n' "$push_err" | sed 's/^/       /'
+            echo "     Once the cause is fixed, push and open the draft PR by running these"
+            echo "     in a shell where AGENT_NAME and AGENT_MODEL are set"
             echo "     (first: source $(printf '%q' "$SCRIPT_DIR/set_git_identity_env.sh") --agent <framework> \"<model-id>\"):"
             local hint_pr
             hint_pr="$(printf '%q --draft' "$SCRIPT_DIR/gh_create_pr.sh")"

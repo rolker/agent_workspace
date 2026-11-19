@@ -1158,6 +1158,16 @@ if [[ "$OUT" == *"Push failed"* \
 else
     fail "refused push with --plan-file: hint lines missing: out=${OUT:0:1500}"
 fi
+# Review suggestion 1: the warning shows git's own error, indented, and
+# does not claim the branch is absent from origin (a rejection can come
+# from a branch origin already has).
+if [[ "$OUT" == *"git push -u origin feature/issue-71 said:"* \
+      && "$OUT" == *$'\n'"       "*"pre-receive hook declined"* \
+      && "$OUT" != *"is not on origin"* ]]; then
+    pass "refused push: the warning shows git's error, indented, and no claim about origin"
+else
+    fail "refused push: git's error not shown, or the origin claim is there: out=${OUT:0:1500}"
+fi
 # The same refused push through --print-path-only (the start-task call):
 # stdout is the worktree path alone, and the exit status is 0.
 SB12="$SANDBOX/ws12"
