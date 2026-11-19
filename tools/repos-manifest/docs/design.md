@@ -200,6 +200,9 @@ when sourced, and `sync` writes it for a distro whose `setup.bash` is missing. I
 as it is, and one that cannot be written whole is removed, never left empty or partial. One
 that cannot be created is reported for that distro, with its path and the
 reason, after that distro's report; the other distros go on, and the exit status is 1.
+Something at its place that is not a file or a link to one, such as a directory or a dangling
+link, is left as it is and named in a warning after that distro's report; the exit status is
+not changed by it.
 
 Before its question, `init` prints a summary until `show` is built, and then what `show`
 prints (see "show"). The summary gives the manifest, the role and the extra groups, then for

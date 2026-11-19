@@ -281,6 +281,7 @@ class DistroResult:
     distro: Optional[str]
     repos: List[RepoResult] = field(default_factory=list)
     setup_failure: Optional[str] = None  # why the distro's setup.bash could not be created
+    setup_note: Optional[str] = None  # what is at setup.bash's place when it is not a file
 
     def of(self, outcome: str) -> List[RepoResult]:
         return [r for r in self.repos if r.outcome == outcome]
@@ -317,7 +318,16 @@ def sync_distro(system: Path, config: Config, resolved: Resolved, env: Env) -> D
             elif done.outcome == SKIPPED:
                 print(f"skipped {done.path} (optional): {done.detail}", flush=True)
     result.setup_failure = create_setup(system, setup_parts(config.layout, distro))
+    result.setup_note = setup_note(system.joinpath(*setup_parts(config.layout, distro)))
     return result
+
+
+def setup_note(path: Path) -> Optional[str]:
+    """A line for what is at `setup.bash`'s place when it is not a regular file or a link to
+    one, such as a directory or a dangling link; it is left as it is."""
+    if os.path.lexists(path) and not path.is_file():
+        return f"{path}: is there and is not a file; left as it is"
+    return None
 
 
 def create_setup(system: Path, parts: Parts) -> Optional[str]:
@@ -365,6 +375,8 @@ def report(result: DistroResult) -> None:
         print(f"  present, not touched ({present}); updating a repo that is there is not built yet")
     if result.setup_failure is not None:
         print(f"ERROR: {result.setup_failure}", flush=True)
+    if result.setup_note is not None:
+        print(f"WARNING: {result.setup_note}", flush=True)
 
 
 def sync_distros(

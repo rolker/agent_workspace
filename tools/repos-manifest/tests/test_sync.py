@@ -369,3 +369,56 @@ def test_a_flat_system_whose_manifest_gains_distros_says_to_set_one_up_anew(vcs,
     )
     # No option it names is refused: sync takes no --distro-dirs, and --distro is not named.
     assert "--distro " not in captured.err and "sync --" not in captured.err
+
+
+@pytest.mark.parametrize("what", ["a directory", "a dangling link", "a link to a file", "a file"])
+def test_what_is_at_setup_bash_is_left_and_named_unless_it_is_a_file(
+    two_distros, tmp_path, capsys, what
+):
+    system, _, _ = two_distros
+    setup = system / "jazzy" / "setup.bash"
+    setup.unlink()
+    if what == "a directory":
+        setup.mkdir()
+    elif what == "a dangling link":
+        setup.symlink_to(tmp_path / "nowhere")
+    elif what == "a link to a file":
+        (tmp_path / "mine.bash").write_text("# mine\n")
+        setup.symlink_to(tmp_path / "mine.bash")
+    else:
+        setup.write_text("# mine\n")
+    before = snapshot(system)
+    capsys.readouterr()
+    assert run(system, "sync") == 0
+    assert snapshot(system) == before
+    out = capsys.readouterr().out
+    note = f"WARNING: {setup}: is there and is not a file; left as it is\n"
+    if what in ("a directory", "a dangling link"):
+        jazzy = out[out.index("distro jazzy:") : out.index("distro rolling:")]
+        assert jazzy.endswith(note)
+    else:
+        assert "WARNING" not in out
+
+
+def test_init_names_a_directory_made_at_setup_bash_while_it_runs(
+    vcs, tmp_path, monkeypatch, capsys
+):
+    # init refuses a setup.bash that is there before it starts; one made while it runs is
+    # left as it is, and a directory is named.
+    remotes = tmp_path / "remotes"
+    data = {"format": 1, "repositories": {"a": repo(make_remote(remotes, "a"))}}
+    write_manifest(tmp_path / "m.manifest.yaml", data)
+    system = tmp_path / "sys"
+    system.mkdir()
+    check = sync.place_problem
+
+    def a_directory_is_made_meanwhile(system_, parts):
+        if parts[-1] == "setup.bash":
+            (system_ / "setup.bash").mkdir()
+        return check(system_, parts)
+
+    monkeypatch.setattr(sync, "place_problem", a_directory_is_made_meanwhile)
+    assert run(system, "init", "../m.manifest.yaml", "--yes") == 0
+    out = capsys.readouterr().out
+    assert f"WARNING: {system / 'setup.bash'}: is there and is not a file; left as it is\n" in out
+    assert (system / "setup.bash").is_dir()
