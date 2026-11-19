@@ -1683,3 +1683,66 @@ The six round 3 suggestions:
 **Decision**: address
 
 Round 4 confirmed the merge of main and all six round 3 points. Its one must-fix: a password holding a quote together with a double quote, or a backslash, and a space is printed whole in the manifest's refusal lines, because the url is quoted with repr before it is masked. The fix is structural, not one more pattern: a url is masked before it is put into any message (the refusal lines of manifest.py and every other place a url is formatted with repr or quotes), and a test walks every message in the tool's source that formats a url. Fixed with it: file urls whose user part holds a colon and no slash are masked too; the design sentence says a tracked change is never carried back; the half-change report prints no "These changes were made by" line when it lists no changes and never ends in an empty line; the lock refusal does not say a sync "may have ended" when it cannot check the process, and does not advise killing what it cannot identify; the forbidden-words scan covers -P, --prune-tags given to a pruning fetch, bundled short flags that include p, switch -f, --discard-changes and branch -f. Left, with the reason on the box: "moved by a person" after sync's own half-changed move when the manifest is then changed back (the record cannot tell the two apart without a new field; noted in the design); the missing upstream mentioned once only (a branch without an upstream is a normal state); a partly moved branch reported as left as it was (needs a fake git; a real fast-forward is all or nothing).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 18:42 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a5f44b6979a40343e, resume 3 of 3)
+
+**Branch**: feature/issue-500 at `4cc02562`
+**Addressed**: Local Review (Pre-Push) at `00ffcba9` (2026-11-19 18:21 -05:00)
+**Commits**: 81bdc172, be578f0f, c46c0ecd, 6e79d6ef, cfa593d4, 4cc02562 (box checks)
+
+I reproduced the reviewer's `adv4/s3_e2e.py` first.
+- Before the fix: case 0 (`foo::https://u:a'b" c@…`) and case 4 (`ssh://u:a'b" c@127.0.0.1:9`) printed the escaped password `a\'b` in the manifest's refusal, and case 5 printed `SECRETPW` from a `file://` url.
+- After the fix: none of the 8 cases prints the password or its escaped form. The probe still lists `c` and `z`, but those are the one-letter last words of the passwords, matched anywhere in the output.
+
+### Actions
+- [x] (must-fix) **The structural fix.** A url is masked before it is put into any message. Every place in the tool that formats a url goes through one of two functions in `masking.py`: `mask_url` (masked, plain) or `quoted_url` (masked, then quoted as `repr` would).
+  - Changed: the eleven `{url!r}` and the two `{value!r}` of `manifest.py` (used by `resolve`, `validate`, `init` and `sync`), the plan listing in `init.py`, the label of an extends base in `extends.py`, and the repoint lines in `update.py`.
+  - Two f-strings that are not messages carry a `# url-text:` reason: the probe's git argument and a hash input.
+  - The masking of what is printed stays as the second line of defence.
+  - **The source-walking test** (`tests/test_url_messages.py`) parses every module of the package and looks at each value put into text: each f-string `{…}`, each operand of `+` or `%` on text, each `.format` argument, and each direct argument to `print`, `ManifestError`, `Refusal`, `Done` or `warn`. A value whose names (variables, attributes, constant keys) hold "url" or are `origin` must be a call of `mask_url`, `quoted_url`, `mask_urls` or `set_url_command`. Module constants in capitals are message text and not counted.
+  - It chooses names over a marker because names are what the code already uses. A second test closes the name gap: a url taken from `.url`, `["url"]` or `self.url(...)` must be stored under a name the scan reads, so a url cannot change its name on the way to a message.
+  - What it cannot follow is a url passed as an argument to a parameter with another name (`value` in `manifest.py`). Those functions use `quoted_url` on whatever they get, and the end-to-end test covers them.
+  - Run over the previous source, the scan finds the 11 sites in `manifest.py`, 6 in `update.py`, 1 in `init.py` and 2 in `extends.py`.
+  - **The end-to-end test** (`test_masking.py`) runs `resolve`, `validate`, `init` and `sync` over manifests in four forms: a repo url, a `foo::https://` url, an ssh url with no path, and a `file://` url. The passwords hold both quotes with a space, a backslash with a space, `%` escapes and letters beyond ASCII, and one user name holds a quote and a space. It greps stdout and stderr for each password, user name, escaped form and decoded form; 11 cases fail at the previous commit.
+  - The earlier format's `extends.url` is tested with `resolve` and `validate`. It is refused without being echoed ("Credentials do not belong in a manifest").
+  - The repo url is the format's only other url key: `base` takes paths.
+- [x] (suggestion a) A `file://` url's `user:password` (a `:` and no `/`) is masked like any other, and a path before an `@` (`file:///srv/w@x/…`) is not. The design sentence is corrected, and a test covers both (81bdc172).
+- [x] (suggestion b) The design says a *tracked* change is never carried back. It also says that an untracked or ignored file a hook wrote stays in the work tree and is not reported, because the "left as it was" comparison covers HEAD, branch, config, index and tracked status (be578f0f).
+- [x] (suggestion c) The half-change report says "with no tracked changes; sync does not move it back" when it lists none, with no "These changes were made by" line. A report whose git printed nothing ends in a full stop, never an empty line after a colon. Tests: the fast-forward fails and the switch back is refused because a hook wrote an untracked file; and a silent failure (be578f0f).
+- [x] (suggestion d) When the process the lock file names runs but its open files cannot be read (no `/proc`, or another user's process), the refusal says it cannot tell whether that is the sync, names the pid with `ps -p <pid> -o user,args` and `fuser -v <lock>`, and gives no advice to kill it. "Has ended" and the kill advice remain for a process that is gone. Tested by making `_holds` return None (c46c0ecd).
+- [x] (suggestion e) `NEVER` gains `-P`, `--prune-tags`, `--discard-changes`, `switch -f` and `branch -f`. A test refuses bundled short flags holding `p`, `P` or `f` (`-pt`, `-fq`). `count` and `ask_origin` are scanned as git calls. The scan's docstring says what it cannot see (an argument held in a variable that is not a list literal), and a test holds `update.py` to spreading only argument names the scan reads (6e79d6ef).
+- [x] (suggestion) "Moved by a person" after sync's own half-changed move when the manifest is changed back (deferred: the host's decision; the record cannot tell the two apart without a new field, and the design now says so, be578f0f)
+- [x] (suggestion) A partly moved branch reported as left as it was (deferred: the host's decision; it needs a fake git, and a real `merge --ff-only` is all or nothing)
+- [x] (suggestion) The missing upstream mentioned once only (deferred: the host's decision; a branch without an upstream is a normal state, and the note comes with the half-change report)
+
+### Checks
+- Whole suite at `cfa593d4`: `cd tools/repos-manifest && REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest -p no:cacheprovider` gave `1666 passed in 516.62s` (vcs 0.3.0, colcon present).
+- `git status --porcelain` is clean. black and flake8 ran in the commit hooks. No workspace script changed. The full pre-commit pass is the host's. Commits used `SKIP=validate-script-tests`.
+- I re-read the changed sentences of the tool's `docs/design.md` (masking, the switch back, the half-change report, the record's limit, the lock refusal, the never-run list) and `README.md` (masking now names `init`, `resolve` and `validate`) against the code.
+
+### For the pull request body
+Changed from the round 3 entry's text: the masking and the open-on-purpose items. Everything else stands as written there.
+- **Masking:** no line `sync`, `init`, `resolve` or `validate` prints, an error included, shows a url's user name or password, whatever characters they hold.
+  - Every message that formats a url masks it first (`masking.mask_url` or `quoted_url`), so quoting or `repr` escaping cannot hide it. What is printed is masked again.
+  - A test walks the tool's source for every formatted value that names a url, and another runs all four commands over awkward passwords in every url form.
+  - Nothing that does not follow `://` is masked: local paths holding `@`, `git@github.com:…` and `origin/main@{upstream}` print as they are. In a `file://` url, a path before an `@` is kept, and a `user:password` is masked.
+- **The never-run list:** `sync` never runs reset, `checkout -f`, clean, stash, rebase, pull, push, gc or prune, never deletes a branch, and passes no `--force`, `--no-verify`, `--prune`, `-p`, `-P`, `--prune-tags`, `--discard-changes`, `switch -f`, `branch -f` or a bundled short flag holding `p`, `P` or `f`. A test reads `update.py` for each.
+- **Half-changed moves:** the report lists what ran, where HEAD is, and the tracked changes git or a hook made, or says there are none. An untracked or ignored file a hook wrote stays in the work tree and is not reported.
+- **Open on purpose:**
+  - A repo left alone while the manifest names another version exits 0 (`sync.py:641-654`).
+  - The hand-set-origin line prints every run (`update.py:714`).
+  - One `ls-remote` per repo per run (`update.py:491`, `find_version` at `update.py:460`).
+  - Submodules are never updated (`update.py:962`).
+  - A shallow clone grows by the history of fetched tags (`update.py:739`).
+  - No version follows the clone's `origin/HEAD` (`update.py:468`).
+  - A detached HEAD at a recorded branch's commit is moved on a pin change (`update.py:826-831`).
+  - A branch switched by a person during the run is not re-checked (`update.py:875`).
+  - An https url whose path holds `@` has more masked (`masking.py:13`).
+  - After sync's own half-changed move, a manifest changed back reads the repo as moved by a person (design, sync).
+  - A branch left without an upstream by a half-changed move is mentioned once.
+  - An untracked file a hook wrote during a move that was undone is not reported.
+- **Tests:** 1666 pass with `REPOS_MANIFEST_REQUIRE_COLCON=1`.
