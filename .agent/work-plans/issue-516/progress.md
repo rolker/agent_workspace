@@ -71,3 +71,11 @@ Claim checked against the script on this branch (`.agent/scripts/worktree_create
 **Decision**: proceed
 
 The Issue Review confirmed the claim against the script and found the push failure to be the only "non-fatal" path that is fatal. Its four actions go to the plan as written: return 0 inside create_draft_pr on a failed push; the warning says how to open the pull request later; a test in test_worktree_create.sh with an origin that refuses the push; a check of start-task and the documents for text that tells callers to retry on a non-zero exit.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-19 12:50 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-516/plan.md` at `47cf2630`
+
+Return 0 from create_draft_pr after a failed push, with a warning that says how to open the pull request later. Test with a bare origin whose pre-receive hook refuses the push (exit 0, worktree exists, warning, next steps). The documents need one added sentence in WORKTREE_GUIDE and no corrections.
