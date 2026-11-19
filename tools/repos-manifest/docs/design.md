@@ -804,6 +804,14 @@ has and is never deepened or made whole; the fetch brings the history of every t
 shallow clone of a repo with tags grows at its first `sync`. A linked work tree of a repo is
 safe: its branch is never moved, and the url rule counts its commits.
 
+For a manifest that names no version, the branch followed is `origin`'s default branch as the
+clone records it (`refs/remotes/origin/HEAD`, set when it was cloned); `sync`'s fetch does not
+change that record. When `origin`'s default branch changes, the clone stays on the old branch
+and is followed on it while `origin` still has it. Once a person runs `git remote set-head
+origin --auto`, the clone, still on the old branch, is a repo a person has moved: left as it
+is and reported, never switched. When `origin` deletes the old branch, the record names a
+branch that is gone, and the repo is an error whose message gives that `set-head` command.
+
 The url rule. `W` is the clone's `origin` url as written in its configuration (before any
 `insteadOf` rewrite), `U` the manifest's url, and `R` the one recorded; urls are compared after
 one trailing `/` and one trailing `.git` are taken off.

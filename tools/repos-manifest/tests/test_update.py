@@ -112,6 +112,39 @@ def test_no_version_follows_origins_default_branch(vcs, tmp_path, capsys):
     assert head(sys_dir / "src/a") == new
 
 
+@pytest.mark.parametrize("old", ["kept", "deleted"])
+def test_no_version_when_origins_default_branch_changes(vcs, tmp_path, capsys, old):
+    """The default branch is the one the clone records (origin/HEAD, set at the clone); the
+    fetch does not move it. The clone stays on its branch, and is never switched by `sync`."""
+    remote = make_remote(tmp_path / "remotes", "a", branches=["trunk"])
+    sys_dir, _ = make_system(tmp_path, {"a": repo(remote)})
+    clone = sys_dir / "src/a"
+    git("symbolic-ref", "HEAD", "refs/heads/trunk", cwd=remote)
+    if old == "deleted":
+        git("update-ref", "-d", "refs/heads/main", cwd=remote)
+        git("checkout", "-q", "-f", "trunk", cwd=remote)
+    else:
+        push_commit(remote, "one", "1\n", "main")
+    out = _sync(sys_dir, capsys, 0 if old == "kept" else 1)
+    assert branch(clone) == "main"
+    if old == "kept":
+        assert "fast-forwarded 1 commits" in out
+        git("remote", "set-head", "origin", "--auto", cwd=clone)
+        _left_alone(
+            sys_dir,
+            clone,
+            capsys,
+            "moved by a person: it is on main; the manifest" " names origin's default branch trunk",
+        )
+    else:
+        assert (
+            f"origin's default branch main cannot be read; `git -C {clone} remote set-head"
+            " origin --auto` reads it from origin again"
+        ) in out
+        git("remote", "set-head", "origin", "--auto", cwd=clone)
+        _left_alone(sys_dir, clone, capsys, "moved by a person: it is on main")
+
+
 # --- Moved to the manifest's new version ----------------------------------------------------
 
 

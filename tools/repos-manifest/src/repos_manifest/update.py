@@ -430,7 +430,12 @@ def find_version(git: Git, version: Optional[str]) -> Tuple[Optional[Version], O
         name = ref[len(prefix) :]
         target = git.out("rev-parse", "--verify", "-q", f"{ref}^{{commit}}")
         if target is None:
-            return None, f"origin's default branch {name} cannot be read", False
+            return (
+                None,
+                f"origin's default branch {name} cannot be read; `git -C <place> remote"
+                " set-head origin --auto` reads it from origin again",
+                False,
+            )
         return Version(BRANCH, name, target), None, False
     branch = git.out("rev-parse", "--verify", "-q", f"refs/remotes/origin/{version}^{{commit}}")
     tag = None
