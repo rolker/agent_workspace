@@ -179,3 +179,13 @@ The three findings of the first review are resolved as the checkpoint decided, a
 
 - [ ] Print the body inline (`Closes #N`, `Part of #P` when set; the skill line for a skill worktree) instead of `--body-file <file>`.
 - [ ] Print the worktree directory to run from and the script as `$SCRIPT_DIR/gh_create_pr.sh`; assert both and the `Closes` body in the test.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 12:54 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the second plan review's one needs-work finding is that the printed recovery line would not run; mechanism; this is the host's second revise in a row, so a third answer at this checkpoint is the owner's)
+**After**: plan
+**Decision**: revise
+
+The host takes the second Plan Review's finding and its three notes as written. The hint prints the worktree directory to run from, then git push -u origin <branch>, then the script by its absolute path ($SCRIPT_DIR/gh_create_pr.sh) with --draft, -R and --base when set, the title quoted with printf %q, and the body inline (--body with the same Closes / Part of text the function would have written; gh_create_pr.sh adds the signature), with no --body-file naming a file that does not exist. When a plan file was given it also prints the gh pr comment step for the plan that was not posted. The test adds the refusing hook after its set-up push, and asserts the absolute script path and the Closes body in the hint.
