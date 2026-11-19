@@ -1298,7 +1298,7 @@ fi
 
 # PR 526 review: a remote hook that prints terminal escape sequences and
 # a carriage return; the warning keeps the text without the control
-# characters.
+# characters, and colour sequences are removed whole (no "[31m" left).
 SB17="$SANDBOX/ws17"
 make_ws_repo "$SB17"
 make_refusing_origin "$SB17" "$SANDBOX/origin17.git"
@@ -1307,11 +1307,52 @@ OUT="$(cd "$SB17" && PATH="$SB17/stubbin:$PATH" "$SB17/.agent/scripts/worktree_c
     --issue 78 --type workspace --plan-file "$PLAN11" 2>&1)"
 RC=$?
 WARN17="$(awk '/Push failed/{f=1} /Once the cause is fixed/{f=0} f' <<< "$OUT")"
-if [[ "$RC" -eq 0 && "$WARN17" == *"remote: [31mred[0m alert"* && "$WARN17" != *$'\e'* && "$WARN17" != *$'\r'* ]]; then
-    pass "remote hook output with control characters: shown without them"
+if [[ "$RC" -eq 0 && "$WARN17" == *$'\n'"       remote: red alert"$'\n'* && "$WARN17" != *"[31m"* && "$WARN17" != *"[0m"* \
+      && "$WARN17" != *$'\e'* && "$WARN17" != *$'\r'* ]]; then
+    pass "remote hook output with control characters: shown without them, colour codes removed whole"
 else
     fail "remote hook output with control characters: rc=$RC warning=[$(cat -v <<< "$WARN17")]"
 fi
+
+# PR 526 review: a remote hook that prints an invalid UTF-8 byte. GNU sed
+# passes it, so a sed double plays BSD sed on the warning's last filter
+# (the indent): STUB_SED=locale fails on the byte unless LC_ALL=C, as BSD
+# sed does under a UTF-8 locale; STUB_SED=always fails on it in any
+# locale. Either way the script reaches the hint and exits 0.
+REAL_SED="$(command -v sed)"
+SEDSTUB="$SANDBOX/sedstub"
+mkdir -p "$SEDSTUB"
+cat > "$SEDSTUB/sed" <<SED_EOF
+#!/usr/bin/env bash
+if [[ "\$*" == *'s/^/       /'* ]]; then
+    input="\$(cat; echo x)"; input="\${input%x}"
+    if printf '%s' "\$input" | LC_ALL=C grep -q \$'\\377' \
+       && { [ "\${STUB_SED:-}" = always ] || [ "\${LC_ALL:-}" != C ]; }; then
+        echo "sed: RE error: illegal byte sequence" >&2; exit 1
+    fi
+    printf '%s' "\$input" | exec "$REAL_SED" "\$@"
+fi
+exec "$REAL_SED" "\$@"
+SED_EOF
+chmod +x "$SEDSTUB/sed"
+SB18="$SANDBOX/ws18"
+make_ws_repo "$SB18"
+make_refusing_origin "$SB18" "$SANDBOX/origin18.git"
+printf '#!/bin/sh\nprintf "bad \\377 byte\\n" >&2\nexit 1\n' > "$SANDBOX/origin18.git/hooks/pre-receive"
+n=0
+for mode in locale always; do
+    n=$((n + 1))
+    OUT="$(cd "$SB18" && env PATH="$SEDSTUB:$SB18/stubbin:$PATH" STUB_SED="$mode" LANG=C.UTF-8 \
+        "$SB18/.agent/scripts/worktree_create.sh" --issue "8$n" --type workspace --plan-file "$PLAN11" 2>&1)"
+    RC=$?
+    if [[ "$RC" -eq 0 && "$OUT" == *"Push failed"* && "$OUT" == *"gh_create_pr.sh --draft"* \
+          && "$OUT" == *"To enter this worktree"* ]] \
+       && { [[ "$mode" = always ]] || [[ "$OUT" == *"remote: bad "$'\377'" byte"* ]]; }; then
+        pass "invalid UTF-8 byte from the remote, sed failing ($mode): the warning and hint print, exit 0"
+    else
+        fail "invalid UTF-8 byte from the remote, sed failing ($mode): rc=$RC out=$(cat -v <<< "${OUT:0:1200}")"
+    fi
+done
 
 # Integrated review, PR 526: a relative --plan-file given from a directory
 # other than the workspace root is relative to that directory (a project

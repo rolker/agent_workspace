@@ -1297,10 +1297,20 @@ elif [ -n "$PLAN_FILE" ]; then
             # hand, quoted with printf %q.
             if [ -n "$push_err" ]; then
                 echo "  ⚠️  Push failed — skipping draft PR (non-fatal). git push -u origin $BRANCH_NAME said:"
-                # Control characters other than tab and newline (a remote
-                # hook's escape sequences, carriage returns) are dropped.
-                printf '%s\n' "$push_err" | tr -d '\000-\010\013-\037\177' \
-                    | sed 's/[[:space:]]*$//; s/^/       /'
+                # Terminal escape sequences (CSI, e.g. colour codes, whole;
+                # also the UTF-8 C1 controls) and other control characters
+                # but tab and newline are dropped from a remote hook's
+                # output; a carriage return becomes a line break. sed's
+                # delimiter is \001, which no bracket range in the CSI
+                # pattern takes in. LC_ALL=C makes
+                # the ranges bytes and keeps an invalid UTF-8 byte from
+                # failing tr or sed; and the display can never end the
+                # script (set -e): the warning goes on to return 0.
+                local esc=$'\033' d=$'\001' c1=$'\302'"["$'\200'"-"$'\237'"]"
+                printf '%s\n' "$push_err" \
+                    | LC_ALL=C sed "s${d}${esc}\[[0-?]*[ -/]*[@-~]${d}${d}g; s${d}${c1}${d}${d}g" \
+                    | LC_ALL=C tr '\r' '\n' | LC_ALL=C tr -d '\000-\010\013-\037\177' \
+                    | LC_ALL=C sed 's/[[:space:]]*$//; s/^/       /' || true
             else
                 echo "  ⚠️  Push failed — skipping draft PR (non-fatal)."
             fi
