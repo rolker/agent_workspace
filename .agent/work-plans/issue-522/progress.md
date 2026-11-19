@@ -166,8 +166,8 @@ Verified: test_skill_paths.sh 164/0 and test_merge_pr.sh 175/0 pass; the new pin
 ### Findings
 - [x] (suggestion) Unintended edit drops the space in an unrelated address-findings label ("finding;a dispatched"); restore it — `.agent/scripts/tests/test_skill_paths.sh:776`
 - [x] (suggestion) New test's title/comment imply the refusal is package-specific; with a qualified `--pr`, PJ_REMOTE is never set so `--type project` is refused for any repo (merge_pr.sh 444-445 is dead under `--repo`; a follow-up issue for the script, out of scope here) — `.agent/scripts/tests/test_merge_pr.sh:664`
-- [ ] (suggestion) "finds the package worktree" is unqualified: a `--project` whose resolved instance differs from the manifest header filters every manifest out and the merge proceeds silently with no cleanup (pre-existing script behaviour) — `.claude/skills/run-issue/SKILL.md:1035`
-- [ ] (suggestion) The row merges two entry points: `agent start-task` forwards `--type` only to worktree creation; dispatch, PR targeting and merge are run-issue's — `docs/design.md:529`
+- [x] (suggestion) "finds the package worktree" is unqualified: a `--project` whose resolved instance differs from the manifest header filters every manifest out and the merge proceeds silently with no cleanup (pre-existing script behaviour) — `.claude/skills/run-issue/SKILL.md:1035`
+- [x] (suggestion) The row merges two entry points: `agent start-task` forwards `--type` only to worktree creation; dispatch, PR targeting and merge are run-issue's — `docs/design.md:529` (deferred: predates the branch; the host's checkpoint leaves it out of this issue)
 
 ## Checkpoint
 **Status**: complete

@@ -1032,8 +1032,9 @@ session's `project=` is not empty). For a package issue run
 `$WS_ROOT/.agent/scripts/merge_pr.sh --pr <owner/repo#M>`, with
 `--project <project>` when the session's `project=` is not empty, and never
 `--type`: the script derives the kind from the repository and refuses a
-`--type` that differs, so the call targets the package repository and finds
-the package worktree. For the owning
+`--type` that differs, so the call targets the package repository. It finds
+the package worktree when `--project` names the instance the worktree was
+made under, which the session's `project=` does. For the owning
 repository's pull request the gate reads the review from the owning
 checkout's committed timeline at origin's branch head (never the working
 copy), and commits and pushes its record there only when the working
