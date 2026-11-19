@@ -1431,3 +1431,53 @@ I reproduced each must-fix first with the reviewer's `probe5.py`. M1: a single-b
 - Layers, per-distro reports and the lock are as before. A repo moved by hand to its new layer has that layer recorded.
 - Left for part 3: the manifest's own clone and `local_manifest`, and arguments after `--`. Part 4: the rebase of unpushed commits.
 - Open on purpose: a repo left alone while the manifest names another version exits 0 (issue 502); the hand-set-origin line prints every run; one extra `ls-remote` per repo per run; a shallow clone grows by the history of fetched tags; origin's default branch follows the clone's `origin/HEAD` until `git remote set-head origin --auto`; a detached HEAD at a recorded branch's commit is moved on a pin change (nothing lost); a branch switched by a person during the run is not re-checked before the fast-forward.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 17:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a52816d3cdcc13103, resume 2 of 3)
+
+**Branch**: feature/issue-500 at `3d8601c8`
+**Base**: origin/main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 6
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Scope: the round 2 findings and the fix diff `482e0655..3d8601c8`. Cross-model: skipped (round-3 convergence check, per handoff). The Claude adversarial specialist ran fresh, held to this scope.
+
+Round 2 must-fix, re-run at 3d8601c8:
+- **Single-branch move (`probe5.py`):** moved to dev, clean, with the no-upstream note and the two `git config` commands. The next run is up to date.
+- **Pull-request refspec:** `refs/remotes/origin/pr/1` is kept.
+- **Passwords with quotes and spaces:** masked in sync's output, through the registered url. A bare unregistered url holding a space is not matched by the shape pattern; the design states the shape rule ("within one run of characters that are not white space").
+
+Checks:
+- Whole suite at 3d8601c8: 1387 passed in 370s.
+- The forbidden-commands scan passes and still forbids the `prune` command and `remote prune`. It does not forbid the `--prune` or `-p` flags (suggestion).
+
+The adversarial specialist found no lost work and no printed credential:
+- Full, `--single-branch` and `--depth 1` moves held, with a local branch behind, ahead or unrelated.
+- A refused upstream step left the move standing, with a note.
+- After each half-change the `moving` line was cleared and the next sync said "has uncommitted changes".
+- The design's stale-ref claim held: a commit only on a stale ref and HEAD's branch is still on the local branch after a move. This was with `fetch.prune` and `remote.origin.prune` set.
+- A branch renamed on origin, a tag deleted on origin, and `ls-remote` failing after a good fetch each gave an error with the repo unchanged.
+- In a tag clash, the person's tag was kept and the second fetch changed nothing of theirs. There was no `tag -d` advice for a person's tag.
+- No credential appeared in stdout or stderr for manifest, origin, `foo::https://`, `%` or `insteadOf` urls.
+
+### Findings
+- [ ] (suggestion) The half-change report says the changed files "are git's, not a person's", and the design says "which are git's, since the repo had no tracked changes before". When a person's `post-checkout` or `post-merge` hook made them, they are the hook's: reproduced by the specialist, cases 1a-1c in `adv3/s1_moves.py`. Say "made by git or a hook it ran". — `update.py:964-967`, `docs/design.md:815`
+- [ ] (suggestion) The two-step half-change report is inaccurate:
+  - It says "nothing more was run here" after the undo switch ran, and that switch carried a hook's edit back onto main.
+  - It says HEAD "is still at main" when it went to dev and back.
+  - It does not say that the local `dev` was fast-forwarded.
+
+  No commit was lost (`adv3/s1_moves.py` 1a). — `update.py:913-922`, `update.py:955-970`
+- [ ] (suggestion) A new branch whose move ends half-changed returns before `_set_upstream`. It is left without an upstream, and once the person cleans up, nothing says so (`adv3/s1c_next.py`). — `update.py:936-937`
+- [ ] (suggestion) Registered user information is replaced wherever `<info>@` appears.
+  - A `file://` path holding `@` masks the system's own path in printed commands: `git -C ***@x/...`.
+  - A user such as `git` or `main` turns `git@github.com:...` or `origin/main@{upstream}` into `***@...`.
+
+  No leak, and the design says "more masked, never less". Register nothing for `file://` urls, or for user information holding `/`, and anchor the replacement after `://`. (`adv3/s4_mask.py`) — `masking.py:56-57`, `masking.py:71-72`
+- [ ] (suggestion) After a `sync` is killed, its orphaned fetch holds the lock, and the next run says "a sync is still running" naming a dead pid. A fetch stopped at a password prompt may hold the lock until killed. The design says "until the fetch ends"; say that this may need a kill, and name the git child in the refusal. (`adv3/s5_lock.py`) — `system.py:505-512`, `docs/design.md:909`
+- [ ] (suggestion) Add `--prune` (and fetch's `-p`) to the forbidden words, now that the design says sync prunes nothing. — `update.py` `NEVER`, `tests/test_update_safety.py`
