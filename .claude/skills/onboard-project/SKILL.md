@@ -237,9 +237,9 @@ the rest of the run.
   - **The real run ends `STATUS=refused` or `STATUS=NOT READY`**: show it
     as printed and stop; its `NEXT=` says what to do. A single-repository
     folder in no git repository is refused there ("not a git repository")
-    and rolled back, although its dry run looked clean: such a folder needs
-    a git repository today, a known gap, so say it cannot be registered yet
-    (a root the manifest tool set up registers outside git).
+    and rolled back, although its dry run looked clean: for such a folder
+    registration needs a git repository today, a known gap, so say it cannot
+    be registered yet (a root the manifest tool set up registers outside git).
 - **`type=workspace`**: stop. Onboarding runs in a session started at the
   project's root, not in the workspace; start a session there and run this
   skill, which offers to register the folder when it is not registered.
