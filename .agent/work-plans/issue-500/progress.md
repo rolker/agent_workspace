@@ -1062,3 +1062,83 @@ Host decisions on the Plan Review's other findings. (1) No tree-changing call ma
 **Plan**: `.agent/work-plans/issue-500/plan.md` at `6059fcd0`
 
 Part 2 revised per the plan review and checkpoint: no rebase (later part 4, with its three findings as the test list); a paths check before every fast-forward and switch makes "git itself refuses" true for ignored files; the url is recorded and a person's origin is never repointed; stated and tested behaviour for submodules and shallow clones; a linked-worktree row; a pending layer move exits 1; the lock's holder wording, gc/maintenance off, init does not take the lock; notes 9 to 14 applied (a moving intent line, probe refs deleted at every url check, success judged by state, moved-tag next step).
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-19 14:57 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #500 — repos-manifest: `init` and `sync` set up and update a system directory
+**Plan**: `.agent/work-plans/issue-500/plan.md` at `6059fcd0`
+**Branch**: `feature/issue-500`
+
+Scope of this review: part 2 as revised ("Part 2: `sync` against clones that exist"), second review. Each finding and note of the first part-2 review was checked against the checkpoint's decisions, then part 2 was read whole and the doubtful rules were tried with git 2.53.0 on local repositories in the session scratchpad (script `t1.sh`, seven cases; results quoted below).
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One pull request (about 490 lines of code, 900 of tests, 120 of docs); dropping the rebase made it smaller and simpler; parts 3 and 4 are named with their reasons |
+| Issue alignment | Good | The owner's four answers are quoted and followed: untracked files do not block (rung 8), the paths check makes "git itself refuses" true for ignored files, the url rule repoints only a manifest change, a layer move is reported with the `mv` command, unpushed commits are left alone with the `git pull --rebase` command. The issue comment's acceptance case is rung 13's tests |
+| File targeting | Good | `update.py` new, `sync.py`, `system.py`, `init.py`, tests, docs; `build.py` unchanged is right |
+| Consequences | Good | `state.yaml` keys `url` and `moving` with `format: 1` kept; lock wording; build hint; part 1 tests that change are found by grep and named |
+| Principle alignment | Good | "Never discard work": every rung that changes the tree has a check before and a state check after, and the whole-repo snapshot comparison is the proof; two precision notes on the paths check (1, 2 below) |
+| ADR compliance | Good | ADR-0017 (design in the same change), ADR-0022 (Serves cites the part's design), ADR-0013 |
+| ROS conventions | N/A | Workspace tool |
+
+**Serves** (as checked): Goal "one system directory set up and kept in line from one manifest", under `tools/repos-manifest/docs/design.md#the-system-directory`, `#setting-up-with-init`, `#refusals` and `#sync`, and root `docs/manifest/design.md`. All four anchors exist in the tool's design on this branch; the work serves them and breaks no stated rule.
+
+### The first review's findings, as the checkpoint decided
+
+| # | Decision | In the revised plan |
+|---|---|---|
+| 1 Ignored files | Paths check before every fast-forward and switch | Done ("The paths check"), with ignored and untracked tests on each tree-changing row; see notes 1 and 2 for two cases its wording leaves open |
+| 2 Url rule | Record the url; repoint only a manifest change | Done, as recommended, with the owner's real system (no recorded url) never repointed |
+| 3, 4 Rebase config, force-push | Moved to part 4 with the rebase | Listed as part 4's test list; the force-pushed case is left alone here (rung 11) |
+| 5 Submodules, shallow | Stated and tested | Done; tried again: `SC..` after a pointer move, shallow follow |
+| 6 Linked worktree | Its own row | Done, before `git switch` is called |
+| 7 Layer move | Exit 1 for a non-optional repo | Done; left-alone version mismatches stay exit 0 |
+| 8 Lock | Wording, gc/maintenance off, init said | Done; see note 5 on the reason given for `init` |
+| Notes 9 to 14 | To the plan | All applied (moving line, probe refs at every rung 7, state-judged success, moved-tag next step, manifest-in-a-clone ordering, part 1 marking, fixtures) |
+
+### What was run with real git (git 2.53.0, local bare remotes, no network)
+
+- T1: a tracked directory `foo/` with an ignored `foo/keep.log`; upstream replaces the directory with a file `foo`. `merge --ff-only` exits 0 and `keep.log` is gone. `git diff --diff-filter=A H O` lists `foo`; `git ls-files` lists `foo/a`, not `foo`.
+- T1b: the same with an untracked, not ignored file: git refuses ("would lose untracked files"), file kept.
+- T2: an ignored symlink `lnk -> ../elsewhere` where upstream adds `lnk/new`: `os.path.isdir('lnk')` is True; `merge --ff-only` exits 0 and replaces the link with a directory (the target is untouched).
+- T3: `submodule.recurse=true`, a person's commit on the submodule's detached `HEAD`, superproject fast-forward moving the pointer: exit 0, the submodule stays on the person's commit (no loss).
+- T4: `fetch.pruneTags=true` in config: `git fetch --prune --tags origin` deletes a local-only tag; with `--no-prune-tags` it is kept.
+- T5: a `--depth 1` clone, `fetch --prune --tags origin` with a tag on old history: the tag and the whole history behind it are fetched; `.git/shallow` keeps one line.
+- T6: `HEAD` on origin through another branch (`origin/keep`) while `origin/main` was force-pushed to another line: the count of commits not on origin is 0, `HEAD` is not an ancestor of `O`; `merge --ff-only` exits 128 and changes nothing.
+- T7: `-c gc.auto=0 -c maintenance.auto=false` reach git's children through `GIT_CONFIG_PARAMETERS`.
+
+### Findings
+
+None at needs-work. Notes for the implementer:
+
+1. **[Paths check, directory replaced by a file] (note, implement and test exactly)** — For an added path that is a directory in the work tree (T1), the plan's words "a hit that is not a tracked path of `H`" read literally refuse every such move, even a directory holding only tracked files, forever and with a wrong message ("not tracked"). The obvious repair, treating a directory with tracked files as tracked, loses ignored files inside it (T1: `merge --ff-only` exit 0, `keep.log` deleted). The rule to build: an added path that is a directory in the work tree is in the way when it holds any file not tracked in `H` (untracked or ignored; `git ls-files -z --others -- <dir>` together with `--others --ignored --exclude-standard`, or a walk compared with `ls-files`), and not otherwise. Add the T1 case, with an ignored file and with only tracked files, to the ignored-file tests; the listed "parent directory is a file" test is the reverse case.
+2. **[Paths check, symlinks] (note)** — "for a parent, is not a directory" must be judged with `lstat` (`stat.S_ISDIR(os.lstat(p).st_mode)`), not `os.path.isdir`, which follows links: an ignored symlink where an incoming directory goes is otherwise replaced silently (T2). One test.
+3. **[Rung 12, missing row] (note)** — `HEAD` on origin (count 0) but not an ancestor of `O` happens when origin's `V` was rewound or rewritten and `HEAD` survives on another origin branch (T6). The plan's table has no row and says ahead and diverged "end at rung 11", which is not so here. `merge --ff-only` refuses and changes nothing, so it is safe through the backstop, but give it a row: left alone, `origin's <V> no longer contains this commit (rewritten upstream); left alone`, without calling `merge`.
+4. **[Url rule, tests and comparison] (note)** — Rung 7's test column says "the url tests below" and none are listed. Name them: the three cases with a recorded url; no recorded url and `origin` differing (the owner's system: never repointed); `url.*.insteadOf` in config (raw value compared, probe fetched through the rewrite); a probe that finds unpushed local branches; a probe fetch failure; probe refs left by a kill removed at the next run. A trailing `.git` or `/` difference reads as "differs": safe (left as set), but printed every run for a clone that is in fact on the manifest's repo; compare after stripping one trailing `/` and `.git`, which can only move a case to "nothing to do" or to a probe-guarded repoint.
+5. **[Lock, `init`] (note, keep the design true)** — The plan's reason for `init` not taking the lock, "`init` refuses when a system exists, so no `build` of that distro can", is false: `make_system_dir` renames `.repos-manifest/` in and only then calls `sync_distros` (`init.py:268-270`), so a `build` or a `sync` started meanwhile sees a system. No person's work is at risk (the system is empty, part 1's rename handles the clone race), but the reason must not go into the design. Simplest: `init` takes the lock too (it is never held there), which removes the `lock` argument; otherwise write the true reason.
+6. **[Fetch under the person's config] (note)** — With `fetch.pruneTags=true` (or a tag refspec on `origin`), `sync`'s `fetch --prune --tags` deletes local-only tags (T4). The person asked for that on every fetch, so it is not a loss `sync` adds, but `--no-prune-tags` keeps `sync` from deleting anything; and pass `-c submodule.recurse=false` so the report's "submodules not updated" stays true whatever the person's config (T3 showed no loss, but a clean submodule would be moved).
+7. **[Shallow clones] (note, design wording)** — "never deepens or un-shallows" is true of the shallow boundary, but `fetch --tags` brings every tag's history (T5), so a shallow clone of a repo with release tags grows to near its full size at the first `sync`. Say so in the design; whether to fetch tags at all for a shallow clone can be part 3's.
+8. **[Rung 11 advice] (note)** — `git -C <P> pull --rebase` uses the branch's own upstream, which may be another remote or none. Print `git -C <P> pull --rebase origin <V>`.
+9. **[Rung 10 with a person's origin] (note)** — When a person set `origin` (url case 3) to a fork that lacks `V`, rung 10 fails every run saying "another sync will not change that"; the message should add that `origin` is set by hand and give the `set-url` command. A fork whose `V` descends from `HEAD` is fast-forwarded from the fork, which the per-run url line makes visible; the design should say that the update follows the person's `origin`.
+10. **[Tag lookup] (note)** — Rung 10 accepts `refs/tags/V` as "on origin", but a local tag made by a person, absent from origin, also satisfies it, and `sync` would switch to the person's tag. Check the tag on origin (`ls-remote --tags` from the fetch, or fetch tags into a reserved namespace) or say in the design that a local tag of the same name is used.
+11. **[`moving` line] (note)** — The line is cleared only when a later `sync` finds the repo on `V`. If a person moves the repo by hand after a kill (rung 14), the line stays and a later dirty state is worded "a sync was stopped while moving" when it was not; clear it, or word from it only when `HEAD` is the line's `from` or `to`. It never makes `sync` change a repo (it changes wording only), which was the safety question; rung 8's row should name the wording as rung 5's does.
+
+The design-document list keeps the field-machine paragraph and says the rebase rule is not built (design `docs/design.md` lines 676-681 are the paragraph that changes); the test plan's whole-repo snapshot comparison would fail without each tree-guarding rule, given notes 1 and 4.
+
+### Summary
+
+The revision resolves every finding as the checkpoint decided and follows the owner's four answers. Nothing in the ladder as written loses or silently changes a person's work; the two places the paths check's wording could be built unsafely (a directory replaced by a file, an ignored symlink) are notes 1 and 2, each with the exact rule and a test. Ready for implementation.
+
+### Recommended Actions
+
+- [ ] Build the paths check's directory and symlink cases as notes 1 and 2 say, with tests
+- [ ] Add rung 12's row for a rewritten origin branch (note 3)
+- [ ] Name and write the url tests; normalise trailing `/` and `.git` (note 4)
+- [ ] Take the lock in `init` too, or give the true reason (note 5)
+- [ ] `--no-prune-tags`, `-c submodule.recurse=false` (note 6); notes 7 to 11 in wording and design
