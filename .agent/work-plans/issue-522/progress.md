@@ -59,3 +59,13 @@ issue: 522
 - [ ] Fix the skill: in step 11 give the package form as `merge_pr.sh --pr <owner/repo#M> [--project <project>]`, state that `--type` is derived from the repo and is not passed, and exempt the package merge in the "wherever this skill passes `--type`" sentence (lines 51-55) and in line 155.
 - [ ] Add the two pins described under Principle Alignment (the skill text in `test_skill_paths.sh`, the refusal and acceptance in `test_merge_pr.sh`).
 - [ ] One short plan is enough: three files (the skill, `test_skill_paths.sh`, `test_merge_pr.sh`), one PR, no design change.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 14:35 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the open actions are the plan's content; none changes the issue's scope)
+**After**: issue-actions
+**Decision**: proceed
+
+The Issue Review confirmed the claim and found the skill to be the only text that disagrees with the script. The host takes its recommendation: the skill is changed, not the script (the refusal is deliberate and pinned by a test). A package merge takes --pr <owner/repo#M> with --project when the session's project is not empty, and no --type. The three actions go to the plan as written.
