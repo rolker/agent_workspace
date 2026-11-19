@@ -1481,3 +1481,13 @@ The adversarial specialist found no lost work and no printed credential:
   No leak, and the design says "more masked, never less". Register nothing for `file://` urls, or for user information holding `/`, and anchor the replacement after `://`. (`adv3/s4_mask.py`) — `masking.py:56-57`, `masking.py:71-72`
 - [ ] (suggestion) After a `sync` is killed, its orphaned fetch holds the lock, and the next run says "a sync is still running" naming a dead pid. A fetch stopped at a password prompt may hold the lock until killed. The design says "until the fetch ends"; say that this may need a kill, and name the git child in the refusal. (`adv3/s5_lock.py`) — `system.py:505-512`, `docs/design.md:909`
 - [ ] (suggestion) Add `--prune` (and fetch's `-p`) to the forbidden words, now that the design says sync prunes nothing. — `update.py` `NEVER`, `tests/test_update_safety.py`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 17:42 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 approved with six suggestions; three of them are report lines that say something untrue and one prints a wrong command, which are not published as they are; main has also moved under the branch)
+**After**: publish
+**Decision**: address
+
+The full pre-commit pass was not run: the answer changes the code, so the pass runs on the head that follows. Fixed in this round: suggestion 1 (the half-change report and the design say the changes were made by git or a hook it ran); suggestion 2 (the two-step half-change report says what really ran: the switch, the fast-forward of the local branch if it happened, the switch back, and where HEAD is); suggestion 3 (a branch left without an upstream after a half-change is reported on the run that finds the repo clean again, or the note is given with the half-change report); suggestion 4 (masking registers nothing for file urls and matches credentials only after ://, so a path or a name such as git@ or main@ is never masked); suggestion 5 (the lock message after a killed sync says a fetch of that sync may still be running, and the design says a fetch waiting at a prompt holds the lock until it ends or is killed); suggestion 6 (--prune and fetch's -p join the forbidden words). The branch also takes origin/main, which now holds pull request 534, and the README conflict is resolved.
