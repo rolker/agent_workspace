@@ -785,3 +785,33 @@ None (no hosted comments).
 The owner chose "Outside pass, then merge (Recommended)" in a dialog (2026-11-18) for pull request 512. The option as shown to him: run Gemini and Codex over the last two fix rounds' code only; "If they find nothing of substance, I merge without asking again and reinstall the tool on main; if they find something, I fix it and come back to you."
 
 What is addressed: the outside models last read the branch at 03171755 (pre-push round 2). The step is a PR-mode review of pull request 512 with the cross-model reviewers, centred on `git diff 03171755..HEAD -- tools/repos-manifest/src`. It is a review, not a fix round; nothing in the code changes unless it finds something.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-18 19:02 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #512 at `047e8413`
+**Depth**: Deep (reason: +5065/-116 over 20 files; code that creates, renames and removes on a person's disk; centred on `git diff 03171755..HEAD -- tools/repos-manifest/src`)
+**Must-fix**: 3 | **Suggestions**: 9
+
+Cross-model: gemini completed (EXIT=0), codex completed (EXIT=0); Claude adversarial completed. Each point checked against the code; the must-fixes reproduced with local repos in the session scratchpad.
+
+### Findings
+- [ ] (must-fix) `require_tools` drops `GIT_CONFIG_COUNT` and `GIT_CONFIG_PARAMETERS` (listed by `git rev-parse --local-env-vars`), so git config passed in the environment or by `git -c` (an `insteadOf`, a CI credential header) is silently lost for every clone; git's own move to another repo keeps those two. Keep them; correct the docstring ("variables that point git at a repository") and the design sentence; add a test (Claude adversarial; reproduced) — `tools/repos-manifest/src/repos_manifest/sync.py:99`
+- [ ] (must-fix) A flat system set up from a manifest without distros, whose manifest then gains `distros:`: `sync` prints the resolver's "has distros; give one of ['jazzy', 'rolling']", and `sync --distro jazzy` is refused ("this system does not record it"). design.md ("sync", the disagreements list) says the message says nothing has been moved and a system with distros is set up in a new directory with `init` (`--distro-dirs` for more than one); "What is built" does not list this as unbuilt (Claude adversarial; reproduced) — `tools/repos-manifest/src/repos_manifest/sync.py:391`
+- [ ] (must-fix) design.md and `sweep_asides`'s docstring say a later `init` "names anything else of that name and leaves it"; a link of that name (dead pid) is skipped with no warning. Warn for it too, or say links are left unnamed (gemini; read from code) — `tools/repos-manifest/src/repos_manifest/init.py:135`, `tools/repos-manifest/docs/design.md:187`
+- [ ] (suggestion) The rename can replace an empty directory made at the place after the last check; `_head` and `mkdir` sit inside that window. Run `_head` before the re-check to narrow it; no-replace rename is not in the stdlib (codex, gemini, Claude adversarial) — `tools/repos-manifest/src/repos_manifest/sync.py:236`
+- [ ] (suggestion) A state write that fails after the rename ends the run with only the path error; say that the repo was put in place but not recorded (part 2's rule records an unrecorded repo that is on the manifest's version) (codex, Claude adversarial) — `tools/repos-manifest/src/repos_manifest/sync.py:255`
+- [ ] (suggestion) A failed clone's ERROR quotes vcs's transcript, which names the removed temporary; a note or the place's name would match `rename_failure` (Claude adversarial; reproduced) — `tools/repos-manifest/src/repos_manifest/sync.py:234`
+- [ ] (suggestion) `create_setup` says nothing when a directory or a dangling link is at `setup.bash`; it is left as it is, a warning would help (Claude adversarial; reproduced) — `tools/repos-manifest/src/repos_manifest/sync.py:311`
+- [ ] (suggestion) `make_system_dir`: a failed write of config.yaml prints a bare "ERROR: File too large" (no path, no "nothing was set up"); wrap it as the mkdtemp failure is (gemini; reproduced with RLIMIT_FSIZE) — `tools/repos-manifest/src/repos_manifest/init.py:164`
+- [ ] (suggestion) Not worth doing: an unlink that fails after a failed setup.bash write replaces the write error and leaves the partial file (needs permissions changed mid-call) (gemini, Claude adversarial) — `tools/repos-manifest/src/repos_manifest/sync.py:326`
+- [ ] (suggestion) Not worth doing: setup.bash is visible empty for the moment between the exclusive create and the write, and a SIGKILL there leaves it empty (codex) — `tools/repos-manifest/src/repos_manifest/sync.py:320`
+- [ ] (suggestion) Not worth doing: repeated `--with g` is recorded twice in config.yaml; harmless (gemini) — `tools/repos-manifest/src/repos_manifest/init.py:228`
+- [ ] (suggestion) Not worth doing: state.yaml accepts `format: 1.0` and non-string keys, which the tool never writes (gemini) — `tools/repos-manifest/src/repos_manifest/system.py:353`
+
+Dropped: gemini 1 (`_head` walking up into an enclosing repo: the manifest takes git repos only, and a `vcs import` that exits 0 leaves a git clone); gemini 2a (an unreadable directory named like an aside ends `init` with an error naming it, before anything is made); gemini 4 (distro names are single words checked by the manifest reader; a config.yaml edited to a path still needs the manifest to resolve that distro); gemini 9 (test conftest with PATH unset); gemini 10 and codex 8 (divergences from the plan recorded in design.md and the Checkpoints); codex 3 (a link a person puts at `.repos-manifest/resolved`; `write_output` replaces only an empty directory or its own marked output); codex 4 (no lock: host decision); codex 5 (no process-group handling: host decision); codex 6 (the person's own manifest URLs printed to their terminal, as vcs prints them).
+
+Checks: CI at 047e8413: tool tests (Python 3.10, 3.14), Validate Adapter Contract, Validate Documentation pass; Lint (pre-commit) pending. Local: `pytest tools/repos-manifest/tests` 1003 passed; `test_ros2_colcon.sh` 1014 passed, 0 failed, 0 skipped; `vcs` /usr/bin/vcs from vcstool 0.3.0 (python3-vcstool). flake8 (F, E501) clean on the changed files. Mergeable: MERGEABLE.
