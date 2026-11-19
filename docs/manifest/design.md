@@ -138,9 +138,12 @@ The root need not be a git repository. The registry line holds its name, type an
   --distro <x>`; it never moves on to another distro. `setup` and `sync` from there run that
   sync without needing the resolve. The adapter does not read the tool's settings, so it
   cannot tell a distro's directory from another directory there: a directory under the root
-  that is not a distro is taken as one and refused, since a wrong distro chosen without a word
-  is worse than a refusal. A call from anywhere else (the root itself, `<root>/worktrees/...`,
-  outside the root) is for the one distro under `resolved/` when there is exactly one;
+  that is not a distro is taken as one and refused (as not a distro the tool resolved), since
+  a wrong distro chosen without a word is worse than a refusal; a link there to a distro's
+  directory is that distro. A call from anywhere else (the root itself, `<root>/worktrees/...`,
+  outside the root) is for the one distro under `resolved/` when there is exactly one, a
+  resolve the tool has set aside while replacing it (`.<d>.old-*`, `.<d>.new-*`) counting as
+  `<d>` with no usable resolve;
   otherwise `validate` checks every one, one after another, and fails naming each that fails
   (a `resolved/<d>/` with no usable `layers.txt` included, so a half-written resolve is not
   passed over), and every other call is refused and the distros listed. A call reads

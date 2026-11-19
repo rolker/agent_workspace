@@ -4661,7 +4661,7 @@ test_tool_distro_rule_never_moves_on() {
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     root="$(make_tool_root "$sb" fakefox fakefox2)"
-    mv "$root/.repos-manifest/resolved/fakefox" "$(dirname "$root")/resolved-fakefox.aside"
+    mv "$root/.repos-manifest/resolved/fakefox" "$root/.repos-manifest/resolved/.fakefox.old-4242-abcd1234"
     for verb in validate repos "repo_pin pkg_a" env build; do
         rc=0
         # shellcheck disable=SC2086
@@ -4677,11 +4677,6 @@ test_tool_distro_rule_never_moves_on() {
     assert_eq "sync from there: the tool's exit 0" "0" "$rc"
     assert_eq "sync from there: the tool's sync for fakefox, in the root, without the resolve" \
         "TOOL_RAN_IN:$root ARGS:sync --distro fakefox EXIT:0" "$(cat "$sb/tool.log" 2>/dev/null)"
-    # A top-level directory that is not a distro is taken as one and refused.
-    mkdir -p "$root/notes"
-    rc=0; out="$(run_tool "$sb" "$root/notes" env 2>&1)" || rc=$?
-    assert_eq "from <root>/notes: refused" "1" "$rc"
-    assert_contains "from <root>/notes: notes taken as the distro" "last resolve for distro notes cannot be used" "$out"
     # From the root: validate covers every directory under resolved/ and
     # fails, by name, on one with no usable layers.txt.
     mkdir -p "$root/.repos-manifest/resolved/fakefox"
@@ -4692,13 +4687,84 @@ test_tool_distro_rule_never_moves_on() {
     assert_contains "the failing distro named" "(failing distro: fakefox)" "$out"
     assert_contains "fakefox2 still checked and passed" "for distro fakefox2 (" "$out"
     rm -r "$root/.repos-manifest/resolved/fakefox"
-    mv "$(dirname "$root")/resolved-fakefox.aside" "$root/.repos-manifest/resolved/fakefox"
+    mv "$root/.repos-manifest/resolved/.fakefox.old-4242-abcd1234" "$root/.repos-manifest/resolved/fakefox"
     # From <root>/worktrees/<anything>/ with one distro: that one.
     rm -r "$root/.repos-manifest/resolved/fakefox2"
     mkdir -p "$root/worktrees/anything"
     rc=0; out="$(run_tool "$sb" "$root/worktrees/anything" validate 2>&1)" || rc=$?
     assert_eq "from <root>/worktrees/anything, one distro: validate exit 0" "0" "$rc"
     assert_contains "from <root>/worktrees/anything: the one distro chosen" "for distro fakefox (" "$out"
+}
+
+# Round 3, suggestion 1: a resolve the tool has set aside while replacing
+# it (.<d>.old-<pid>-<random> or .<d>.new-..., the names output.py's
+# _TEMP_NAME gives) counts as distro d, with no usable resolve.
+test_tool_set_aside_resolve_is_a_distro() {
+    echo "TEST: tool route: a resolve set aside by the tool counts as its distro; nothing answers past it"
+    local sb root out rc aside kind
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb" fakefox fakefox2)"
+    for kind in old new; do
+        aside="$root/.repos-manifest/resolved/.fakefox.$kind-4242-ab_c1234"
+        mv "$root/.repos-manifest/resolved/fakefox" "$aside"
+        rc=0; out="$(run_tool "$sb" "$root" env 2>&1)" || rc=$?
+        assert_eq "$kind: from the root, fakefox aside: env refused" "1" "$rc"
+        assert_contains "$kind: the refusal lists both distros" "several distros (fakefox, fakefox2)" "$out"
+        assert_not_contains "$kind: nothing answered for fakefox2" "rosroot/fakefox2" "$out"
+        rc=0; out="$(run_tool "$sb" "$root" validate 2>&1)" || rc=$?
+        assert_eq "$kind: from the root, fakefox aside: validate exit 1" "1" "$rc"
+        assert_contains "$kind: validate names the failing distro" "(failing distro: fakefox)" "$out"
+        assert_contains "$kind: with the tool's sync for it" \
+            "cd $root && $sb/.venv/bin/repos-manifest sync --distro fakefox" "$out"
+        mv "$aside" "$root/.repos-manifest/resolved/fakefox"
+    done
+    # One distro, set aside, and no other: refused, naming it.
+    rm -r "$root/.repos-manifest/resolved/fakefox2"
+    mv "$root/.repos-manifest/resolved/fakefox" "$root/.repos-manifest/resolved/.fakefox.old-4242-abcd1234"
+    rc=0; out="$(run_tool "$sb" "$root" env 2>&1)" || rc=$?
+    assert_eq "one distro aside: from the root, env refused" "1" "$rc"
+    assert_contains "one distro aside: named, unusable" "last resolve for distro fakefox cannot be used" "$out"
+    assert_contains "one distro aside: the tool's sync for it" \
+        "cd $root && $sb/.venv/bin/repos-manifest sync --distro fakefox" "$out"
+    # A dot name that is not the tool's is still left out.
+    mv "$root/.repos-manifest/resolved/.fakefox.old-4242-abcd1234" "$root/.repos-manifest/resolved/fakefox"
+    mkdir -p "$root/.repos-manifest/resolved/.fakefox2.old-x"
+    rc=0; out="$(run_tool "$sb" "$root" validate 2>&1)" || rc=$?
+    assert_eq "a dot name not the tool's: left out, validate exit 0" "0" "$rc"
+    assert_not_contains "a dot name not the tool's: fakefox2 not counted" "fakefox2" "$out"
+}
+
+# Round 3, suggestion 2: from a top-level directory the tool has no
+# resolve for, the message says so; a link to a distro's directory is
+# that distro (the calling directory is physical).
+test_tool_not_a_distro_directory() {
+    echo "TEST: tool route: from a top-level directory that is not a resolved distro, a true message; a link to a distro is that distro"
+    local sb root out rc
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb" fakefox fakefox2)"
+    mkdir -p "$root/notes"
+    rc=0; out="$(run_tool "$sb" "$root/notes" env 2>&1)" || rc=$?
+    assert_eq "from <root>/notes: refused" "1" "$rc"
+    assert_contains "from <root>/notes: not a resolved distro" \
+        "notes is not a distro the manifest tool has resolved in $root" "$out"
+    assert_contains "from <root>/notes: where to run from" \
+        "Run the command from $root or from inside a distro's directory ($root/fakefox, $root/fakefox2)" "$out"
+    assert_contains "from <root>/notes: the sync for a distro being added" \
+        "if notes is a distro being added, run: cd $root && $sb/.venv/bin/repos-manifest sync --distro notes" "$out"
+    assert_not_contains "from <root>/notes: no sync cut short" "cut short" "$out"
+    rc=0; out="$(run_tool "$sb" "$root/notes" validate 2>&1)" || rc=$?
+    assert_eq "from <root>/notes: validate refused" "1" "$rc"
+    assert_contains "from <root>/notes: validate, the same message" "notes is not a distro" "$out"
+    # A link that sorts before the distro it points to.
+    ln -s fakefox2 "$root/current"
+    rc=0; out="$(run_tool "$sb" "$root/current" validate 2>&1)" || rc=$?
+    assert_eq "from <root>/current -> fakefox2: validate exit 0" "0" "$rc"
+    assert_contains "from <root>/current: fakefox2 chosen" "for distro fakefox2 (" "$out"
+    rc=0; out="$(run_tool "$sb" "$root/fakefox2/core" env 2>&1)" || rc=$?
+    assert_eq "from <root>/fakefox2/core beside the link: env exit 0" "0" "$rc"
+    assert_contains "from <root>/fakefox2/core: fakefox2's underlay" "rosroot/fakefox2/setup.bash" "$out"
 }
 
 # Must-fix 2 of the second round: every next step on the tool route that
@@ -5031,6 +5097,8 @@ mr_test test_worktree_env_names_unbuilt_lower_layers
 mr_test test_tool_package_worktree
 mr_test test_tool_layers_read_once_per_call
 mr_test test_tool_distro_rule_never_moves_on
+mr_test test_tool_set_aside_resolve_is_a_distro
+mr_test test_tool_not_a_distro_directory
 mr_test test_tool_sync_steps_run_literally
 mr_test test_tool_quoted_keys_from_the_tool
 mr_test test_tool_package_worktree_two_distros

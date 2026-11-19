@@ -61,11 +61,15 @@
 #      starting with a dot: x, and only x. The adapter does not read the
 #      tool's settings, so a directory there that is not a distro is taken
 #      as one and refused below: a wrong distro chosen silently is worse
-#      than a refusal. Both sides are physical, so a registered path
-#      through a link matches.
+#      than a refusal (one with nothing under resolved/ is refused as not a
+#      distro the tool resolved). Both sides are physical, so a registered
+#      path through a link matches; where two names lead to the calling
+#      directory (a link <root>/current -> <d>), a distro under resolved/
+#      wins, so the link is its target.
 #   2. otherwise (the root itself, <root>/worktrees/..., outside the root):
-#      the one directory under resolved/ (names starting with a dot are
-#      the tool's temporary ones), when there is exactly one;
+#      the one distro under resolved/ (a directory resolved/<d>/, or one
+#      the tool set aside while replacing it, .<d>.new-* or .<d>.old-*,
+#      which counts as d with no usable resolve), when there is exactly one;
 #   3. otherwise refuse, listing them; except `validate`, which then checks
 #      every one, one after another, and fails if any fails, naming it (so
 #      registration's gate, run from the workspace, passes on a root with
@@ -787,16 +791,23 @@ _rc_route() {
 # --- Tool route (issue 503 part 1; see the header) -------------------------
 
 # The distros under the tool's resolved/: each directory resolved/<d>/,
-# names starting with a dot left out (the tool's temporary directories),
-# in name order, one per line. Whether one is usable is
-# _rc_tool_read_layers's question, not this list's.
+# and each the tool has set aside while replacing it, named as the tool's
+# output.py names them (_TEMP_NAME: .<d>.new-<pid>-<8 of [a-z0-9_]> or
+# .<d>.old-...), counted as d; other dot names left out. In name order,
+# one per line. Whether one is usable is _rc_tool_read_layers's question,
+# not this list's (a set-aside one with no resolved/<d>/ is not).
 _rc_tool_distros() {
     local d
-    for d in "$(_rc_root)/.repos-manifest/resolved"/*/; do
+    for d in "$(_rc_root)/.repos-manifest/resolved"/*/ "$(_rc_root)/.repos-manifest/resolved"/.*/; do
         [ -d "$d" ] || continue
         d="${d%/}"
-        echo "${d##*/}"
-    done
+        d="${d##*/}"
+        if [[ "$d" == .* ]]; then
+            [[ "$d" =~ ^\.(.+)\.(new|old)-[0-9]+-[a-z0-9_]{8}$ ]] || continue
+            d="${BASH_REMATCH[1]}"
+        fi
+        echo "$d"
+    done | sort -u
 }
 
 # The next step when it is the manifest tool's sync, written here alone
@@ -839,6 +850,16 @@ _rc_tool_read_layers() {
     file="$(_rc_manifest_dir)/layers.txt" || return 1
     _RC_TOOL_LAYERS="$(_rc_layer_lines "$file" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
     [ -n "$_RC_TOOL_LAYERS" ] && return 0
+    if ! _rc_tool_distros | grep -qxF "$_RC_TOOL_DISTRO"; then
+        local root d list=""
+        root="$(_rc_root)"
+        while IFS= read -r d; do
+            list="${list:+$list, }$root/$d"
+        done < <(_rc_tool_distros)
+        echo "ERROR: $_RC_TOOL_DISTRO is not a distro the manifest tool has resolved in $root (nothing under $root/.repos-manifest/resolved/ for it)" >&2
+        echo "Run the command from $root or from inside a distro's directory (${list:-none resolved yet}); if $_RC_TOOL_DISTRO is a distro being added, run: $(_rc_tool_sync_step "$_RC_TOOL_DISTRO")" >&2
+        return 1
+    fi
     echo "ERROR: the manifest tool's last resolve for distro $_RC_TOOL_DISTRO cannot be used: $file is missing or lists no layer (a sync cut short, or one running now)" >&2
     echo "Run: $(_rc_tool_sync_step "$_RC_TOOL_DISTRO")" >&2
     return 1
@@ -879,17 +900,23 @@ _rc_tool_distro_select() {
         return 1
     fi
     # 1. The calling directory, both sides physical: inside <root>/<x>/,
-    # x and only x.
+    # x and only x. Where two names lead there (a link <root>/current ->
+    # <d>), a distro under resolved/ is taken first, so a link is its
+    # target.
     from="${ACTIVE_PROJECT_FROM:-}"
     if [ -n "$from" ]; then
+        list="$(_rc_tool_distros)"
         for x in "$root"/*/; do
             x="${x%/}"
             x="${x##*/}"
             [ "$x" = worktrees ] && continue
             real="$(cd "$root/$x" 2>/dev/null && pwd -P)" || continue
             if [ "$from" = "$real" ] || [[ "$from" == "$real"/* ]]; then
-                _RC_TOOL_DISTRO="$x"
-                break
+                [ -z "$_RC_TOOL_DISTRO" ] && _RC_TOOL_DISTRO="$x"
+                if grep -qxF "$x" <<< "$list"; then
+                    _RC_TOOL_DISTRO="$x"
+                    break
+                fi
             fi
         done
     fi
