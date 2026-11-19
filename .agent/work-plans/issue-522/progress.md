@@ -227,3 +227,25 @@ Verified: the three fixes are in (label space restored, test renamed and comment
 **Decision**: publish
 
 Round 2, with the outside reviewers, approved the branch and left two wording suggestions, which the pull request lists. The full pass ran on head 4eea01ef with exit 0, the script test suites included.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-19 14:57 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #533 at `92b1d68`
+**Sources**: 3 (Local Review (Pre-Push) @ `16e4df3` (covers `92b1d68` via bookkeeping), the PR body's "Left open, on purpose" list, CI rollup; no GitHub reviews or comments, no Copilot review requested)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Checked against the code: `merge_pr.sh` 427-457 derives the kind from the qualified `--pr` (workspace, else the resolved project's remote, else package) and exits 2 on a differing `--type`; with a qualified `--pr` the project-root block (327-347) is skipped, so `PJ_REMOTE` is empty and a project's own repository is classed as a package one, as the body says; 230-234 resolves a parent `--project` to its instance; 2378-2387 is the package no-worktree branch. Ran here: `test_skill_paths.sh` 164 passed, `test_merge_pr.sh` 175 passed. The body carries a `## Decision summary` heading. No finding below needs a change in this pull request; the boxes are ticked as decided (deferred), not as fixed.
+
+### Findings
+- [x] (suggestion, Local Review (Pre-Push) @ `16e4df3`, deferred) Step 11's "so the call targets the package repository" could be read as crediting the missing `--type`; it follows "the script derives the kind from the repository", which is true (the repository is the qualified `--pr`'s), and the command it prescribes is right; a host following it runs the correct call. Loose wording, not a false sentence — `.claude/skills/run-issue/SKILL.md`
+- [x] (suggestion, Local Review (Pre-Push) @ `16e4df3`, deferred) "which the session's `project=` does": for a parent root `project=` names the parent and `merge_pr.sh` resolves it to the default instance, so it holds except when the default instance changed after the worktree was made (the body's third open point). Loose, not misleading for the normal case — `.claude/skills/run-issue/SKILL.md`
+- [x] (suggestion, Local Review (Pre-Push) @ `16e4df3`, deferred) The new pin checks phrases are present, not that no package merge form carries `--type`, and skips the sibling passage (1216-1217). A regression there fails loudly at merge (exit 2, nothing merged, pinned by `test_qualified_pr_differing_type_project_rejected`), not silently — `.agent/scripts/tests/test_skill_paths.sh`
+- [x] (pre-existing, PR body, deferred) The `docs/design.md` `run-issue` / `agent start-task` row's "it is passed on to ... `merge_pr.sh --type`" reads as applying to both entry points; `agent start-task` (`.agent/scripts/agent` 59-90) only takes `--type` for worktree creation. Predates this change; a probe table, no host acts on it — `docs/design.md`
+- [x] (pre-existing, PR body, deferred) With a qualified `--pr`, `merge_pr.sh` classes a project's own repository as a package repository (`PJ_REMOTE` is never read when `REPO_ARG` is set). A script matter outside #522; run-issue never sends a project's own pull request through the qualified form — `.agent/scripts/merge_pr.sh`
+- [x] (pre-existing, PR body, deferred) A parent project's default instance changed between worktree creation and merge: `--project` resolves to the new instance, the package worktree is filtered out, and the merge prints "No local package worktree ... nothing local to clean up" though one exists. Rare, existing behaviour; worth its own issue since that message is then wrong — `.agent/scripts/merge_pr.sh`
+
+### False positives
