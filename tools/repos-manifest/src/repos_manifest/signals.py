@@ -47,7 +47,10 @@ def signal_name(exc: Stopped) -> str:
 def stop_exit(exc: Stopped, message: str) -> int:
     """Print `message` and end the run as the signal would: called after the context above has
     put the previous handlers back. Returns the exit status, 128 + the signal."""
-    print(f"ERROR: {message}", file=sys.stderr)
+    try:
+        print(f"ERROR: {message}", file=sys.stderr)
+    except (OSError, ValueError):
+        pass  # a terminal that hung up, a closed pipe: the signal still ends the run
     # Output to a file or a pipe is buffered, and the signal's default action does not flush it.
     for stream in (sys.stdout, sys.stderr):
         try:

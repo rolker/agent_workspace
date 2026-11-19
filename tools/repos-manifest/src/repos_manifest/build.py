@@ -29,7 +29,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import yaml
 
 from .manifest import UNNAMED_LAYER
-from .output import LAYERS_FILE, signals_held
+from .output import LAYERS_FILE, OPTIONAL_FILE, signals_held
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
 from .system import (
     SETUP_MARKER,
@@ -42,6 +42,7 @@ from .system import (
     distro_parts,
     find_system,
     hold_build_lock,
+    note_lock_holders,
     layer_src_parts,
     one_distro_for,
     oserror_message,
@@ -76,10 +77,12 @@ class Layer:
     directory: Path  # where colcon runs: the distro's directory for the unnamed layer
     listed: List[str]  # the repo keys its resolved file lists, in order
     on_disk: List[str]  # those whose directory is there
+    missing: List[str] = field(default_factory=list)  # not there and not optional
 
     @property
     def empty(self) -> bool:
-        return not self.on_disk
+        """No repos on this machine: every repo it lists is optional and not on disk."""
+        return not self.on_disk and not self.missing
 
     @property
     def install_setup(self) -> Path:
@@ -103,6 +106,18 @@ def read_layers(system: Path, config: Config, distro: Optional[str]) -> List[Lay
             " `repos-manifest sync` first"
         ) from None
     names = [line.strip() for line in text.splitlines() if line.strip() and line[0] != "#"]
+    optional_file = resolved / OPTIONAL_FILE
+    try:
+        optional_text = optional_file.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raise ManifestError(
+            f"{optional_file}: not found, and `build` reads it to tell an optional repo that"
+            " was skipped from one that is missing; run `repos-manifest sync` to write the"
+            " resolved files again"
+        ) from None
+    optional = {
+        line.strip() for line in optional_text.splitlines() if line.strip() and line[0] != "#"
+    }
     distro_dir = system.joinpath(*distro_parts(config.layout, distro))
     layers = []
     for name in names:
@@ -127,9 +142,26 @@ def read_layers(system: Path, config: Config, distro: Optional[str]) -> List[Lay
                 raise ManifestError(f"{repos_file}: {key!r} is not a repo key")
         src = system.joinpath(*layer_src_parts(config.layout, distro, name))
         on_disk = [key for key in listed if src.joinpath(*key.split("/")).is_dir()]
+        missing = [key for key in listed if key not in on_disk and key not in optional]
         directory = distro_dir if name == UNNAMED_LAYER else distro_dir / name
-        layers.append(Layer(name, directory, listed, on_disk))
+        layers.append(Layer(name, directory, listed, on_disk, missing))
     return layers
+
+
+def missing_repos(layers: Sequence[Layer], chosen: Sequence[str]) -> None:
+    """Refuse, before anything runs, a layer this run would build that lacks a repo the
+    resolved files list and do not name as optional: only an optional repo may be absent."""
+    missing = [
+        f"{key} (layer {layer.name})"
+        for layer in layers
+        if layer.name in chosen
+        for key in layer.missing
+    ]
+    if missing:
+        raise Refusal(
+            f"not on disk, and not optional: {', '.join(missing)}; nothing was run",
+            "Run `repos-manifest sync` to clone what is missing, then build again",
+        )
 
 
 # --- The built run --------------------------------------------------------------------------
@@ -280,21 +312,40 @@ def _signal_group(pgid: int, signum: int) -> None:
 
 def _end_the_rest(pgid: int) -> None:
     """After colcon itself ended on a stop: kill every process still in its group (a job that
-    outlived it) and wait, a bounded time, until the group is gone."""
+    outlived it) and wait, a bounded time, until the group is gone. A member that is this
+    process's own child (as when this process is a subreaper or PID 1) is reaped here, or it
+    would stay in the group as a zombie. Members still there at the end are named in a
+    warning."""
     _signal_group(pgid, signal.SIGKILL)
     deadline = time.monotonic() + _GROUP_GONE_SECONDS
-    while time.monotonic() < deadline:
+    while True:
+        try:
+            while os.waitpid(-pgid, os.WNOHANG)[0] != 0:
+                pass
+        except ChildProcessError:
+            pass
         try:
             os.killpg(pgid, 0)
         except (ProcessLookupError, PermissionError):
             return
+        if time.monotonic() >= deadline:
+            warn(
+                f"processes of colcon's process group {pgid} are still there"
+                f" {_GROUP_GONE_SECONDS:g} seconds after it was killed (zombies whose parent"
+                f" has not reaped them, or processes that cannot be killed); `pgrep -g {pgid}`"
+                " lists them"
+            )
+            return
         time.sleep(0.02)
 
 
-def run_child(argv: List[str], cwd: Path) -> Tuple[Optional[int], Optional[int]]:
+def run_child(
+    argv: List[str], cwd: Path, lock: Optional[int] = None
+) -> Tuple[Optional[int], Optional[int]]:
     """Run colcon in a session (and so a process group) of its own and wait for it to end.
     Returns its exit status (None when it was not started) and the first stop signal, if one
-    came.
+    came. `lock`, the descriptor that holds the distro's build lock, is passed to colcon, so
+    the lock is held while colcon runs even if this process is killed outright.
 
     A SIGINT, SIGTERM or SIGHUP to this process is passed on to colcon's whole group: the
     first as itself, the second as SIGTERM, every later one as SIGKILL. The tool waits for
@@ -350,11 +401,18 @@ def run_child(argv: List[str], cwd: Path) -> Tuple[Optional[int], Optional[int]]
         if came:
             return None, came[0]
         try:
-            child = subprocess.Popen(argv, cwd=cwd, start_new_session=True)
+            child = subprocess.Popen(
+                argv,
+                cwd=cwd,
+                start_new_session=True,
+                pass_fds=(lock,) if lock is not None else (),
+            )
         except OSError as exc:
             raise ManifestError(
                 f"{argv[0]} could not be started in {cwd}: {exc.strerror or type(exc).__name__}"
             ) from None
+        if lock is not None:
+            note_lock_holders(lock, [os.getpid(), child.pid])
         # A signal that came while colcon was being started is passed on now. The stop
         # signals are held meanwhile, so the handler and this call never send the same one.
         with signals_held():
@@ -379,22 +437,102 @@ REFUSED_OPTIONS = {
     " every layer keeps its own",
 }
 
+# The options of `colcon build` with colcon-core 0.21.3 and the usual extensions, to tell an
+# abbreviation that colcon reads as one option from one it rejects as ambiguous.
+COLCON_BUILD_OPTIONS = (
+    "--allow-overriding", "--ament-cmake-args", "--base-paths", "--build-base",
+    "--catkin-cmake-args", "--catkin-skip-building-tests", "--cmake-args",
+    "--cmake-clean-cache", "--cmake-clean-first", "--cmake-force-configure", "--cmake-target",
+    "--cmake-target-skip-unavailable", "--continue-on-error", "--event-handlers", "--executor",
+    "--help", "--ignore-user-meta", "--install-base", "--merge-install", "--metas", "--mixin",
+    "--mixin-files", "--packages-above", "--packages-above-and-dependencies",
+    "--packages-above-depth", "--packages-end", "--packages-ignore", "--packages-ignore-regex",
+    "--packages-select", "--packages-select-build-failed", "--packages-select-by-dep",
+    "--packages-select-regex", "--packages-select-test-failures", "--packages-skip",
+    "--packages-skip-build-finished", "--packages-skip-by-dep", "--packages-skip-regex",
+    "--packages-skip-test-passed", "--packages-skip-up-to", "--packages-start",
+    "--packages-up-to", "--packages-up-to-regex", "--parallel-workers", "--paths",
+    "--symlink-install", "--test-result-base",
+)  # fmt: skip
+
+# Package selection colcon must resolve in the packages it finds: given a package a layer
+# does not have, colcon exits 1 ("Package '<name>' specified with ... was not found"; the
+# regex form fails too). Checked with colcon-core 0.21.3. The other `--packages-` options
+# only warn about a name they do not find.
+RESOLVING_SELECTION = (
+    "--packages-up-to", "--packages-up-to-regex", "--packages-above",
+    "--packages-above-and-dependencies", "--packages-above-depth", "--packages-start",
+    "--packages-end",
+)  # fmt: skip
+
+
+def _option_names(colcon_args: Sequence[str]) -> List[str]:
+    return [arg.split("=", 1)[0] for arg in colcon_args if arg.startswith("--") and arg != "--"]
+
+
+def _could_be(name: str) -> List[str]:
+    """The options of `colcon build` that `name` is or abbreviates."""
+    if name in COLCON_BUILD_OPTIONS:
+        return [name]
+    return [option for option in COLCON_BUILD_OPTIONS if option.startswith(name)]
+
 
 def refused_arguments(colcon_args: Sequence[str]) -> None:
-    """Refuse, before anything runs, an argument after `--` that is (or abbreviates, which
-    colcon allows) an option that moves or replaces what the record stands on."""
-    for arg in colcon_args:
-        if not arg.startswith("--") or arg == "--":
+    """Refuse, before anything runs, an argument after `--` that colcon would read as part of
+    what the record stands on: a plain argument first (`colcon build` takes none, and it would
+    be read as a value of an option `build` adds), a `--` (after which colcon would read the
+    options `build` adds as plain arguments), and an option, or an abbreviation of one, that
+    moves or replaces the layer's repos or output."""
+    next_step = "Leave it out; `build` gives each layer's colcon its repos and its directory itself"
+    if colcon_args and not colcon_args[0].startswith("-"):
+        raise Refusal(
+            f"{colcon_args[0]!r} after -- is not an option, and `colcon build` takes no plain"
+            " argument; nothing was run",
+            "Pass only colcon's options after --; name layers before it",
+        )
+    if "--" in colcon_args:
+        raise Refusal(
+            "a second -- is not passed to colcon: colcon would read the options `build` adds"
+            " after it as plain arguments; nothing was run",
+            next_step,
+        )
+    for name in _option_names(colcon_args):
+        if len(name) <= 2:
             continue
-        name = arg.split("=", 1)[0]
+        could = _could_be(name)
         for option, why in REFUSED_OPTIONS.items():
-            if len(name) > 2 and option.startswith(name):
-                given = name if name == option else f"{name} (taken by colcon as {option})"
-                raise Refusal(
-                    f"{given} is not passed to colcon: {why}; nothing was run",
-                    "Leave it out; `build` gives each layer's colcon its repos and its"
-                    " directory itself",
-                )
+            if not option.startswith(name):
+                continue
+            if name == option:
+                given = name
+            elif could == [option] or not could:
+                given = f"{name} (colcon reads it as {option})"
+            else:
+                given = f"{name} (colcon would reject it as ambiguous, and it could be {option})"
+            raise Refusal(f"{given} is not passed to colcon: {why}; nothing was run", next_step)
+
+
+def package_selection(colcon_args: Sequence[str], to_build: Sequence[str]) -> bool:
+    """Whether the arguments select packages (any `--packages-` option): a run with one builds
+    only part of a layer. One colcon must resolve in the layer's packages is refused, before
+    anything runs, when the run would build more than one layer."""
+    selecting = False
+    for name in _option_names(colcon_args):
+        could = _could_be(name)
+        if not (name.startswith("--packages") or any(o.startswith("--packages-") for o in could)):
+            continue
+        selecting = True
+        resolving = [option for option in could if option in RESOLVING_SELECTION]
+        if resolving and len(to_build) > 1:
+            which = name if name == resolving[0] else f"{name} ({' or '.join(resolving)})"
+            raise Refusal(
+                f"{which} names packages colcon must find in each layer it builds, and a layer"
+                " without them fails; this run would build"
+                f" {len(to_build)} layers ({', '.join(to_build) or 'none'}); nothing was run",
+                "Name the one layer that has those packages: `repos-manifest build <layer> --"
+                " ...`",
+            )
+    return selecting
 
 
 def colcon_argv(
@@ -406,8 +544,10 @@ def colcon_argv(
 ) -> List[str]:
     """The command for one layer: colcon directly when nothing is sourced, so the environment
     `build` was run in reaches it unchanged; else bash sourcing the base first."""
-    command = [colcon, "build", "--base-paths", *(f"src/{key}" for key in layer.on_disk)]
-    command += list(colcon_args)
+    # `--base-paths` comes last, so no forwarded argument is read as one of its paths and a
+    # forwarded option with several values ends at it.
+    command = [colcon, "build", *colcon_args]
+    command += ["--base-paths", *(f"src/{key}" for key in layer.on_disk)]
     if base_setup is None:
         return command
     return [bash, "-c", _SOURCE_THEN_RUN, "repos-manifest-build", str(base_setup), *command]
@@ -505,10 +645,19 @@ class Progress:
     built: List[str] = field(default_factory=list)
     # layer, colcon's status; None when colcon exited 0 and wrote no install/setup.bash
     failed: List[Tuple[str, Optional[int]]] = field(default_factory=list)
+    # layers a run with package selection built that were not built before it: not recorded
+    partial: List[str] = field(default_factory=list)
     skipped: List[str] = field(default_factory=list)
     not_tried: List[str] = field(default_factory=list)
-    setup_problem: Optional[str] = None
+    setup_problem: Optional[str] = None  # why the last rewrite of setup.bash failed
+    setup_problems: List[str] = field(default_factory=list)  # every such reason in the run
     setup_written: bool = False
+    ready: bool = False  # the checks have passed: every way the run ends now settles
+
+    @property
+    def stopped_at(self) -> List[str]:
+        """The layers that failed or are not recorded: later ones are not tried."""
+        return [name for name, _ in self.failed] + self.partial
 
     def release(self) -> None:
         if self.lock is not None:
@@ -543,12 +692,24 @@ def settle(progress: Progress) -> Optional[Run]:
         run = built_run(progress.layers, records)
         text = setup_text(progress.system, progress.layers, records, run)
     except (ManifestError, OSError) as exc:
-        progress.setup_problem = f"setup.bash not rewritten: {exc}"
-        progress.setup_written = False
+        _setup_failed(progress, f"setup.bash not rewritten: {exc}")
         return None
-    progress.setup_problem = write_setup(progress.system, progress.config, progress.distro, text)
-    progress.setup_written = progress.setup_problem is None
+    problem = write_setup(progress.system, progress.config, progress.distro, text)
+    if problem is not None:
+        _setup_failed(progress, problem)
+    else:
+        progress.setup_problem = None
+        progress.setup_written = True
     return run
+
+
+def _setup_failed(progress: Progress, problem: str) -> None:
+    """A rewrite of setup.bash failed: it stays failed for the run's exit status and report,
+    even if a later rewrite works, since setup.bash was out of line with the record meanwhile."""
+    progress.setup_problem = problem
+    progress.setup_written = False
+    if problem not in progress.setup_problems:
+        progress.setup_problems.append(problem)
 
 
 def _stamp(path: Path) -> Optional[Tuple[int, int, int]]:
@@ -566,17 +727,22 @@ def build_layers(
     colcon_args: Sequence[str],
     keep_going: bool = False,
     bash: str = "bash",
+    selection: bool = False,
 ) -> None:
     """Build the chosen layers in order. After a failed layer the later ones are not tried,
     unless `keep_going`: then each is built on the built run's last layer below it, which
     leaves the failed layer out, and its record is written, but it is outside the built run
-    and so not used until it is built again on top of the failed layer, fixed."""
+    and so not used until it is built again on top of the failed layer, fixed.
+
+    With `selection` (package selection among colcon's arguments) colcon builds only part of
+    a layer: a layer that was built before gets its record back when colcon succeeds; one that
+    was not is not recorded, and the later layers are not tried, as after a failure."""
     system, distro, layers = progress.system, progress.distro, progress.layers
     records = read_built(system, distro)
     for index, layer in enumerate(layers):
         if layer.name not in chosen:
             continue
-        if progress.failed and not keep_going:
+        if progress.stopped_at and not keep_going:
             if not layer.empty:
                 progress.not_tried.append(layer.name)
             continue
@@ -587,6 +753,7 @@ def build_layers(
         base_setup = None
         if below is not None:
             base_setup = next(each for each in layers if each.name == below).install_setup
+        was_built = why_not_built(layer, records, below) is None
         for note in install_notes(layer, records.get(layer.name)):
             print(f"NOTE: {note}", flush=True)
         records.pop(layer.name, None)
@@ -596,7 +763,9 @@ def build_layers(
         before = _stamp(layer.install_setup)
         print(f"building {layer.name} in {layer.directory}", flush=True)
         status, stopped = run_child(
-            colcon_argv(colcon, layer, base_setup, colcon_args, bash), layer.directory
+            colcon_argv(colcon, layer, base_setup, colcon_args, bash),
+            layer.directory,
+            progress.lock,
         )
         if stopped is not None:
             raise Stopped(stopped)
@@ -607,6 +776,9 @@ def build_layers(
         if after is None or after == before:
             # colcon exited 0 and wrote no install/setup.bash: nothing was built (`--help`).
             progress.failed.append((layer.name, None))
+            continue
+        if selection and not was_built:
+            progress.partial.append(layer.name)
             continue
         records[layer.name] = LayerRecord(_now(), list(layer.on_disk), below)
         _put(progress, records, lambda: progress.built.append(layer.name))
@@ -620,19 +792,25 @@ def report(progress: Progress, run: Optional[Run]) -> None:
     print(f"build, distro {name}:")
     if run is None:  # the record cannot be read now; settle() said why
         print(f"  built in this run: {', '.join(progress.built) or 'none'}")
-        print(f"WARNING: {progress.setup_problem}", flush=True)
+        for problem in progress.setup_problems:
+            print(f"WARNING: {problem}", flush=True)
         return
     records = read_built(progress.system, progress.distro)
     used = [name for name in progress.built if name in run.layers]
     if used:
         print(f"  built: {', '.join(used)}")
-    failed_names = [failed for failed, _ in progress.failed]
+    failed_names = progress.stopped_at
+    failed_only = [each for each, _ in progress.failed]
     for name in progress.built:
         if name in run.layers:
             continue
         below = [each.name for each in layers[: layers.index(by_name[name])]]
-        without = [failed for failed in failed_names if failed in below]
-        print(f"  built without {', '.join(without) or run.end} (failed); not used: {name}")
+        without = [
+            f"{each} (failed)" if each in failed_only else f"{each} (not recorded)"
+            for each in failed_names
+            if each in below
+        ] or [f"{run.end} (not built)"]
+        print(f"  built without {', '.join(without)}; not used: {name}")
     for failed, status in progress.failed:
         layer = by_name[failed]
         if status is None:
@@ -651,6 +829,12 @@ def report(progress: Progress, run: Optional[Run]) -> None:
                 f" source {shlex.quote(str(real / 'install/setup.bash'))}"
             )
         print(line)
+    for name in progress.partial:
+        print(
+            f"  selected packages built, not recorded: {name} (it was not built before this"
+            " run, and the run selected packages, so not all of it was built; run"
+            f" `repos-manifest build {name}` without package selection to record it)"
+        )
     if progress.not_tried:
         print(f"  not tried: {', '.join(progress.not_tried)}")
     if progress.skipped:
@@ -688,16 +872,18 @@ def report(progress: Progress, run: Optional[Run]) -> None:
     else:
         print(f"setup.bash: sources {run.last}", end="")
     print("" if progress.setup_written else " (not rewritten in this run)")
-    if progress.setup_problem is not None:
-        print(f"WARNING: {progress.setup_problem}", flush=True)
+    for problem in progress.setup_problems:
+        print(f"WARNING: {problem}", flush=True)
 
 
 def _setup_says(progress: Progress, run: Optional[Run]) -> str:
-    if progress.setup_problem is not None:
-        return progress.setup_problem
-    if run is None or run.last is None:
-        return "setup.bash sources nothing (nothing is built)"
-    return f"setup.bash sources {run.last}"
+    said = list(progress.setup_problems)
+    if progress.setup_problem is None:
+        if run is None or run.last is None:
+            said.append("setup.bash sources nothing (nothing is built)")
+        else:
+            said.append(f"setup.bash sources {run.last}")
+    return "; ".join(said)
 
 
 def run_build(
@@ -716,13 +902,15 @@ def run_build(
                 return _build(named_distros, layer_names, colcon_args, keep_going, holder)
         except Stopped as exc:
             progress = holder[0] if holder else None
-            if progress is None:
+            if progress is None or not progress.ready:
+                if progress is not None:
+                    progress.release()
                 return stop_exit(exc, f"stopped by {signal_name(exc)}; nothing was changed")
             run = settle(progress)
             done = ", ".join(progress.built) or "none"
             interrupted = [name for name in progress.started if name not in progress.built]
             line = f"stopped by {signal_name(exc)}; layers built in this run: {done}"
-            if interrupted and interrupted[-1] not in [name for name, _ in progress.failed]:
+            if interrupted and interrupted[-1] not in progress.stopped_at:
                 line += f"; {interrupted[-1]} was stopped and is not built"
             line += f"; {_setup_says(progress, run)}"
             return stop_exit(exc, line)
@@ -751,22 +939,21 @@ def _build(
         refused_arguments(colcon_args)
         layers = read_layers(system, config, distro)
         chosen = chosen_layers(layers, layer_names)
+        missing_repos(layers, chosen)
+        to_build = [layer for layer in layers if layer.name in chosen and not layer.empty]
+        selection = package_selection(colcon_args, [layer.name for layer in to_build])
         progress = Progress(system, config, distro, layers)
+        holder.append(progress)  # from here run_build releases the lock however the run ends
         progress.lock = hold_build_lock(system, distro)
-        try:
-            records = read_built(system, distro)
-            refusal(layers, chosen, built_run(layers, records))
-            to_build = [layer for layer in layers if layer.name in chosen and not layer.empty]
-            colcon = find_colcon() if to_build else None
-            bash = find_bash() if to_build else "bash"
-        except BaseException:
-            progress.release()
-            raise
+        records = read_built(system, distro)
+        refusal(layers, chosen, built_run(layers, records))
+        colcon = find_colcon() if to_build else None
+        bash = find_bash() if to_build else "bash"
         for warning in own_prefix_warnings(layers) if to_build else []:
             warn(warning)
-        holder.append(progress)
+        progress.ready = True
         try:
-            build_layers(progress, chosen, colcon, colcon_args, keep_going, bash)
+            build_layers(progress, chosen, colcon, colcon_args, keep_going, bash, selection)
         except ManifestError as exc:
             run = settle(progress)
             raise ManifestError(f"{exc}; {_setup_says(progress, run)}") from None
@@ -778,5 +965,5 @@ def _build(
             raise
         run = settle(progress)
         report(progress, run)
-    failed = bool(progress.failed) or progress.setup_problem is not None
+    failed = bool(progress.stopped_at) or bool(progress.setup_problems)
     return 1 if failed else 0

@@ -110,7 +110,8 @@ there yet. Both need `git`, and `vcs` from vcs2l or vcstool, on `PATH`.
 stops at the first layer that fails (`--keep-going` tries the later ones), and writes the one
 `setup.bash` to source. It keeps a record of what it built, one file per distro in
 `.repos-manifest/`, and trusts nothing else; a second `build` of the same distro while one
-runs is refused; [docs/design.md](docs/design.md#build) says what it builds, what it
+(or the `colcon` it started) runs is refused, and so is a build of a layer with a repo
+missing from disk that is not optional; [docs/design.md](docs/design.md#build) says what it builds, what it
 refuses and what `setup.bash` sources. It needs `bash`, and `colcon` on `PATH` (empty and
 relative entries are not searched) or installed in the same virtual environment as
 repos-manifest.

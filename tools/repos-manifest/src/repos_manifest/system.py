@@ -428,9 +428,10 @@ def build_lock_file(system: Path, distro: Optional[str]) -> Path:
 
 
 def hold_build_lock(system: Path, distro: Optional[str]) -> int:
-    """Take the lock of one distro's `build`, held until the returned descriptor is closed or
-    the process ends for any reason (`flock`). A second `build` of the same distro is refused;
-    one of another distro takes another lock and reads and writes another record."""
+    """Take the lock of one distro's `build` (`flock`): held while the returned descriptor is
+    open in this process or in a colcon it was passed to, and gone when they have all ended,
+    however they end. A second `build` of the same distro is refused; one of another distro
+    takes another lock and reads and writes another record."""
     path = build_lock_file(system, distro)
     flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
@@ -441,26 +442,55 @@ def hold_build_lock(system: Path, distro: Optional[str]) -> int:
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         try:
-            holder = os.read(fd, 32).decode("ascii", "replace").strip()
+            holders = os.pread(fd, 64, 0).decode("ascii", "replace").split()
         except OSError:
-            holder = ""
+            holders = []
         os.close(fd)
-        who = f" (process {holder})" if holder.isdigit() else ""
-        name = distro if distro is not None else "(no distro)"
+        of = f"of distro {distro} " if distro is not None else ""
+        pids = [int(each) for each in holders if each.isdigit()]
+        tool, colcon = (pids + [None, None])[:2]
+        if tool is not None and _alive(tool):
+            who = f" (process {tool})"
+        elif colcon is not None and _alive(colcon):
+            who = (
+                f": its colcon (process {colcon}) still runs, though the `repos-manifest build`"
+                f" that started it (process {tool}) has ended"
+            )
+        else:
+            who = f"; `fuser -v {path}` names the process that holds its lock"
         raise Refusal(
-            f"another `repos-manifest build` of distro {name} is running in this system{who};"
-            " nothing was run",
-            f"It holds {path}. Wait for it to end, then run this again",
+            f"a build {of}is still running in this system{who}; nothing was run",
+            f"It holds the lock on {path}. Wait for it to end, or stop it, then run this again",
         ) from None
     except OSError as exc:
         os.close(fd)
         raise ManifestError(f"{path}: cannot be locked: {exc.strerror or type(exc).__name__}")
+    note_lock_holders(fd, [os.getpid()])
+    return fd
+
+
+def note_lock_holders(fd: int, pids: Sequence[int]) -> None:
+    """Write the pids of the processes that hold a build lock into its file: the tool's, and
+    colcon's while one runs. Only the refusal of a second `build` reads them."""
     try:
         os.ftruncate(fd, 0)
-        os.pwrite(fd, f"{os.getpid()}\n".encode("ascii"), 0)
+        os.pwrite(fd, (" ".join(str(pid) for pid in pids) + "\n").encode("ascii"), 0)
     except OSError:
-        pass  # the pid only makes the refusal's message more helpful
-    return fd
+        pass
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    try:  # a zombie has ended
+        stat = Path(f"/proc/{pid}/stat").read_text()
+        return stat.rsplit(")", 1)[1].split()[0] not in ("Z", "X")
+    except (OSError, IndexError):
+        return True
 
 
 @dataclass
@@ -471,6 +501,11 @@ class LayerRecord:
     time: str
     repos: List[str]
     base: Optional[str]
+
+
+# A newline or another control character in a record's value: a record this tool wrote has
+# none, and its values go into `setup.bash`'s text.
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 
 def read_built(system: Path, distro: Optional[str]) -> Dict[str, LayerRecord]:
@@ -497,6 +532,8 @@ def read_built(system: Path, distro: Optional[str]) -> Dict[str, LayerRecord]:
     records = {}
     for layer, record in data["layers"].items():
         at = f"layers.{layer}"
+        if not isinstance(layer, str) or _CONTROL.search(layer):
+            raise bad(f"layer {layer!r} is not a layer name")
         _check_keys(record, at, ("time", "repos", "base"), (), bad)
         if not isinstance(record["time"], str):
             raise bad(f"`{at}.time` is {_kind(record['time'])}, not a string")
@@ -506,6 +543,9 @@ def read_built(system: Path, distro: Optional[str]) -> Dict[str, LayerRecord]:
             raise bad(f"`{at}.repos` is not a list of repo keys")
         if record["base"] is not None and not isinstance(record["base"], str):
             raise bad(f"`{at}.base` is {_kind(record['base'])}, not a layer or empty")
+        texts = [record["time"], *record["repos"], record["base"] or ""]
+        if any(_CONTROL.search(text) for text in texts):
+            raise bad(f"`{at}` holds a control character")
         records[str(layer)] = LayerRecord(record["time"], list(record["repos"]), record["base"])
     return records
 

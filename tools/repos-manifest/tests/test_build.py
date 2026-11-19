@@ -17,7 +17,7 @@ from helpers import make_package_remote, make_remote, repo, run, write_manifest
 import repos_manifest
 import repos_manifest.cli
 from repos_manifest import build
-from repos_manifest.system import SETUP_TEXT
+from repos_manifest.system import SETUP_TEXT, build_lock_file, hold_build_lock
 
 STUB = Path(__file__).parent / "fixtures" / "stub_colcon"
 BASE = "_unnamed"
@@ -101,9 +101,9 @@ def test_layers_are_built_in_order_each_on_the_one_below(system, stub, capsys):
     assert [cwd for cwd, _, _ in done] == [str(system), str(system / "mid"), str(system / "top")]
     assert [sourced for _, sourced, _ in done] == ["", "sys", "mid"]
     assert [args for _, _, args in done] == [
-        "build --base-paths src/u --symlink-install",
-        "build --base-paths src/m --symlink-install",
-        "build --base-paths src/t --symlink-install",
+        "build --symlink-install --base-paths src/u",
+        "build --symlink-install --base-paths src/m",
+        "build --symlink-install --base-paths src/t",
     ]
     records = built(system)
     assert list(records) == [BASE, "mid", "top"]
@@ -693,7 +693,7 @@ def test_a_second_build_of_the_same_distro_at_once_is_refused(two_distros, stub)
             raise
         assert second.returncode == 1
         assert (
-            "another `repos-manifest build` of distro jazzy is running in this system"
+            "a build of distro jazzy is still running in this system"
             f" (process {tool.pid}); nothing was run" in err
         )
         # A build of another distro at the same time takes its own lock and record.
@@ -756,6 +756,274 @@ def test_build_help_shows_the_colcon_arguments(capsys):
     with pytest.raises(SystemExit):
         repos_manifest.cli.main(["build", "--help"])
     assert "[-- COLCON_ARGS ...]" in capsys.readouterr().out
+
+
+# --- Round 2: the lock with colcon, arguments, missing repos, package selection ----------
+
+
+def lock_holders(path):
+    """The pids of the processes that have `path` open."""
+    found = []
+    for proc in Path("/proc").iterdir():
+        if not proc.name.isdigit():
+            continue
+        try:
+            links = [os.readlink(fd) for fd in (proc / "fd").iterdir()]
+        except OSError:
+            continue
+        if str(path) in links:
+            found.append(int(proc.name))
+    return found
+
+
+def test_the_lock_is_held_by_colcon_after_the_tool_is_killed_outright(system, stub, capsys):
+    (system / "src/u/STUB_WAIT").touch()
+    tool = start_tool(system)
+    wait_until(logged(stub, "waiting"), tool)
+    colcon = logged_pid(stub, "waiting")
+    lock = build_lock_file(system, "jazzy")
+    assert colcon in lock_holders(lock)
+    try:
+        os.kill(tool.pid, signal.SIGKILL)
+        tool.wait(timeout=30)  # its pipes stay open in colcon
+        assert state(colcon) not in (None, "Z")  # colcon runs on in its own session
+        capsys.readouterr()
+        assert run(system, "build") == 1
+        err = capsys.readouterr().err
+        assert (
+            f"a build of distro jazzy is still running in this system: its colcon (process"
+            f" {colcon}) still runs, though the `repos-manifest build` that started it (process"
+            f" {tool.pid}) has ended; nothing was run" in err
+        )
+    finally:
+        os.killpg(colcon, signal.SIGKILL)
+    assert gone(colcon)
+    wait_until(lambda: not lock_holders(lock), None)
+    (system / "src/u/STUB_WAIT").unlink()
+    assert run(system, "build") == 0
+
+
+def test_a_lock_whose_named_processes_have_ended_says_how_to_find_its_holder(system, stub, capsys):
+    fd = hold_build_lock(system, "jazzy")
+    try:
+        os.pwrite(fd, b"999999998 999999999\n", 0)
+        assert run(system, "build") == 1
+        err = capsys.readouterr().err
+        assert "a build of distro jazzy is still running in this system; `fuser -v" in err
+        assert "999999998" not in err
+    finally:
+        os.close(fd)
+
+
+def test_a_plain_argument_first_after_the_separator_is_refused(system, stub, capsys):
+    assert run(system, "build", "--", "mid/src/m") == 1
+    err = capsys.readouterr().err
+    assert "'mid/src/m' after -- is not an option, and `colcon build` takes no plain" in err
+    assert run(system, "build", "--", "--symlink-install", "--", "x") == 1
+    assert "a second -- is not passed to colcon" in capsys.readouterr().err
+    assert runs(stub) == []
+    assert not (system / ".repos-manifest/built-jazzy.yaml").exists()
+
+
+def test_the_layers_paths_come_after_the_forwarded_arguments(system, stub):
+    assert run(system, "build", BASE) == 0
+    assert run(system, "build", BASE, "--", "--packages-select", "a", "b") == 0
+    assert runs(stub)[-1][2] == "build --packages-select a b --base-paths src/u"
+
+
+@pytest.mark.parametrize(
+    "arg, said",
+    [
+        ("--b", "--b (colcon would reject it as ambiguous, and it could be --base-paths)"),
+        ("--pa", "--pa (colcon would reject it as ambiguous, and it could be --paths)"),
+        ("--install-b", "--install-b (colcon reads it as --install-base)"),
+        ("--build-base=x", "--build-base is not passed"),
+    ],
+)
+def test_an_abbreviation_is_named_for_what_colcon_would_do_with_it(system, stub, capsys, arg, said):
+    assert run(system, "build", "--", arg) == 1
+    assert said in capsys.readouterr().err
+
+
+def test_a_required_repo_missing_from_disk_is_refused(system, stub, tmp_path, capsys):
+    shutil.move(str(system / "mid/src/m"), str(tmp_path / "m-away"))
+    assert run(system, "build", "mid") == 1
+    err = capsys.readouterr().err
+    assert "not on disk, and not optional: m (layer mid); nothing was run" in err
+    assert "Run `repos-manifest sync`" in err
+    assert run(system, "build") == 1
+    assert runs(stub) == []
+    assert run(system, "build", BASE) == 0  # a run that does not build mid is not refused
+
+
+def test_a_layer_with_some_required_repos_missing_is_refused(stub, tmp_path, capsys):
+    remotes = tmp_path / "remotes"
+    data = {
+        "format": 1,
+        "repositories": {
+            "a": repo(make_remote(remotes, "a")),
+            "b": repo(make_remote(remotes, "b")),
+        },
+    }
+    write_manifest(tmp_path / "m.manifest.yaml", data)
+    system = tmp_path / "sys"
+    system.mkdir()
+    assert run(system, "init", "../m.manifest.yaml", "--yes") == 0
+    shutil.rmtree(system / "src/b")
+    capsys.readouterr()
+    assert run(system, "build") == 1
+    assert f"not on disk, and not optional: b (layer {BASE})" in capsys.readouterr().err
+    assert runs(stub) == []
+
+
+def test_package_selection_colcon_must_resolve_needs_one_layer(system, stub, capsys):
+    assert run(system, "build", "--", "--packages-up-to", "m") == 1
+    err = capsys.readouterr().err
+    assert "--packages-up-to names packages colcon must find in each layer it builds" in err
+    assert "this run would build 3 layers (_unnamed, mid, top); nothing was run" in err
+    assert run(system, "build", "--", "--packages-ab=m") == 1
+    assert "--packages-ab (--packages-above" in capsys.readouterr().err
+    assert runs(stub) == []
+    assert run(system, "build") == 0
+    assert run(system, "build", "mid", "--", "--packages-up-to", "m") == 0
+    assert runs(stub)[-1][2] == "build --packages-up-to m --base-paths src/m"
+
+
+def test_package_selection_colcon_must_resolve_with_one_layer_with_repos(stub, tmp_path):
+    system, _, _ = three_layers(tmp_path, mid_optional_missing=True)
+    assert run(system, "build", BASE, "top", "--", "--packages-above", "t") == 1
+    assert run(system, "build", "mid", "--", "--packages-above", "t") == 0  # mid: no repos
+    assert run(system, "build") == 0
+    assert run(system, "build", "mid", "top", "--", "--packages-above", "t") == 0
+    assert runs(stub)[-1][2] == "build --packages-above t --base-paths src/t"
+
+
+def test_a_selection_build_of_a_layer_not_built_before_is_not_recorded(system, stub, capsys):
+    capsys.readouterr()
+    assert run(system, "build", "--", "--packages-select", "u") == 1
+    out = capsys.readouterr().out
+    assert (
+        f"  selected packages built, not recorded: {BASE} (it was not built before this run,"
+        " and the run selected packages, so not all of it was built; run `repos-manifest build"
+        f" {BASE}` without package selection to record it)\n" in out
+    )
+    assert "  not tried: mid, top\n" in out
+    assert built(system) == {}
+    assert (system / "setup.bash").read_text() == SETUP_TEXT
+    # Built before: a selection build gives it its record back.
+    assert run(system, "build") == 0
+    assert run(system, "build", "mid", "--", "--packages-skip", "x") == 0
+    assert list(built(system)) == [BASE, "mid", "top"]
+    assert sourced_by_setup(system) == real(system / "top")
+    # A failure still leaves the layer not built.
+    (system / "mid/src/m/STUB_FAIL").touch()
+    assert run(system, "build", "mid", "--", "--packages-select", "m") == 1
+    assert list(built(system)) == [BASE, "top"]
+
+
+def test_the_wait_for_the_group_reaps_its_own_zombies(system, stub):
+    """As a subreaper (or PID 1) the tool inherits colcon's orphaned jobs: it reaps them while
+    it waits for the group to go, rather than waiting out the whole bound."""
+    (system / "src/u/STUB_WAIT").touch()
+    package = str(Path(repos_manifest.__file__).parent.parent)
+    code = (
+        "import ctypes, sys; ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0);"
+        " sys.argv = ['repos-manifest', 'build']; from repos_manifest.cli import run; run()"
+    )
+    tool = subprocess.Popen(
+        [sys.executable, "-c", code],
+        cwd=system,
+        env={**os.environ, "PYTHONPATH": package},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    wait_until(logged(stub, "waiting"), tool)
+    job = logged_pid(stub, "job")
+    os.kill(tool.pid, signal.SIGTERM)
+    began = time.monotonic()
+    out, err = tool.communicate(timeout=30)
+    assert time.monotonic() - began < build._GROUP_GONE_SECONDS / 2
+    assert tool.returncode == -signal.SIGTERM
+    assert gone(job)
+    assert "still there" not in err
+
+
+def test_processes_that_outlive_the_wait_are_named_in_a_warning(monkeypatch, capsys):
+    monkeypatch.setattr(build, "_GROUP_GONE_SECONDS", 0.1)
+    calls = []
+
+    def killpg(pgid, signum):
+        calls.append(signum)  # the group never goes
+
+    monkeypatch.setattr(build.os, "killpg", killpg)
+    build._end_the_rest(4242424)
+    assert signal.SIGKILL in calls
+    err = capsys.readouterr().err
+    assert "processes of colcon's process group 4242424 are still there" in err
+    assert "`pgrep -g 4242424` lists them" in err
+
+
+def test_a_stop_with_its_terminal_gone_still_ends_by_the_signal(system, stub):
+    (system / "src/u/STUB_WAIT").touch()
+    tool = start_tool(system)
+    wait_until(logged(stub, "waiting"), tool)
+    tool.stderr.close()  # the message cannot be printed: the tool must still end by SIGHUP
+    os.kill(tool.pid, signal.SIGHUP)
+    tool.wait(timeout=30)
+    tool.stdout.close()
+    assert tool.returncode == -signal.SIGHUP
+
+
+def test_a_failed_rewrite_of_setup_bash_fails_the_run_even_if_a_later_one_works(
+    system, stub, monkeypatch, capsys
+):
+    real_write = build.write_setup
+    calls = []
+
+    def write_setup(*args):
+        calls.append(1)
+        if len(calls) == 1:
+            return "setup.bash: cannot be written: No space left on device"
+        return real_write(*args)
+
+    monkeypatch.setattr(build, "write_setup", write_setup)
+    capsys.readouterr()
+    assert run(system, "build") == 1
+    out = capsys.readouterr().out
+    assert "WARNING: setup.bash: cannot be written: No space left on device\n" in out
+    assert "setup.bash: sources top\n" in out
+    assert sourced_by_setup(system) == real(system / "top")
+
+
+@pytest.mark.parametrize("where", ["time", "repos", "base", "layer"])
+def test_a_record_with_a_control_character_is_unreadable(system, stub, capsys, where):
+    assert run(system, "build") == 0
+    path = system / ".repos-manifest/built-jazzy.yaml"
+    data = yaml.safe_load(path.read_text())
+    bad = "x\nexport EVIL=1"
+    if where == "layer":
+        data["layers"][bad] = data["layers"].pop("top")
+    elif where == "repos":
+        data["layers"]["top"]["repos"] = [bad]
+    else:
+        data["layers"]["top"][where] = bad
+    path.write_text(yaml.safe_dump(data))
+    capsys.readouterr()
+    assert run(system, "build") == 1
+    assert f"ERROR: {path}: " in capsys.readouterr().err
+    assert "EVIL" not in (system / "setup.bash").read_text()
+
+
+def test_a_stop_before_the_checks_end_releases_the_lock(system, stub, monkeypatch, capsys):
+    def warnings(layers):
+        os.kill(os.getpid(), signal.SIGINT)
+        return []
+
+    monkeypatch.setattr(build, "own_prefix_warnings", warnings)
+    assert run(system, "build") == 128 + signal.SIGINT
+    assert "stopped by SIGINT; nothing was changed" in capsys.readouterr().err
+    os.close(hold_build_lock(system, "jazzy"))  # not refused: the lock was released
 
 
 # --- With the real colcon -------------------------------------------------------------------
@@ -855,3 +1123,49 @@ def test_real_colcon_merge_install_keeps_the_chain(real_colcon, tmp_path):
     prefixes = done.stdout.strip().split(":")
     assert str(real(system / "top/install")) in prefixes
     assert str(real(system / "install")) in prefixes
+
+
+@pytest.mark.colcon
+def test_real_colcon_only_colcon_and_the_tool_hold_the_lock(real_colcon, tmp_path):
+    """colcon starts its jobs with the lock's descriptor closed, so a job, or a daemon a job
+    leaves behind, does not hold the lock; colcon itself does, after the tool is killed."""
+    system = packages_system(tmp_path, {"slow": {"slow": True}})
+    pids = tmp_path / "slow.pids"
+    tool = start_tool(system, env={"SLOW_PIDS": str(pids)})
+    wait_until(lambda: pids.exists() and pids.read_text().strip(), tool, seconds=120)
+    job = int(pids.read_text().split()[0])
+    lock = build_lock_file(system, None)
+    colcon = os.getpgid(job)
+    try:
+        assert sorted(lock_holders(lock)) == sorted([tool.pid, colcon])
+        os.kill(tool.pid, signal.SIGKILL)
+        tool.wait(timeout=30)  # its pipes stay open in colcon
+        assert lock_holders(lock) == [colcon]
+        done = subprocess.run(
+            [sys.executable, "-m", "repos_manifest.cli", "build"],
+            cwd=system,
+            env={**os.environ, "PYTHONPATH": str(Path(repos_manifest.__file__).parent.parent)},
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert done.returncode == 1
+        assert f"its colcon (process {colcon}) still runs" in done.stderr
+    finally:
+        os.killpg(colcon, signal.SIGKILL)
+    assert gone(job) and gone(colcon)
+    wait_until(lambda: not lock_holders(lock), None)
+
+
+@pytest.mark.colcon
+def test_real_colcon_package_selection(real_colcon, tmp_path):
+    system = packages_system(tmp_path, {"good2": {"needs": "good"}, "other": {}})
+    assert run(system, "build", "--", "--packages-up-to", "good2") == 1
+    assert run(system, "build", "--", "--packages-select", "good2") == 1
+    assert not (system / ".repos-manifest/built-_unnamed.yaml").exists() or (
+        built(system, "_unnamed") == {}
+    )
+    assert run(system, "build") == 0
+    assert run(system, "build", "top", "--", "--packages-up-to", "good2") == 0
+    assert list(built(system, "_unnamed")) == [BASE, "top"]
+    assert sourced_by_setup(system) == real(system / "top")
