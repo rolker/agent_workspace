@@ -609,3 +609,30 @@ Suites run (each on its own with bash; the full pre-commit pass is left to the h
 - test_project_registry.sh: Results: 425 passed, 0 failed
 - test_merge_pr.sh: Results: 170 passed, 0 failed
 - test_ros2_colcon.sh: Results: 1375 passed, 0 failed, 0 skipped
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-19 14:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #526 at `d72f2389`
+**Depth**: Deep (reason: round 3 convergence check per handoff; scope is the round 2 findings and the fix diff bea0b66b..d72f2389)
+**Must-fix**: 0 | **Suggestions**: 3
+
+Checked by hand at d72f2389:
+- test_worktree_create.sh: 109 passed / 0 failed. shellcheck --severity=warning (.venv): clean on worktree_create.sh and test_worktree_create.sh.
+- Each new test bites. The suite against mutated copies: without `3>&-`, 1 FAIL (the push started with fds 0 1 2 255 3); with the bea0b66b script, 4 FAIL (fd 3, colour codes, both invalid-byte cases with rc=1); without LC_ALL=C on the last sed, 1 FAIL (the locale case).
+- The filter by hand: `\e[1;31mred\e[0m` gives `red` with no `[31m`; an OSC title or hyperlink loses ESC and BEL but leaves `]0;title` text; a lone ESC at the end of a line is dropped; an unterminated `\e[12` leaves `[12`; é, ï, 日本語, ✓, U+00A0, Ă, ł and Â pass unchanged (only `\302` followed by 0x80-0x9f is removed, and `\302` is never a continuation byte); `\377` passes with no error; CR becomes a line break; tab is kept; a 200000-byte line passes whole.
+- fd 3: closed only inside the push's command substitution. Without --print-path-only fd 3 is not open and `3>&-` is harmless; with it, the path still reaches stdout through `echo >&3` (line 1474), as the new test shows. The push's own output goes to fd 4 and its stderr to the captured text, neither touched. The script sets no pipefail, so `|| true` decides the pipeline's status.
+- PR body, the three paragraphs: every clause holds against the code and progress.md, including the corrected plan-comment sentence ("only a generic 'Failed to post plan comment' warning (and none when the pull request already existed)") and the new sentence on the second PR review (one false sentence, five suggestions, the four in the code fixed with tests, 109 passed).
+- CI at d72f2389: Validate Documentation passes in both runs and repos-manifest tests (3.14) in one; Lint (pre-commit), Validate Adapter Contract and the rest still pending at 14:23.
+
+Outside reviewers:
+- Claude adversarial (fresh subagent, same scope): no must-fix; reproduced the mutants independently; 2 suggestions (findings 1 and 2).
+- Cross-model: skipped (round-3 convergence check, per handoff).
+
+### Findings
+- [ ] (suggestion) A CRLF line from a remote hook leaves an extra line holding only `remote:` (git turns the `\r` into a new `remote:` prefix and the filter makes it its own line); dropping a `\r` just before a newline would avoid it (Claude adversarial, reproduced with a pre-receive hook) — `.agent/scripts/worktree_create.sh:1315`
+- [ ] (suggestion) PR body, "Reviews and outcomes": "whole escape sequences are removed" holds for CSI (colour) sequences only; an OSC sequence leaves `]0;title`. "whole colour (CSI) sequences" would be exact. The code comment already says CSI. Also "four small findings ... fixed with tests": the guide-sentence fix has no test, the same point the last review made about the next sentence — PR #526 body
+- [ ] (suggestion) The comment line "pattern takes in. LC_ALL=C makes" is wrapped short — `.agent/scripts/worktree_create.sh:1308`
