@@ -1170,6 +1170,60 @@ else
     fail "refused push with --plan-file --print-path-only: rc=$RC stdout=[$STDOUT12]"
 fi
 
+# A gh stub that records each call in <log> and fails `issue view` (so
+# the title is the generic "Issue #<N>"). `pr list` finds no PR, `pr
+# create` prints a URL and saves its --body-file to <log>.body, and `pr
+# comment` records whether its --body-file can be read from where it runs.
+make_recording_gh() {  # <stubbin> <log>
+    cat > "$1/gh" <<GHREC_EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$2"
+case "\$1 \$2" in
+    "pr list") exit 0 ;;
+    "pr create")
+        while [ \$# -gt 0 ]; do
+            [ "\$1" = --body-file ] && cp "\$2" "$2.body"
+            shift
+        done
+        echo "https://github.com/o/r/pull/1"; exit 0 ;;
+    "pr comment")
+        while [ \$# -gt 0 ]; do
+            if [ "\$1" = --body-file ]; then
+                if [ -r "\$2" ]; then echo "comment-file readable" >> "$2"; else echo "comment-file missing: \$2" >> "$2"; fi
+            fi
+            shift
+        done
+        exit 0 ;;
+esac
+exit 1
+GHREC_EOF
+    chmod +x "$1/gh"
+}
+
+# Issue 516 (review suggestion 2): a relative --plan-file is found against
+# the workspace root; on the success path the plan comment runs after a cd
+# into the worktree, so the path must have been made absolute by then.
+SB13="$SANDBOX/ws13"
+make_ws_repo "$SB13"
+gitq init -q --bare -b main "$SANDBOX/origin13.git"
+gitq -C "$SB13" remote add origin "$SANDBOX/origin13.git"
+gitq -C "$SB13" push -q origin main
+gitq -C "$SB13" remote set-head origin main
+GH_LOG13="$SANDBOX/gh13.log"
+make_recording_gh "$SB13/stubbin" "$GH_LOG13"
+mkdir -p "$SB13/notes"
+printf '# Plan 73\n' > "$SB13/notes/plan 73.md"
+OUT="$(cd "$SB13" && PATH="$SB13/stubbin:$PATH" "$SB13/.agent/scripts/worktree_create.sh" \
+    --issue 73 --type workspace --plan-file "notes/plan 73.md" 2>&1)"
+RC=$?
+if [[ "$RC" -eq 0 && "$OUT" == *"Draft PR created"* && "$OUT" == *"Plan posted as PR comment"* ]] \
+   && grep -qx 'comment-file readable' "$GH_LOG13" 2>/dev/null \
+   && grep -q "^pr comment https://github.com/o/r/pull/1 --body-file $SB13/notes/plan 73.md\$" "$GH_LOG13"; then
+    pass "relative --plan-file, push succeeds: the plan comment reads the plan by its absolute path"
+else
+    fail "relative --plan-file, push succeeds: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG13" 2>/dev/null)] out=${OUT:0:1200}"
+fi
+
 echo
 echo "=== Summary ==="
 echo "  PASS: $PASS"

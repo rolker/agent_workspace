@@ -1228,6 +1228,9 @@ elif [ -n "$PLAN_FILE" ]; then
         echo "  ⚠️  Plan file not found: $PLAN_FILE (creating PR without plan comment)"
     else
         HAS_PLAN=true
+        # Made absolute once, here (the cwd is ROOT_DIR): the plan is read
+        # after a cd into the worktree, and printed in the push-failure hint.
+        [[ "$PLAN_FILE" == /* ]] || PLAN_FILE="$PWD/$PLAN_FILE"
     fi
 
     # Auto-detect agent identity
@@ -1295,14 +1298,10 @@ elif [ -n "$PLAN_FILE" ]; then
             echo "       git push -u origin $(printf '%q' "$BRANCH_NAME")"
             echo "       $hint_pr"
             if [ "$HAS_PLAN" = true ]; then
-                local plan_abs="$PLAN_FILE"
-                # A relative plan path was found against ROOT_DIR (the
-                # script's working directory when HAS_PLAN was set).
-                [[ "$plan_abs" == /* ]] || plan_abs="$ROOT_DIR/$plan_abs"
                 local hint_comment
                 hint_comment="gh pr comment $(printf '%q' "$BRANCH_NAME")"
                 [ -n "$repo_flag" ] && hint_comment+=" -R $(printf '%q' "$repo_flag")"
-                hint_comment+=" --body-file $(printf '%q' "$plan_abs")"
+                hint_comment+=" --body-file $(printf '%q' "$PLAN_FILE")"
                 echo "     The plan was not posted; after the PR exists, post it with:"
                 echo "       $hint_comment"
             fi
