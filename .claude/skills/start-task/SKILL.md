@@ -227,7 +227,7 @@ Plain `cd <some-path>` would work — but only after `worktree_create.sh` has ru
 - Parent-issue branching for sub-issues
 - Skill worktree allowlist (`research`, `inspiration-tracker`, and `onboard-project`, which `/onboard-project` uses with `--type project` for a project that uses no issues)
 - `--workflow` progress.md scaffolding under `$WS_ROOT/.agent/work-plans/issue-N/`
-- `--plan-file` draft-PR creation with AI signature
+- `--plan-file` draft-PR creation with AI signature (a relative plan path is relative to the directory the script runs from, the session's directory in step 3)
 - Cross-repo PR targeting for project-type worktrees
 
 This skill keeps `worktree_create.sh` as the source of truth for that policy, resolves the worktree path (existing → create-new fallback) consistently across workspace/project/skill modes, and `cd`s into the result — all in one slash-command invocation.

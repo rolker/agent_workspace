@@ -205,7 +205,8 @@ show_usage() {
     echo "                        the start then; an owning branch that already exists is accepted"
     echo "                        with no base= recorded, and dispatch_phase.sh base --base <branch>"
     echo "                        records one later)"
-    echo "  --plan-file <path>    Path to approved plan file; creates draft PR"
+    echo "  --plan-file <path>    Path to approved plan file; creates draft PR (a relative path is"
+    echo "                        relative to the directory the script is run from)"
     echo "  --workflow <name>     Workflow template; initializes progress.md (e.g., collaborative)"
     echo "  --print-path-only     Suppress all stdout except the final worktree path on success"
     echo "                        (errors go to stderr; exit code reflects success/failure)"
@@ -300,6 +301,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --plan-file)
             PLAN_FILE="$2"
+            # A relative path is relative to the caller's directory: made
+            # absolute here, before the script changes directory (the plan
+            # is read later from ROOT_DIR and from inside the worktree).
+            [[ -z "$PLAN_FILE" || "$PLAN_FILE" == /* ]] || PLAN_FILE="$CALLER_DIR/$PLAN_FILE"
             shift 2
             ;;
         --workflow)
@@ -1266,9 +1271,76 @@ elif [ -n "$PLAN_FILE" ]; then
                 git commit --allow-empty -m "chore: start skill update ($SKILL_NAME)" || true
             fi
         fi
-        if ! git push -u origin "$BRANCH_NAME" 2>/dev/null; then
-            echo "  ⚠️  Push failed — skipping draft PR (non-fatal)"
-            return 1
+        local pr_title="$ISSUE_TITLE"
+        if [ -n "$PLAN_FILE" ]; then
+            pr_title="[PLAN] $ISSUE_TITLE"
+        fi
+        # The PR body, built once: the draft PR's body file and the hint
+        # printed after a failed push both use it (gh_create_pr.sh adds
+        # the signature that the body file carries).
+        local pr_body
+        if [ -n "$SKILL_NAME" ]; then
+            pr_body="## Summary"$'\n\n'"$ISSUE_TITLE"$'\n\n'"Automated update from the \`$SKILL_NAME\` skill."
+        else
+            pr_body="## Summary"$'\n\n'"$ISSUE_TITLE"$'\n\n'"Closes $issue_ref"
+            [ -n "$PARENT_ISSUE_NUM" ] && pr_body+=$'\n'"Part of #${PARENT_ISSUE_NUM}"
+        fi
+
+        # git's stdout (the "set up to track" line) goes out as before this
+        # change; its stderr is kept, to be shown only if the push fails.
+        # fd 3 is closed for the push: --print-path-only keeps the caller's
+        # stdout there (exec 3>&1 above), and an ssh the push starts and
+        # leaves running would otherwise hold the caller's $(...) open.
+        local push_err
+        if ! { push_err="$(git push -u origin "$BRANCH_NAME" 2>&1 >&4 4>&- 3>&-)"; } 4>&1; then
+            # Non-fatal: the worktree exists, so the script goes on to its
+            # next steps (issue #516). Show git's own error, indented (a
+            # rejection may come from a branch origin already has), then
+            # lines that can be pasted to push and open the draft PR by
+            # hand, quoted with printf %q.
+            if [ -n "$push_err" ]; then
+                echo "  ⚠️  Push failed — skipping draft PR (non-fatal). git push -u origin $BRANCH_NAME said:"
+                # Terminal escape sequences (CSI, e.g. colour codes, whole;
+                # also the UTF-8 C1 controls) and other control characters
+                # but tab and newline are dropped from a remote hook's
+                # output; a carriage return becomes a line break. sed's
+                # delimiter is \001, which no bracket range in the CSI
+                # pattern takes in. LC_ALL=C makes
+                # the ranges bytes and keeps an invalid UTF-8 byte from
+                # failing tr or sed; and the display can never end the
+                # script (set -e): the warning goes on to return 0.
+                local esc=$'\033' d=$'\001' c1=$'\302'"["$'\200'"-"$'\237'"]"
+                printf '%s\n' "$push_err" \
+                    | LC_ALL=C sed "s${d}${esc}\[[0-?]*[ -/]*[@-~]${d}${d}g; s${d}${c1}${d}${d}g" \
+                    | LC_ALL=C tr '\r' '\n' | LC_ALL=C tr -d '\000-\010\013-\037\177' \
+                    | LC_ALL=C sed 's/[[:space:]]*$//; s/^/       /' || true
+            else
+                echo "  ⚠️  Push failed — skipping draft PR (non-fatal)."
+            fi
+            echo "     Once the cause is fixed, push and open the draft PR by running these"
+            echo "     in a shell where AGENT_NAME and AGENT_MODEL are set"
+            echo "     (first: source $(printf '%q' "$SCRIPT_DIR/set_git_identity_env.sh") --agent <framework> \"<model-id>\"):"
+            local hint_pr
+            hint_pr="$(printf '%q --draft' "$SCRIPT_DIR/gh_create_pr.sh")"
+            [ -n "$repo_flag" ] && hint_pr+=" -R $(printf '%q' "$repo_flag")"
+            [ -n "$base_flag" ] && hint_pr+=" --base $(printf '%q' "$base_flag")"
+            hint_pr+=" --title $(printf '%q' "$pr_title") --body $(printf '%q' "$pr_body")"
+            echo "       cd $(printf '%q' "$git_dir")"
+            echo "       git push -u origin $(printf '%q' "$BRANCH_NAME")"
+            echo "       $hint_pr"
+            local hint_list
+            hint_list="gh pr list --head $(printf '%q' "$BRANCH_NAME")"
+            [ -n "$repo_flag" ] && hint_list+=" -R $(printf '%q' "$repo_flag")"
+            echo "     Skip the gh_create_pr.sh line if \`$hint_list\` already shows a pull request."
+            if [ "$HAS_PLAN" = true ]; then
+                local hint_comment
+                hint_comment="gh pr comment $(printf '%q' "$BRANCH_NAME")"
+                [ -n "$repo_flag" ] && hint_comment+=" -R $(printf '%q' "$repo_flag")"
+                hint_comment+=" --body-file $(printf '%q' "$PLAN_FILE")"
+                echo "     The plan was not posted; after the PR exists, post it with:"
+                echo "       $hint_comment"
+            fi
+            return 0
         fi
 
         # Check for existing PR
@@ -1289,41 +1361,8 @@ elif [ -n "$PLAN_FILE" ]; then
 
         # Create draft PR body
         BODY_FILE=$(mktemp /tmp/gh_body.XXXXXX.md)
-        if [ -n "$SKILL_NAME" ]; then
-            cat > "$BODY_FILE" << PREOF
-## Summary
-
-$ISSUE_TITLE
-
-Automated update from the \`$SKILL_NAME\` skill.
-
----
-**Authored-By**: \`${DRAFT_AGENT_NAME}\`
-**Model**: \`${DRAFT_AGENT_MODEL}\`
-PREOF
-        else
-            cat > "$BODY_FILE" << PREOF
-## Summary
-
-$ISSUE_TITLE
-
-Closes $issue_ref
-PREOF
-            if [ -n "$PARENT_ISSUE_NUM" ]; then
-                echo "Part of #${PARENT_ISSUE_NUM}" >> "$BODY_FILE"
-            fi
-            cat >> "$BODY_FILE" << PREOF
-
----
-**Authored-By**: \`${DRAFT_AGENT_NAME}\`
-**Model**: \`${DRAFT_AGENT_MODEL}\`
-PREOF
-        fi
-
-        local pr_title="$ISSUE_TITLE"
-        if [ -n "$PLAN_FILE" ]; then
-            pr_title="[PLAN] $ISSUE_TITLE"
-        fi
+        printf '%s\n\n---\n**Authored-By**: `%s`\n**Model**: `%s`\n' \
+            "$pr_body" "$DRAFT_AGENT_NAME" "$DRAFT_AGENT_MODEL" > "$BODY_FILE"
 
         local gh_args=(pr create --draft --title "$pr_title" --body-file "$BODY_FILE")
         [ -n "$repo_flag" ] && gh_args+=(--repo "$repo_flag")
