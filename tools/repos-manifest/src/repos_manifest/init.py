@@ -165,9 +165,16 @@ def make_system_dir(system: Path, config: Config, on_made: Callable[[], None]) -
         why = exc.strerror or type(exc).__name__
         raise ManifestError(f"{system}: cannot be written ({why}); nothing was set up") from None
     try:
-        (aside / CONFIG_FILE).write_text(config_text(config), encoding="utf-8")
-        os.chmod(aside / CONFIG_FILE, default_mode(0o666))
-        os.chmod(aside, default_mode(0o777))
+        try:
+            (aside / CONFIG_FILE).write_text(config_text(config), encoding="utf-8")
+            os.chmod(aside / CONFIG_FILE, default_mode(0o666))
+            os.chmod(aside, default_mode(0o777))
+        except OSError as exc:
+            why = exc.strerror or type(exc).__name__
+            raise ManifestError(
+                f"{system / SYSTEM_DIR / CONFIG_FILE}: cannot be written ({why}); nothing was"
+                " set up"
+            ) from None
         if os.path.lexists(system / SYSTEM_DIR):
             raise ManifestError(
                 f"{system / SYSTEM_DIR}: appeared while init was running; nothing was set up"

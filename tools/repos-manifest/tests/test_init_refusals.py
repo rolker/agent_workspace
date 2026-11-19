@@ -4,10 +4,15 @@ that is not built named, and the directory exactly as it was ("A refusal changes
 import io
 import os
 import re
+import resource
+import signal
 import stat
+import subprocess
+import sys
 
 import pytest
 
+import repos_manifest
 from helpers import make_remote, repo, run, snapshot, write_manifest
 
 NOT_BUILT = [
@@ -385,3 +390,34 @@ def test_a_role_the_manifest_lacks_is_the_resolvers_error(tmp, capsys):
         "--yes",
         expect="has no `roles:`, so no role is given",
     )
+
+
+def test_a_config_yaml_that_cannot_be_written_names_it_and_sets_nothing_up(tmp):
+    # A file size limit makes the write of config.yaml fail, as a full disk would.
+    manifest(tmp, distros=(), layers=())
+    system = _system(tmp)
+    before = snapshot(system)
+
+    def a_small_file_size_limit():
+        signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+        resource.setrlimit(resource.RLIMIT_FSIZE, (8, 8))
+
+    env = {
+        **os.environ,
+        "PYTHONPATH": os.path.dirname(os.path.dirname(repos_manifest.__file__)),
+    }
+    done = subprocess.run(
+        [sys.executable, "-m", "repos_manifest.cli", "init", "../m.manifest.yaml", "--yes"],
+        cwd=system,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        preexec_fn=a_small_file_size_limit,
+    )
+    assert done.returncode == 1, done.stderr
+    assert done.stderr.endswith(
+        f"ERROR: {system / '.repos-manifest' / 'config.yaml'}: cannot be written"
+        " (File too large); nothing was set up\n"
+    ), done.stderr
+    assert snapshot(system) == before
