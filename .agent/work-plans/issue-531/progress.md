@@ -86,3 +86,13 @@ Edge cases the plan must cover, since they decide whether the rule is whole:
 - [ ] Say in the report and in design.md that colcon does not check the dependents of a skipped package: such a package either builds or fails in its own build, and a failing layer is not built as without a skip; the tool does not claim otherwise.
 - [ ] Keep the plan and the pull request to one each, and name issue 532 as out of scope in the plan.
 - [ ] Add the edge-case tests above (old record, abbreviation, skip mixed with select, repeated option tried with real colcon) to the acceptance tests.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 14:55 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the eight open actions are inputs to the plan; none changes the issue's scope)
+**After**: issue-actions
+**Decision**: proceed
+
+The Issue Review confirmed the claim and tried each skip-like option with the real colcon. The host takes its findings as the plan's content: the skip pair and the ignore pair (--packages-skip, --packages-skip-regex, --packages-ignore, --packages-ignore-regex) build a whole layer minus named packages and stop counting as building part of a layer; the other three (--packages-skip-by-dep, --packages-skip-up-to, --packages-skip-test-passed) stay selection, since what they leave out comes from the dependency graph or from test results; the record gains an optional field holding the option text as given; a changed list is an ordinary rebuild that keeps the layers above and is named in the report; the report says "built without" and does not claim the tool checks dependents; design.md and the README say what colcon does. Adding the ignore pair is within the issue's own line "the other skip options are looked at one by one".
