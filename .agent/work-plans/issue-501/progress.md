@@ -878,3 +878,13 @@ No GitHub reviews, inline comments or conversation comments on the pull request;
 
 ### False positives
 - None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 14:28 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+The owner was shown the one open finding verbatim (F1: when COLCON_DEFAULTS_FILE is an absolute path to a layer's own colcon_defaults.yaml, the build still prints that file's note twice) with CI passing on head b16709b9, and three options: merge and defer F1, fix F1 first, or stop. His answer: "Merge, defer F1 (Recommended)".
