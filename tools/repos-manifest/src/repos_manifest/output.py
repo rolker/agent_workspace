@@ -132,7 +132,7 @@ def _temp_prefix(name: str, kind: str) -> str:
     return f".{name}.{kind}-{os.getpid()}-"
 
 
-def _process_has_ended(pid: int) -> bool:
+def process_has_ended(pid: int) -> bool:
     """True only when no process `pid` is running (on POSIX; elsewhere it is never known)."""
     if os.name != "posix" or pid <= 0:
         return False
@@ -149,7 +149,7 @@ def _process_has_ended(pid: int) -> bool:
     return False
 
 
-def _make_writable(path: Path) -> None:
+def make_writable(path: Path) -> None:
     """Give the owner full access to `path` and every directory below it, so that a read-only
     directory anywhere in the tree does not stop its removal. A link is not followed, and the
     mode of what it points to is left as it is."""
@@ -171,7 +171,7 @@ def _remove_ours(path: Path) -> Optional[str]:
     it are made writable first, so a read-only copy is removed too. Returns why it could not be
     removed, or None; what is left is still marked."""
     try:
-        _make_writable(path)
+        make_writable(path)
         for entry in list(path.iterdir()):
             if entry.name == MARKER:
                 continue
@@ -202,21 +202,21 @@ def _discard_previous_output(old: Path, parent: Path, name: str) -> Optional[str
     return _remove_ours(doomed)
 
 
-def _sweep_leftovers(parent: Path, name: str, out: Path) -> None:
+def _sweep_leftovers(parent: Path, name: str, where: str, again: str) -> None:
     """Remove the hidden directories a run that was killed left beside this output: named for
     this output, made by a process that has ended, and holding the marker or empty. Nothing
     else is touched, a run still going included. One that cannot be removed is named in a
-    warning (`out` as it was given) and left, still marked, for a later run."""
+    warning (`where` names the output) and left, still marked, for a later run."""
     leftover = re.compile(re.escape(f".{name}") + _TEMP_SUFFIX)
     for entry in parent.iterdir():
         match = leftover.fullmatch(entry.name)
-        if match and _process_has_ended(int(match.group("pid"))) and _is_ours_or_empty(entry):
+        if match and process_has_ended(int(match.group("pid"))) and _is_ours_or_empty(entry):
             problem = _remove_ours(entry)
             if problem is not None:
                 print(
-                    f"WARNING: --out {out}: {entry.name}, left beside it by an earlier run, could"
-                    f" not be removed ({problem}); a later resolve to the same place tries again,"
-                    " or remove it by hand",
+                    f"WARNING: {where}: {entry.name}, left beside it by an earlier run, could"
+                    f" not be removed ({problem}); a later {again} tries again, or remove it by"
+                    " hand",
                     file=sys.stderr,
                 )
 
@@ -233,7 +233,7 @@ def _put_back_the_previous_output(parent: Path, name: str, out: Path) -> None:
         match = aside.fullmatch(entry.name)
         if (
             match
-            and _process_has_ended(int(match.group("pid")))
+            and process_has_ended(int(match.group("pid")))
             and not entry.is_symlink()
             and _has_marker(entry)
         ):
@@ -243,7 +243,7 @@ def _put_back_the_previous_output(parent: Path, name: str, out: Path) -> None:
 
 
 @contextmanager
-def _signals_held():
+def signals_held():
     """Hold SIGINT, SIGTERM and SIGHUP for the two renames, so a signal cannot stop the run
     between them; a held signal is delivered when the renames are done."""
     if not hasattr(signal, "pthread_sigmask") or not _SWAP_SIGNALS:
@@ -273,57 +273,68 @@ def _on_disk(out: Path) -> Path:
 
 
 def write_output(
-    out: Path, files: Dict[str, str], on_replaced: Optional[Callable[[], None]] = None
+    out: Path,
+    files: Dict[str, str],
+    on_replaced: Optional[Callable[[], None]] = None,
+    *,
+    label: Optional[str] = None,
+    again: str = "resolve to the same place",
+    elsewhere: str = "give a directory beside or below it",
 ) -> List[Path]:
     """Write `files` as the whole content of `out`; returns the paths written, as they are on
     the disk. `on_replaced` is called as soon as the new output is in place, before any held
-    signal is delivered."""
+    signal is delivered. Every message names `out` by `label` (by default `--out <out>`, as
+    `resolve` takes it) and says that a later `again` finishes what a warning leaves;
+    `elsewhere` says what to do when `out` is the current directory or above it."""
+    where = label if label is not None else f"--out {out}"
+    named = "--out" if label is None else "it"
     try:
         out_abs = _on_disk(out)
         cwd = Path(os.path.realpath(os.getcwd()))
     except OSError as exc:
         raise ManifestError(
-            f"--out {out}: cannot be checked ({exc.strerror or 'an OS error'})"
+            f"{where}: cannot be checked ({exc.strerror or 'an OS error'})"
         ) from None
     if out_abs.parent == out_abs:
-        raise ManifestError(f"--out {out}: cannot be the root directory")
+        raise ManifestError(f"{where}: cannot be the root directory")
     if out_abs == cwd or out_abs in cwd.parents:
         raise ManifestError(
-            f"--out {out}: is the current directory or one of its parents, which replacing it"
-            " would delete from under this shell; give a directory beside or below it"
+            f"{where}: is the current directory or one of its parents, which replacing it"
+            f" would delete from under this shell; {elsewhere}"
         )
     parent, name = out_abs.parent, out_abs.name
     if _TEMP_NAME.fullmatch(name):
         raise ManifestError(
-            f"--out {out}: is named like the tool's temporary directories, which a later run"
+            f"{where}: is named like the tool's temporary directories, which a later run"
             " may remove; give it another name"
         )
     try:
         _put_back_the_previous_output(parent, name, out_abs)
         if out_abs.is_symlink():
-            raise ManifestError(f"--out {out}: is a symbolic link; give the directory itself")
+            give = "give the directory itself" if label is None else "put a directory there"
+            raise ManifestError(f"{where}: is a symbolic link; {give}")
         exists = out_abs.exists()
         if exists and not out_abs.is_dir():
-            raise ManifestError(f"--out {out}: exists and is not a directory")
+            raise ManifestError(f"{where}: exists and is not a directory")
         if exists and not _is_ours_or_empty(out_abs):
             raise ManifestError(
-                f"--out {out}: exists, is not empty and was not written by repos-manifest; it is"
+                f"{where}: exists, is not empty and was not written by repos-manifest; it is"
                 " left as it is"
             )
     except OSError as exc:
         raise ManifestError(
-            f"--out {out}: cannot be checked ({exc.strerror or 'an OS error'})"
+            f"{where}: cannot be checked ({exc.strerror or 'an OS error'})"
         ) from None
     try:
         try:
             parent.mkdir(parents=True, exist_ok=True)
         except FileExistsError:  # a part of the path is a file
             raise NotADirectoryError(errno.ENOTDIR, os.strerror(errno.ENOTDIR)) from None
-        _sweep_leftovers(parent, name, out)
+        _sweep_leftovers(parent, name, where, again)
         new = Path(tempfile.mkdtemp(prefix=_temp_prefix(name, "new"), dir=parent))
     except OSError as exc:
         raise ManifestError(
-            f"--out {out}: cannot be written ({exc.strerror or 'an OS error'})"
+            f"{where}: cannot be written ({exc.strerror or 'an OS error'})"
         ) from None
     old = None
     try:
@@ -342,7 +353,7 @@ def write_output(
         os.chmod(new, mode)
         if exists:
             old = Path(tempfile.mkdtemp(prefix=_temp_prefix(name, "old"), dir=parent))
-        with _signals_held():
+        with signals_held():
             if old is not None:
                 os.rename(out_abs, old)  # onto the empty directory mkdtemp made
             os.rename(new, out_abs)
@@ -350,7 +361,7 @@ def write_output(
                 on_replaced()
     except OSError as exc:
         raise ManifestError(
-            f"--out {out}: cannot be written ({exc.strerror or 'an OS error'})"
+            f"{where}: cannot be written ({exc.strerror or 'an OS error'})"
         ) from None
     finally:
         # Whatever stopped the run (an OS error, or an interrupt where signals cannot be held),
@@ -362,9 +373,8 @@ def write_output(
             except OSError:
                 # It stays where it is, marked, and is not removed by this run.
                 print(
-                    f"WARNING: --out {out}: is now missing; the previous output is kept in {old},"
-                    " and the next resolve to the same place puts it back if --out is still"
-                    " missing",
+                    f"WARNING: {where}: is now missing; the previous output is kept in {old},"
+                    f" and the next {again} puts it back if {named} is still missing",
                     file=sys.stderr,
                 )
                 old = None
@@ -374,8 +384,8 @@ def write_output(
             problem = _discard_previous_output(old, parent, name)
             if problem is not None:
                 print(
-                    f"WARNING: --out {out}: the previous output, moved aside beside it, could"
-                    f" not be removed ({problem}); a later resolve to the same place tries again",
+                    f"WARNING: {where}: the previous output, moved aside beside it, could"
+                    f" not be removed ({problem}); a later {again} tries again",
                     file=sys.stderr,
                 )
     return [out_abs / file_name for file_name in files]

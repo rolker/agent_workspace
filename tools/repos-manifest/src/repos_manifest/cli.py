@@ -1,4 +1,5 @@
-"""`repos-manifest` CLI: resolve and validate.
+"""`repos-manifest` CLI: resolve and validate; init and sync set up a system directory and
+clone its repos.
 
 A manifest with a top-level `repositories:` or `base:` key is read by the reader for the format
 in docs/spec.md (``base.py``); any other file, one that does not read or parse included, by
@@ -10,16 +11,19 @@ from __future__ import annotations
 import argparse
 import signal
 import sys
-from contextlib import contextmanager
 from pathlib import Path
 
 from . import manifest as new_manifest
-from . import base, output, selection
+from . import output, selection
 from .emit import LAYOUT_FLAT, LAYOUT_MANIFEST_DIR, LAYOUTS, emit_manifest
 from .extends import resolve_chain
+from .init import run_init
 from .merge import merge_chain
 from .schema import ManifestError
 from .selectors import select_repos
+from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
+from .sync import run_sync
+from .system import read_manifest
 from .validate import build_validation_table, check_dependencies
 
 
@@ -44,63 +48,19 @@ def _require_old_flags(args: argparse.Namespace) -> None:
         args.parser.error("--with is for a manifest in the format of docs/spec.md")
 
 
-class Stopped(BaseException):
-    """SIGINT, SIGTERM or SIGHUP arrived while resolving."""
-
-    def __init__(self, signum: int):
-        super().__init__(signum)
-        self.signum = signum
-
-
-@contextmanager
-def _signals_end_the_run():
-    """While resolving, SIGINT, SIGTERM and SIGHUP end the run through an exception, so that the
-    `finally` blocks that remove temporary output run, and the run reports how far it got. A
-    signal that was ignored stays ignored."""
-    previous = {}
-
-    def on_signal(signum, _frame):
-        raise Stopped(signum)
-
-    for name in ("SIGINT", "SIGTERM", "SIGHUP"):
-        sig = getattr(signal, name, None)
-        if sig is None or signal.getsignal(sig) in (signal.SIG_IGN, None):
-            continue
-        try:
-            previous[sig] = signal.signal(sig, on_signal)
-        except ValueError:  # not the main thread: signals cannot be caught here
-            pass
-    try:
-        yield
-    finally:
-        for sig, handler in previous.items():
-            signal.signal(sig, handler)
-
-
 def _stopped(exc: Stopped, replaced_out=None) -> int:
     """`replaced_out` is the `--out` the new output had replaced when the signal came, if it
     had: a signal held during the swap is delivered after it."""
-    name = signal.Signals(exc.signum).name
+    name = signal_name(exc)
     if replaced_out is None:
-        print(f"ERROR: stopped by {name}; nothing was written", file=sys.stderr)
-    else:
-        print(
-            f"ERROR: stopped by {name} after --out {replaced_out} was replaced by the new output",
-            file=sys.stderr,
-        )
-    # The previous handlers are back: the signal is delivered again, to end the process as it
-    # would have or to run the caller's own handler. Python's own SIGINT handler would raise
-    # KeyboardInterrupt and print a traceback; the message above says it all.
-    if signal.getsignal(exc.signum) is not signal.default_int_handler:
-        signal.raise_signal(exc.signum)
-    return 128 + exc.signum
+        return stop_exit(exc, f"stopped by {name}; nothing was written")
+    return stop_exit(
+        exc, f"stopped by {name} after --out {replaced_out} was replaced by the new output"
+    )
 
 
 def _load_new(args: argparse.Namespace) -> new_manifest.Manifest:
-    loaded = base.load_manifest(Path(args.manifest), source=args.manifest)
-    for warning in loaded.warnings:
-        print(f"WARNING: {warning}", file=sys.stderr)
-    return loaded
+    return read_manifest(args.manifest, Path("."))
 
 
 def cmd_resolve_new(args: argparse.Namespace) -> int:
@@ -113,7 +73,7 @@ def cmd_resolve_new(args: argparse.Namespace) -> int:
         raise ManifestError("--cache-dir is for a manifest in the earlier format")
     replaced = []
     try:
-        with _signals_end_the_run():
+        with signals_end_the_run():
             loaded = _load_new(args)
             resolved = selection.resolve(loaded, args.role, args.distro, args.with_groups or [])
             written = output.write_output(
@@ -211,6 +171,21 @@ def cmd_validate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_init(args: argparse.Namespace) -> int:
+    return run_init(
+        args.manifest,
+        args.role,
+        args.with_groups or [],
+        args.distro or [],
+        args.distro_dirs,
+        args.yes,
+    )
+
+
+def cmd_sync(args: argparse.Namespace) -> int:
+    return run_sync(args.distro or [])
+
+
 def _add_with(sub_parser: argparse.ArgumentParser) -> None:
     sub_parser.add_argument(
         "--with",
@@ -259,6 +234,36 @@ def build_parser() -> argparse.ArgumentParser:
     _add_with(validate_p)
     validate_p.add_argument("--cache-dir", default=None)
     validate_p.set_defaults(func=cmd_validate, parser=validate_p)
+
+    init_p = sub.add_parser(
+        "init",
+        help="Set up a system directory here from a manifest, then clone its repos",
+    )
+    init_p.add_argument("manifest", help="Path to the manifest file")
+    init_p.add_argument("--role", help="The role of this machine, when the manifest has roles")
+    _add_with(init_p)
+    init_p.add_argument(
+        "--distro",
+        action="append",
+        help="The distro, when the manifest has distros; more than one with --distro-dirs",
+    )
+    init_p.add_argument(
+        "--distro-dirs", action="store_true", help="Give each distro a directory of its own"
+    )
+    init_p.add_argument("--yes", action="store_true", help="Set up without asking")
+    init_p.set_defaults(func=cmd_init, parser=init_p)
+
+    sync_p = sub.add_parser(
+        "sync",
+        help=(
+            "Resolve the system's manifest again and clone the repos that are missing; repos"
+            " that are there are not touched yet"
+        ),
+    )
+    sync_p.add_argument(
+        "--distro", action="append", help="Sync only this distro; may be given more than once"
+    )
+    sync_p.set_defaults(func=cmd_sync, parser=sync_p)
 
     return parser
 

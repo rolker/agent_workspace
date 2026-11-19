@@ -98,13 +98,19 @@ We looked at tools that do compose manifests before writing this one (survey of 
 ## What works today
 
 `resolve` and `validate` read the format in [docs/spec.md](docs/spec.md), with `base` given
-as paths on the local disk; a `base` at a URL or in a git repo is not read yet. Nothing
-fetches, syncs or builds yet.
+as paths on the local disk; a `base` at a URL or in a git repo is not read yet.
 [docs/design.md](docs/design.md#resolve) says what `resolve` writes.
+
+`init` sets up a system directory from a manifest given as a path on the local disk and clones
+its repos; `sync` clones the ones that are missing. Neither updates a repo that is already
+there yet, and nothing builds yet. Both need `git`, and `vcs` from vcs2l or vcstool, on
+`PATH`. [docs/design.md](docs/design.md#what-is-built) says how far they go.
 
 ```bash
 repos-manifest resolve --manifest project11.manifest.yaml --role robot --distro jazzy --out ./out
 repos-manifest validate --manifest project11.manifest.yaml
+repos-manifest init ../project11.manifest.yaml --role developer --distro rolling --distro-dirs
+repos-manifest sync
 ```
 
 A manifest in the prototype's earlier shape still goes to the prototype's reader, which
@@ -134,3 +140,6 @@ ignored `tools/ros-manifest/` directory after pulling (its egg-info and
 .venv/bin/pip install -e '.[test]'
 .venv/bin/pytest tests
 ```
+
+The test extra installs vcs2l. The tests clone from local git repositories, need `git`, and
+fail when no `vcs` is found; a `vcs` already on `PATH` is used first.

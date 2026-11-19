@@ -76,14 +76,14 @@ remotes:
 
 | Key | Meaning |
 |---|---|
-| `manifest` | Where the manifest is, for every distro. A distro with its own `manifest_version` reads it at that version. A relative path is taken from the system directory. See "Where the manifest comes from". |
-| `local_manifest` | Optional. A path that is used instead, once that file exists: inside the system directory, or inside each distro's directory when there is one per distro, the same path in each. |
+| `manifest` | Where the manifest is, for every distro. A distro with its own `manifest_version` reads it at that version. A relative path is taken from the system directory. See "Where the manifest comes from". Not read in this part: the git form, a URL, and a distro's own `manifest_version`. |
+| `local_manifest` | Optional. A path that is used instead, once that file exists: inside the system directory, or inside each distro's directory when there is one per distro, the same path in each. Not read in this part. |
 | `role` | The role of this machine, if the manifest has roles. |
 | `groups` | Optional. Extra groups to switch on, on top of the role. |
 | `layout` | `flat`, or `distro-dirs` for a directory per distro: the system directory's layout, unrelated to `resolve --layout`. Chosen at `init` and not changed afterwards. See "More than one distro". |
-| `distros` | The distros of this system, each with its settings. The same shape for one distro or several. Absent when the manifest has no distros. See "More than one distro". |
-| `fetch_from` | Optional. Another place to clone the repos from. See "Where repos are fetched from". |
-| `remotes` | Optional. Extra remotes to add to every clone. See "Extra remotes". |
+| `distros` | The distros of this system, each with its settings. The same shape for one distro or several. Absent when the manifest has no distros. See "More than one distro". Not read in this part: a distro's settings; each distro's entry is empty. |
+| `fetch_from` | Optional. Another place to clone the repos from. See "Where repos are fetched from". Not read in this part. |
+| `remotes` | Optional. Extra remotes to add to every clone. See "Extra remotes". Not read in this part. |
 
 `role`, `groups`, `layout` and `distros` are facts about the machine, which is why they are
 recorded here and not in the manifest.
@@ -179,18 +179,41 @@ shell can build only one of them.
 
 `init` sets up the current directory. Without `--distro-dirs` it takes one `--distro`, or
 none when the manifest has no `distros:`; with it, one or more. It refuses as listed under
-"Refusals", before anything is created.
+"Refusals", before anything is created. Before anything is created it also resolves every
+distro and builds the text of each distro's resolved files, so a manifest that does not resolve,
+or whose resolved files cannot be written out (their head comment would hold a control or
+invisible character), is an error with nothing created.
 
 `init` makes `.repos-manifest/` with its `config.yaml` in one step, written aside and moved
-into place, so the folder and its record appear together. Before that step nothing of the
-system exists, and `init` can be run again. If the first sync after it fails or is
-interrupted, `sync` finishes it. Every command finds `.repos-manifest/` by walking up from the
-current directory, and one without a readable `config.yaml` is an error that names the file.
-`init` gives that error too, not the refusal for a system that is set up, and its next step
-is to repair or remove that `.repos-manifest/` folder.
+into place, so the folder and its record appear together. The aside is a directory
+`.repos-manifest-tmp-<pid>-<random>` in the directory being set up. A later `init` removes such
+a directory, not a link, whose process has ended when it is empty or holds only `config.yaml`;
+any other entry of that name, a link among them, it leaves and names in a warning, which for
+a directory whose process is still running says so (another `init` may be setting up there). Before that step nothing of the system exists, and `init` can be
+run again. If the first sync after it fails or is interrupted, `sync` finishes it. Every
+command finds `.repos-manifest/` by walking up from the current directory, and one without a
+readable `config.yaml` is an error that names the file. `init` gives that error too, not the
+refusal for a system that is set up, and its next step is to repair the file, or, to set up
+again, to move the system directory aside and run `init` in an empty directory. A `config.yaml` without exactly the shape this version writes
+(`manifest` as a path, `layout`, and `role`, `groups` and `distros` when set, each of its type,
+with an empty entry for each distro) is the same error, naming the key and what is wrong; any
+other key is named with the words that this version does not read it.
 
-Before its question, `init` prints what `show` prints (see "show"). For a flat system with a
-distro it also prints one line, which `--yes` does not skip:
+Until `build` is built, `init` writes a `setup.bash` that says nothing is built yet and fails
+when sourced, and `sync` writes it for a distro whose `setup.bash` is missing. It is created in one step only where no file is, so one made meanwhile is left
+as it is, and one that cannot be written whole is removed, never left empty or partial. One
+that cannot be created is reported for that distro, with its path and the
+reason, after that distro's report; the other distros go on, and the exit status is 1.
+Something at its place that is not a file or a link to one, such as a directory or a dangling
+link, is left as it is and named in a warning after that distro's report; the exit status is
+not changed by it.
+
+Before its question, `init` prints a summary until `show` is built, and then what `show`
+prints (see "show"). The summary gives the manifest, the role and the extra groups, then for
+each distro, in the order given, each layer's `src/` with each repo's key, version and URL and
+whether it is optional, then a `Layout:` line. It asks before it goes on, which `--yes` skips;
+when its input is not a terminal it refuses without `--yes`. For a flat system with a distro
+the `Layout:` line is this one, which `--yes` does not skip:
 
 ```
 Layout: one directory for the system, with no directory per distro. A distro cannot be added to this system later. To be able to add one, set up with --distro-dirs.
@@ -224,6 +247,10 @@ repos-manifest add-distro rolling --manifest-ref rolling
 A refusal changes nothing. Each command checks the conditions below in the order listed and
 gives the first that applies, with its next step. The checks that need no fetch come first.
 
+Two kinds of row are not built in this part, and no command makes their check: the `init`
+row for `--manifest-ref` or `--manifest-path`, which `init` does not take yet, and every
+`add-distro` row, since `add-distro` is not built. Every other row is built.
+
 | Command | Condition | Next step the message gives |
 |---|---|---|
 | `init` | A system is set up in this directory or one above it. | `sync`, or `add-distro <name>` for a system set up with `--distro-dirs`. |
@@ -236,6 +263,8 @@ gives the first that applies, with its next step. The checks that need no fetch 
 | `init` | A `--distro` the manifest's `distros:` does not list, without `--distro-dirs`, which is the resolver's error (see "Distros" in the specification). | Name a distro it lists; or, when the manifest is given in the git form, give with `--manifest-ref` a version of it that lists the distro; or, when it is not, add the distro to its `distros:`. |
 | `init` | A `--distro` the manifest's `distros:` does not list, with `--distro-dirs`. | Name distros it lists; or set up with the ones it lists and add each other one afterwards: with `add-distro <name> --manifest-ref <ref>` when `manifest` is given in the git form, or, when it is not, by adding the distro to its `distros:` and then `add-distro <name>`. |
 | `init` | A directory or file it would create already exists, checked after the manifest is read. | Move it out of the way, or set up in another directory. |
+| `init`, `sync` | No `vcs` or no `git` on `PATH`, `vcs --version` fails, or `git rev-parse --local-env-vars` fails. | Install, repair or reinstall vcs2l or vcstool, or git. |
+| `init` | Its input is not a terminal and `--yes` is not given. | Give `--yes`. |
 | `add-distro` | `<name>` is not a name by the rule for names in "Reading a manifest before using it" in the specification, or differs only in case from a recorded distro, since a distro's name is a directory name. | Use another name. |
 | `add-distro` | The system is flat. | Set up a new directory with `init --distro-dirs`. |
 | `add-distro` | The distro is already recorded. | `sync --distro <name>`. |
@@ -244,14 +273,34 @@ gives the first that applies, with its next step. The checks that need no fetch 
 | `add-distro` | The manifest read has no `distros:`. | None: there is no distro to add. |
 | `add-distro` | The manifest read has `distros:` and does not list the distro. | When `manifest` is given in the git form, `--manifest-ref` for a version that lists it; when it is not, add the distro to its `distros:`. |
 
+A next step that names a command or option that is not built yet, `add-distro` or
+`--manifest-ref`, is left out of the message until it is built.
+
 #### Where the resolved files and state go
 
 In a flat system the resolved files are in `.repos-manifest/resolved/`. With a directory per
 distro, each distro's are in `.repos-manifest/resolved/<distro>/`.
 
 The version and commit `sync` last put each repo on are kept in `.repos-manifest/state.yaml`,
-for each distro. Its inner shape is not fixed here. What the design needs of it is that
-writing one distro's state leaves every other distro's as it was.
+for each distro. What the design needs of it is that writing one distro's state leaves every
+other distro's as it was. Its shape:
+
+```yaml
+format: 1
+distros:
+  rolling:              # _unnamed when the manifest has no distros
+    repos:
+      project11/core:   # the repo's key in the manifest
+        layer: core     # _unnamed for the unnamed layer
+        version: rolling  # the manifest's version; null when it names none
+        commit: 3f2a9c...
+```
+
+It is made at the first clone and written whole, by one rename, after each repo is cloned. A
+write that fails ends the run with a message that the clone is in place but not recorded,
+naming the file and the reason. One without exactly this shape (`format: 1`, each repo with `layer`, `version` and `commit`, and
+no other key) is an error that names it and says what is wrong. Nothing stops two runs at
+once, and two runs can each lose the other's update to it.
 
 #### Which distro a command uses
 
@@ -515,7 +564,7 @@ into place before it does anything else.
 Two runs writing to the same output at once are not supported. Each still leaves a whole
 output, the one or the other, but one of them may fail with a message about the directory
 that does not say another run was the cause. `resolve` takes no lock; a lock on the system
-directory belongs with `init` and `sync` (issue 500).
+directory belongs with `init` and `sync`, and is not built yet.
 
 `resolve` makes the checks of "Reading a manifest before using it" in the specification that
 can be made on the text. The check on the real destination, that a link on the disk or two
@@ -563,10 +612,43 @@ is not resolved, and none of its repos is touched.
 - A flat system records no distro, because its manifest had none, and the manifest now has
   `distros:`. Resolving for no distro is then an error, since a distro is given where the
   manifest has them (see "What resolving produces" in the specification).
-  The message says that nothing has been moved, and that a system with distros is set up in a
-  new directory with `init`, and with `--distro-dirs` to hold more than one distro.
+  The message says that the manifest now has distros, that this system directory was set up
+  without one and nothing in it has been moved or changed, and that a system with distros is
+  set up in a new directory with `init`, with `--distro-dirs` to hold more than one distro.
 - The manifest lists a distro the system does not record. Nothing happens: a distro is added
   only with `add-distro`.
+- The manifest this distro reads lacks the system's role or one of its groups. At `init`,
+  where every distro reads the one location given, that is the resolver's error and nothing
+  is created.
+
+A distro whose manifest does not resolve is reported in the same way, and a repo that cannot
+be fetched is reported for that repo; the other distros go on. `sync` exits with 1 when a distro
+was reported or a repo was an error (below), and with 0 otherwise; a repo that is there and
+left as it is does not change it. A stop signal at any point of `init` or `sync` ends it with
+that signal and one line, which says when nothing was changed yet.
+
+Before a missing repo is cloned, the check on the real destination is made: the directory
+that will hold it is, with every link resolved, where its path says, and no file is where one
+of the directories on its path belongs. Each missing repo is cloned by a `vcs import` of its
+own, given that one repo, into a
+temporary directory `.repos-manifest-tmp-<pid>-<random>` in `.repos-manifest/`. Only when
+`vcs` exits with 0, and the check on the real destination still holds, is the clone renamed
+into its place. The stop signals are held over that rename and the writing of the repo's
+record in `state.yaml`. So a path under a layer's `src/` is a whole clone or something a person
+put there; a repo whose clone failed leaves nothing there. A place that is there is not
+written into, and one that is there and is not a directory stops that repo. The
+temporaries make a limit: a system directory is on one filesystem. Where a distro or layer
+directory is a separate mount, the rename fails, and the message says so and names both
+places. Each run first removes the temporaries in `.repos-manifest/` whose process has ended.
+
+`vcs` runs in the tool's own process group, so a Ctrl-C at a terminal reaches `git` and a
+password prompt works. A stop signal removes the clone in progress, and the run says to run
+`sync` to finish. A temporary that cannot be removed then, because a clone is still writing
+into it, is a warning, and a second stop signal during that cleanup cuts it short; the next
+run's sweep removes what is left. A run killed outright loses at most the repo in progress.
+After failures, the run says to run `sync` again only when a repo could not be fetched or
+its clone's `HEAD` cannot be read, as for a remote with no commits yet; for a repo in the way
+it says that another sync will not change that.
 
 Missing repos are cloned with `vcs import`. Repos that are already there are handled one at
 a time with `git`, because `vcs import` does not do what is wanted for them. Tested with
@@ -601,8 +683,12 @@ person has moved if it is not.
 Arguments after `--` are passed to `vcs import`, for example `--recursive` for repos with
 submodules. `init` and `add-distro` pass theirs to the `vcs import` of their first sync.
 
-An optional repo that cannot be fetched is skipped and reported. Any other repo that cannot
-be fetched is an error. A skipped repo is listed every time, by `sync` and by `status`, so
+Whatever stops a repo from being put in place (it cannot be fetched, the clone's `HEAD` cannot be read, a link is on the way,
+a file is where a directory on its path belongs,
+its place is taken by something that is not a directory or is filled meanwhile, a directory
+cannot be made, the rename fails) skips an optional repo, which is listed with the reason and
+never makes the exit status non-zero; for any other repo it is an error, and the exit status
+is 1. A skipped repo is listed every time, by `sync` and by `status`, so
 that a repo missing because the network was down is not mistaken for one the machine has no
 access to.
 
@@ -895,13 +981,22 @@ Their robot uses the role `robot` with the extra group `my-robot-hardware`.
 
 ## What the tools rely on
 
-- `vcs`, from vcs2l, to clone repos.
+- `vcs`, from vcs2l or vcstool, found on `PATH`, to clone repos. The package's test extra
+  installs vcs2l for the tests.
 - `colcon`, to build a layer.
 - `git`, to update repos that are already cloned, to read their state, to check whether a
   repo exists at another place and to add remotes.
 - Python with PyYAML.
 
-The tools call `vcs` and `colcon` as commands. They do not import them as libraries.
+The tools call `vcs` and `colcon` as commands. They do not import them as libraries. Every
+`vcs` and `git` they run gets their environment without the variables that point git at a
+particular repository or its parts, so a run from a git hook acts on its own clones and not on
+the repo the hook runs in. Those are the names `git rev-parse --local-env-vars` prints, such as
+`GIT_DIR`, except `GIT_CONFIG_PARAMETERS` and `GIT_CONFIG_COUNT`, and `GIT_NAMESPACE`, which
+that list does not name. The two kept carry configuration given by `git -c` or by
+`GIT_CONFIG_COUNT` and its `GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>`, such as a url
+rewrite or a credential header, and git keeps the same two when it runs a command in another
+repository.
 
 Not every command needs all of these:
 
@@ -956,8 +1051,21 @@ as optional, where the design marks repos. And when it fetches a parent manifest
 repo it never lets git or ssh ask for a password, where the design lets them ask at a
 terminal.
 
-`show`, `init`, `sync`, `build`, `status`, `freeze`, `add-distro`, the system directory,
-fetching from another place and extra remotes are not built.
+`init` and `sync` are built for a manifest given as a path on the local disk, flat or with
+`--distro-dirs`, as far as setting a system up and cloning the repos that are missing.
+`sync` reads and resolves every distro it acts on, and builds the text of each distro's resolved
+files, before it changes anything, so a distro whose manifest does not resolve, or whose resolved
+files cannot be written out, ends the run with nothing changed for any distro, rather than being
+reported while the others go on. When the manifest cannot be read, does not resolve, or
+now has distros on a flat system, the error ends by saying that the manifest's path is the one
+recorded in `config.yaml`, taken from the system directory. A repo that is there is
+not touched, and `sync` says that updating it is not built yet. Two names that a disk which
+ignores case treats as one are not checked yet on the real destination.
+
+Not built yet: updating repos that are there (step 1 of "sync" and its rules),
+`local_manifest`, the git and URL forms of a manifest's location with `--manifest-ref` and
+`--manifest-path`, arguments after `--`, `add-distro`, `show`, `build`, `status`, `freeze`,
+fetching from another place and extra remotes.
 
 ## Open questions
 
@@ -970,12 +1078,8 @@ fetching from another place and extra remotes are not built.
   between distros. A distro's own manifest version is settled: it is used whenever the distro
   reads the recorded location.
 - How a distro is removed from a system with a directory per distro.
-- What `init` prints for several distros.
-- What a distro's manifest that lacks the system's role or one of its groups gives, at
-  `add-distro` and at `sync`.
-- `sync`'s exit status when one distro is reported and the others go on, and whether it goes
-  on with the other distros when one distro's manifest does not resolve or one of its required
-  repos cannot be fetched.
+- What a distro's manifest that lacks the system's role or one of its groups gives at
+  `add-distro`.
 - Whether `build` should stop at the first layer that fails or carry on with layers that do
   not depend on it. The manifest does not say which layers depend on which, only their
   order, so stopping is the safe rule.
