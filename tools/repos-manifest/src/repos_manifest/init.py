@@ -137,12 +137,14 @@ def sweep_asides(system: Path) -> None:
         if match is None:
             continue
         config = entry / CONFIG_FILE
-        ours = (
-            not entry.is_symlink()
-            and process_has_ended(int(match.group("pid")))
-            and entry.is_dir()
-            and all(child == config for child in entry.iterdir())
-        )
+        directory = not entry.is_symlink() and entry.is_dir()
+        if directory and not process_has_ended(int(match.group("pid"))):
+            warn(
+                f"{entry}: a temporary of repos-manifest whose process is still running (another"
+                " init may be setting up here); left as it is"
+            )
+            continue
+        ours = directory and all(child == config for child in entry.iterdir())
         if not ours or config.is_symlink() or (os.path.lexists(config) and not config.is_file()):
             warn(
                 f"{entry}: named like a temporary of repos-manifest, but not what init leaves;"

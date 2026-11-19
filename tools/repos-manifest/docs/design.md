@@ -188,7 +188,8 @@ invisible character), is an error with nothing created.
 into place, so the folder and its record appear together. The aside is a directory
 `.repos-manifest-tmp-<pid>-<random>` in the directory being set up. A later `init` removes such
 a directory, not a link, whose process has ended when it is empty or holds only `config.yaml`;
-any other entry of that name, a link among them, it leaves and names in a warning. Before that step nothing of the system exists, and `init` can be
+any other entry of that name, a link among them, it leaves and names in a warning, which for
+a directory whose process is still running says so (another `init` may be setting up there). Before that step nothing of the system exists, and `init` can be
 run again. If the first sync after it fails or is interrupted, `sync` finishes it. Every
 command finds `.repos-manifest/` by walking up from the current directory, and one without a
 readable `config.yaml` is an error that names the file. `init` gives that error too, not the

@@ -207,6 +207,27 @@ def test_inits_sweep_leaves_what_it_did_not_make_and_says_so(manifest, tmp_path,
     assert leftover.is_symlink() == (what == "a link of that name")
 
 
+def test_inits_sweep_leaves_the_aside_of_a_running_process_and_says_so(manifest, tmp_path, capsys):
+    # What another init leaves while it runs: a directory holding only config.yaml.
+    system = _system(tmp_path)
+    running = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        leftover = system / f".repos-manifest-tmp-{running.pid}-abcd_123"
+        leftover.mkdir()
+        (leftover / "config.yaml").write_text("manifest: x\n")
+        assert run(system, *INIT) == 0
+    finally:
+        running.kill()
+        running.wait()
+    assert os.listdir(leftover) == ["config.yaml"]
+    err = capsys.readouterr().err
+    assert (
+        f"WARNING: {leftover}: a temporary of repos-manifest whose process is still running"
+        " (another init may be setting up here); left as it is\n"
+    ) in err, err
+    assert "not what init leaves" not in err
+
+
 def test_inits_sweep_removes_an_empty_aside(manifest, tmp_path):
     system = _system(tmp_path)
     leftover = system / f".repos-manifest-tmp-{dead_pid()}-abcd_123"
