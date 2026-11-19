@@ -291,3 +291,43 @@ Two caveats. The tool does not check what depends on a package left out: colcon 
 - [x] (suggestion) colcon `lstrip()`s `--packages-skip`/`--packages-ignore` values (colcon_package_selection/argument.py); the record keeps `' foo'`, so `foo` -> `' foo'` prints a false "skip list changed" — `tools/repos-manifest/src/repos_manifest/build.py:639`
 - [x] (suggestion) "not recorded, given with <selection>" is printed even when every layer of the selection run failed (its record was removed, not given back) — `tools/repos-manifest/src/repos_manifest/build.py:1200`
 - [x] (suggestion) The stale-install note on "skip list changed" is printed when the list only shrank, where nothing newly left out can be stale — `tools/repos-manifest/src/repos_manifest/build.py:1193`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 16:10 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-531 at `8df0f714`
+**Addressed**: Local Review (Pre-Push) at `6b33f161` (2026-11-19 15:40 -05:00)
+**Commits**: 4a00ff45, db009e78, 5475f89b, 9514e7b5, 0bd2af4b, 9dc5473f, 211042b0, 8df0f714 (box checks: 369cb220)
+
+### Actions
+- [x] (must-fix 1) A skip or ignore value holding a control or invisible character, or not UTF-8, is refused in `refused_arguments` before the lock, the record or colcon is touched, with the option named and the value shown escaped (`'grid\x0amap'`, `'grid\xffmap'`); tests: a newline, a tab in a regex, a non-UTF-8 byte, a bidirectional override beside selection, each leaving the record and `setup.bash` byte for byte and printing no report; and a property test that builds with 56 awkward values under `--packages-skip` and `--packages-ignore-regex` and reads every record back (20 of them fail without the fix) — `tools/repos-manifest/src/repos_manifest/build.py` (`refused_values`, `_shown`), `4a00ff45`
+- [x] (must-fix 2) Report and documents say the options were given to colcon, whether or not the layer has such packages: "built with <options> given to colcon: <layers>" and "skip and ignore options given to colcon changed: <layer> (was ..., now ...)"; options print as colcon arguments joined by spaces; every test quoting the lines updated, and a test for a layer with none of the packages — `build.py` `report`, `system.py` comments and one reader message, `docs/design.md`, `README.md`, `db009e78`
+- [x] (must-fix 3) design.md: the layers above stay in the built run because a changed list is an ordinary rebuild in place on the same chain; a package now left out may still be in `install/`, one no longer left out may also have been there from before, so the layers above may or may not have used it, and `build` does not check — `docs/design.md`, `5475f89b`
+- [x] (suggestion a) A `--packages-skip`/`--packages-ignore` value list ends at any argument starting with `-`; `-regex` lists end only at an option `build` knows; design.md states the limit — `build.py` `left_out`, `9514e7b5`, `8df0f714`
+- [x] (suggestion b) Package names are recorded with leading whitespace stripped, as colcon strips them; patterns as given — `build.py` `left_out`, `0bd2af4b`
+- [x] (suggestion c) The "not recorded, given with ..." line is printed only when the run built a layer — `build.py` `report`, `9dc5473f`
+- [x] (suggestion d) The stale-install note is added only when the options name a package or pattern the old ones did not (a name counts once whether skipped or ignored; patterns compared as text) — `build.py` `_newly_given`, `211042b0`
+
+### Notes
+Departures: the refusal uses the tool's own `has_unsafe_char` rule (the one manifest names and values follow), broader than control characters: it also refuses invisible and bidirectional characters, non-ASCII spaces and private-use code points, since a value holding one is printed in report lines and package names never hold one. `read_built` itself is unchanged (it still refuses only C0 controls and DEL), so the refusal is stricter than the reader, which keeps the property. "The report printing its lines twice" did not reproduce (in-process, through a pipe and on a pseudo-terminal, the non-UTF-8 path printed the report head once and then "internal error (UnicodeEncodeError)"); that path no longer exists, since the value is refused before anything runs, and the refusal tests assert no report is printed at all.
+
+colcon checks (colcon-core 0.21.3, colcon-package-selection 0.2.10, `colcon list` on a three-package workspace): an unknown `--foo`, `--meson-args` or `-x` after `--packages-skip`/`--packages-ignore` is read as a value and rejected ("unrecognized argument: --foo", nothing built); after a `-regex` form it is taken as a pattern and colcon goes on. So where colcon builds, a package-name list never holds a value starting with `-`, and the new rule matches colcon in every such case; with an extension that has the option, colcon reads it as an option and the tool now ends the list there too. For `-regex` lists the tool still records an unknown extension option as a pattern (design.md says so). `--packages-skip " alpha"` and `--packages-ignore $'\talpha'` skip `alpha`; `--packages-skip-regex " ^alpha"` skips nothing: colcon strips leading whitespace from names only.
+
+Tests: `cd tools/repos-manifest && REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest -p no:cacheprovider` gave `1315 passed in 385.97s` (1189 before; 126 new, 112 of them the parametrized property test). Each fix's new tests were run against the code without it and failed. No workspace script changed, so no `.agent/scripts/tests/` suite applies; the full pre-commit pass is left to the host. `sync.py`, the lock holder message and `state.yaml` handling are untouched.
+
+Documents: each changed sentence of `tools/repos-manifest/docs/design.md` and `README.md` re-read against the code and the colcon checks above.
+
+### For the pull request body
+
+The closing report names the skip and ignore options as what colcon was given, since a run gives them to every layer it builds, including one that has none of the packages they name:
+
+- `built with --packages-skip x y given to colcon: _unnamed, mid`
+- `skip and ignore options given to colcon changed: mid (was --packages-skip y x, now --packages-skip z); what an earlier build installed of a package they skip or ignore now stays in <system>/mid/install/` (the note only when the options name a package or pattern the old ones did not)
+- `skip and ignore options given to colcon changed: mid (was --packages-skip z, now none)`
+- `not recorded, given with package selection: --packages-skip y (a run that builds only part of a layer gives each layer back the record it had)` (only when the run built a layer)
+
+A record's `without` holds the skip and ignore options given to the layer's colcon when it was last built, as colcon read them, whether or not the layer has such packages. A list of package names ends at any argument starting with `-` and is recorded with leading whitespace stripped, as colcon reads it; a list of patterns is recorded as given and ends only at an option colcon is known to have, so an option of an unlisted colcon extension after a `-regex` list is recorded as patterns (documented). A skip or ignore value holding a control or invisible character, or not UTF-8, is refused before anything runs, e.g. `ERROR: the --packages-skip value 'grid\x0amap' holds a control or invisible character, which the layer's record cannot hold as one line of text; nothing was run. Give the package name or pattern in plain text`; the record and `setup.bash` are untouched.
+
+When a layer is rebuilt with another list, the layers above stay in the built run, because that is an ordinary rebuild of the layer in place on the same chain; a package now left out may still be in its `install/` from an earlier build, and one no longer left out may also have been there from before, so the layers above may or may not have used it, and `build` does not check.
