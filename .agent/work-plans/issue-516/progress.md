@@ -663,3 +663,13 @@ This pull request has had three fix rounds on suggestions. None of the points be
 
 ### False positives
 - (none)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 14:36 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner was shown what pull request 526 changes (the failed push no longer fails the script; a relative --plan-file taken from the caller's directory; the normal path unchanged), the reviews, the two points left on purpose, and CI passing on head d72f2389 with no open findings. His answer: "Merge (Recommended)".
