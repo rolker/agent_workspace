@@ -33,12 +33,17 @@ by colcon; `--packages-skip-r` reads as `--packages-skip-regex`.
    on a layer with no record is refused as now.
 2. **Read the list** (`build.py`, new `left_out(colcon_args)`) — returns a mapping of the
    full option name to its values, for the options classified above. Values are the arguments
-   up to the next argument starting with `-`; the `=` form has one value. Following colcon, a
-   repeated option keeps its last occurrence; different options (skip beside ignore) are all
-   kept. Values are kept as given (a regex stays text, not the names it matched). Option
+   up to the next argument that starts with `-` (so a regex value starting with `-` ends the
+   list; harmless, colcon then rejects or reads it its own way); the `=` form has one value.
+   Following colcon, the last occurrence of each option is taken first; an option whose last
+   occurrence has no values is not in the mapping, since colcon then leaves nothing out
+   (`--packages-skip` alone, `--packages-skip b --packages-skip`: nothing recorded, checked
+   by the Plan Review with real colcon). Different options (skip beside ignore) are all kept. Values are kept as given (a regex stays text, not the names it matched). Option
    names are written in full, so an abbreviation and the full name give the same record.
 3. **Record field** (`system.py`) — `LayerRecord` gains `without: Dict[str, List[str]]`
-   (default empty). `put_built_layers` writes `without:` only when it is not empty.
+   (default empty). `put_built_layers` writes `without:` only when it is not empty, and `left_out` never returns an
+   option with no values, so a written `without` always passes `read_built` (a test builds with
+   each shape, reads the file back, and builds again).
    `read_built` adds `without` to the optional keys of `_check_keys`; absent means empty, so
    an old record reads as before. It must be a mapping whose keys are among the four options
    and whose values are non-empty lists of strings; the control-character check covers the
@@ -58,8 +63,10 @@ by colcon; `--packages-skip-r` reads as `--packages-skip-regex`.
    stale-install caveat). Progress gets `without` (layer to list for layers built in this
    run) and `without_changed` (layer to (was, now), only when the layer had a record and the
    lists differ as sets of (option, set of values)).
-5. **Report** — `built without: <layer> (--packages-skip a b; --packages-ignore-regex ^x$)`
-   for each layer built in the run with a list, and `skip list changed: <layer> (was
+5. **Report** — `built leaving out: <layer> (--packages-skip a b; --packages-ignore-regex ^x$)`
+   for each layer built in the run with a list, a layer built under `--keep-going` but not used
+   too (its record holds the list); the wording differs from the existing "built without
+   sourcing ..." line on purpose; and `skip list changed: <layer> (was
    --packages-skip a, now --packages-skip c)` when it changed (`none` when the list was
    dropped), beside the lines for repos added or dropped. A changed list is an ordinary rebuild
    of the layer on the same chain, so `why_not_built` is not touched and the layers above stay
@@ -86,6 +93,9 @@ by colcon; `--packages-skip-r` reads as `--packages-skip-regex`.
      only `[b]`, `--packages-skip a b` records both, `--packages-skip=a` one, skip beside ignore
      both options; one real-colcon test confirming the last occurrence wins (the order of
      installed packages).
+   - `--packages-skip` alone and `--packages-skip b --packages-skip`: recorded built, no
+     `without`, no "built leaving out" line; a layer built under `--keep-going` and not used
+     prints "built leaving out" with its list.
    - `--packages-skip-build-finished` with a skip list records the list.
    - `test_system.py`: an old record without the field reads with empty `without`; one with it
      round-trips; a non-mapping, an unknown option key, an empty list, a non-string and a
@@ -93,15 +103,19 @@ by colcon; `--packages-skip-r` reads as `--packages-skip-regex`.
    - real colcon: a first build with `--packages-skip` records the list, the skipped package is not
      installed, a layer above builds, and a changed list is reported.
 7. **Documents** (`tools/repos-manifest/docs/design.md`, `README.md`) — design.md:
-   the record's YAML sample and the paragraph after it (the optional `without` field, its
-   meaning, how an old record and an older tool treat it); the sentence "Package selection,
+   the record's YAML sample and the paragraph after it (the optional `without` field holds the left-out options given after `--`, not a skip set from
+   a defaults file or mixin, which `build` does not see; an old record reads as before; an
+   older tool refuses a record that has the field); the sentence "Package selection,
    any `--packages-` option but `--packages-skip-build-finished`, is passed too" (selection is
    any `--packages-` option but the resume option and the four left-out options; the three
    skip-by-... options and why); the bullet on options that only warn (skip and ignore
    move out of "selection options"); a new bullet for the left-out options (classification,
    abbreviations, repeats, last occurrence wins, regex as text, the stale-install caveat, no
    check of dependents, the `--packages-skip-build-finished` and selection-run cases); the
-   report passage (the two new lines) and the sentence that a layer rebuilt in place keeps the
+   colcon-defaults bullet, the `colcon_defaults.yaml` bullet and `_defaults_note` in
+   `build.py` (reworded: a skip set in a defaults file or mixin is not seen and not recorded, so
+   the record's list may be shorter than what colcon left out); the report passage (the two new
+   lines, "built leaving out:" and "skip list changed:") and the sentence that a layer rebuilt in place keeps the
    layers above it (a changed list is another case of it). README: the sentence "A run with
    package selection or `--cmake-target` after `--` only rebuilds layers that are built" gets
    "(not `--packages-skip` or `--packages-ignore`, which leave named packages out of a whole
@@ -111,7 +125,7 @@ by colcon; `--packages-skip-r` reads as `--packages-skip-regex`.
 
 | File | Change |
 |------|--------|
-| `tools/repos-manifest/src/repos_manifest/build.py` | `LEFT_OUT`, classification, `left_out`, record, report, Progress |
+| `tools/repos-manifest/src/repos_manifest/build.py` | `LEFT_OUT`, classification, `left_out`, record, report, Progress, `_defaults_note` wording |
 | `tools/repos-manifest/src/repos_manifest/system.py` | `LayerRecord.without`, `read_built`, `put_built_layers` |
 | `tools/repos-manifest/tests/test_build.py`, `test_system.py` | the tests of step 6 |
 | `tools/repos-manifest/docs/design.md`, `README.md` | step 7 |
