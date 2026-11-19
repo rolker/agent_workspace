@@ -347,3 +347,36 @@ Run: the tool's whole suite (`1047 passed`, colcon `/usr/bin/colcon`); pre-commi
 - [x] (suggestion) The bash wrapper keeps the command in plain variables `setup` and `command`, which a sourced package hook could overwrite; use prefixed names (gemini) — `tools/repos-manifest/src/repos_manifest/build.py:64-66`
 - [x] (suggestion) `repos-manifest build --help` shows no `[-- COLCON_ARGS]` in its usage line, unlike design.md's synopsis — `tools/repos-manifest/src/repos_manifest/cli.py:283-305`
 - [x] (suggestion) The adapter's comment "<root>/<distro>/setup.bash is its stub until then" is stale once `build` exists; update it here or in issue 503 — `.agent/project_types/ros2_colcon/adapter.sh:97`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 10:49 -05:00
+**By**: claude-code (claude-opus-5-5)
+
+**Branch**: feature/issue-501 at `62fc5d12`
+**Addressed**: Local Review (Pre-Push) at `d783eaff` (2026-11-19 10:13 -05:00)
+**Commits**: 82f1dc49, c99d00cf, 62fc5d12
+
+### Actions
+- [x] (must-fix) Stop signal around a record write: `started`/`built` now change inside the same `signals_held()` block as the record write (`_put(..., then)`), and every exit path goes through `settle()`; both windows tested (`test_a_stop_held_during_a_record_write_finds_the_run_in_agreement_with_it[removal|success]`) — `build.py` `_put`, `run_build`
+- [x] (must-fix) colcon that cannot start: colcon and bash resolved once to absolute paths before any record is touched; empty and relative PATH entries are skipped (not made absolute); a Popen OSError becomes an error after `settle()`; `settle()` is the one function that brings setup.bash into line with the record — `build.py` `find_program`, `run_child`, `_build`
+- [x] (must-fix) Stopping stops the build: colcon in a new session; 1st stop signal to the group as itself, 2nd SIGTERM, 3rd+ SIGKILL (each but SIGKILL followed by SIGCONT); the tool waits for colcon, then SIGKILLs what is left of the group and waits up to 10 s for it to go, before writing; SIGTSTP stops the group then the tool, SIGCONT continues the group; checked with /usr/bin/colcon that no make/sleep job survives SIGINT or SIGTERM, and in a pty (`script`) that colcon's status output still shows; design.md's stop paragraph rewritten — `build.py` `run_child`, `docs/design.md`
+- [x] (must-fix) Forwarded args: `--base-paths`, `--paths`, `--install-base`, `--build-base`, their `=value` form and abbreviations (colcon allows abbreviation) are refused before the lock or any record; `--merge-install` is allowed (real-colcon test shows the chain holds); package selection and mixins documented; a layer is recorded built only when colcon exits 0 and its `install/setup.bash` was written in this run (inode/mtime/ctime changed), else "not built" and exit 1 — `build.py` `refused_arguments`, `build_layers`
+- [x] (must-fix) One record per distro (`.repos-manifest/built-<distro>.yaml`) and an `fcntl.flock` on `.repos-manifest/build-<distro>.lock` held for the run (no existing lock code in sync/init); a second build of the same distro is refused naming the holder's pid; design.md tree and text updated — `system.py` `hold_build_lock`, `read_built`, `put_built_layers`
+- [x] (suggestion) setup.bash brought into line right after a layer's record is removed, before colcon starts — `build.py` `build_layers`
+- [x] (suggestion) When no layer starts, setup.bash is still settled — `build.py` `_build`
+- [x] (suggestion) `build <empty layer>` is skipped, not refused — `build.py` `refusal`
+- [x] (suggestion) The failed line offers `source` only when `install/setup.bash` exists — `build.py` `report`
+- [x] (suggestion) The wrapper keeps its command in `_repos_manifest_build_setup`/`_repos_manifest_build_command` (names no hook uses), setup still sourced with no arguments — `build.py` `_SOURCE_THEN_RUN`
+- [x] (suggestion) `build --help` usage shows `[-- COLCON_ARGS ...]` and an epilog naming the refused options — `cli.py`
+- [x] (suggestion) Stale adapter comment corrected (comment only) — `.agent/project_types/ros2_colcon/adapter.sh:94-99`
+
+### Tests
+Each fix has a test; each was checked to fail with its fix reverted in a scratch copy (MF1 2 fail, MF2 relative-PATH 1, MF2 Popen 1, MF3 6 incl. both real-colcon stop tests, MF4 refusal 7, MF4 freshness 1, MF5 lock 1, S1-S5 1 each).
+- Tool suite: `cd tools/repos-manifest && REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest` — `1075 passed in 170.99s` (real colcon /usr/bin/colcon, none skipped)
+- `test_adapter.sh` — 248 passed, 0 failed; `test_ros2_colcon.sh` — 1375 passed, 0 failed, 0 skipped; `test_project_registry.sh` — 425 passed, 0 failed; `test_project_file.sh` — 701 passed, 0 failed; `test_worktree_create.sh` — PASS: 90 FAIL: 0; `test_register_project.sh` — 222 passed, 0 failed
+- pre-commit (with SKIP=validate-script-tests) on the changed files: clean. The full pre-commit pass was left to the host.
+
+### Notes
+- Commits are grouped rather than one per finding: the five must-fix and S1-S5 all reshape the same run loop in build.py and its tests.
+- A SIGKILL of the tool itself still leaves colcon running (it cannot be caught); its layer is already out of the record and setup.bash (design.md says so).
