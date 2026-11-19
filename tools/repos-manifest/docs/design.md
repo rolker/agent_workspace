@@ -952,26 +952,28 @@ the manifest. It stays with `colcon`:
   the layer's `install/setup.bash` is there with it and the layers chain as without it
   (checked with colcon-core 0.21.3).
 - Package selection, any `--packages-` option but `--packages-skip-build-finished`, is passed too,
-  and builds only part of a layer. So does `--cmake-target` (or an abbreviation that could be it, or
-  its `=value` form): `colcon` builds that one target and skips the install step, yet exits with 0
-  and writes `install/setup.bash`, so a layer built with it would be recorded built with nothing
-  installed (checked with colcon-core 0.21.3 and colcon-cmake 0.2.30, whose build step skips the
-  install "if a specific target was requested"). It is the one option of `colcon build` that skips
-  the install; `--cmake-target-skip-unavailable` acts only together with it and on its own is passed
-  as any other option. A run with either only rebuilds layers that are built: it is refused before
-  anything runs or any record is touched when it would build a layer that is not built, or one that
-  is built but whose repos on disk differ from its record. The message says which of the two it
-  found, names the two kinds of layer apart, each layer with why, and gives one step: build every
-  layer it names without it first, in the manifest's order, which for the second kind also records
-  the change. When `colcon` exits with 0 and has written the layer's `install/setup.bash`, the layer
-  gets back the record it had, unchanged: its repos, its chain and its time, which so still says
-  when the layer was last recorded built. The closing report names such layers as "rebuilt with
-  selection", not as "built". A plain `build -- --packages-select c` on a system that is built
-  rebuilds every layer with that selection: in a layer without `c`, `colcon` warns, builds nothing,
-  exits with 0 and still writes `install/setup.bash`, so the layer keeps its record (checked with
-  colcon-core 0.21.3). A layer whose `colcon` fails is not built, as without selection; with
-  `--keep-going` the layers above it are not tried, since they could only be built on another chain
-  than their records'.
+  and builds only part of a layer. So does `--cmake-target`, also in its `=value` form (every
+  shorter spelling of it is also the start of `--cmake-target-skip-unavailable`, so `colcon` would
+  reject it as ambiguous, and `build` refuses it first, as ambiguous, naming the options it could
+  be): `colcon` builds that one target and skips the install step, yet exits with 0 and writes
+  `install/setup.bash`, so a layer built with it would be recorded built with nothing installed
+  (checked with colcon-core 0.21.3 and colcon-cmake 0.2.30, whose build step skips the install "if a
+  specific target was requested"). It is the one option of `colcon build` that skips the install;
+  `--cmake-target-skip-unavailable` acts only together with it and on its own is passed as any other
+  option. A run with either only rebuilds layers that are built: it is refused before anything runs
+  or any record is touched when it would build a layer that is not built, or one that is built but
+  whose repos on disk differ from its record. The message says which of the two it found, names the
+  two kinds of layer apart, each layer with why, and gives one step: build every layer it names
+  without it first, in the manifest's order, which for the second kind also records the change. When
+  `colcon` exits with 0 and has written the layer's `install/setup.bash`, the layer gets back the
+  record it had, unchanged: its repos, its chain and its time, which so still says when the layer
+  was last recorded built. The closing report names such layers as "rebuilt with selection", not as
+  "built". A plain `build -- --packages-select c` on a system that is built rebuilds every layer
+  with that selection: in a layer without `c`, `colcon` warns, builds nothing, exits with 0 and
+  still writes `install/setup.bash`, so the layer keeps its record (checked with colcon-core
+  0.21.3). A layer whose `colcon` fails is not built, as without selection; with `--keep-going` the
+  layers above it are not tried, since they could only be built on another chain than their
+  records'.
 - `colcon` must find the packages named by `--packages-up-to`, `--packages-up-to-regex`,
   `--packages-above`, `--packages-above-and-dependencies`, `--packages-above-depth`,
   `--packages-start` and `--packages-end` among the layer's own packages, and fails a layer
@@ -999,22 +1001,24 @@ the manifest. It stays with `colcon`:
   without package selection brings it back (`repos-manifest build <that layer>`, with
   other arguments as wanted): a run with selection, even with the mistake corrected, is
   refused, since the layer is not built.
-- `build` sees only the arguments after `--`. `colcon` also takes arguments from a file of defaults:
-  the one `COLCON_DEFAULTS_FILE` names, else `$COLCON_HOME/defaults.yaml`
-  (`~/.colcon/defaults.yaml`), a relative path read in the layer's directory, where `colcon` runs;
-  and from a `colcon_defaults.yaml` in the layer's directory. It reads each only when it is a file,
-  and with `COLCON_DEFAULTS_FILE` set to a path where nothing is it reads no defaults file at all
-  (checked in colcon-defaults 0.2.9). A mixin (`--mixin`) adds arguments `build` does not see
-  either. Package selection set there, or a `--cmake-target`, builds only part of a layer, yet
-  `build` does not see it: when `colcon` exits with 0 and writes `install/setup.bash`, the layer is
-  recorded built as a whole. Before it starts `colcon`, `build` prints a note naming each such file
-  that is there, as `colcon` will find it: the defaults file once (before the layer when its path is
-  relative), a layer's `colcon_defaults.yaml` before that layer. A file that is not there is not
-  named, since `colcon` reads nothing from it; a mixin is never named. One that sets a refused
-  option is not seen either; one that moves `install/` leaves the layer not built, since its
-  `install/setup.bash` is not written. Nor does `build` see a CMake argument that drops the install
-  rules: `colcon` then warns that the package has no `install` target and goes on (read in
-  colcon-cmake 0.2.30).
+- `build` sees only the arguments after `--`. `colcon` also takes arguments from a global file of
+  defaults and from a `colcon_defaults.yaml` in the directory it runs in, the layer's directory
+  (checked in colcon-defaults 0.2.9 and with `colcon list`). The global file is the path
+  `COLCON_DEFAULTS_FILE` holds whenever that variable is set, even to an empty value, and
+  `$COLCON_HOME/defaults.yaml` (`~/.colcon/defaults.yaml`) only when it is not set; a relative path
+  is read in the layer's directory. `colcon` reads each only when it is a file: with
+  `COLCON_DEFAULTS_FILE` empty, or naming a missing path or a directory, it reads no global file,
+  not even `$COLCON_HOME/defaults.yaml`, but still reads the layer's `colcon_defaults.yaml`. A mixin
+  (`--mixin`) adds arguments `build` does not see either. Package selection set there, or a
+  `--cmake-target`, builds only part of a layer, yet `build` does not see it: when `colcon` exits
+  with 0 and writes `install/setup.bash`, the layer is recorded built as a whole. Before it starts
+  `colcon`, `build` prints a note naming each such file `colcon` will read, as `colcon` finds it:
+  the global file once (before the layer when its path is relative), a layer's
+  `colcon_defaults.yaml` before that layer. A file `colcon` will not read is not named; a mixin is
+  never named. One that sets a refused option is not seen either; one that moves `install/` leaves
+  the layer not built, since its `install/setup.bash` is not written. Nor does `build` see a CMake
+  argument that drops the install rules: `colcon` then warns that the package has no `install`
+  target and goes on (read in colcon-cmake 0.2.30).
 - A person who wants a layer always built a certain way, such as a release build, can put
   that in the layer's `colcon_defaults.yaml`, as long as it selects no packages and skips no
   install: what is set there is not seen by `build`, and the record cannot tell a whole layer
