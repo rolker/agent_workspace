@@ -56,13 +56,19 @@ FINISH = "run `repos-manifest sync` to finish"
 
 Env = Dict[str, str]
 
+# Named by `git rev-parse --local-env-vars` but carrying configuration, not a repository's place.
+CONFIGURATION_VARIABLES = frozenset({"GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"})
+
 
 def require_tools() -> Env:
     """`vcs` and `git` are on PATH, and `vcs --version` runs; what it prints is not read.
     Returns the environment every `vcs` and `git` of the run is given: this process's, without
-    the variables that point git at a repository (those `git rev-parse --local-env-vars`
-    names, and `GIT_NAMESPACE`, which it does not), so that a run from a git hook or
-    `git submodule foreach` acts on its own clones."""
+    the variables that point git at a particular repository or its parts, so that a run from a
+    git hook or `git submodule foreach` acts on its own clones. Those are the names
+    `git rev-parse --local-env-vars` prints, less `GIT_CONFIG_PARAMETERS` and
+    `GIT_CONFIG_COUNT`, which carry configuration (`git -c`, `GIT_CONFIG_KEY_<n>`) and are
+    kept, as git keeps them when it runs a command in another repository; and
+    `GIT_NAMESPACE`, which that list does not name."""
     vcs = shutil.which("vcs")
     if vcs is None:
         raise Refusal("`vcs` is not found on PATH", "Install vcs2l or vcstool, which provide it")
@@ -96,7 +102,7 @@ def require_tools() -> Env:
         done = None
     if done is None or done.returncode != 0:
         raise Refusal(f"`{git} rev-parse --local-env-vars` does not run", "Repair or reinstall git")
-    local = set(done.stdout.split()) | {"GIT_NAMESPACE"}
+    local = set(done.stdout.split()) - CONFIGURATION_VARIABLES | {"GIT_NAMESPACE"}
     return {name: value for name, value in os.environ.items() if name not in local}
 
 

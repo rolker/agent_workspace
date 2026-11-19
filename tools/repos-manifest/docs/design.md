@@ -980,10 +980,14 @@ Their robot uses the role `robot` with the extra group `my-robot-hardware`.
 - Python with PyYAML.
 
 The tools call `vcs` and `colcon` as commands. They do not import them as libraries. Every
-`vcs` and `git` they run gets their environment without the variables that
-`git rev-parse --local-env-vars` names, such as `GIT_DIR`, and without `GIT_NAMESPACE`, which
-it does not name, so a run from a git hook acts on
-its own clones and not on the repo the hook runs in.
+`vcs` and `git` they run gets their environment without the variables that point git at a
+particular repository or its parts, so a run from a git hook acts on its own clones and not on
+the repo the hook runs in. Those are the names `git rev-parse --local-env-vars` prints, such as
+`GIT_DIR`, except `GIT_CONFIG_PARAMETERS` and `GIT_CONFIG_COUNT`, and `GIT_NAMESPACE`, which
+that list does not name. The two kept carry configuration given by `git -c` or by
+`GIT_CONFIG_COUNT` and its `GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>`, such as a url
+rewrite or a credential header, and git keeps the same two when it runs a command in another
+repository.
 
 Not every command needs all of these:
 

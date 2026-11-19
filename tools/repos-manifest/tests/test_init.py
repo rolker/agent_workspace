@@ -354,6 +354,41 @@ def test_git_variables_naming_another_repository_do_not_reach_the_clones(
     assert head(system / "underlay/src/a") == git("rev-parse", "jazzy", cwd=remotes["a"])
 
 
+def test_git_configuration_passed_in_the_environment_reaches_the_clones(
+    remotes, tmp_path, system, monkeypatch
+):
+    # A url rewrite passed as GIT_CONFIG_COUNT and its pairs, as a person or a CI system does;
+    # the manifest's urls start with a prefix that only the rewrite makes a real path. A file://
+    # url, because git does not rewrite a plain local path.
+    made_up = f"file://{tmp_path / 'made-up'}/"
+    data = {
+        "format": 1,
+        "repositories": {
+            "a": repo(f"{made_up}a"),
+            "b": repo(f"{made_up}b", "v1"),
+        },
+    }
+    write_manifest(tmp_path / "m.manifest.yaml", data)
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", f"url.{tmp_path / 'remotes'}/.insteadOf")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", made_up)
+    assert run(system, "init", "../m.manifest.yaml", "--yes") == 0
+    assert head(system / "src" / "a") == head(remotes["a"])
+    assert head(system / "src" / "b") == git("rev-parse", "v1^{commit}", cwd=remotes["b"])
+
+
+def test_the_environment_keeps_configuration_and_drops_the_config_file(vcs, monkeypatch):
+    # GIT_CONFIG names a file for `git config` alone; git drops it, as the tool does, when it
+    # runs a command in another repository, and keeps the two that carry configuration.
+    monkeypatch.setenv("GIT_CONFIG", "/elsewhere/config")
+    monkeypatch.setenv("GIT_CONFIG_PARAMETERS", "'core.abbrev'='12'")
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "0")
+    env = sync.require_tools()
+    assert "GIT_CONFIG" not in env
+    assert env["GIT_CONFIG_PARAMETERS"] == "'core.abbrev'='12'"
+    assert env["GIT_CONFIG_COUNT"] == "0"
+
+
 def _project11_with_local_remotes(tmp_path):
     """The project11 fixture with every url pointing at one local remote that has a branch for
     each version the fixture names."""
