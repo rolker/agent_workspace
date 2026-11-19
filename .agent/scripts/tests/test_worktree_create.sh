@@ -1101,6 +1101,16 @@ if [[ ! -s "$GH_LOG10" && "$OUT" == *"Issue #62 not looked up: the project root 
 else
     fail "multi-repository root outside git, bare --issue: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG10" 2>/dev/null)] out=${OUT:0:600}"
 fi
+# The same run (issue 503 part 1B, from part 1A's review): it exits 0 and
+# makes the worktree, a worktree of each repository on the issue's branch.
+W10="$P10M/worktrees/issue-multi10-62"
+if [[ "$RC" -eq 0 && -d "$W10/a" && -d "$W10/b" ]] \
+   && [[ "$(git -C "$W10/a" branch --show-current 2>/dev/null)" == feature/issue-62 ]] \
+   && [[ "$(git -C "$W10/b" branch --show-current 2>/dev/null)" == feature/issue-62 ]]; then
+    pass "multi-repository root outside git, bare --issue: exit 0, the worktree made on feature/issue-62"
+else
+    fail "multi-repository root outside git, bare --issue: rc=$RC, worktree [$(ls -A "$W10" 2>/dev/null | tr '\n' ' ')] out=${OUT:0:600}"
+fi
 
 echo
 echo "=== Summary ==="
