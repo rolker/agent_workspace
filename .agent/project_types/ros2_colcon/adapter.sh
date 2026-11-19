@@ -5,11 +5,12 @@
 # Hosts a project shaped like rolker/ros2_agent_workspace: ordered colcon
 # layers under layers/main/<layer>_ws/, driven by an in-tree manifest at
 # configs/manifest/ (layers.txt, optional_layers.txt, repos/<layer>.repos,
-# bootstrap.yaml). Manifest-repo formalization is #172 step 4; this adapter
-# reads the manifest from the hosting dir only.
+# bootstrap.yaml). Manifest-repo formalization is #172 step 4. Three
+# routes, the tool route (below) checked first: the adapter reads the
+# manifest from the hosting dir on the two older ones (issue #436) and from
+# the tool's resolved files on the tool route.
 #
-# Two routes to that directory (issue #436). The bootstrap route (below) is
-# today's bootstrap.yaml flow. The manifest route is taken when the
+# The bootstrap route (below) is today's bootstrap.yaml flow. The manifest route is taken when the
 # project's settings file sets `source` (with source_ref and source_path for
 # a git URL), and needs role= and distro= on the registry line: the
 # manifest, in the new format, is resolved by the workspace-installed
