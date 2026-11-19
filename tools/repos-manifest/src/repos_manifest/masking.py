@@ -4,10 +4,12 @@ Every url the tool reads (a manifest's, a clone's `origin`, a recorded one) is r
 `remember_url`, which parses the url whole: its user information is everything between `://`
 and the last `@` in it, whatever characters it holds (quotes, spaces, `@`, `:`, `/`, `%`
 escapes, any letter). `mask_urls` replaces each registered user information, and its
-percent-decoded form, wherever it appears in a text, and then masks any other
+percent-decoded form, where it follows `://` in a text, and then masks any other
 `scheme://...@host` it finds by a pattern, for a url the tool did not read itself (one git
-prints after an `insteadOf` rewrite). A url whose path holds an `@` has more masked than its
-user information; never less.
+prints after an `insteadOf` rewrite). A `file://` url holds no credentials and is never
+masked, nor is anything not after `://`: a local path holding `@`, `git@github.com:...` and
+`origin/main@{upstream}` are printed as they are. An https url whose path holds an `@` has
+more masked than its user information; never less.
 """
 
 from __future__ import annotations
@@ -42,8 +44,9 @@ def userinfo_of(url: str) -> Optional[Tuple[str, str]]:
 
 
 def _kept(scheme: str, userinfo: str) -> bool:
-    """An ssh url's user name alone names an account, as in `ssh://git@host/...`."""
-    return "ssh" in scheme.lower() and ":" not in userinfo
+    """An ssh url's user name alone names an account, as in `ssh://git@host/...`; a `file://`
+    url names a path on this machine, and has no credentials."""
+    return scheme.lower() == "file://" or ("ssh" in scheme.lower() and ":" not in userinfo)
 
 
 def remember_url(url: object) -> None:
@@ -69,7 +72,10 @@ def mask_urls(text: str) -> str:
     user name alone is kept; any other user name is masked, since an https one is often a
     token."""
     for info in sorted(_KNOWN, key=len, reverse=True):
-        text = text.replace(f"{info}@", "***@")
+        # Only right after a scheme, and by the same rule as any url: an ssh url's bare user
+        # name and a file url are kept, whichever url registered the text.
+        pattern = re.compile(r"([A-Za-z][A-Za-z0-9+.-]*://)(" + re.escape(info) + r")@")
+        text = pattern.sub(_masked, text)
     return _FALLBACK.sub(_masked, text)
 
 

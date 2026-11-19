@@ -879,8 +879,11 @@ alone is kept; any other user name is masked, since an https one is often a toke
 the tool reads (the manifest's, the clone's `origin`, the recorded one) is parsed whole: its
 user information is everything between `://` and the last `@` in it, whatever characters it
 holds (quotes, spaces, `@`, `:`, `/`, `%` escapes, any letter), and it is masked, and its
-`%`-decoded form, wherever it appears; a url whose path holds an `@` has more masked, never
-less. A url the tool did not read itself (git's message after an `insteadOf` rewrite) is
+`%`-decoded form, where it follows a scheme's `://`, by the same rule as above; an https url
+whose path holds an `@` has more masked, never less. Nothing that does not follow `://` is
+masked, and a `file://` url never is: a local path holding `@`, `git@github.com:...` and
+`origin/main@{upstream}` are printed as they are, so a password that is a common word (`git`,
+`main`, `a`) cannot change a printed command. A url the tool did not read itself (git's message after an `insteadOf` rewrite) is
 masked by its shape, up to the first `@` that a host follows within one run of characters that
 are not white space. A `set-url` command whose url is masked says so, and that the
 url to give it is the repo's url as the manifest gives it. The urls are written in full where

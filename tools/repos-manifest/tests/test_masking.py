@@ -144,3 +144,58 @@ def test_a_refused_url_is_not_printed_in_the_error(vcs, tmp_path, capsys, passwo
     text = out.out + out.err
     assert "the <transport>::<address> form is refused" in text, text
     assert password not in text and "alice" not in text, text
+
+
+# --- What is never masked (round 3) -------------------------------------------------------
+
+
+def test_a_file_url_whose_path_holds_an_at_masks_nothing(vcs, tmp_path, capsys):
+    """A system under a directory named `w@x`, its repo from a `file://` url and an origin set
+    by hand to another one: the by-hand line prints both urls and the command whole."""
+    root = tmp_path / "w@x"
+    remote = make_remote(root / "remotes", "a")
+    sys_dir, _ = make_system(root, {"a": repo(f"file://{remote}", "main")})
+    clone = sys_dir / "src" / "a"
+    other = root / "remotes" / "a2"
+    git("clone", "-q", "--bare", str(remote), str(other))
+    git("remote", "set-url", "origin", f"file://{other}", cwd=clone)
+    status, out = _all_output(sys_dir, capsys)
+    assert status == 0, out
+    assert "***" not in out, out
+    assert (
+        f"src/a: origin is file://{other}, the manifest says file://{remote}; left as set (to use"
+        f" the manifest's: git -C {clone} remote set-url origin file://{remote})"
+    ) in out, out
+
+
+@pytest.mark.parametrize(
+    "registered, text",
+    [
+        ("https://main@example.org/r.git", "git -C /srv/main@2/src/a switch main"),
+        ("https://main@example.org/r.git", "echo origin/main@{upstream}"),
+        ("https://git@example.org/r.git", "origin is git@github.com:org/r.git"),
+        ("file:///srv/w@x/remotes/a", "git -C /srv/w@x/sys/src/a status"),
+        ("git@github.com:org/r.git", "git@github.com:org/r.git"),
+    ],
+)
+def test_what_follows_no_scheme_is_never_masked(registered, text):
+    masking.remember_url(registered)
+    assert masking.mask_urls(text) == text
+
+
+@pytest.mark.parametrize("password", ["git", "main", "a"])
+def test_a_password_that_is_a_common_word_is_masked_only_in_its_url(password):
+    """The registered text is `alice:<password>`, matched only right after `://`: the url is
+    masked, and a printed command holding the word, or `<word>@`, is not touched."""
+    url = f"https://alice:{password}@example.org/r.git"
+    masking.remember_url(url)
+    command = f"git -C /srv/{password}@1/src/a switch {password} && echo {password}@{{u}}"
+    shown = masking.mask_urls(f"origin is {url}; to fix: {command}")
+    assert shown == f"origin is https://***@example.org/r.git; to fix: {command}"
+
+
+def test_a_registered_user_name_never_masks_an_ssh_url_with_that_name():
+    masking.remember_url("https://git@example.org/r.git")
+    assert masking.mask_urls("ssh://git@host/x and https://git@example.org/r.git") == (
+        "ssh://git@host/x and https://***@example.org/r.git"
+    )
