@@ -600,3 +600,12 @@ PR body check against the host's account: Decision summary, Part of #503 (does n
 
 ### False positives
 - None.
+
+## Checkpoint
+**When**: 2026-11-18 19:35 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner chose "Merge (Recommended)" in a dialog (2026-11-18) for pull request 513 (part 1A: a project root need not be a git repository), with the nested-plain-root weakness left out of it as described to him: already so on main, not touching a root that is outside every repository, and a change of its own. The host proposes a separate issue for it afterwards. The issue stays open: part 1B and later parts remain.
