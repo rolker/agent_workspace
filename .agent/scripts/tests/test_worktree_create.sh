@@ -1143,11 +1143,13 @@ if [[ "$RC" -eq 0 && -d "$W11" \
 else
     fail "refused push with --plan-file: rc=$RC, branch [$(git -C "$W11" branch --show-current 2>/dev/null)] out=${OUT:0:800}"
 fi
-CLOSES11="$(printf '%q' 'Closes #71')"
+# The hint's --body is the draft PR's body, built once (review suggestion
+# 6): the Summary heading and the title, then Closes.
+BODY11="$(printf '%q' $'## Summary\n\nIssue #71\n\nCloses #71')"
 if [[ "$OUT" == *"Push failed"* \
       && "$OUT" == *"cd $(printf '%q' "$W11")"* \
       && "$OUT" == *"git push -u origin feature/issue-71"* \
-      && "$OUT" == *"$SB11/.agent/scripts/gh_create_pr.sh --draft --title "*" --body $CLOSES11"* \
+      && "$OUT" == *"$SB11/.agent/scripts/gh_create_pr.sh --draft --title "*" --body $BODY11"* \
       && "$OUT" == *"set_git_identity_env.sh"* \
       && "$OUT" == *"The plan was not posted"* \
       && "$OUT" == *"gh pr comment feature/issue-71 --body-file $(printf '%q' "$PLAN11")"* \
@@ -1220,6 +1222,12 @@ if [[ "$RC" -eq 0 && "$OUT" == *"Draft PR created"* && "$OUT" == *"Plan posted a
    && grep -qx 'comment-file readable' "$GH_LOG13" 2>/dev/null \
    && grep -q "^pr comment https://github.com/o/r/pull/1 --body-file $SB13/notes/plan 73.md\$" "$GH_LOG13"; then
     pass "relative --plan-file, push succeeds: the plan comment reads the plan by its absolute path"
+else
+    fail "relative --plan-file, push succeeds: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG13" 2>/dev/null)] out=${OUT:0:1200}"
+fi
+# The body file the draft PR got is that same body plus the signature.
+if [[ "$(cat "$GH_LOG13.body" 2>/dev/null)" == $'## Summary\n\nIssue #73\n\nCloses #73\n\n---\n**Authored-By**: `'*$'`\n**Model**: `'*'`' ]]; then
+    pass "push succeeds: the draft PR's body file is the Summary, the title, Closes and the signature"
 else
     fail "relative --plan-file, push succeeds: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG13" 2>/dev/null)] out=${OUT:0:1200}"
 fi

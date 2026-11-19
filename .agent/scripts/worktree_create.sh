@@ -1273,6 +1273,16 @@ elif [ -n "$PLAN_FILE" ]; then
         if [ -n "$PLAN_FILE" ]; then
             pr_title="[PLAN] $ISSUE_TITLE"
         fi
+        # The PR body, built once: the draft PR's body file and the hint
+        # printed after a failed push both use it (gh_create_pr.sh adds
+        # the signature that the body file carries).
+        local pr_body
+        if [ -n "$SKILL_NAME" ]; then
+            pr_body="## Summary"$'\n\n'"$ISSUE_TITLE"$'\n\n'"Automated update from the \`$SKILL_NAME\` skill."
+        else
+            pr_body="## Summary"$'\n\n'"$ISSUE_TITLE"$'\n\n'"Closes $issue_ref"
+            [ -n "$PARENT_ISSUE_NUM" ] && pr_body+=$'\n'"Part of #${PARENT_ISSUE_NUM}"
+        fi
 
         if ! git push -u origin "$BRANCH_NAME" 2>/dev/null; then
             # Non-fatal: the worktree exists, so the script goes on to its
@@ -1282,18 +1292,11 @@ elif [ -n "$PLAN_FILE" ]; then
             echo "     The branch $BRANCH_NAME is not on origin. To push it and open the draft PR,"
             echo "     run these in a shell where AGENT_NAME and AGENT_MODEL are set"
             echo "     (first: source $(printf '%q' "$SCRIPT_DIR/set_git_identity_env.sh") --agent <framework> \"<model-id>\"):"
-            local hint_body
-            if [ -n "$SKILL_NAME" ]; then
-                hint_body="$ISSUE_TITLE"$'\n\n'"Automated update from the \`$SKILL_NAME\` skill."
-            else
-                hint_body="Closes $issue_ref"
-                [ -n "$PARENT_ISSUE_NUM" ] && hint_body+=$'\n'"Part of #${PARENT_ISSUE_NUM}"
-            fi
             local hint_pr
             hint_pr="$(printf '%q --draft' "$SCRIPT_DIR/gh_create_pr.sh")"
             [ -n "$repo_flag" ] && hint_pr+=" -R $(printf '%q' "$repo_flag")"
             [ -n "$base_flag" ] && hint_pr+=" --base $(printf '%q' "$base_flag")"
-            hint_pr+=" --title $(printf '%q' "$pr_title") --body $(printf '%q' "$hint_body")"
+            hint_pr+=" --title $(printf '%q' "$pr_title") --body $(printf '%q' "$pr_body")"
             echo "       cd $(printf '%q' "$git_dir")"
             echo "       git push -u origin $(printf '%q' "$BRANCH_NAME")"
             echo "       $hint_pr"
@@ -1326,36 +1329,8 @@ elif [ -n "$PLAN_FILE" ]; then
 
         # Create draft PR body
         BODY_FILE=$(mktemp /tmp/gh_body.XXXXXX.md)
-        if [ -n "$SKILL_NAME" ]; then
-            cat > "$BODY_FILE" << PREOF
-## Summary
-
-$ISSUE_TITLE
-
-Automated update from the \`$SKILL_NAME\` skill.
-
----
-**Authored-By**: \`${DRAFT_AGENT_NAME}\`
-**Model**: \`${DRAFT_AGENT_MODEL}\`
-PREOF
-        else
-            cat > "$BODY_FILE" << PREOF
-## Summary
-
-$ISSUE_TITLE
-
-Closes $issue_ref
-PREOF
-            if [ -n "$PARENT_ISSUE_NUM" ]; then
-                echo "Part of #${PARENT_ISSUE_NUM}" >> "$BODY_FILE"
-            fi
-            cat >> "$BODY_FILE" << PREOF
-
----
-**Authored-By**: \`${DRAFT_AGENT_NAME}\`
-**Model**: \`${DRAFT_AGENT_MODEL}\`
-PREOF
-        fi
+        printf '%s\n\n---\n**Authored-By**: `%s`\n**Model**: `%s`\n' \
+            "$pr_body" "$DRAFT_AGENT_NAME" "$DRAFT_AGENT_MODEL" > "$BODY_FILE"
 
         local gh_args=(pr create --draft --title "$pr_title" --body-file "$BODY_FILE")
         [ -n "$repo_flag" ] && gh_args+=(--repo "$repo_flag")

@@ -302,7 +302,7 @@ Verified by hand: test_worktree_create.sh 93 passed / 0 failed; shellcheck --sev
 - [ ] (suggestion) The new tests cover only a workspace worktree with an absolute plan; no case pins the -R, --base/Part of, skill-body or relative-plan branches of the hint, the title's [PLAN] prefix (`--title "*"` matches anything), or that no `gh pr create` runs after the refused push (a recording gh stub would). Add a --parent-issue case and a relative plan case (Claude adversarial, gemini, codex) — `.agent/scripts/tests/test_worktree_create.sh:1115-1171`
 - [ ] (suggestion) The printed gh_create_pr.sh line is refused by its user-tier guard in a project whose `worktrees=` directory lies outside both the project root and the workspace; pre-existing wrapper behaviour (plan-review note 5, checkpoint: no action), worth its own issue against gh_create_pr.sh / registry_require_root (codex) — `.agent/scripts/gh_create_pr.sh:87`
 - [ ] (suggestion) The hint always runs gh_create_pr.sh; if a PR already exists for the branch (e.g. a re-run whose push was rejected) it fails with gh's "already exists". One line saying to skip it when `gh pr list --head <branch>` shows a PR would cover it (Claude adversarial) — `.agent/scripts/worktree_create.sh:1290-1296`
-- [ ] (suggestion) The hint's body text (skill text / Closes / Part of) duplicates the BODY_FILE heredoc branches; building it once above the push would keep the two from drifting (gemini) — `.agent/scripts/worktree_create.sh:1282-1288`
+- [x] (suggestion) The hint's body text (skill text / Closes / Part of) duplicates the BODY_FILE heredoc branches; building it once above the push would keep the two from drifting (gemini) — `.agent/scripts/worktree_create.sh:1282-1288`
 
 ## Checkpoint
 **Status**: complete
