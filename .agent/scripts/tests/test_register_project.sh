@@ -1092,8 +1092,8 @@ if [ -n "$MR_PY" ]; then
     mkdir -p "$TDANGLE"
     ln -s "$TS/nowhere" "$TDANGLE/.repos-manifest"
     out="$(reg "$WS" "$TDANGLE")"; rc=$?
-    check "exit 1, STATUS=refused, the link to nothing named, the tool's sync the next step" \
-        bash -c '[ "$1" -eq 1 ] && [ "$2" = refused ] && [[ "$3" == *".repos-manifest is a link to nothing"* && "$3" == *"/repos-manifest sync"* ]]' _ "$rc" "$(status_of "$out")" "$out"
+    check "exit 1, STATUS=refused, the link to nothing named, fixing or removing it the next step" \
+        bash -c '[ "$1" -eq 1 ] && [ "$2" = refused ] && [[ "$3" == *".repos-manifest is a link to nothing"* && "$3" == *"Fix $4/.repos-manifest"* && "$3" == *"/repos-manifest init <manifest> --distro-dirs"* && "$3" != *"/repos-manifest sync"* ]]' _ "$rc" "$(status_of "$out")" "$out" "$TDANGLE"
     check "rolled back" bash -c '! grep -q "^tdangle " "$1"' _ "$WS/.agent/projects.local"
     echo "TEST: a root the manifest tool set up with two distros, in no git repository, registers from the workspace: validate covers both"
     T2="$TS/t2"
@@ -1112,6 +1112,49 @@ if [ -n "$MR_PY" ]; then
     check "validate from the workspace, as the gate runs it, covers both distros" \
         bash -c '[ "$1" -eq 0 ] && [[ "$2" == *"for distro fakefox ("* && "$2" == *"for distro fakefox2 ("* ]]' _ "$rc" "$out"
     out="$(reg "$WS" --remove t2)"
+    echo "TEST: after a refused, rolled-back registration of a root the real tool set up, the printed next step, run literally, fixes it"
+    if command -v vcs >/dev/null 2>&1; then
+        TR="$TS/treal"
+        for _n in pkg_u pkg_a; do
+            mkdir -p "$TS/rremote/$_n"
+            gitq -C "$TS/rremote/$_n" init --quiet -b main
+            echo "$_n" > "$TS/rremote/$_n/README"
+            gitq -C "$TS/rremote/$_n" add README
+            gitq -C "$TS/rremote/$_n" commit --quiet -m first
+        done
+        printf 'format: 1\ndistros: [fakefox]\nlayers: [core]\nrepositories:\n  pkg_u:\n    type: git\n    url: file://%s\n    version: main\n  pkg_a:\n    type: git\n    url: file://%s\n    version: main\n    layer: core\n' \
+            "$TS/rremote/pkg_u" "$TS/rremote/pkg_a" > "$TS/mreal.manifest.yaml"
+        mkdir -p "$TR"
+        (cd "$TR" && "$WS/.venv/bin/repos-manifest" init ../mreal.manifest.yaml --distro-dirs --distro fakefox --yes >/dev/null 2>&1)
+        check "precondition: the real tool set the root up" [ -f "$TR/.repos-manifest/resolved/fakefox/layers.txt" -a -d "$TR/fakefox/core/src/pkg_a" ]
+        # Nothing resolved (an init cut short).
+        rm -r "$TR/.repos-manifest/resolved/fakefox"
+        out="$(reg "$WS" "$TR")"; rc=$?
+        check "nothing resolved: refused and rolled back" \
+            bash -c '[ "$1" -eq 1 ] && [ "$2" = refused ] && ! grep -q "^treal " "$3"' _ "$rc" "$(status_of "$out")" "$WS/.agent/projects.local"
+        _step="$(grep -oE 'cd [^ ]+ && [^ ]+ sync( --distro [a-z0-9_]+)?' <<< "$out" | head -n1 || true)"
+        check "nothing resolved: the step is the tool's sync in the root" [ "$_step" = "cd $TR && $WS/.venv/bin/repos-manifest sync" ]
+        (cd "$SANDBOX" && bash -c "$_step" >/dev/null 2>&1); rc=$?
+        check "nothing resolved: the step, run literally, exits 0" [ "$rc" -eq 0 ]
+        out="$(reg "$WS" "$TR")"; rc=$?
+        check "nothing resolved: registration then passes" [ "$rc" -eq 0 -a "$(status_of "$out")" = registered ]
+        out="$(reg "$WS" --remove treal)"
+        # A clone missing: validate's not-checked-out line at the gate.
+        rm -rf "$TR/fakefox/core/src/pkg_a"
+        out="$(reg "$WS" "$TR")"; rc=$?
+        check "a clone missing: refused and rolled back, no adapter verb named" \
+            bash -c '[ "$1" -eq 1 ] && [ "$2" = refused ] && ! grep -q "^treal " "$3" && [[ "$4" == *"not checked out"* && "$4" != *"--project treal sync"* ]]' _ "$rc" "$(status_of "$out")" "$WS/.agent/projects.local" "$out"
+        _step="$(grep "not checked out" <<< "$out" | grep -oE 'cd [^ ]+ && [^ ]+ sync( --distro [a-z0-9_]+)?' | head -n1 || true)"
+        check "a clone missing: the step is the tool's sync for fakefox in the root" \
+            [ "$_step" = "cd $TR && $WS/.venv/bin/repos-manifest sync --distro fakefox" ]
+        (cd "$SANDBOX" && bash -c "$_step" >/dev/null 2>&1); rc=$?
+        check "a clone missing: the step, run literally, exits 0 and clones it" [ "$rc" -eq 0 -a -d "$TR/fakefox/core/src/pkg_a/.git" ]
+        out="$(reg "$WS" "$TR")"; rc=$?
+        check "a clone missing: registration then passes" [ "$rc" -eq 0 -a "$(status_of "$out")" = registered ]
+        out="$(reg "$WS" --remove treal)"
+    else
+        echo "  SKIPPED: vcs is not on PATH; the real tool's sync needs it"
+    fi
 else
     if command -v repos-manifest >/dev/null 2>&1 || [ -n "${CI:-}" ] \
         || { [ -n "$_common" ] && [ -x "${_common%/.git}/.venv/bin/repos-manifest" ]; }; then

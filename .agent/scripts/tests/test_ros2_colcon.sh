@@ -4207,6 +4207,12 @@ run_tool() {  # <sb> <dir> <verb and args...>
         VCS_LOG="$sb/vcs.log" "$sb/.agent/scripts/adapter" --project toolsys "$@")
 }
 
+# The tool's sync step a message printed (`cd <root> && <tool> sync
+# [--distro <d>]`), to run literally.
+tool_step_of() {  # <output>
+    { grep -oE 'cd [^ ]+ && [^ ]+ sync( --distro [a-z0-9_]+)?' <<< "$1" || true; } | head -n1
+}
+
 tool_outside_git() {  # <root>: "outside" when no git repository holds it
     git -C "$1" rev-parse --git-dir >/dev/null 2>&1 && echo inside || echo outside
 }
@@ -4259,7 +4265,16 @@ test_tool_unusable_root_is_an_error_never_a_fetch() {
             "cd $root && $sb/.venv/bin/repos-manifest sync" "$out"
         assert_not_contains "nothing resolved: $verb names no adapter verb" "--project toolsys sync" "$out"
     done
-    # Not a directory, a link to nothing, unreadable: said so, the same next step.
+    # The printed next step, run literally from elsewhere: the tool's sync in the root.
+    out="$(run_tool "$sb" "$root" validate 2>&1)" || true
+    rm -f "$sb/tool.log"
+    (cd / && bash -c "$(tool_step_of "$out")") >/dev/null 2>&1
+    assert_eq "nothing resolved: the printed step, run literally, runs the tool's sync in the root" \
+        "TOOL_RAN_IN:$root ARGS:sync EXIT:0" "$(cat "$sb/tool.log" 2>/dev/null)"
+    rm -f "$sb/tool.log"
+    # Not a directory, a link to nothing, unreadable: said so; the way out
+    # is fixing or removing it and setting up again, not a sync (the tool's
+    # sync would refuse such a path too).
     mv "$root/.repos-manifest" "$root/.rm.aside"
     for kind in file dangling unreadable; do
         rm -rf "$root/.repos-manifest"
@@ -4278,8 +4293,10 @@ test_tool_unusable_root_is_an_error_never_a_fetch() {
             out="$(run_tool "$sb" "$root" "$verb" 2>&1)" || rc=$?
             assert_eq "$kind: $verb exits 1" "1" "$rc"
             assert_contains "$kind: $verb says what is wrong" "$root/.repos-manifest $want" "$out"
-            assert_contains "$kind: $verb names the tool's own sync in the root" \
-                "cd $root && $sb/.venv/bin/repos-manifest sync" "$out"
+            assert_contains "$kind: $verb names fixing or removing it" "Fix $root/.repos-manifest" "$out"
+            assert_contains "$kind: $verb names setting up again with init --distro-dirs" \
+                "$sb/.venv/bin/repos-manifest init <manifest> --distro-dirs" "$out"
+            assert_not_contains "$kind: $verb names no sync" "repos-manifest sync" "$out"
         done
         [ "$kind" = unreadable ] && chmod 755 "$root/.repos-manifest"
     done
@@ -4308,8 +4325,9 @@ test_tool_nested_key_refused_by_name() {
     make_toolchain_stubs "$sb"
     root="$(make_tool_root "$sb" fakefox)"
     # Every key line the reader cannot read is refused by name, not only
-    # one with a directory in it: a quoted key, a key with another character.
-    for key in "'on'" 'pkg+x'; do
+    # one with a directory in it: a quoted key with a space, a key with
+    # another character.
+    for key in "'pkg q'" 'pkg+x'; do
         cp "$root/.repos-manifest/resolved/fakefox/extra.repos" "$sb/extra.repos.aside"
         printf '  %s:\n    type: git\n    url: git@github.com:owner/pkg_q.git\n    version: main\n' "$key" \
             >> "$root/.repos-manifest/resolved/fakefox/extra.repos"
@@ -4342,7 +4360,8 @@ test_tool_distro_rule() {
     out="$(run_tool "$sb" "$root" env 2>&1)" || rc=$?
     assert_eq "from the root, two distros: env exit 1" "1" "$rc"
     assert_contains "the refusal lists both" "several distros (fakefox, fakefox2)" "$out"
-    assert_contains "the refusal says how to choose" "pass --from $root/<distro>" "$out"
+    assert_contains "the refusal says how to choose" "Run the command from inside $root/<distro>/" "$out"
+    assert_contains "--from named as the adapter's own option" "a call to .agent/scripts/adapter itself may instead give its own --from" "$out"
     # validate with no distro chosen covers every one, one after another.
     rc=0; out="$(run_tool "$sb" "$root" validate 2>&1)" || rc=$?
     assert_eq "from the root, two distros: validate exit 0" "0" "$rc"
@@ -4596,13 +4615,13 @@ if [ -f $wt/core_ws/install/local_setup.bash ]; then source $wt/core_ws/install/
     assert_eq "no worktree inside a distro's directory" "" "$(find "$root/fakefox" -name '*_ws' -print 2>/dev/null)"
 }
 
-test_tool_build_and_test_with_no_layer_left_fail() {
-    echo "TEST: tool route: a build or test loop that finds no layer (a sync of the tool meanwhile) is an error, not a success"
+test_tool_layers_read_once_per_call() {
+    echo "TEST: tool route: layers.txt is read once per call; a sync's rename during the loop changes nothing, and an empty read is refused naming the tool's sync"
     local sb root out rc verb
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     root="$(make_tool_root "$sb" fakefox)"
-    # The underlay, sourced after the checks and before the loop, moves the
+    # The underlay, sourced after the read and before the loop, moves the
     # resolved directory aside, as the tool's first rename would.
     printf 'export SOURCED_LAYERS=base\nmv %q %q 2>/dev/null || true\n' \
         "$root/.repos-manifest/resolved/fakefox" "$root/.repos-manifest/resolved/.aside" > "$sb/rosroot/fakefox/setup.bash"
@@ -4610,13 +4629,167 @@ test_tool_build_and_test_with_no_layer_left_fail() {
         if [ -d "$root/.repos-manifest/resolved/.aside" ]; then
             mv "$root/.repos-manifest/resolved/.aside" "$root/.repos-manifest/resolved/fakefox"
         fi
+        : > "$sb/colcon.log"
         rc=0
         out="$(run_tool "$sb" "$root" "$verb" 2>&1)" || rc=$?
-        assert_eq "$verb with no layer left: exit 1" "1" "$rc"
-        assert_contains "$verb with no layer left: said so" "$verb went over no layer" "$out"
-        assert_not_contains "$verb with no layer left: no success line" "successfully" "$out"
-        assert_not_contains "$verb with no layer left: no pass line" "tests passed" "$out"
+        assert_eq "$verb, resolve moved aside mid-run: exit 0" "0" "$rc"
+        assert_eq "$verb, resolve moved aside mid-run: every layer of the one read, in order" \
+            "$root/fakefox $root/fakefox/core $root/fakefox/extra" \
+            "$(sed -n 's/^COLCON_RAN_IN:\([^ ]*\) .*/\1/p' "$sb/colcon.log" | tr '\n' ' ' | sed 's/ $//')"
     done
+    mv "$root/.repos-manifest/resolved/.aside" "$root/.repos-manifest/resolved/fakefox"
+    printf 'export SOURCED_LAYERS=base\n' > "$sb/rosroot/fakefox/setup.bash"
+    # A layers.txt that lists no layer (the head comment alone).
+    printf '# Generated by repos-manifest resolve\n' > "$root/.repos-manifest/resolved/fakefox/layers.txt"
+    for verb in build test env validate repos; do
+        rc=0
+        out="$(run_tool "$sb" "$root" "$verb" 2>&1)" || rc=$?
+        assert_eq "empty layers.txt: $verb exits 1" "1" "$rc"
+        assert_contains "empty layers.txt: $verb says the resolve cannot be used" \
+            "last resolve for distro fakefox cannot be used" "$out"
+        assert_contains "empty layers.txt: $verb names the tool's sync for it" \
+            "cd $root && $sb/.venv/bin/repos-manifest sync --distro fakefox" "$out"
+    done
+}
+
+# Must-fix 1 of the second round: from inside <root>/<x>/ the distro is x
+# and only x; a resolve of x that cannot be used is refused, never
+# answered from another distro.
+test_tool_distro_rule_never_moves_on() {
+    echo "TEST: tool route: from inside a distro whose resolve cannot be used, every verb refuses naming it and the tool's sync for it; none answers for another distro"
+    local sb root out rc verb
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb" fakefox fakefox2)"
+    mv "$root/.repos-manifest/resolved/fakefox" "$(dirname "$root")/resolved-fakefox.aside"
+    for verb in validate repos "repo_pin pkg_a" env build; do
+        rc=0
+        # shellcheck disable=SC2086
+        out="$(run_tool "$sb" "$root/fakefox/core" $verb 2>&1)" || rc=$?
+        assert_eq "from <root>/fakefox/core, its resolve aside: $verb exits 1" "1" "$rc"
+        assert_contains "$verb names fakefox" "last resolve for distro fakefox cannot be used" "$out"
+        assert_contains "$verb names the tool's sync for fakefox" \
+            "cd $root && $sb/.venv/bin/repos-manifest sync --distro fakefox" "$out"
+        assert_not_contains "$verb answers nothing for fakefox2" "fakefox2" "$out"
+    done
+    rm -f "$sb/tool.log"
+    rc=0; out="$(run_tool "$sb" "$root/fakefox/core" sync 2>&1)" || rc=$?
+    assert_eq "sync from there: the tool's exit 0" "0" "$rc"
+    assert_eq "sync from there: the tool's sync for fakefox, in the root, without the resolve" \
+        "TOOL_RAN_IN:$root ARGS:sync --distro fakefox EXIT:0" "$(cat "$sb/tool.log" 2>/dev/null)"
+    # A top-level directory that is not a distro is taken as one and refused.
+    mkdir -p "$root/notes"
+    rc=0; out="$(run_tool "$sb" "$root/notes" env 2>&1)" || rc=$?
+    assert_eq "from <root>/notes: refused" "1" "$rc"
+    assert_contains "from <root>/notes: notes taken as the distro" "last resolve for distro notes cannot be used" "$out"
+    # From the root: validate covers every directory under resolved/ and
+    # fails, by name, on one with no usable layers.txt.
+    mkdir -p "$root/.repos-manifest/resolved/fakefox"
+    rc=0; out="$(run_tool "$sb" "$root" validate 2>&1)" || rc=$?
+    assert_eq "from the root, resolved/fakefox/ with no layers.txt: validate exit 1" "1" "$rc"
+    assert_contains "it is named, with the tool's sync for it" \
+        "cd $root && $sb/.venv/bin/repos-manifest sync --distro fakefox" "$out"
+    assert_contains "the failing distro named" "(failing distro: fakefox)" "$out"
+    assert_contains "fakefox2 still checked and passed" "for distro fakefox2 (" "$out"
+    rm -r "$root/.repos-manifest/resolved/fakefox"
+    mv "$(dirname "$root")/resolved-fakefox.aside" "$root/.repos-manifest/resolved/fakefox"
+    # From <root>/worktrees/<anything>/ with one distro: that one.
+    rm -r "$root/.repos-manifest/resolved/fakefox2"
+    mkdir -p "$root/worktrees/anything"
+    rc=0; out="$(run_tool "$sb" "$root/worktrees/anything" validate 2>&1)" || rc=$?
+    assert_eq "from <root>/worktrees/anything, one distro: validate exit 0" "0" "$rc"
+    assert_contains "from <root>/worktrees/anything: the one distro chosen" "for distro fakefox (" "$out"
+}
+
+# Must-fix 2 of the second round: every next step on the tool route that
+# is the tool's sync is a command that works when run literally, from
+# anywhere, in the situation the message arises in.
+test_tool_sync_steps_run_literally() {
+    echo "TEST: tool route: each printed sync step, run literally from elsewhere, runs the tool's sync in the root for the right distro"
+    local sb root out rc step
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb" fakefox fakefox2)"
+    # validate from the workspace, a clone missing in fakefox2.
+    mv "$root/fakefox2/extra/src/pkg_c" "$(dirname "$root")/pkg_c.aside"
+    rc=0; out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "not checked out: validate exit 1" "1" "$rc"
+    assert_not_contains "not checked out: no adapter verb named" "--project toolsys sync" "$out"
+    step="$(tool_step_of "$(grep "not checked out" <<< "$out")")"
+    rm -f "$sb/tool.log"
+    (cd / && bash -c "$step") >/dev/null 2>&1
+    assert_eq "not checked out: the step runs the tool's sync for fakefox2 in the root" \
+        "TOOL_RAN_IN:$root ARGS:sync --distro fakefox2 EXIT:0" "$(cat "$sb/tool.log" 2>/dev/null)"
+    mv "$(dirname "$root")/pkg_c.aside" "$root/fakefox2/extra/src/pkg_c"
+    # validate from the root, a layer's .repos file missing in fakefox.
+    mv "$root/.repos-manifest/resolved/fakefox/extra.repos" "$(dirname "$root")/extra.repos.aside"
+    rc=0; out="$(run_tool "$sb" "$root" validate 2>&1)" || rc=$?
+    step="$(tool_step_of "$(grep "missing" <<< "$out")")"
+    rm -f "$sb/tool.log"
+    (cd / && bash -c "$step") >/dev/null 2>&1
+    assert_eq "missing .repos: the step runs the tool's sync for fakefox in the root" \
+        "TOOL_RAN_IN:$root ARGS:sync --distro fakefox EXIT:0" "$(cat "$sb/tool.log" 2>/dev/null)"
+    mv "$(dirname "$root")/extra.repos.aside" "$root/.repos-manifest/resolved/fakefox/extra.repos"
+    # A key the reader does not read, from inside fakefox2.
+    printf '  grp/pkg_n:\n    type: git\n    url: git@github.com:owner/pkg_n.git\n    version: main\n' \
+        >> "$root/.repos-manifest/resolved/fakefox2/core.repos"
+    rc=0; out="$(run_tool "$sb" "$root/fakefox2" repos 2>&1)" || rc=$?
+    assert_eq "unread key: refused" "1" "$rc"
+    assert_not_contains "unread key: no adapter verb named" "--project toolsys sync" "$out"
+    step="$(tool_step_of "$out")"
+    rm -f "$sb/tool.log"
+    (cd / && bash -c "$step") >/dev/null 2>&1
+    assert_eq "unread key: the step runs the tool's sync for fakefox2 in the root" \
+        "TOOL_RAN_IN:$root ARGS:sync --distro fakefox2 EXIT:0" "$(cat "$sb/tool.log" 2>/dev/null)"
+}
+
+# Suggestion 1 of the second round: keys the tool writes in single quotes.
+test_tool_quoted_keys_from_the_tool() {
+    echo "TEST: tool route: keys the tool itself writes in single quotes ('123', 'on', '1.5') are read, unquoted"
+    local sb root outer out out2 rc key
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb" fakefox)"
+    outer="$(dirname "$root")"
+    cat >> "$outer/m.manifest.yaml" <<'EOF'
+  '123':
+    type: git
+    url: git@github.com:owner/pkg_c.git
+    version: main
+    layer: extra
+  'on':
+    type: git
+    url: git@github.com:owner/pkg_c.git
+    version: main
+    layer: extra
+  '1.5':
+    type: git
+    url: git@github.com:owner/pkg_c.git
+    version: main
+    layer: extra
+EOF
+    rm -r "$root/.repos-manifest/resolved/fakefox"
+    (cd "$outer" && PYTHONPATH="$MR_SRC" "$MR_PY" -m repos_manifest.cli resolve \
+        --manifest m.manifest.yaml --distro fakefox --out "$root/.repos-manifest/resolved/fakefox" >/dev/null)
+    assert_contains "precondition: the tool wrote the keys quoted" "  '123':" "$(cat "$root/.repos-manifest/resolved/fakefox/extra.repos")"
+    for key in 123 on 1.5; do
+        git clone --quiet --branch main "$outer/fake_remotes/github.com/owner/pkg_c.git" "$root/fakefox/extra/src/$key"
+        git -C "$root/fakefox/extra/src/$key" remote set-url origin "git@github.com:owner/pkg_c.git"
+        git -C "$root/fakefox/extra/src/$key" fetch --quiet origin
+    done
+    rc=0; out="$(run_tool "$sb" "$root" validate 2>&1)" || rc=$?
+    assert_eq "validate: exit 0" "0" "$rc"
+    rc=0; out="$(run_tool "$sb" "$root" repos 2>&1)" || rc=$?
+    assert_eq "repos: exit 0" "0" "$rc"
+    for key in 123 on 1.5; do
+        assert_contains "repos lists $key unquoted" "$key:$root/fakefox/extra/src/$key" "$out"
+        out2="$(run_tool "$sb" "$root" repo_pin "$key" 2>/dev/null)" || true
+        assert_eq "repo_pin $key: its version" $'main\tbranch' "$out2"
+    done
+    rm -r "$root/fakefox/extra/src/on"
+    rc=0; out="$(run_tool "$sb" "$root" validate 2>&1)" || rc=$?
+    assert_eq "a quoted key's clone missing: validate exit 1" "1" "$rc"
+    assert_contains "it is named unquoted" "repo 'on' in extra.repos but not checked out" "$out"
 }
 
 # A package worktree on a root with two distros: from inside <root>/<d>/
@@ -4856,7 +5029,10 @@ mr_test test_tool_validate
 mr_test test_tool_repos_pin_and_worktree_verbs
 mr_test test_worktree_env_names_unbuilt_lower_layers
 mr_test test_tool_package_worktree
-mr_test test_tool_build_and_test_with_no_layer_left_fail
+mr_test test_tool_layers_read_once_per_call
+mr_test test_tool_distro_rule_never_moves_on
+mr_test test_tool_sync_steps_run_literally
+mr_test test_tool_quoted_keys_from_the_tool
 mr_test test_tool_package_worktree_two_distros
 test_bootstrap_no_url_names_the_tool
 mr_test test_tool_real_init_and_sync
