@@ -77,3 +77,41 @@ The Issue Review confirmed the claim and found the skill to be the only text tha
 **Plan**: `.agent/work-plans/issue-522/plan.md` at `423afd2f`
 
 Reword step 11, the --project sentence and the usage line of run-issue so a package merge is --pr <owner/repo#M> with --project when project= is not empty and no --type; pin the text in test_skill_paths.sh, add the missing --type project refusal case to test_merge_pr.sh, and fix the design.md row.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-19 14:38 -05:00
+**By**: Claude Code (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #522 — run-issue step 11's merge command is refused for a package pull request
+**Plan**: `.agent/work-plans/issue-522/plan.md` at `423afd2f`
+**Branch**: `feature/issue-522`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Four files, one PR: three passages of the run-issue skill, one `has` pin, one refusal case, one design row. |
+| Issue alignment | Good | Takes the issue's first option (the skill changes) with a pin in both suites, as the issue asks. Covers every Issue Review action; the "`--project` with a qualified package `--pr` is accepted" half is already pinned by `test_same_repo_under_two_instances_requires_project` (exit 0 with `--project inst2`), checked. Serves: "Quality of the work: `docs/design.md#merge-gate`" — goal exists at `README.md` "### Quality of the work", anchor at `docs/design.md` "## Merge gate". |
+| File targeting | Good | Checked other merge-time texts: `orchestrator`, `triage-reviews` and `host_standing_rules.md` give no `merge_pr.sh` command line; `onboard-project` (`--pr <M> --project <name>`), `research`/`inspiration-tracker` (`--pr <N>`), the Makefile `merge-pr` target (no `--type`) and AGENTS.md's Never line (`merge_pr.sh --pr <N>`) give or imply no refused form. In run-issue only lines 51-55, 155 and 1025 carry the `--type` merge wording. |
+| Consequences | Good | Skill, pin, script suite and design row are all listed. Main has moved (PR 526) but `git diff HEAD main` is empty for the skill, `merge_pr.sh`, both test files and `docs/design.md`. |
+| Principle alignment | Good | The new sentences match `merge_pr.sh`: with a qualified `--pr` (sets `REPO_ARG`) the project-root block is skipped, `PJ_REMOTE` stays empty, so any non-workspace repo is `package` and any `--type` other than empty is refused with exit 2 ("Drop --type; it is derived from --repo"); `--project` is resolved first by `registry_resolve_project_arg` (an unregistered name exits 1, but `project=` from `session_root.sh` is always a registered root) and only narrows the manifest lookup. The pin's three fixed texts are all absent from today's skill (checked with the suite's own flattening), so it fails first. Test-what-breaks: the new `test_merge_pr.sh` case pins the refusal of the exact form the skill produced. |
+| ADR compliance | Good | ADR-0012 (repo kind derived from the repository) is followed; ADR-0016 not triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Consequences]** (low) — The `docs/design.md` row the plan edits (line 529) also says the run-issue skill's `--type` "defaults to `workspace`", while the skill (lines 150-151) defaults to the type of the session's root (only `agent start-task` defaults to `workspace`), and its Lines column cites `SKILL.md` 47-54, which step 2's longer sentence moves further. Since the row is being touched, correct the default wording for the skill and refresh the line cite in the same edit.
+2. **[Issue alignment]** (low) — The skill's Scope section (lines 1205-1206) says a sibling's own pull request "is merged with `--pr <owner/sibling#M>`" and says nothing of `--project`, while the new step 11 passes `--project` for the owning package PR. Not a wrong command (the script accepts it, and without `--project` the two-instance case stops with exit 2 and lists the `--project` choices), but adding "with `--project <project>` when `project=` is not empty" there would make the two read alike.
+3. **[File targeting]** (note) — In the new test, `--project` is resolved before the `--type`/`--repo` check, so the name passed must be registered in the sandbox (e.g. via `make_package_worktree`'s instance, as `inst2` is), or the case exits 1 for the wrong reason; the plan already tells the implementer to check this. Asserting the exit is 2 (not merely non-zero) keeps it honest.
+
+### Summary
+
+The plan is accurate against `merge_pr.sh` and its suite, its three sentences give a host a command the script accepts, no other merge-time text gives the refused form, and the pin fails on today's text. Two low-severity wording improvements; ready for implementation.
+
+### Recommended Actions
+
+- [ ] While editing the `docs/design.md` run-issue row, fix "defaults to `workspace`" for the skill and the `SKILL.md` line cite.
+- [ ] Optionally add the `--project` clause to the sibling sentence in the skill's Scope section.
+- [ ] In the new `test_merge_pr.sh` case, use a registered `--project` name and assert exit 2 exactly.
