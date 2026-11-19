@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Callable, List, Optional, Sequence
 
 from . import selection
+from .masking import mask_url
 from .output import process_has_ended, signals_held
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
 from .sync import FINISH, Planned, closing, plan_distros, require_tools, sync_distros
@@ -108,7 +109,7 @@ def summary(config: Config, plan: Sequence[Planned]) -> str:
             for repo in layer.repos:
                 version = repo.version if repo.version is not None else "(its default branch)"
                 optional = "  (optional)" if repo.optional else ""
-                lines.append(f"    {repo.key}  {version}  {repo.url}{optional}")
+                lines.append(f"    {repo.key}  {version}  {mask_url(repo.url)}{optional}")
     if config.layout == LAYOUT_DISTRO_DIRS:
         lines.append("Layout: a directory per distro.")
     elif config.distros is not None:

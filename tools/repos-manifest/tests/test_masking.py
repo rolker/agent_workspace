@@ -5,6 +5,7 @@ information is found by parsing the whole url, whatever it holds, and is masked 
 import subprocess
 
 import pytest
+import yaml
 
 from helpers import git, make_remote, make_system, repo, rewrite_manifest, run
 from repos_manifest import masking
@@ -199,3 +200,100 @@ def test_a_registered_user_name_never_masks_an_ssh_url_with_that_name():
     assert masking.mask_urls("ssh://git@host/x and https://git@example.org/r.git") == (
         "ssh://git@host/x and https://***@example.org/r.git"
     )
+
+
+# --- Every command, every url key, passwords that repr escapes (round 4) -------------------
+
+ESCAPED = [
+    ("aliceQ", "a'b\" cQ"),  # both quotes and a space: repr escapes the quote
+    ("aliceQ", "p\\ qQ"),  # a backslash and a space
+    ('bo"b q', "x%41%40yQ"),  # % escapes (decoded: "xA@yQ") and a user with a quote
+    ("ünïQ", "cødé zQ"),  # letters beyond ASCII
+]
+
+
+def _url_forms(user, password):
+    info = f"{user}:{password}"
+    return {
+        "repo url": f"https://{info}@127.0.0.1:9/x.git",
+        "transport form": f"foo::https://{info}@127.0.0.1:9/x.git",
+        "ssh with no path": f"ssh://{info}@127.0.0.1:9",
+        "file url": f"file://{info}@localhost/nonexistent/x.git",
+    }
+
+
+def _forbidden(user, password):
+    words = {user, password, repr(password)[1:-1], repr(user)[1:-1]}
+    if "%" in password:
+        from urllib.parse import unquote
+
+        words.add(unquote(password))
+    return [w for w in words if len(w) > 2]
+
+
+def _command_output(capsys, cwd, *argv):
+    capsys.readouterr()
+    run(cwd, *argv)
+    out = capsys.readouterr()
+    return out.out + out.err
+
+
+@pytest.mark.parametrize("user, password", ESCAPED)
+@pytest.mark.parametrize("form", ["repo url", "transport form", "ssh with no path", "file url"])
+def test_no_command_prints_a_password_in_any_url(vcs, tmp_path, capsys, user, password, form):
+    url = _url_forms(user, password)[form]
+    data = {"format": 1, "repositories": {"a": repo(url, "main")}}
+    manifest = tmp_path / "m.manifest.yaml"
+    manifest.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    texts = {
+        "resolve": _command_output(
+            capsys, tmp_path, "resolve", "--manifest", manifest, "--out", tmp_path / "out"
+        ),
+        "validate": _command_output(capsys, tmp_path, "validate", "--manifest", manifest),
+    }
+    (tmp_path / "fresh").mkdir()
+    texts["init"] = _command_output(capsys, tmp_path / "fresh", "init", manifest, "--yes")
+    sys_dir, good, _, _ = _system(tmp_path / "s")
+    rewrite_manifest(good, lambda d: d["repositories"]["a"].update(url=url))
+    texts["sync"] = _command_output(capsys, sys_dir, "sync")
+    for command, text in texts.items():
+        for word in _forbidden(user, password):
+            assert word not in text, f"{command} printed {word!r}:\n{text}"
+
+
+@pytest.mark.parametrize("user, password", ESCAPED)
+def test_an_extends_url_of_the_earlier_format_prints_no_password(tmp_path, capsys, user, password):
+    url = f"https://{user}:{password}@127.0.0.1:9/base.git"
+    leaf = tmp_path / "leaf.yaml"
+    leaf.write_text(
+        yaml.safe_dump(
+            {
+                "extends": {"path": "manifest.yaml", "url": url, "ref": "main"},
+                "layers": ["core"],
+                "roles": {"dev": {}},
+            },
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    for argv in (
+        ["resolve", "--manifest", leaf, "--out", tmp_path / "o"],
+        ["validate", "--manifest", leaf],
+    ):
+        argv += ["--role", "dev", "--distro", "jazzy", "--cache-dir", tmp_path / "c"]
+        text = _command_output(capsys, tmp_path, *argv)
+        for word in _forbidden(user, password):
+            assert word not in text, f"{argv[0]} printed {word!r}:\n{text}"
+
+
+@pytest.mark.parametrize(
+    "url, shown",
+    [
+        ("file://u:SECRETPWQ@localhost/x.git", "file://***@localhost/x.git"),
+        ("file:///srv/w@x/remotes/a", "file:///srv/w@x/remotes/a"),
+        ("file://bobQ@localhost/x.git", "file://bobQ@localhost/x.git"),
+    ],
+)
+def test_a_file_urls_user_and_password_are_masked_and_its_path_is_not(url, shown):
+    assert masking.mask_url(url) == shown
+    assert masking.quoted_url(url) == repr(shown)

@@ -881,9 +881,16 @@ user information is everything between `://` and the last `@` in it, whatever ch
 holds (quotes, spaces, `@`, `:`, `/`, `%` escapes, any letter), and it is masked, and its
 `%`-decoded form, where it follows a scheme's `://`, by the same rule as above; an https url
 whose path holds an `@` has more masked, never less. Nothing that does not follow `://` is
-masked, and a `file://` url never is: a local path holding `@`, `git@github.com:...` and
-`origin/main@{upstream}` are printed as they are, so a password that is a common word (`git`,
-`main`, `a`) cannot change a printed command. A url the tool did not read itself (git's message after an `insteadOf` rewrite) is
+masked: a local path holding `@`, `git@github.com:...` and `origin/main@{upstream}` are
+printed as they are, so a password that is a common word (`git`, `main`, `a`) cannot change a
+printed command. In a `file://` url the text before an `@` is a path when it holds a `/`
+(`file:///srv/w@x/...`) and is printed as it is; a `user:password` there (a `:` and no `/`) is
+masked like any other. A url is masked before it is put into a message, so no quoting or
+escaping (`repr`, which escapes a quote or a backslash) can hide its user information from the
+masking: every message that formats a url does it through one of two functions, one that
+masks it and one that masks it and then quotes it, and a test walks the tool's source for
+every value formatted into text that names a url. What is printed is masked again as it is
+printed. A url the tool did not read itself (git's message after an `insteadOf` rewrite) is
 masked by its shape, up to the first `@` that a host follows within one run of characters that
 are not white space. A `set-url` command whose url is masked says so, and that the
 url to give it is the repo's url as the manifest gives it. The urls are written in full where

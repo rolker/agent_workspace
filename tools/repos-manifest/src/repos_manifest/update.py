@@ -1061,7 +1061,7 @@ def _repoint(git: Git, origin: str, url: str) -> Optional[Done]:
     try:
         status, printed, error = git.run(
             "-c",
-            f"remote.{PROBE}.url={url}",
+            f"remote.{PROBE}.url={url}",  # url-text: a git argument, not a message
             "fetch",
             "--no-tags",
             "--refmap=",
@@ -1073,13 +1073,14 @@ def _repoint(git: Git, origin: str, url: str) -> Optional[Done]:
         if status != 0:
             return Done(
                 FAILED,
-                f"the manifest's url changed to {url}, and fetching from it failed (origin stays"
-                f" {origin}): `git fetch` exited {status}:\n{(printed + error).rstrip()}",
+                f"the manifest's url changed to {mask_url(url)}, and fetching from it failed"
+                f" (origin stays {mask_url(origin)}): `git fetch` exited {status}:"
+                f"\n{(printed + error).rstrip()}",
                 fetch=True,
             )
         local = count(git, "--branches", "HEAD", "--not", f"--remotes={PROBE}")
         if local is None:
-            return Done(LEFT, f"url changed to {url}; its commits cannot be counted")
+            return Done(LEFT, f"url changed to {mask_url(url)}; its commits cannot be counted")
         if local:
             names = []
             heads = git.out("for-each-ref", "--format=%(refname:short)", "refs/heads/") or ""
@@ -1089,8 +1090,8 @@ def _repoint(git: Git, origin: str, url: str) -> Optional[Done]:
             which = f" (branches {', '.join(names)})" if names else " (on HEAD)"
             return Done(
                 LEFT,
-                f"url changed to {url} but {local} local commits{which} are not on it; origin"
-                f" stays {origin}",
+                f"url changed to {mask_url(url)} but {local} local commits{which} are not on it;"
+                f" origin stays {mask_url(origin)}",
             )
         status, _, error = git.run("remote", "set-url", "origin", url, change=True)
         if status != 0:

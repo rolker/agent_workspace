@@ -6,10 +6,17 @@ and the last `@` in it, whatever characters it holds (quotes, spaces, `@`, `:`, 
 escapes, any letter). `mask_urls` replaces each registered user information, and its
 percent-decoded form, where it follows `://` in a text, and then masks any other
 `scheme://...@host` it finds by a pattern, for a url the tool did not read itself (one git
-prints after an `insteadOf` rewrite). A `file://` url holds no credentials and is never
-masked, nor is anything not after `://`: a local path holding `@`, `git@github.com:...` and
-`origin/main@{upstream}` are printed as they are. An https url whose path holds an `@` has
-more masked than its user information; never less.
+prints after an `insteadOf` rewrite). Nothing not after `://` is masked: a local path holding
+`@`, `git@github.com:...` and `origin/main@{upstream}` are printed as they are. A `file://`
+url's text before an `@` is a path when it holds a `/`, and is kept; one that holds a `:` and
+no `/` (`file://user:password@host/...`) is masked like any other. An https url whose path
+holds an `@` has more masked than its user information; never less.
+
+Every message that puts a url into text does it through `mask_url` (plain) or `quoted_url`
+(quoted for display, as `repr` would), so a url is masked before it is quoted or escaped;
+`mask_urls`, applied to what is printed, is the second line of defence. A test walks the
+tool's source for every formatted value that names a url and fails on one that does not go
+through these.
 """
 
 from __future__ import annotations
@@ -44,9 +51,12 @@ def userinfo_of(url: str) -> Optional[Tuple[str, str]]:
 
 
 def _kept(scheme: str, userinfo: str) -> bool:
-    """An ssh url's user name alone names an account, as in `ssh://git@host/...`; a `file://`
-    url names a path on this machine, and has no credentials."""
-    return scheme.lower() == "file://" or ("ssh" in scheme.lower() and ":" not in userinfo)
+    """An ssh url's user name alone names an account, as in `ssh://git@host/...`. In a
+    `file://` url, text before an `@` that holds a `/` is a path on this machine, and a bare
+    name is not a secret either; only a `user:password` is masked."""
+    if scheme.lower() == "file://":
+        return "/" in userinfo or ":" not in userinfo
+    return "ssh" in scheme.lower() and ":" not in userinfo
 
 
 def remember_url(url: object) -> None:
@@ -83,3 +93,11 @@ def mask_url(url: str) -> str:
     """One whole url as it is shown: parsed, not matched."""
     remember_url(url)
     return mask_urls(url)
+
+
+def quoted_url(value: object) -> str:
+    """A url, or any value a message quotes where a url may be, as `repr` would show it, with
+    the user information masked first: so no escaping can hide it from the masking."""
+    if isinstance(value, str):
+        return repr(mask_url(value))
+    return mask_urls(repr(value))

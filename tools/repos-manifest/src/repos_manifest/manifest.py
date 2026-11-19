@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .yamlload import ManifestError, _load_yaml, _refuse_unsafe_chars, first_unsafe_in_text
-from .masking import remember_url
+from .masking import quoted_url, remember_url
 
 FORMAT = 1
 
@@ -212,8 +212,8 @@ class _Checker:
         if not isinstance(value, str):
             raise self.error(
                 where,
-                f"must be a string, got {_type_name(value)} ({value!r}); quote it in the YAML"
-                " (unquoted, 1.10 is read as the number 1.1, yes as true)",
+                f"must be a string, got {_type_name(value)} ({quoted_url(value)}); quote it in the"
+                " YAML (unquoted, 1.10 is read as the number 1.1, yes as true)",
             )
         if value == "":
             raise self.error(where, "must not be empty")
@@ -226,7 +226,9 @@ class _Checker:
 
     def not_an_option(self, value: str, where: str) -> str:
         if value.startswith("-"):
-            raise self.error(where, f"{value!r} starts with '-', which git would read as an option")
+            raise self.error(
+                where, f"{quoted_url(value)} starts with '-', which git would read as an option"
+            )
         return value
 
     def version(self, value, where: str) -> str:
@@ -267,7 +269,7 @@ class _Checker:
         url = self.not_an_option(self.string(value, where), where)
         if _TRANSPORT_FORM.match(url):
             raise self.error(
-                where, f"{url!r}: the <transport>::<address> form is refused; {_URL_RULE}"
+                where, f"{quoted_url(url)}: the <transport>::<address> form is refused; {_URL_RULE}"
             )
         scheme = next((s for s in _URL_SCHEMES if url.startswith(s)), None)
         if scheme is not None:
@@ -278,7 +280,9 @@ class _Checker:
                 # '/' after the host; not to a '?' or a '#'.
                 slash = rest.find("/", brackets[1] + 1 if brackets else 0)
                 if slash < 0:
-                    raise self.error(where, f"{url!r}: an ssh url has no path after the host")
+                    raise self.error(
+                        where, f"{quoted_url(url)}: an ssh url has no path after the host"
+                    )
             else:
                 # Not handed to ssh: the user, host and port run to the first '/', and a '%',
                 # '[' or ']' after it is the path's business.
@@ -293,16 +297,16 @@ class _Checker:
             brackets = self.ssh_address(url, url, where)
             sep = url.find(":", brackets[1] + 1 if brackets else 0)
             if sep <= 0 or sep == len(url) - 1:
-                raise self.error(where, f"{url!r} is refused; {_URL_RULE}")
+                raise self.error(where, f"{quoted_url(url)} is refused; {_URL_RULE}")
             self.authority(url, url[:sep], brackets, where, ssh=True)
             if url[sep + 1] == "-":
                 # git refuses such a path ("strange pathname") rather than hand it to ssh.
-                raise self.error(where, f"{url!r}: the path starts with '-'")
+                raise self.error(where, f"{quoted_url(url)}: the path starts with '-'")
             return url
         # No ':', or a '/' before the first ':': a path on the local disk.
         if url.startswith("/"):
             return url
-        raise self.error(where, f"{url!r} is refused; {_URL_RULE}")
+        raise self.error(where, f"{quoted_url(url)} is refused; {_URL_RULE}")
 
     def ssh_address(self, url: str, address: str, where: str) -> Optional[Tuple[int, int]]:
         """Check an address git hands to ssh (after `ssh://`, or the scp form), and return
@@ -310,14 +314,15 @@ class _Checker:
         in brackets anywhere in it, so neither is allowed outside the host: no '%' at all, and
         a '[' and a ']' only as one pair around the host at the start of the address."""
         if "%" in url:
-            raise self.error(where, f"{url!r}: a '%' in an ssh address is refused")
+            raise self.error(where, f"{quoted_url(url)}: a '%' in an ssh address is refused")
         brackets = _bracketed_host(address)
         allowed = brackets or ()
         for index, char in enumerate(address):
             if char in "[]" and index not in allowed:
                 raise self.error(
                     where,
-                    f"{url!r}: in an ssh address, '[' and ']' are allowed only around the host",
+                    f"{quoted_url(url)}: in an ssh address, '[' and ']' are allowed only around"
+                    " the host",
                 )
         return brackets
 
@@ -335,7 +340,9 @@ class _Checker:
         '://', so a '%2d' would be a '-'), and none starts with '-', where ssh would read it as
         an option. In an address handed to ssh (`ssh`), the host is not empty."""
         if "%" in text:
-            raise self.error(where, f"{url!r}: a '%' in the user, host or port is refused")
+            raise self.error(
+                where, f"{quoted_url(url)}: a '%' in the user, host or port is refused"
+            )
         if brackets:
             start, close = brackets
             outer_user, inner, rest = (
@@ -344,7 +351,7 @@ class _Checker:
                 text[close + 1 :],
             )
             if rest and not rest.startswith(":"):
-                raise self.error(where, f"{url!r} is refused; {_URL_RULE}")
+                raise self.error(where, f"{quoted_url(url)} is refused; {_URL_RULE}")
             # Inside the brackets, ssh still reads a user before the last '@', and git a port
             # after a ':'.
             user, _, host_port = inner.rpartition("@")
@@ -361,10 +368,10 @@ class _Checker:
             host, _, port = host_port.partition(":")
             parts = [("user", user), ("host", host), ("port", port)]
         if ssh and not host:
-            raise self.error(where, f"{url!r}: the host is empty")
+            raise self.error(where, f"{quoted_url(url)}: the host is empty")
         for part, value in parts:
             if value.startswith("-"):
-                raise self.error(where, f"{url!r}: the {part} starts with '-'")
+                raise self.error(where, f"{quoted_url(url)}: the {part} starts with '-'")
 
     # --- one manifest, as read -------------------------------------------------------------
 
