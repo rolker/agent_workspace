@@ -799,3 +799,20 @@ None of the Decision summary's sentences changes: it does not describe the defau
 ### Tests
 - Tool suite: `REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest -p no:cacheprovider` on the code of 941468f3 — `1149 passed in 249.54s`
 - black and flake8 clean on the changed files; commits with `SKIP=validate-script-tests`; full pass left to the host.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-19 14:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent ac4541685cd426ca6, resume 3 of 3)
+
+**PR**: #518 at `030cc28f`
+**Depth**: Deep (reason: round 4 convergence check per handoff)
+**Must-fix**: 1 | **Suggestions**: 1
+
+Scope: the round 3 review's findings and the fix diff dd612b87..24227a65. Cross-model: skipped (round-4 convergence check, per handoff). Both round 3 must-fix are fixed: the six `COLCON_DEFAULTS_FILE` cases (unset, existing file, missing path, empty, a directory, a relative path), plus `COLCON_HOME` empty and unset, give the same files in the tool's NOTE lines as real colcon-defaults 0.2.9 applies with `colcon list`, the layer's `colcon_defaults.yaml` named and read in each; the design sentence and docstring now say so. Real colcon rejects `--cmake`, `--cmake-t`, `--cmake-targ` as ambiguous and the tool refuses each first; `--cmake-target X`/`=X` stay selection; `--cmake-target-skip(-unavailable)` alone and `--cmake-args`/`--cmake-clean-cache` pass. Every changed design.md sentence holds. The shorter-chain note was run for real by the fix pass and matches the design. Tool suite: 1149 passed with real colcon. CI at 030cc28f: all ten checks passed; no Copilot review.
+
+### Findings
+- [ ] (must-fix) The pull request body's edited "Reviews and outcomes" sentence says the eighth review's 2 must-fix and 2 suggestions were "all in the note that names a colcon defaults file and the `--cmake-target` refusal"; one of the two suggestions was the "built on a shorter chain" note (not run for real), which is in neither. Body text only: e.g. "three in the note that names a colcon defaults file and the `--cmake-target` refusal, one that the shorter-chain note had not been run for real" — PR #518 body
+- [ ] (suggestion) With `COLCON_DEFAULTS_FILE=colcon_defaults.yaml` (relative, the layer file's own name) the same NOTE is printed twice for that layer; colcon does read it twice, so it is redundant, not false; de-duplicate `found` — `build.py:901`
