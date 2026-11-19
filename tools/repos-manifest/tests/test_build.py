@@ -898,27 +898,100 @@ def test_package_selection_colcon_must_resolve_with_one_layer_with_repos(stub, t
     assert runs(stub)[-1][2] == "build --packages-above t --base-paths src/t"
 
 
-def test_a_selection_build_of_a_layer_not_built_before_is_not_recorded(system, stub, capsys):
+@pytest.mark.parametrize(
+    "selection",
+    [["--packages-select", "u"], ["--packages-sel", "u"], ["--packages-select-build-failed"]],
+)
+def test_a_selection_run_that_would_build_a_layer_not_built_is_refused(
+    system, stub, capsys, selection
+):
     capsys.readouterr()
-    assert run(system, "build", "--", "--packages-select", "u") == 1
-    out = capsys.readouterr().out
+    assert run(system, "build", "--", *selection) == 1
+    err = capsys.readouterr().err
     assert (
-        f"  selected packages built, not recorded: {BASE} (it was not built before this run,"
-        " and the run selected packages, so not all of it was built; run `repos-manifest build"
-        f" {BASE}` without package selection to record it)\n" in out
+        "a run with package selection builds only part of a layer, so it only rebuilds layers"
+        f" that are built; not built: {BASE} (not built), mid (not built), top (not built);"
+        " nothing was run" in err
     )
-    assert "  not tried: mid, top\n" in out
-    assert built(system) == {}
-    assert (system / "setup.bash").read_text() == SETUP_TEXT
-    # Built before: a selection build gives it its record back.
+    assert (
+        f"Build them without package selection first: `repos-manifest build {BASE} mid top`" in err
+    )
+    assert runs(stub) == []
+    assert not (system / ".repos-manifest/built-jazzy.yaml").exists()
+    assert run(system, "build", BASE) == 0
+    assert run(system, "build", "--", *selection) == 1
+    assert "not built: mid (not built), top (not built);" in capsys.readouterr().err
+    assert run(system, "build", BASE, "--", *selection) == 0  # only the built layer
+
+
+def test_a_selection_run_rebuilds_built_layers_and_gives_back_their_records(system, stub, capsys):
     assert run(system, "build") == 0
-    assert run(system, "build", "mid", "--", "--packages-skip", "x") == 0
-    assert list(built(system)) == [BASE, "mid", "top"]
+    before = built(system)
+    capsys.readouterr()
+    assert run(system, "build", "--", "--packages-select", "m", "--packages-select", "t") == 0
+    assert [args for _, _, args in runs(stub)][3:] == [
+        "build --packages-select m --packages-select t --base-paths src/u",
+        "build --packages-select m --packages-select t --base-paths src/m",
+        "build --packages-select m --packages-select t --base-paths src/t",
+    ]
+    assert built(system) == before  # repos, base and time as they were
     assert sourced_by_setup(system) == real(system / "top")
-    # A failure still leaves the layer not built.
+    out = capsys.readouterr().out
+    assert f"  built: {BASE}, mid, top\n" in out and out.endswith("setup.bash: sources top\n")
+    # A failure still leaves the layer not built; with --keep-going the layer above it is not
+    # tried, since it could only be built on another base than its record's.
     (system / "mid/src/m/STUB_FAIL").touch()
-    assert run(system, "build", "mid", "--", "--packages-select", "m") == 1
+    assert run(system, "build", "--keep-going", "--", "--packages-select", "m") == 1
+    out = capsys.readouterr().out
+    assert "  failed: mid (colcon exited 1)" in out and "  not tried: top\n" in out
     assert list(built(system)) == [BASE, "top"]
+    assert built(system)["top"] == before["top"]
+    assert sourced_by_setup(system) == real(system)
+
+
+def test_a_layer_whose_repos_differ_from_its_record_is_not_built_for_a_selection(
+    stub, tmp_path, capsys
+):
+    system, path, data = three_layers(tmp_path)
+    assert run(system, "build") == 0
+    data["repositories"]["n"] = repo(make_remote(tmp_path / "remotes", "n"), None, "mid")
+    write_manifest(path, data)
+    assert run(system, "sync") == 0
+    capsys.readouterr()
+    assert run(system, "build", "mid", "--", "--packages-select", "m") == 1
+    err = capsys.readouterr().err
+    assert "not built: mid (its repos differ from its record: new n); nothing was run" in err
+    assert built(system)["mid"]["repos"] == ["m"]
+    assert run(system, "build", "mid") == 0
+    assert "NOTE: n is new in mid since it was last built\n" in capsys.readouterr().out
+    assert built(system)["mid"]["repos"] == ["m", "n"]
+
+
+@pytest.mark.parametrize("given", ["--packages-skip-build-finished", "--packages-skip-build"])
+def test_resuming_a_layer_is_not_package_selection(system, stub, given):
+    assert run(system, "build", "--", given) == 0
+    assert list(built(system)) == [BASE, "mid", "top"]
+
+
+def test_the_lock_file_is_written_before_it_is_cut_to_length(system, monkeypatch):
+    from repos_manifest import system as system_module
+
+    calls = []
+    real_pwrite, real_ftruncate = os.pwrite, os.ftruncate
+    monkeypatch.setattr(
+        system_module.os, "pwrite", lambda *a: calls.append("write") or real_pwrite(*a)
+    )
+    monkeypatch.setattr(
+        system_module.os, "ftruncate", lambda *a: calls.append("cut") or real_ftruncate(*a)
+    )
+    fd = hold_build_lock(system, "jazzy")
+    try:
+        system_module.note_lock_holders(fd, [123456789, 2])
+        system_module.note_lock_holders(fd, [7])
+        assert build_lock_file(system, "jazzy").read_text() == "7\n"
+    finally:
+        os.close(fd)
+    assert calls == ["write", "cut"] * 3
 
 
 def test_the_wait_for_the_group_reaps_its_own_zombies(system, stub):
@@ -1162,10 +1235,28 @@ def test_real_colcon_package_selection(real_colcon, tmp_path):
     system = packages_system(tmp_path, {"good2": {"needs": "good"}, "other": {}})
     assert run(system, "build", "--", "--packages-up-to", "good2") == 1
     assert run(system, "build", "--", "--packages-select", "good2") == 1
-    assert not (system / ".repos-manifest/built-_unnamed.yaml").exists() or (
-        built(system, "_unnamed") == {}
-    )
+    assert not (system / ".repos-manifest/built-_unnamed.yaml").exists()
     assert run(system, "build") == 0
+    before = built(system, "_unnamed")
+    # The unnamed layer has no good2: colcon builds nothing there, exits 0 and still writes
+    # its install/setup.bash, so the layer keeps its record.
+    assert run(system, "build", "--", "--packages-select", "good2") == 0
     assert run(system, "build", "top", "--", "--packages-up-to", "good2") == 0
+    assert built(system, "_unnamed") == before
+    assert sourced_by_setup(system) == real(system / "top")
+
+
+@pytest.mark.colcon
+def test_real_colcon_a_failed_layer_is_resumed_and_recorded(real_colcon, tmp_path):
+    system = packages_system(tmp_path, {"bad": {"bad": True}, "good2": {"needs": "good"}})
+    assert run(system, "build", "--", "--continue-on-error") == 1
+    assert list(built(system, "_unnamed")) == [BASE]
+    lists = system / "top/src/bad/CMakeLists.txt"
+    lists.write_text(lists.read_text().replace("message(FATAL_ERROR", "message(STATUS"))
+    # Only the packages that failed: selection, refused on a layer that is not built.
+    assert run(system, "build", "top", "--", "--packages-select-build-failed") == 1
+    assert list(built(system, "_unnamed")) == [BASE]
+    # Every package not finished yet: it completes the layer, which is then recorded.
+    assert run(system, "build", "top", "--", "--packages-skip-build-finished") == 0
     assert list(built(system, "_unnamed")) == [BASE, "top"]
     assert sourced_by_setup(system) == real(system / "top")

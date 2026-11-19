@@ -466,6 +466,48 @@ RESOLVING_SELECTION = (
 )  # fmt: skip
 
 
+# Builds what an earlier build of the layer did not finish, the rest being built already: it
+# completes the layer, so it is not package selection. (`--packages-select-build-failed` is:
+# a package that was never tried is not built by it.)
+RESUMING = "--packages-skip-build-finished"
+
+
+def not_built_for_selection(
+    layers: Sequence[Layer], to_build: Sequence[str], records: Dict[str, LayerRecord]
+) -> None:
+    """A run with package selection builds only part of each layer, so it only rebuilds layers
+    that are built, with the repos their record has: any other layer it would build is refused
+    before anything runs."""
+    why = []
+    for index, layer in enumerate(layers):
+        if layer.name not in to_build:
+            continue
+        below = built_run(layers[:index], records).last
+        reason = why_not_built(layer, records, below)
+        record = records.get(layer.name)
+        if reason is None and sorted(record.repos) != sorted(layer.on_disk):
+            new = [key for key in layer.on_disk if key not in record.repos]
+            gone = [key for key in record.repos if key not in layer.on_disk]
+            changes = []
+            if new:
+                changes.append(f"new {', '.join(new)}")
+            if gone:
+                changes.append(f"gone {', '.join(gone)}")
+            reason = f"its repos differ from its record: {'; '.join(changes)}"
+        if reason is not None:
+            why.append((layer.name, reason))
+    if why:
+        names = [name for name, _ in why]
+        raise Refusal(
+            "a run with package selection builds only part of a layer, so it only rebuilds"
+            " layers that are built; not built: "
+            + ", ".join(f"{name} ({reason})" for name, reason in why)
+            + "; nothing was run",
+            "Build them without package selection first: `repos-manifest build"
+            f" {' '.join(names)}`",
+        )
+
+
 def _option_names(colcon_args: Sequence[str]) -> List[str]:
     return [arg.split("=", 1)[0] for arg in colcon_args if arg.startswith("--") and arg != "--"]
 
@@ -513,14 +555,16 @@ def refused_arguments(colcon_args: Sequence[str]) -> None:
 
 
 def package_selection(colcon_args: Sequence[str], to_build: Sequence[str]) -> bool:
-    """Whether the arguments select packages (any `--packages-` option): a run with one builds
-    only part of a layer. One colcon must resolve in the layer's packages is refused, before
-    anything runs, when the run would build more than one layer."""
+    """Whether the arguments select packages (any `--packages-` option but `RESUMING`): a run
+    with one builds only part of a layer. One colcon must resolve in the layer's packages is
+    refused, before anything runs, when the run would build more than one layer."""
     selecting = False
     for name in _option_names(colcon_args):
         could = _could_be(name)
         if not (name.startswith("--packages") or any(o.startswith("--packages-") for o in could)):
             continue
+        if could == [RESUMING]:
+            continue  # it completes a layer: not a selection
         selecting = True
         resolving = [option for option in could if option in RESOLVING_SELECTION]
         if resolving and len(to_build) > 1:
@@ -645,8 +689,6 @@ class Progress:
     built: List[str] = field(default_factory=list)
     # layer, colcon's status; None when colcon exited 0 and wrote no install/setup.bash
     failed: List[Tuple[str, Optional[int]]] = field(default_factory=list)
-    # layers a run with package selection built that were not built before it: not recorded
-    partial: List[str] = field(default_factory=list)
     skipped: List[str] = field(default_factory=list)
     not_tried: List[str] = field(default_factory=list)
     setup_problem: Optional[str] = None  # why the last rewrite of setup.bash failed
@@ -656,8 +698,8 @@ class Progress:
 
     @property
     def stopped_at(self) -> List[str]:
-        """The layers that failed or are not recorded: later ones are not tried."""
-        return [name for name, _ in self.failed] + self.partial
+        """The layers that failed: later ones are not tried."""
+        return [name for name, _ in self.failed]
 
     def release(self) -> None:
         if self.lock is not None:
@@ -735,8 +777,9 @@ def build_layers(
     and so not used until it is built again on top of the failed layer, fixed.
 
     With `selection` (package selection among colcon's arguments) colcon builds only part of
-    a layer: a layer that was built before gets its record back when colcon succeeds; one that
-    was not is not recorded, and the later layers are not tried, as after a failure."""
+    a layer, and every layer the run builds was checked to be built: when colcon succeeds the
+    layer gets back the record it had, unchanged. A layer that could only be built on another
+    base than its record's (after a failure, with `keep_going`) is not tried."""
     system, distro, layers = progress.system, progress.distro, progress.layers
     records = read_built(system, distro)
     for index, layer in enumerate(layers):
@@ -753,7 +796,10 @@ def build_layers(
         base_setup = None
         if below is not None:
             base_setup = next(each for each in layers if each.name == below).install_setup
-        was_built = why_not_built(layer, records, below) is None
+        had = records.get(layer.name)
+        if selection and (had is None or had.base != below):
+            progress.not_tried.append(layer.name)
+            continue
         for note in install_notes(layer, records.get(layer.name)):
             print(f"NOTE: {note}", flush=True)
         records.pop(layer.name, None)
@@ -777,10 +823,10 @@ def build_layers(
             # colcon exited 0 and wrote no install/setup.bash: nothing was built (`--help`).
             progress.failed.append((layer.name, None))
             continue
-        if selection and not was_built:
-            progress.partial.append(layer.name)
-            continue
-        records[layer.name] = LayerRecord(_now(), list(layer.on_disk), below)
+        if selection:
+            records[layer.name] = had  # the record it had: repos, base and time unchanged
+        else:
+            records[layer.name] = LayerRecord(_now(), list(layer.on_disk), below)
         _put(progress, records, lambda: progress.built.append(layer.name))
         settle(progress)
 
@@ -800,17 +846,12 @@ def report(progress: Progress, run: Optional[Run]) -> None:
     if used:
         print(f"  built: {', '.join(used)}")
     failed_names = progress.stopped_at
-    failed_only = [each for each, _ in progress.failed]
     for name in progress.built:
         if name in run.layers:
             continue
         below = [each.name for each in layers[: layers.index(by_name[name])]]
-        without = [
-            f"{each} (failed)" if each in failed_only else f"{each} (not recorded)"
-            for each in failed_names
-            if each in below
-        ] or [f"{run.end} (not built)"]
-        print(f"  built without {', '.join(without)}; not used: {name}")
+        without = [failed for failed in failed_names if failed in below]
+        print(f"  built without {', '.join(without) or run.end} (failed); not used: {name}")
     for failed, status in progress.failed:
         layer = by_name[failed]
         if status is None:
@@ -829,12 +870,6 @@ def report(progress: Progress, run: Optional[Run]) -> None:
                 f" source {shlex.quote(str(real / 'install/setup.bash'))}"
             )
         print(line)
-    for name in progress.partial:
-        print(
-            f"  selected packages built, not recorded: {name} (it was not built before this"
-            " run, and the run selected packages, so not all of it was built; run"
-            f" `repos-manifest build {name}` without package selection to record it)"
-        )
     if progress.not_tried:
         print(f"  not tried: {', '.join(progress.not_tried)}")
     if progress.skipped:
@@ -947,6 +982,8 @@ def _build(
         progress.lock = hold_build_lock(system, distro)
         records = read_built(system, distro)
         refusal(layers, chosen, built_run(layers, records))
+        if selection:
+            not_built_for_selection(layers, [layer.name for layer in to_build], records)
         colcon = find_colcon() if to_build else None
         bash = find_bash() if to_build else "bash"
         for warning in own_prefix_warnings(layers) if to_build else []:

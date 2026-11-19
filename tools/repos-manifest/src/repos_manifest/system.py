@@ -472,9 +472,10 @@ def hold_build_lock(system: Path, distro: Optional[str]) -> int:
 def note_lock_holders(fd: int, pids: Sequence[int]) -> None:
     """Write the pids of the processes that hold a build lock into its file: the tool's, and
     colcon's while one runs. Only the refusal of a second `build` reads them."""
-    try:
-        os.ftruncate(fd, 0)
-        os.pwrite(fd, (" ".join(str(pid) for pid in pids) + "\n").encode("ascii"), 0)
+    text = (" ".join(str(pid) for pid in pids) + "\n").encode("ascii")
+    try:  # written first, then cut to length: a reader never finds the file empty
+        os.pwrite(fd, text, 0)
+        os.ftruncate(fd, len(text))
     except OSError:
         pass
 
