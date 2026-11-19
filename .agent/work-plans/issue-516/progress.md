@@ -370,3 +370,13 @@ Verified by hand: test_worktree_create.sh 101 passed / 0 failed; shellcheck --se
 - [ ] (suggestion) When git prints nothing on stderr, the warning ends in a dangling "said:"; gate that phrase on a non-empty push_err (Claude adversarial, gemini) — `.agent/scripts/worktree_create.sh:1294-1296`
 - [ ] (suggestion) An issue title containing `**Authored-By**:` now appears in the hint's --body, so gh_create_pr.sh treats the body as already signed and the pasted PR goes unsigned, while the success path always signs (codex) — `.agent/scripts/worktree_create.sh:1276-1285,1303`
 - [ ] (suggestion) Tests: the body-file check after the SB13 case reuses the previous check's fail label and prints the wrong log; the `grep -q "^pr comment ... $SB13/..."` treats the sandbox path as a regex (use -xF); the --print-path-only case does not check that the warning reached stderr (Claude adversarial, gemini) — `.agent/scripts/tests/test_worktree_create.sh:1227,1253-1262`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 13:37 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 2 approved with no must-fix; the host's full pre-commit pass over the branch passed at 70e6632b, every hook, no SKIP)
+**After**: publish
+**Decision**: publish
+
+Round 2, with the outside reviewers, approved the branch and left five suggestions, which the pull request lists. The full pass ran on head 70e6632b with exit 0, the script test suites included.
