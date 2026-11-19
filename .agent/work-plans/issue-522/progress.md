@@ -178,3 +178,23 @@ Verified: test_skill_paths.sh 164/0 and test_merge_pr.sh 175/0 pass; the new pin
 **Decision**: address
 
 The full pre-commit pass was not run: the answer changes the code, so the pass runs on the head that follows. Fixed in this round: suggestion 1 (restore the space dropped from an unrelated address-findings label in test_skill_paths.sh), suggestion 2 (the new test's title and comment say what is true: with a qualified --pr the script refuses any --type that differs from the derived kind, package or not), suggestion 3 (the skill's "finds the package worktree" gets its condition: when --project names the instance the worktree was made under). Suggestion 4 (the docs/design.md row mixes two entry points) predates the branch and is left; the second half of suggestion 2 (merge_pr.sh treats a qualified --pr for a project's own pull request as a package pull request) is a script matter outside this issue, which the host proposes to the owner as an issue.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 14:47 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-522 at `a62e6809`
+**Addressed**: Local Review (Pre-Push) at `27d01ee3` (2026-11-19 14:46 -05:00)
+**Commits**: 34dba88c, ca5b3bfe, a62e6809
+
+### Actions
+- [x] Restored the space dropped from the unrelated address-findings label; `git diff origin/main` on the file now shows only the new pin — `.agent/scripts/tests/test_skill_paths.sh:776`
+- [x] Renamed the new test to `test_qualified_pr_differing_type_project_rejected` and reworded its title and comment: with a repo-qualified `--pr` the script derives the kind from the repository and refuses any `--type` that differs; assertions unchanged — `.agent/scripts/tests/test_merge_pr.sh:664`
+- [x] "finds the package worktree" now carries its condition: when `--project` names the instance the worktree was made under, which the session's `project=` does; no pin covers that sentence, so the pin is unchanged — `.claude/skills/run-issue/SKILL.md:1035`
+- [x] The design.md row mixing two entry points — `docs/design.md:529` (deferred: predates the branch; the host's checkpoint leaves it out of this issue)
+
+### Checks
+- `bash .agent/scripts/tests/test_skill_paths.sh`: `test_skill_paths: 164 passed, 0 failed`
+- `bash .agent/scripts/tests/test_merge_pr.sh`: `=== Results: 175 passed, 0 failed ===`
+- Commits used `SKIP=validate-script-tests`; the full pre-commit pass is left to the host.
