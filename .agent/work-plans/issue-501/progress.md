@@ -287,3 +287,35 @@ All five findings of the second review are resolved as the checkpoint decided, a
 **Decision**: proceed
 
 The host read the third Plan Review: verdict ready, all five earlier findings resolved, six worked cases giving no wrong result. Its three low notes go to the implementer in the handoff: the report says "above <layer>, which is not built" for a layer above where the built run ends, whether or not that layer failed; the report may say that later layers were built against a rebuilt lower layer's earlier output; the fail-then-rebuild test uses build <layer>, not a plain build. The plan is implemented as written, without the keep-going option and without the CI step: both are still with the owner (asked, not yet answered), and the plan's own sections say each can be added afterwards without a plan revision.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 10:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-501 at `9819c61d`
+
+The owner's answer to the two open questions, relayed by the host: "yes to both" (Q1: an opt-in flag to keep going to later layers after a layer fails; Q2: the pull request may change CI to install colcon for the tool's tests). Both are done here, each in its own commit.
+
+Commits:
+- `d2e51c34` the command: `src/repos_manifest/build.py` (new), `system.py` (`built.yaml` read/write, `LayerRecord`, `SETUP_MARKER`, `one_distro_for` beside `distros_for`), `cli.py` (`build [--distro D] [LAYER ...] [-- COLCON_ARGS]`, `--distro` refused when repeated).
+- `05855698` the tests: `tests/test_build.py`, `tests/fixtures/stub_colcon/colcon`, a CMake-package helper in `helpers.py`, the `colcon` marker and a colcon line in the report header in `conftest.py`.
+- `df2c73b8` the documents: design.md "build" rewritten (record, built run and its three readers, stop at first failure, setup.bash rules and how they differ from sync's, report, own-prefix warning, stop signals), the tree (`built.yaml`), the stub sentence, "What is built", the open question; roadmap row given the check `file-exists src/repos_manifest/build.py` (the table marks done by its check); README.
+- `fab4fce9` `--keep-going`, as the plan's section says, with two tests and the design paragraph; the open question on stopping is removed.
+- `9819c61d` CI: `.github/workflows/validate.yml`, job `validate-repos-manifest` installs `colcon-common-extensions` and runs the tests with `REPOS_MANIFEST_REQUIRE_COLCON=1`. The workflow, not the `test` extra, so a person installing the test extra does not get colcon and its plugins (they skip with a reason). Checked locally: the package exists on PyPI (0.3.0; it pulls colcon-bash, which writes the `setup.bash` files the tests source); the file passes yamllint and check-yaml. Not checked: that pip's colcon installs and runs on the 3.14 leg, and that `cmake` is on `ubuntu-latest` (the step prints `cmake --version` so a missing one fails visibly). The step is unverified until the push.
+
+Departures from the plan:
+- The report's line for a layer above where the built run ends is "recorded built, not used: <layer> (above <end>, which is not built)" for every such layer, failed or not (the review's note 1); a layer whose base differs gets "<layer>: base changed: ..."; a layer kept built over a rebuilt lower layer is listed as "built before, in the run: <layer> (on the earlier output of <lower>)" (note 2). The fail-then-rebuild test uses `build mid` (note 3).
+- "First layer runs colcon without bash" is tested by recording the `Popen` argv in-process, not by the stub logging its parent's name: with `exec` in the bash wrapper colcon's parent is the tool either way, so the parent name cannot tell them apart.
+- A SIGINT is not forwarded to colcon while the tool is in its terminal's foreground process group (a Ctrl-C there already reached colcon; colcon raises on a second SIGINT that arrives before it ignores further ones). SIGTERM, SIGHUP, and a SIGINT otherwise, are forwarded. design.md says so.
+- The CMake helper packages have no `package.xml`: plain `CMakeLists.txt` packages are found by colcon-cmake and chain through `CMAKE_PREFIX_PATH`, checked by hand first; a `package.xml` would make colcon-ros take them where it is installed.
+- The refusal message and design.md say "another tool, by hand" rather than naming the workspace adapter: `tests/test_documents.py` forbids naming it in the tool's documents.
+- `sync.py` needed no change: it has no "until build is built" wording.
+
+Tests (run with `/usr/bin/python3 -m pytest` and `PYTHONPATH=src` from `tools/repos-manifest`, since the main checkout's `.venv` has no pytest; `PYTHONPATH` made it import the worktree's package, checked):
+- Whole tool suite: `1047 passed in 143.32s` (baseline before the change: 1018 passed). Report header: `colcon: /usr/bin/colcon`.
+- Real-colcon tests (`-m colcon`): 3 ran, 0 skipped (`3 passed, 26 deselected`).
+- No `.agent/scripts/` file changed, so no workspace suite applies; the full pre-commit pass is left to the host.
+
+By hand: a scratch system made with `repos-manifest init` (local file remotes, an unnamed layer with plain CMake package `good`, a layer `top` with `good2` that does `find_package(good)`), built with the real colcon: exit 0, report `built: _unnamed, top` / `setup.bash: sources top`; the written `setup.bash` sources `top/install/setup.bash` by absolute path, and sourcing it puts both `top/install/good2` and `install/good` on `CMAKE_PREFIX_PATH`; `build top` afterwards reports `built before, in the run: _unnamed`.
+
+Still to do, not by this pass: the by-hand acceptance build of `~/project11` is the owner's (no build was run in `/home/roland/project11` or `/home/roland/p11-rolling-test`). Nothing pushed.
