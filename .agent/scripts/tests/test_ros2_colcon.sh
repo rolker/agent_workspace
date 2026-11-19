@@ -4735,6 +4735,31 @@ test_tool_set_aside_resolve_is_a_distro() {
     assert_not_contains "a dot name not the tool's: fakefox2 not counted" "fakefox2" "$out"
 }
 
+# Integrated review, finding 4: _rc_tool_distros lists the set-aside
+# names before the plain ones; a distro whose plain and set-aside
+# directories both exist is listed once. (Listed when only the set-aside
+# one exists: test_tool_set_aside_resolve_is_a_distro.)
+test_tool_distro_listed_once_beside_its_set_aside() {
+    echo "TEST: tool route: a distro with both its resolve and a set-aside one is listed once"
+    local sb root out rc res kind
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb" fakefox fakefox2)"
+    res="$root/.repos-manifest/resolved"
+    for kind in old new; do
+        cp -a "$res/fakefox" "$res/.fakefox.$kind-4242-abcd1234"
+        rc=0; out="$(run_tool "$sb" "$root" env 2>&1)" || rc=$?
+        assert_eq "$kind beside fakefox, two distros: from the root, env refused" "1" "$rc"
+        assert_contains "$kind beside fakefox: each listed once" "several distros (fakefox, fakefox2)" "$out"
+        rm -r "$res/.fakefox.$kind-4242-abcd1234"
+    done
+    rm -r "$res/fakefox2"
+    cp -a "$res/fakefox" "$res/.fakefox.new-4242-abcd1234"
+    rc=0; out="$(run_tool "$sb" "$root" validate 2>&1)" || rc=$?
+    assert_eq "one distro and its set-aside copy: from the root, validate exit 0 (one distro)" "0" "$rc"
+    assert_contains "one distro and its set-aside copy: fakefox chosen" "for distro fakefox (" "$out"
+}
+
 # Round 3, suggestion 2: from a top-level directory the tool has no
 # resolve for, the message says so; a link to a distro's directory is
 # that distro (the calling directory is physical).
@@ -5142,6 +5167,7 @@ mr_test test_tool_package_worktree
 mr_test test_tool_layers_read_once_per_call
 mr_test test_tool_distro_rule_never_moves_on
 mr_test test_tool_set_aside_resolve_is_a_distro
+mr_test test_tool_distro_listed_once_beside_its_set_aside
 mr_test test_tool_not_a_distro_directory
 mr_test test_tool_links_are_not_candidates
 mr_test test_tool_sync_steps_run_literally

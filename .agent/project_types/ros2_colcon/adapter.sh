@@ -799,7 +799,8 @@ _rc_route() {
 # not this list's (a set-aside one with no resolved/<d>/ is not).
 _rc_tool_distros() {
     local d
-    for d in "$(_rc_root)/.repos-manifest/resolved"/*/ "$(_rc_root)/.repos-manifest/resolved"/.*/; do
+    # Set-aside names first: a sync swapping <d> between the two globs then shows <d> in one of them.
+    for d in "$(_rc_root)/.repos-manifest/resolved"/.*/ "$(_rc_root)/.repos-manifest/resolved"/*/; do
         [ -d "$d" ] || continue
         d="${d%/}"
         d="${d##*/}"
