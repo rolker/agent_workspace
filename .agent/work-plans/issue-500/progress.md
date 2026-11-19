@@ -1673,3 +1673,13 @@ The six round 3 suggestions:
 - [ ] (suggestion) The missing upstream after a half-changed `switch -c` is said once. Once the tree is clean, later runs say "up to date" and never mention it again (1c, `s1c_next.py`). — `update.py:951`
 - [ ] (suggestion) Where `_holds` cannot check the process (no /proc, or a sync run by another user), a running sync is now reported as one that "may have ended", with advice to kill what `fuser` names. Before this diff it said "is still running". — `system.py:505-515`
 - [ ] (suggestion) The scan does not flag `-P`/`--prune-tags`, a bundled `-pt`, `switch -f`, `--discard-changes`, `branch -f`, or arguments held in a tuple variable. — `update.py` `NEVER`, `tests/test_update_safety.py`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 18:22 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 4 found one must-fix, a password printed in the manifest's refusal lines; a branch that prints a credential is not published; this is the host's first address at this checkpoint for this part)
+**After**: rounds
+**Decision**: address
+
+Round 4 confirmed the merge of main and all six round 3 points. Its one must-fix: a password holding a quote together with a double quote, or a backslash, and a space is printed whole in the manifest's refusal lines, because the url is quoted with repr before it is masked. The fix is structural, not one more pattern: a url is masked before it is put into any message (the refusal lines of manifest.py and every other place a url is formatted with repr or quotes), and a test walks every message in the tool's source that formats a url. Fixed with it: file urls whose user part holds a colon and no slash are masked too; the design sentence says a tracked change is never carried back; the half-change report prints no "These changes were made by" line when it lists no changes and never ends in an empty line; the lock refusal does not say a sync "may have ended" when it cannot check the process, and does not advise killing what it cannot identify; the forbidden-words scan covers -P, --prune-tags given to a pruning fetch, bundled short flags that include p, switch -f, --discard-changes and branch -f. Left, with the reason on the box: "moved by a person" after sync's own half-changed move when the manifest is then changed back (the record cannot tell the two apart without a new field; noted in the design); the missing upstream mentioned once only (a branch without an upstream is a normal state); a partly moved branch reported as left as it was (needs a fake git; a real fast-forward is all or nothing).
