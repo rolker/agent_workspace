@@ -588,3 +588,13 @@ Round 4's six, re-checked: (1) gone: `git ls-files tools/repos-manifest/log` is 
 - [ ] (suggestion) "built, but its repos differ from its record" reads wrongly when it names two or more layers — `tools/repos-manifest/src/repos_manifest/build.py:510`
 - [ ] (suggestion) The stop-signal line ("layers built in this run") and the line used when the record cannot be read still say "built" in a selection run — `tools/repos-manifest/src/repos_manifest/build.py:856,964`
 - [ ] (suggestion) The record's time "still says when the whole layer was last built without selection" is loose after a `--packages-skip-build-finished` run, which the next bullet says does not make the layer up to date; "last recorded built" would be exact — `tools/repos-manifest/docs/design.md:910-911`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 12:13 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 5 approved with no must-fix; the host's full pre-commit pass over the branch passed at e15494a9, every hook, no SKIP)
+**After**: publish
+**Decision**: publish
+
+The round 5 review approved the branch (four suggestions, listed in the pull request). The full pass ran on head e15494a9 with exit 0: every hook passed, the script test suites included. The pull request says "Part of #501", not "Closes": the issue's by-hand acceptance (a build of the real project directory with the new command) is the owner's to run and is not done.
