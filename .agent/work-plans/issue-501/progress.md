@@ -277,3 +277,13 @@ All five findings of the second review are resolved as the checkpoint decided, a
 ### Recommended Actions
 
 - [ ] At implementation: report lines from the run's end first (note 1), and the fail-then-rebuild test with `build layer2` (note 3).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 09:44 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (third plan review: ready, three low notes for the implementer)
+**After**: plan
+**Decision**: proceed
+
+The host read the third Plan Review: verdict ready, all five earlier findings resolved, six worked cases giving no wrong result. Its three low notes go to the implementer in the handoff: the report says "above <layer>, which is not built" for a layer above where the built run ends, whether or not that layer failed; the report may say that later layers were built against a rebuilt lower layer's earlier output; the fail-then-rebuild test uses build <layer>, not a plain build. The plan is implemented as written, without the keep-going option and without the CI step: both are still with the owner (asked, not yet answered), and the plan's own sections say each can be added afterwards without a plan revision.
