@@ -1036,6 +1036,22 @@ def test_a_failing_post_checkout_hook_in_a_two_step_move_still_counts_as_moved(s
     assert "up to date (1)" in _sync(sys_dir, capsys)
 
 
+def test_a_hook_that_edits_a_tracked_file_stops_a_two_step_move_after_its_switch(system, capsys):
+    sys_dir, manifest, remote, clone = system
+    git("branch", "-q", "dev", "origin/dev", cwd=clone)
+    local = git("rev-parse", "dev", cwd=clone)
+    push_commit(remote, "more", "x\n", "dev")
+    hook = clone / ".git" / "hooks" / "post-checkout"
+    hook.write_text("#!/bin/sh\necho edited by a hook >>README\nexit 0\n")
+    hook.chmod(0o755)
+    _pin(manifest, "dev")
+    out = _sync(sys_dir, capsys, 1)
+    assert "`git switch` exited 0 and left the repo half-changed: HEAD was at" in out, out
+    assert f"is at {local[:12]} (refs/heads/dev); changed, not staged: M README" in out, out
+    assert head(clone) == local  # not fast-forwarded on a tree a hook changed
+    assert "moving" not in state_of(sys_dir)["a"]
+
+
 # --- The record and the layer ----------------------------------------------------------------
 
 
