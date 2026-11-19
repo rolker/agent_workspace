@@ -303,3 +303,13 @@ Verified by hand: test_worktree_create.sh 93 passed / 0 failed; shellcheck --sev
 - [ ] (suggestion) The printed gh_create_pr.sh line is refused by its user-tier guard in a project whose `worktrees=` directory lies outside both the project root and the workspace; pre-existing wrapper behaviour (plan-review note 5, checkpoint: no action), worth its own issue against gh_create_pr.sh / registry_require_root (codex) — `.agent/scripts/gh_create_pr.sh:87`
 - [ ] (suggestion) The hint always runs gh_create_pr.sh; if a PR already exists for the branch (e.g. a re-run whose push was rejected) it fails with gh's "already exists". One line saying to skip it when `gh pr list --head <branch>` shows a PR would cover it (Claude adversarial) — `.agent/scripts/worktree_create.sh:1290-1296`
 - [ ] (suggestion) The hint's body text (skill text / Closes / Part of) duplicates the BODY_FILE heredoc branches; building it once above the push would keep the two from drifting (gemini) — `.agent/scripts/worktree_create.sh:1282-1288`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 13:10 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review approved with six suggestions; five are small, in reach, and two of them are about a hidden error and an existing bug on the same lines, which the Quality Standard says to fix now)
+**After**: publish
+**Decision**: address
+
+The full pre-commit pass was not run: the answer changes the code, so the pass runs on the head that follows. Fixed in this round: suggestion 1 (the warning says the push failed and shows git's own error, and does not claim the branch is absent from origin); suggestion 2 (PLAN_FILE is made absolute once where HAS_PLAN is set, which also fixes the success path's plan comment for a relative path); suggestion 3 (tests for the -R, --base / Part of, skill-body and relative-plan branches of the hint, the [PLAN] title, and that no pr create runs after the refused push); suggestion 5 (one line saying to skip the create step when a pull request for the branch already exists); suggestion 6 (the body is built once, above the push, and used by both the hint and the body file). Suggestion 4 (the user-tier guard in gh_create_pr.sh refusing a worktree folder outside both the project root and the workspace) is older behaviour of another script and is not changed here; the host proposes an issue for it to the owner.
