@@ -179,7 +179,10 @@ shell can build only one of them.
 
 `init` sets up the current directory. Without `--distro-dirs` it takes one `--distro`, or
 none when the manifest has no `distros:`; with it, one or more. It refuses as listed under
-"Refusals", before anything is created.
+"Refusals", before anything is created. Before anything is created it also resolves every
+distro and builds the text of each distro's resolved files, so a manifest that does not resolve,
+or whose resolved files cannot be written out (their head comment would hold a control or
+invisible character), is an error with nothing created.
 
 `init` makes `.repos-manifest/` with its `config.yaml` in one step, written aside and moved
 into place, so the folder and its record appear together. The aside is a directory
@@ -1049,9 +1052,10 @@ terminal.
 
 `init` and `sync` are built for a manifest given as a path on the local disk, flat or with
 `--distro-dirs`, as far as setting a system up and cloning the repos that are missing.
-`sync` reads and resolves every distro it acts on before it
-changes anything, so a distro whose manifest does not resolve ends the run with nothing changed
-for any distro, rather than being reported while the others go on. A repo that is there is
+`sync` reads and resolves every distro it acts on, and builds the text of each distro's resolved
+files, before it changes anything, so a distro whose manifest does not resolve, or whose resolved
+files cannot be written out, ends the run with nothing changed for any distro, rather than being
+reported while the others go on. A repo that is there is
 not touched, and `sync` says that updating it is not built yet. Two names that a disk which
 ignores case treats as one are not checked yet on the real destination.
 

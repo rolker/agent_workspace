@@ -1,6 +1,8 @@
 """`init`: set up a system directory in the current directory, then sync it.
 
-Every refusal is checked before anything is created, in the order of the design's table.
+Every refusal is checked before anything is created, in the order of the design's table, and
+the text of every distro's resolved files is built then too, so a manifest whose files cannot
+be written out is refused with nothing created.
 `.repos-manifest/` is made with its `config.yaml` in one step, written aside and renamed into
 place: before that step nothing of the system exists and `init` can be run again; after it,
 `sync` finishes what `init` began.
@@ -17,9 +19,8 @@ from typing import Callable, List, Optional, Sequence
 
 from . import selection
 from .output import process_has_ended, signals_held
-from .selection import Resolved
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
-from .sync import FINISH, closing, require_tools, sync_distros
+from .sync import FINISH, Planned, closing, plan_distros, require_tools, sync_distros
 from .yamlload import ManifestError
 from .system import (
     current_directory,
@@ -92,12 +93,12 @@ def check_distros(manifest, distros: List[str], distro_dirs: bool) -> None:
         )
 
 
-def summary(config: Config, plan: Sequence[Resolved]) -> str:
+def summary(config: Config, plan: Sequence[Planned]) -> str:
     """What `init` shows before it asks."""
     lines = [f"Manifest: {config.manifest}"]
     lines.append(f"Role: {config.role if config.role is not None else '(none)'}")
     lines.append(f"Extra groups: {', '.join(config.groups) if config.groups else '(none)'}")
-    for resolved in plan:
+    for resolved in (planned.resolved for planned in plan):
         count = sum(len(layer.repos) for layer in resolved.layers)
         name = resolved.distro if resolved.distro is not None else "(none)"
         lines.append(f"Distro {name}: {count} repos in {len(resolved.layers)} layers")
@@ -240,8 +241,10 @@ def _init(
             layout=layout,
             distros=distros if manifest.distros is not None else None,
         )
-        plan = [selection.resolve(manifest, role, distro, groups) for distro in config.distro_keys]
-        for resolved in plan:
+        plan = plan_distros(
+            [selection.resolve(manifest, role, distro, groups) for distro in config.distro_keys]
+        )
+        for resolved in (planned.resolved for planned in plan):
             layers = [layer.name for layer in resolved.layers]
             for parts in paths_init_creates(layout, resolved.distro, layers):
                 if os.path.lexists(system.joinpath(*parts)):

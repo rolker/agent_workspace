@@ -392,6 +392,27 @@ def test_a_role_the_manifest_lacks_is_the_resolvers_error(tmp, capsys):
     )
 
 
+def test_a_manifest_whose_resolved_files_cannot_be_written_out_creates_nothing(tmp, capsys):
+    # A no-break space in a folder on the manifest's path would go into the head comment of
+    # every resolved file, which refuses it; init finds that before it creates anything.
+    folder = tmp / "a\u00a0b"
+    folder.mkdir()
+    manifest(tmp).rename(folder / "m.manifest.yaml")
+    system = _system(tmp)
+    err = refused(
+        system,
+        capsys,
+        "../a\u00a0b/m.manifest.yaml",
+        "--distro",
+        "jazzy",
+        "--yes",
+        expect="ERROR: refusing to write the head comment: the manifest's location or a name"
+        " holds a control or invisible character\n",
+    )
+    assert os.listdir(system) == ["unrelated.txt"]
+    assert "set up" not in err
+
+
 def test_a_config_yaml_that_cannot_be_written_names_it_and_sets_nothing_up(tmp):
     # A file size limit makes the write of config.yaml fail, as a full disk would.
     manifest(tmp, distros=(), layers=())

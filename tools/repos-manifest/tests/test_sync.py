@@ -134,6 +134,35 @@ def test_a_distro_on_a_flat_system_without_distros_is_an_error(vcs, tmp_path, ca
     assert "(it records: none)" in capsys.readouterr().err
 
 
+def test_a_manifest_whose_resolved_files_cannot_be_written_out_changes_nothing(
+    two_distros, tmp_path, capsys
+):
+    # The recorded path now goes through a folder with a no-break space, which the head comment
+    # of every resolved file refuses: sync finds that before it changes anything, though a
+    # repo and a setup.bash are missing that it would otherwise make.
+    system, path, _ = two_distros
+    folder = tmp_path / "a\u00a0b"
+    folder.mkdir()
+    path.rename(folder / path.name)
+    config_path = system / ".repos-manifest/config.yaml"
+    config = yaml.safe_load(config_path.read_text())
+    config["manifest"] = f"../a\u00a0b/{path.name}"
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False))
+    shutil.rmtree(system / "jazzy/core/src/a")
+    (system / "rolling/setup.bash").unlink()
+    before = snapshot(system)
+    capsys.readouterr()
+    assert run(system, "sync") == 1
+    assert snapshot(system) == before
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "ERROR: the manifest's output is what failed; nothing was changed: refusing to write the"
+        " head comment: the manifest's location or a name holds a control or invisible"
+        " character\n"
+    )
+
+
 @pytest.mark.parametrize("change", ["a role it lacks", "not YAML"])
 def test_a_manifest_that_does_not_resolve_changes_nothing(two_distros, capsys, change):
     system, path, data = two_distros

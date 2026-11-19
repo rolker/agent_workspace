@@ -277,6 +277,21 @@ def _put_in_place(
 
 
 @dataclass
+class Planned:
+    """A distro as phase one leaves it: what it resolved to, and the name and text of each of
+    its resolved files, built before anything is created or changed."""
+
+    resolved: Resolved
+    files: Dict[str, str]
+
+
+def plan_distros(resolved: Sequence[Resolved]) -> List[Planned]:
+    """Build every distro's resolved files; a manifest whose files cannot be written out (a
+    head comment that would hold a control or invisible character) fails here."""
+    return [Planned(each, output_files(each)) for each in resolved]
+
+
+@dataclass
 class DistroResult:
     distro: Optional[str]
     repos: List[RepoResult] = field(default_factory=list)
@@ -287,11 +302,11 @@ class DistroResult:
         return [r for r in self.repos if r.outcome == outcome]
 
 
-def sync_distro(system: Path, config: Config, resolved: Resolved, env: Env) -> DistroResult:
-    """Bring one distro in line with what it resolved to: write its resolved files, clone what
-    is missing, record what was cloned. A repo that is there is not touched."""
+def sync_distro(system: Path, config: Config, planned: Planned, env: Env) -> DistroResult:
+    """Bring one distro in line with what it resolved to: write the resolved files built for
+    it, clone what is missing, record what was cloned. A repo that is there is not touched."""
+    resolved, files = planned.resolved, planned.files
     distro = resolved.distro
-    files = output_files(resolved)
     state = read_state(system, distro)
     resolved_dir = system.joinpath(*resolved_parts(config.layout, distro))
     write_output(
@@ -380,13 +395,14 @@ def report(result: DistroResult) -> None:
 
 
 def sync_distros(
-    system: Path, config: Config, plan: Sequence[Resolved], env: Env
+    system: Path, config: Config, plan: Sequence[Planned], env: Env
 ) -> List[DistroResult]:
-    """Phase two of `init` and `sync`: one sweep of `.repos-manifest/`, then each distro."""
+    """Phase two of `init` and `sync`: one sweep of `.repos-manifest/`, then each distro, which
+    writes only what phase one built."""
     sweep_temporaries(system / SYSTEM_DIR)
     results = []
-    for resolved in plan:
-        result = sync_distro(system, config, resolved, env)
+    for planned in plan:
+        result = sync_distro(system, config, planned, env)
         report(result)
         results.append(result)
     return results
@@ -406,9 +422,9 @@ def closing(results: Sequence[DistroResult]) -> int:
     return 1 if failed or any(result.setup_failure for result in results) else 0
 
 
-def resolve_all(system: Path, config: Config, distros: Sequence[Optional[str]]) -> List[Resolved]:
-    """Phase one: read the manifest and resolve each distro in memory. A failure here changes
-    nothing."""
+def resolve_all(system: Path, config: Config, distros: Sequence[Optional[str]]) -> List[Planned]:
+    """Phase one: read the manifest, resolve each distro and build its resolved files, in
+    memory. A failure here changes nothing."""
     failed = "the manifest is what failed; nothing was changed"
     try:
         manifest = read_manifest(config.manifest, system)
@@ -427,11 +443,17 @@ def resolve_all(system: Path, config: Config, distros: Sequence[Optional[str]]) 
             " `repos-manifest init`, with `--distro-dirs` to hold more than one distro."
         )
     try:
-        return [
+        resolved = [
             selection.resolve(manifest, config.role, distro, config.groups) for distro in distros
         ]
     except ManifestError as exc:
         raise ManifestError(f"{failed}: {exc}") from None
+    try:
+        return plan_distros(resolved)
+    except ManifestError as exc:
+        raise ManifestError(
+            f"the manifest's output is what failed; nothing was changed: {exc}"
+        ) from None
 
 
 def run_sync(named_distros: Sequence[str]) -> int:
