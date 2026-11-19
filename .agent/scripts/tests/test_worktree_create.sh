@@ -1231,9 +1231,10 @@ else
     fail "refused push with --plan-file --print-path-only: rc=$RC stdout=[$STDOUT12]"
 fi
 
-# Issue 516 (review suggestion 2): a relative --plan-file is found against
-# the workspace root; on the success path the plan comment runs after a cd
-# into the worktree, so the path must have been made absolute by then.
+# Issue 516 (review suggestion 2): a relative --plan-file is relative to
+# the directory the script is run from (here the workspace root); on the
+# success path the plan comment runs after a cd into the worktree, so the
+# path must have been made absolute by then.
 SB13="$SANDBOX/ws13"
 make_ws_repo "$SB13"
 gitq init -q --bare -b main "$SANDBOX/origin13.git"
@@ -1259,6 +1260,26 @@ if [[ "$(cat "$GH_LOG13.body" 2>/dev/null)" == $'## Summary\n\nIssue #73\n\nClos
     pass "push succeeds: the draft PR's body file is the Summary, the title, Closes and the signature"
 else
     fail "relative --plan-file, push succeeds: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG13" 2>/dev/null)] out=${OUT:0:1200}"
+fi
+
+# Integrated review, PR 526: a relative --plan-file given from a directory
+# other than the workspace root is relative to that directory (a project
+# session passes the path as typed): it is found, the PR is titled [PLAN],
+# and the plan comment gets the absolute path.
+CALLER13="$SB13/drafts"  # in the workspace: the user-tier guard refuses a folder outside it
+mkdir -p "$CALLER13/sub"
+printf '# Plan 74\n' > "$CALLER13/sub/plan 74.md"
+: > "$GH_LOG13"
+OUT="$(cd "$CALLER13" && PATH="$SB13/stubbin:$PATH" "$SB13/.agent/scripts/worktree_create.sh" \
+    --issue 74 --type workspace --plan-file "sub/plan 74.md" 2>&1)"
+RC=$?
+if [[ "$RC" -eq 0 && "$OUT" != *"Plan file not found"* && "$OUT" == *"Plan posted as PR comment"* ]] \
+   && grep -q '^pr create --draft --title \[PLAN\] Issue #74 --body-file ' "$GH_LOG13" \
+   && grep -qxF "pr comment https://github.com/o/r/pull/1 --body-file $CALLER13/sub/plan 74.md" "$GH_LOG13" \
+   && grep -qx 'comment-file readable' "$GH_LOG13"; then
+    pass "relative --plan-file from another directory: found there, PR titled [PLAN], comment given the absolute path"
+else
+    fail "relative --plan-file from another directory: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG13" 2>/dev/null)] out=${OUT:0:1200}"
 fi
 
 # Review suggestion 3: the hint's other branches. A sub-issue (its parent

@@ -205,7 +205,8 @@ show_usage() {
     echo "                        the start then; an owning branch that already exists is accepted"
     echo "                        with no base= recorded, and dispatch_phase.sh base --base <branch>"
     echo "                        records one later)"
-    echo "  --plan-file <path>    Path to approved plan file; creates draft PR"
+    echo "  --plan-file <path>    Path to approved plan file; creates draft PR (a relative path is"
+    echo "                        relative to the directory the script is run from)"
     echo "  --workflow <name>     Workflow template; initializes progress.md (e.g., collaborative)"
     echo "  --print-path-only     Suppress all stdout except the final worktree path on success"
     echo "                        (errors go to stderr; exit code reflects success/failure)"
@@ -300,6 +301,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --plan-file)
             PLAN_FILE="$2"
+            # A relative path is relative to the caller's directory: made
+            # absolute here, before the script changes directory (the plan
+            # is read later from ROOT_DIR and from inside the worktree).
+            [[ -z "$PLAN_FILE" || "$PLAN_FILE" == /* ]] || PLAN_FILE="$PWD/$PLAN_FILE"
             shift 2
             ;;
         --workflow)
@@ -1228,9 +1233,6 @@ elif [ -n "$PLAN_FILE" ]; then
         echo "  ⚠️  Plan file not found: $PLAN_FILE (creating PR without plan comment)"
     else
         HAS_PLAN=true
-        # Made absolute once, here (the cwd is ROOT_DIR): the plan is read
-        # after a cd into the worktree, and printed in the push-failure hint.
-        [[ "$PLAN_FILE" == /* ]] || PLAN_FILE="$PWD/$PLAN_FILE"
     fi
 
     # Auto-detect agent identity
