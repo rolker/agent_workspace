@@ -954,3 +954,13 @@ None (no hosted comments).
 **Decision**: merge
 
 The owner chose "Merge and carry on (Recommended)" in a dialog (2026-11-18) for pull request 512 (part 1: init and a first sync that clones what is missing): merge it, reinstall the tool on main, then start part 1B of the adapter (issue 503). The issue stays open: part 2 (sync against clones that exist) remains, with three questions held for the owner at its plan checkpoint, and three wording suggestions from the last review noted for it.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 14:34 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan checkpoint after a merge: plan.md has changed since its last review (9afc4552 reviewed, 237f4412 now) and part 2 is only an outline, so proceed is not open; revise)
+**After**: plan
+**Decision**: revise
+
+Part 1 merged as pull request 512; the issue is open because part 2 (sync against clones that exist) is not delivered. The plan for part 2 is to be written out in full and reviewed. The owner answered the three questions the outline held for him, in a dialog on 2026-11-19, each with the options and what they change shown. His answers, verbatim: untracked files: "Update it (Recommended)" (untracked files do not count as local work; the clone is fast-forwarded as if clean; if an incoming commit would overwrite one of those files git itself refuses, and the clone is then left as it was and reported). A changed url in the manifest for a cloned repo: "Repoint origin (Recommended)" (sync sets the clone's origin to the new URL, keeps every local branch and file, then applies the ordinary rules; a clone with commits not on the new origin is left alone and reported). A repo given another layer: "Report, do not move (Recommended)" (sync leaves the clone where it is, reports it with the exact mv command, and clones nothing at the new place while the old one exists). New input since the outline: first real use (comment on the issue, 2026-11-19) showed that a changed version for a cloned repo is not followed, state.yaml keeps the old version, and the adapter's validate still passes; pull request 518 added build, its per-distro record and a per-distro build lock, and changed system.py.
