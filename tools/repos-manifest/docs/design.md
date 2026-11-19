@@ -692,8 +692,12 @@ person has moved if it is not.
   delete it.
 
 The rules for a repo that is there are checked in this order, and the first that applies ends
-the repo's turn. Nothing in the repo changes before a fast-forward or a switch, except the
-remote-tracking refs and objects a fetch brings and, under the url rule, `origin`'s url.
+the repo's turn. Before a fast-forward or a switch, the only changes in the repo are what the
+fetch brings, and, under the url rule, `origin`'s url (its probe refs are removed again). The
+fetch brings `origin`'s
+remote-tracking refs (and removes those of branches `origin` no longer has), objects, the local
+tags that `origin` has and the clone lacks (`--tags`; a local tag is never replaced or removed),
+and `FETCH_HEAD`. No local branch, `HEAD`, index or work-tree file changes before then.
 
 1. The manifest gives the repo another layer than its record, and the old place is there:
    it is not moved, and nothing is cloned at the new place. The repo is reported with the
