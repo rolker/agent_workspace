@@ -886,10 +886,9 @@ whose skip and ignore options differ from its record's, with both ("skip and ign
 to colcon changed:", `none` for no options), adding, when the options now name a package or a
 pattern the old ones did not (a name counts once whether skipped or ignored; a pattern is
 compared as text), that what an earlier build installed of a package they skip or ignore stays
-in its `install/`; the skip and ignore
-options given with package selection, as not recorded, when the run built a layer; a layer built on a shorter
-chain than before, because a layer below it left the manifest or has no repos now, with that layer's
-`install/` when it is still there, since the build may have used what is left in it as the
+in its `install/`; the skip and ignore options given with package selection, as not recorded,
+when the run built a layer; a layer built on a shorter chain than before, because a layer
+below it left the manifest or has no repos now, with that layer's `install/` when it is still there, since the build may have used what is left in it as the
 `--keep-going` line below says; a layer built with `--keep-going` without sourcing a failed layer,
 as not used; the layer that failed, with `colcon`'s exit status, where its log is and, when `colcon`
 wrote `install/setup.bash` in this run, the command that sources what it did build, else that the
@@ -1038,8 +1037,8 @@ the manifest. It stays with `colcon`:
   can only be an option of a `colcon` extension `build` does not list, such as `--meson-args`).
   A list of patterns ends only at an option `build` knows `colcon` to have (those of colcon-core
   and the usual extensions), since a pattern may start with `-`: an option of another extension
-  after a `-regex` list is recorded as patterns of it, though `colcon` reads it as an option, and
-  is best given before the list. A package name is recorded with leading whitespace stripped,
+  after a `-regex` list, and its values, are recorded as patterns of the list, though `colcon`
+  reads them as that option, so such an option is best given before the list. A package name is recorded with leading whitespace stripped,
   as `colcon` strips it (` a` is `a`); a pattern is recorded as given. Of an option given
   more than once only the last occurrence counts (`--packages-skip a --packages-skip b` leaves
   out only `b`), and one whose last occurrence has no values leaves nothing out and is not
@@ -1047,9 +1046,9 @@ the manifest. It stays with `colcon`:
   control or invisible character (a newline, a tab, a bidirectional override; the rule a
   manifest's names and values follow) or that is not UTF-8 is refused before anything runs,
   the record and `setup.bash` untouched, since the record could not hold it as one line of text;
-  the message shows it with such characters escaped. The list says what the
-  last run gave `colcon`, not what `install/` holds: `colcon` does not clean `install/`, so a package
-  an earlier build installed stays there when a later run leaves it out (`--packages-skip b`,
+  the message shows it with such characters escaped. The list says what the last run gave
+  `colcon`, not what `install/` holds: `colcon` does not clean `install/`, so a package an
+  earlier build installed stays there when a later run leaves it out (`--packages-skip b`,
   then `--packages-skip d`, left a, b, c and d installed). The layers above stay in the built
   run when a layer is rebuilt with another list, because that is an ordinary rebuild of the layer
   in place on the same chain. A package now left out may still be in the layer's `install/` from
