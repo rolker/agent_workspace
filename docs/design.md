@@ -266,8 +266,9 @@ supersedes ADR-0016 decision 5: a session may register the folder it was started
   the project root, finds the project through `session_root.sh` (a workspace session is sent to the
   project's root; in a folder that is not registered it shows `register_session_root.sh --dry-run`, asks
   one yes in text (the real call's permission prompt is not guaranteed, so it is a second gate), then
-  registers the folder and carries on, with the build and test not run; a folder in no git repository
-  is refused by registration's gate, a known gap, although its dry run looks clean), shows the recorded
+  registers the folder and carries on, with the build and test not run; a single-repository folder in
+  no git repository is refused by registration's gate, a known gap, although its dry run looks clean,
+  while a root the manifest tool set up registers there, issue 503), shows the recorded
   choices, asks only the footprint
   questions not yet answered (`instructions`, and the records settings, whose default is provisional and
   of which only (project, project) is stored until #393), runs `project_integration_audit.sh` (read-only;
@@ -425,9 +426,11 @@ Status: `decided`
   `--dry-run` and `--set build=`/`test=`, refuses a folder already registered (before handing over,
   since `register_project.sh` would adopt it and write the `--set` keys), inside or over a registered root
   or the workspace, not its repository's top, a linked worktree or an invalid or registered name, then
-  runs `register_project.sh <folder> --skip-run`, never `--install-user-tier`. Registration needs a git
-  repository today (`adapter validate`), although any registered folder is a project (owner,
-  2026-11-12): a folder in no git repository is refused and rolled back, a named gap.
+  runs `register_project.sh <folder> --skip-run`, never `--install-user-tier`. A single-repository
+  project's folder needs a git repository to register (`adapter validate`), although any registered
+  folder is a project (owner, 2026-11-12): such a folder in no git repository is refused and rolled
+  back, a named gap. A root the manifest tool set up needs none, registered from the workspace or from
+  its own session (issue 503); its type is detected from its `.repos-manifest/`.
 - A registered project may have a settings file, `.agent/projects.d/<name>` (per machine, gitignored,
   read and never sourced; #332): its own `build`, `test` and `install` commands, `bootstrap_url`,
   `source`, `source_ref` and `source_path` (where its source description lives, #436), the records
@@ -445,7 +448,7 @@ Status: `decided`
   is stored and silently ignored. The settings file is a project's only source of commands and
   URLs (#265 part 4): the legacy `projects.d/<name>.sh` and the shared `.agent/project_config.sh` are
   read by no adapter. A `ros2_colcon` project's distro comes from `distro=` on its registry line or
-  its manifest, and `ROS_ROOT_DIR` (the underlay root, default `/opt/ros`) from the process
+  its manifest (on the tool route below, from the directory the call comes from), and `ROS_ROOT_DIR` (the underlay root, default `/opt/ros`) from the process
   environment, the one value an adapter reads there.
 - Behaviour that differs per project shape sits behind a 13-verb adapter contract, one `adapter.sh` per
   type in `.agent/project_types/<type>/` (ADR-0011, extended by ADR-0012 from 10 verbs to 12 and by
@@ -464,9 +467,16 @@ Status: `decided`
   dispatcher name a default type), which issue #295's workspace adapter type replaces (2026-11-17).
 - Two types exist. `single_project` is one repository at the hosting directory. `ros2_colcon` is ordered
   colcon layers driven by a manifest directory, `configs/manifest` or the generated
-  `configs/manifest-resolved`, and its `adapter.sh` header holds the layers, the bootstrap URL order
-  and the distro rule.
-- `ros2_colcon` has two routes to that directory (#436), chosen by one fact, the settings file setting
+  `configs/manifest-resolved`, or the manifest tool's `.repos-manifest/resolved/<distro>/`, and its
+  `adapter.sh` header holds the layers, the routes, the bootstrap URL order and the distro rules.
+- `ros2_colcon` has three routes to that directory. The tool route is checked first (issue 503 part 1):
+  a root holding `.repos-manifest/`, a system directory the manifest tool set up with `--distro-dirs`,
+  is read from the tool's resolved files for one distro, chosen by the directory the call comes from
+  (the dispatcher's `ACTIVE_PROJECT_FROM`), else the one distro resolved, else refused; its `setup` and
+  `sync` run the tool's `sync`, `build` and `test` are the colcon loop over its layers, and `validate`
+  checks the last resolve and refuses a `role=`, `distro=` or manifest source recorded beside the
+  tool's. A `.repos-manifest/` the adapter cannot use is an error naming the next step, never another
+  route. The other two (#436) are chosen by one fact, the settings file setting
   `source`. The bootstrap route is the `bootstrap.yaml` flow. On the manifest route the manifest, in the
   new format, is named by `source` (an absolute path, or a git repository with `source_ref` and,
   if the file is not `manifest.yaml`, `source_path`) and is resolved for the registry line's `role=` and `distro=` (both required) by the
@@ -1144,6 +1154,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-18 | Registry and adapters | The manifest-route bullet cites ADR-0022 for the rule for parts, now written, in place of "being written under #488", and links the manifest tool's own design (`tools/ros-manifest/docs/design.md`, its Commands section) as ADR-0022 decision 2 requires, with a section citation into `docs/manifest/design.md`; the roadmap's Direction section gains the pointer rows for both parts' roadmaps | #488 | 1193 |
 | 2026-11-18 | Documentation layers, Rules, Registry and adapters, Decision register | The manifest tool is renamed repos-manifest (path `tools/repos-manifest`, package, command, make target `install-repos-manifest`, stamp, environment variable, cache directory), with no change to what it does; `make setup` removes the old install on a machine that has it. Earlier rows keep the old name as history | #497 | 1194 |
 | 2026-11-18 | Worktrees | A project root need not be a git repository (issue 503 part 1A): `worktree_create.sh` requires the root to be a directory and checks each repository the worktree is made of before it makes anything; one sentence in the bullet on where project worktrees live, and the `.git/info/exclude` line is said to apply to a root that is a git repository. Registration of a root in no git repository is unchanged (part 1B) | #503 | 1199 |
+| 2026-11-18 | Sessions and roots, Registry and adapters | `ros2_colcon` gains the tool route (issue 503 part 1B): a root holding the manifest tool's `.repos-manifest/` is read from its resolved files for the distro the calling directory chooses (the dispatcher's new `ACTIVE_PROJECT_FROM`), checked before the two routes of #436, with `setup`/`sync` running the tool's `sync`; the type bullet names the tool's resolved directory and the routes; the distro sentence names the tool route's rule; registration's "needs a git repository today" and the onboarding bullet's known gap are narrowed to a single-repository folder, as a root the tool set up registers outside git from the workspace or its own session. Registry and adapters grows by 9 lines and Sessions and roots by 1; the route's rules live in the `ros2_colcon/adapter.sh` header and its mechanics in `docs/manifest/design.md` | #503 | 1211 |
 
 ## Glossary
 

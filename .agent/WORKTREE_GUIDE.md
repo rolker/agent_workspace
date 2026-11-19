@@ -299,6 +299,17 @@ package repos, and issue are all explicit:
     future release.
 - `--plan-file` draft-PR creation is not supported for package worktrees (the
   aggregate dir is not itself a git repo); open PRs per package repo by hand.
+- A root the manifest tool set up (`repos-manifest init --distro-dirs`; issue
+  503) takes the same flags. Its layers are `<root>/<distro>/<layer>` and the
+  base is the pin in the tool's resolved `<layer>.repos`, for the distro the
+  directory the call comes from chooses (with one distro set up, that one);
+  `docs/manifest/design.md`, "The tool route". Its environment is
+  `adapter env`, not the tool's `<root>/<distro>/setup.bash`, which is a stub
+  until the tool builds. A lower layer not built yet is named in a note when
+  the worktree is made. After a package pull request merges, `merge_pr.sh`
+  fast-forwards the root's clone when it is clean and on the base (else it
+  says it fetched only: `git -C <clone> pull`), and that layer is rebuilt by
+  hand until the tool builds.
 
 ### Merging Package-Worktree PRs
 
