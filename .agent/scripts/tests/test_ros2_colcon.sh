@@ -4079,6 +4079,519 @@ test_worktree_create_package_root_outside_git_repo_not_git_refused() {
         "$(git -C "$proj/layers/main/l1_ws/src/pkg_a" worktree list --porcelain | grep -c '^worktree ')"
 }
 
+TOOL_SKIPPED=0
+
+# ---- A root the manifest tool set up (issue 503 part 1B) ----
+
+# A system directory of the manifest tool, outside every git repository:
+# <outer>/toolsys, where <outer> is a sibling of the workspace sandbox
+# (both under $SANDBOX, which is no repository), registered as toolsys by
+# its absolute path. Its manifest, in the format of
+# tools/repos-manifest/docs/spec.md, has distros fakefox and fakefox2 and
+# layers core and extra: pkg_u in the unnamed layer, pkg_a in core (pinned
+# at the branch fakefox for fakefox, main otherwise), pkg_b in core and
+# optional, pkg_c in extra. Each distro given is resolved by THIS
+# checkout's resolver into .repos-manifest/resolved/<distro>/ (the tool's
+# own output), and each repo is cloned at <outer>/toolsys/<distro>/<layer>/src
+# (the unnamed layer's at <distro>/src) from a bare remote in
+# <outer>/fake_remotes, with origin git@github.com:owner/<name>.git, which
+# the fakessh stub serves. The colcon stub is replaced by one that also
+# records its arguments; curl, when reached, records the call; and
+# <sb>/.venv/bin/repos-manifest is a stub tool recording its directory,
+# arguments and exit status.
+# Usage: make_tool_root <sb> [distro...]; prints the root.
+make_tool_root() {
+    local sb="$1" outer root name bare work d layer dir pin
+    shift
+    outer="$(mktemp -d -p "$SANDBOX")"
+    root="$outer/toolsys"
+    mkdir -p "$root/.repos-manifest/resolved"
+    cat > "$outer/m.manifest.yaml" <<'EOF'
+format: 1
+distros: [fakefox, fakefox2]
+layers: [core, extra]
+repositories:
+  pkg_u:
+    type: git
+    url: git@github.com:owner/pkg_u.git
+    version: main
+  pkg_a:
+    type: git
+    url: git@github.com:owner/pkg_a.git
+    version: main
+    layer: core
+    distros:
+      fakefox: {version: fakefox}
+  pkg_b:
+    type: git
+    url: git@github.com:owner/pkg_b.git
+    version: main
+    layer: core
+    optional: true
+  pkg_c:
+    type: git
+    url: git@github.com:owner/pkg_c.git
+    version: main
+    layer: extra
+EOF
+    printf 'manifest: ../m.manifest.yaml\nlayout: distro-dirs\n' > "$root/.repos-manifest/config.yaml"
+    for name in pkg_u pkg_a pkg_b pkg_c; do
+        work="$outer/work/$name"
+        bare="$outer/fake_remotes/github.com/owner/$name.git"
+        mkdir -p "$work" "$(dirname "$bare")"
+        git -C "$work" init --quiet -b main
+        echo "$name" > "$work/README.md"
+        git -C "$work" add README.md
+        git -C "$work" -c user.name=t -c user.email=t@t commit --quiet -m init
+        git init --quiet --bare -b main "$bare"
+        git -C "$work" push --quiet "$bare" main main:fakefox
+    done
+    for d in "$@"; do
+        (cd "$outer" && PYTHONPATH="$MR_SRC" "$MR_PY" -m repos_manifest.cli resolve \
+            --manifest m.manifest.yaml --distro "$d" --out "$root/.repos-manifest/resolved/$d" >/dev/null)
+        for name in pkg_u pkg_a pkg_b pkg_c; do
+            case "$name" in
+                pkg_u) layer="" ;;
+                pkg_c) layer=extra ;;
+                *) layer=core ;;
+            esac
+            dir="$root/$d${layer:+/$layer}/src/$name"
+            pin=main
+            [ "$name/$d" = pkg_a/fakefox ] && pin=fakefox
+            mkdir -p "$(dirname "$dir")"
+            git clone --quiet --branch "$pin" "$outer/fake_remotes/github.com/owner/$name.git" "$dir"
+            git -C "$dir" remote set-url origin "git@github.com:owner/$name.git"
+            git -C "$dir" fetch --quiet origin
+            git -C "$dir" remote set-head origin main >/dev/null
+        done
+        make_underlay "$sb" "$d"
+    done
+    echo "toolsys ros2_colcon $root" >> "$sb/.agent/projects.local"
+    mkdir -p "$sb/bin" "$sb/.venv/bin"
+    cat > "$sb/bin/colcon" <<'EOF'
+#!/usr/bin/env bash
+here="$(pwd -P)"
+echo "COLCON_RAN_IN:$here CMD:$1 SOURCED:${SOURCED_LAYERS:-none}" >> "${COLCON_LOG:?}"
+echo "COLCON_ARGS:$here $*" >> "${COLCON_LOG:?}.args"
+if [ "$1" = "build" ]; then
+    mkdir -p "$here/install"
+    layer="$(basename "$here")"
+    printf 'export SOURCED_LAYERS="${SOURCED_LAYERS:-}+%s"\n' "$layer" \
+        > "$here/install/local_setup.bash"
+fi
+exit 0
+EOF
+    printf '#!/usr/bin/env bash\necho "CURL_RAN:$*" >> "%s"\nexit 1\n' "$sb/curl.log" > "$sb/bin/curl"
+    cat > "$sb/.venv/bin/repos-manifest" <<EOF
+#!/usr/bin/env bash
+# A stub of the manifest tool: records where it ran, its arguments and the
+# exit status it gives (TOOL_EXIT, default 0); TOOL_NEW_LAYER adds a layer
+# to every resolved layers.txt, as a sync of a changed manifest would.
+if [ -n "\${TOOL_NEW_LAYER:-}" ]; then
+    for f in "\$PWD"/.repos-manifest/resolved/*/layers.txt; do echo "\$TOOL_NEW_LAYER" >> "\$f"; done
+fi
+echo "distro stub: present, not touched"
+echo "TOOL_RAN_IN:\$(pwd -P) ARGS:\$* EXIT:\${TOOL_EXIT:-0}" >> "$sb/tool.log"
+exit "\${TOOL_EXIT:-0}"
+EOF
+    chmod +x "$sb/bin/colcon" "$sb/bin/curl" "$sb/.venv/bin/repos-manifest"
+    echo "$root"
+}
+
+# The adapter on toolsys, called from <dir> (its cwd, and so the directory
+# the call comes from), with the stub toolchain first on PATH.
+run_tool() {  # <sb> <dir> <verb and args...>
+    local sb="$1" dir="$2"
+    shift 2
+    (cd "$dir" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" \
+        VCS_LOG="$sb/vcs.log" "$sb/.agent/scripts/adapter" --project toolsys "$@")
+}
+
+tool_outside_git() {  # <root>: "outside" when no git repository holds it
+    git -C "$1" rev-parse --git-dir >/dev/null 2>&1 && echo inside || echo outside
+}
+
+test_tool_route_order() {
+    echo "TEST: tool route: .repos-manifest/ at the root is taken before source and the bootstrap route; validate names each second record"
+    local sb root out rc=0
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb" fakefox)"
+    assert_eq "precondition: the root is in no git repository" "outside" "$(tool_outside_git "$root")"
+    printf 'source=%s\n' "$root/m.yaml" > "$sb/.agent/projects.d/toolsys"
+    sed -i "s|^toolsys ros2_colcon $root\$|toolsys ros2_colcon $root role=dev distro=fakefox|" "$sb/.agent/projects.local"
+    out="$(run_tool "$sb" "$sb" env 2>&1)" || rc=$?
+    assert_eq "env: exit 0 with source set" "0" "$rc"
+    assert_contains "env: the tool route's underlay" "rosroot/fakefox/setup.bash" "$out"
+    rc=0; out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "validate: exit 1" "1" "$rc"
+    assert_contains "validate names role= and distro= on the registry line" "carries role=dev distro=fakefox" "$out"
+    assert_contains "validate names source and how to remove it" "project_setting.sh unset toolsys source" "$out"
+    assert_not_contains "validate does not take the manifest route" "resolved-from" "$out"
+    printf 'bootstrap_url=file:///nonexistent/bootstrap.yaml\n' > "$sb/.agent/projects.d/toolsys"
+    rc=0; out="$(run_tool "$sb" "$sb" setup 2>&1)" || rc=$?
+    assert_eq "setup with bootstrap_url set: the tool's sync, exit 0" "0" "$rc"
+    assert_eq "setup with bootstrap_url set: the tool ran in the root" \
+        "TOOL_RAN_IN:$root ARGS:sync --distro fakefox EXIT:0" "$(cat "$sb/tool.log" 2>/dev/null)"
+    rm -f "$sb/tool.log"
+    rc=0; out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_contains "validate names bootstrap_url and how to remove it" "project_setting.sh unset toolsys bootstrap_url" "$out"
+    assert_eq "no fetch: curl not reached" "false" "$([ -e "$sb/curl.log" ] && echo true || echo false)"
+    assert_eq "no configs/ made in the root" "false" "$([ -e "$root/configs" ] && echo true || echo false)"
+    assert_eq "the tool was not run" "false" "$([ -e "$sb/tool.log" ] && echo true || echo false)"
+}
+
+test_tool_unusable_root_is_an_error_never_a_fetch() {
+    echo "TEST: tool route: a .repos-manifest/ the adapter cannot use is an error naming the next step, never the bootstrap route"
+    local sb root out rc verb
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb")"
+    printf 'bootstrap_url=file:///nonexistent/bootstrap.yaml\n' > "$sb/.agent/projects.d/toolsys"
+    # Nothing resolved yet.
+    for verb in validate env build test repos "repo_pin pkg_a" "worktree_repos --issue owner/pkg_a#1 --layer core --package-repos pkg_a"; do
+        rc=0
+        # shellcheck disable=SC2086
+        out="$(run_tool "$sb" "$root" $verb 2>&1)" || rc=$?
+        assert_eq "nothing resolved: $verb exits 1" "1" "$rc"
+        assert_contains "nothing resolved: $verb names the next step" "nothing is resolved for any distro yet" "$out"
+        assert_contains "nothing resolved: $verb says to sync" "--project toolsys sync" "$out"
+    done
+    # A flat system: setup and sync refuse before running the tool.
+    mkdir -p "$root/.repos-manifest/resolved"
+    printf 'core\n' > "$root/.repos-manifest/resolved/layers.txt"
+    for verb in setup sync validate env; do
+        rc=0
+        out="$(run_tool "$sb" "$root" "$verb" 2>&1)" || rc=$?
+        assert_eq "flat: $verb exits 1" "1" "$rc"
+        assert_contains "flat: $verb names the layout and the way out" "without --distro-dirs" "$out"
+        assert_contains "flat: $verb names init --distro-dirs" "init <manifest> --distro-dirs" "$out"
+    done
+    assert_eq "the tool was not run on a flat system" "false" "$([ -e "$sb/tool.log" ] && echo true || echo false)"
+    assert_eq "no fetch: curl not reached" "false" "$([ -e "$sb/curl.log" ] && echo true || echo false)"
+    assert_eq "no vcs import" "false" "$([ -e "$sb/vcs.log" ] && echo true || echo false)"
+    assert_eq "no configs/ made in the root" "false" "$([ -e "$root/configs" ] && echo true || echo false)"
+}
+
+test_tool_nested_key_refused_by_name() {
+    echo "TEST: tool route: a repo key with a directory in it is refused by name in validate and the worktree verbs"
+    local sb root out rc verb
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb" fakefox)"
+    printf '  grp/pkg_n:\n    type: git\n    url: git@github.com:owner/pkg_n.git\n    version: main\n' \
+        >> "$root/.repos-manifest/resolved/fakefox/core.repos"
+    for verb in validate repos "repo_pin pkg_a" "worktree_repos --issue owner/pkg_a#1 --layer core --package-repos pkg_a" "worktree_env --worktree $root/worktrees/x"; do
+        rc=0
+        # shellcheck disable=SC2086
+        out="$(run_tool "$sb" "$root" $verb 2>&1)" || rc=$?
+        assert_eq "$verb exits 1" "1" "$rc"
+        assert_contains "$verb names the key and its layer" "core: grp/pkg_n" "$out"
+    done
+}
+
+test_tool_distro_rule() {
+    echo "TEST: tool route: the calling directory chooses the distro; one distro is that one; several from elsewhere are refused, listed"
+    local sb root out rc=0
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb" fakefox fakefox2)"
+    out="$(run_tool "$sb" "$root" validate 2>&1)" || rc=$?
+    assert_eq "from the root, two distros: exit 1" "1" "$rc"
+    assert_contains "the refusal lists both" "several distros (fakefox, fakefox2)" "$out"
+    assert_contains "the refusal says how to choose" "pass --from $root/<distro>" "$out"
+    rc=0; out="$(run_tool "$sb" "$sb" env 2>&1)" || rc=$?
+    assert_eq "from the workspace, two distros: refused" "1" "$rc"
+    rc=0; out="$(run_tool "$sb" "$root/fakefox2" validate 2>&1)" || rc=$?
+    assert_eq "from <root>/fakefox2: validate exit 0" "0" "$rc"
+    assert_contains "from <root>/fakefox2: checked fakefox2" "for distro fakefox2" "$out"
+    rc=0; out="$(run_tool "$sb" "$root/fakefox/core/src/pkg_a" env 2>&1)" || rc=$?
+    assert_eq "from inside <root>/fakefox: env exit 0" "0" "$rc"
+    assert_contains "from inside <root>/fakefox: fakefox's underlay" "rosroot/fakefox/setup.bash" "$out"
+    rc=0; out="$(run_tool "$sb" "$sb" --from "$root/fakefox2/extra" repo_pin pkg_a 2>/dev/null)" || rc=$?
+    assert_eq "--from <root>/fakefox2/extra: repo_pin reads fakefox2's pin" "main" "${out%%$'\t'*}"
+    rc=0; out="$(run_tool "$sb" "$root/fakefox" repo_pin pkg_a 2>/dev/null)" || rc=$?
+    assert_eq "from <root>/fakefox: repo_pin reads fakefox's pin" $'fakefox\tbranch' "$out"
+    # A registered path through a link: the calling directory is physical,
+    # and so is the distro's directory it is compared with.
+    ln -s "$root" "$(dirname "$root")/linked"
+    sed -i "s|^toolsys ros2_colcon $root\$|toolsys ros2_colcon $(dirname "$root")/linked|" "$sb/.agent/projects.local"
+    rc=0; out="$(run_tool "$sb" "$root/fakefox2" validate 2>&1)" || rc=$?
+    assert_eq "registered through a link, called from the physical fakefox2: exit 0" "0" "$rc"
+    assert_contains "registered through a link: fakefox2 chosen" "for distro fakefox2" "$out"
+    rc=0; out="$(run_tool "$sb" "$(dirname "$root")/linked/fakefox" validate 2>&1)" || rc=$?
+    assert_contains "called through the link's fakefox: fakefox chosen" "for distro fakefox " "$out"
+}
+
+test_tool_setup_and_sync_run_the_tool() {
+    echo "TEST: tool route: setup and sync run the tool's sync in the root and pass its status through; nothing else"
+    local sb root out rc=0 before
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb" fakefox)"
+    # A clone behind its origin: the adapter must leave it where it is.
+    git -C "$(dirname "$root")/work/pkg_c" -c user.name=t -c user.email=t@t commit --quiet --allow-empty -m later
+    git -C "$(dirname "$root")/work/pkg_c" push --quiet "$(dirname "$root")/fake_remotes/github.com/owner/pkg_c.git" main
+    before="$(git -C "$root/fakefox/extra/src/pkg_c" rev-parse HEAD)"
+    out="$(run_tool "$sb" "$sb" setup 2>&1)" || rc=$?
+    assert_eq "setup: exit 0" "0" "$rc"
+    assert_eq "setup: the tool's sync for the distro, run in the root" \
+        "TOOL_RAN_IN:$root ARGS:sync --distro fakefox EXIT:0" "$(cat "$sb/tool.log")"
+    assert_contains "setup: the tool's output passed through" "distro stub: present, not touched" "$out"
+    : > "$sb/tool.log"
+    rc=0; out="$(TOOL_EXIT=1 run_tool "$sb" "$root" sync 2>&1)" || rc=$?
+    assert_eq "sync: the tool's exit status 1 passed through" "1" "$rc"
+    assert_eq "sync: run in the root" "TOOL_RAN_IN:$root ARGS:sync --distro fakefox EXIT:1" "$(cat "$sb/tool.log")"
+    rc=0; out="$(TOOL_EXIT=130 run_tool "$sb" "$root" sync 2>&1)" || rc=$?
+    assert_eq "sync: a signal's status 130 passed through" "130" "$rc"
+    assert_eq "no vcs import on the tool route" "false" "$([ -e "$sb/vcs.log" ] && echo true || echo false)"
+    assert_eq "the clone behind origin is where it was" "$before" "$(git -C "$root/fakefox/extra/src/pkg_c" rev-parse HEAD)"
+    assert_eq "nothing fetched into it either" "" \
+        "$(git -C "$root/fakefox/extra/src/pkg_c" rev-list HEAD..origin/main 2>/dev/null)"
+    rc=0; out="$(TOOL_NEW_LAYER=late run_tool "$sb" "$root" sync 2>&1)" || rc=$?
+    assert_contains "sync: a change in the layers is said, with what to do" \
+        "the layers of distro fakefox changed; existing package worktrees keep their old env.sh; recreate them" "$out"
+    rc=0; out="$(run_tool "$sb" "$root" sync 2>&1)" || rc=$?
+    assert_not_contains "sync: no such line when the layers are the same" "layers of distro" "$out"
+    # Nothing resolved yet (an init cut short): sync with no --distro.
+    rm -rf "$root/.repos-manifest/resolved/fakefox"
+    : > "$sb/tool.log"
+    rc=0; out="$(run_tool "$sb" "$root" sync 2>&1)" || rc=$?
+    assert_eq "nothing resolved: sync exit 0" "0" "$rc"
+    assert_eq "nothing resolved: the tool's sync with no --distro" "TOOL_RAN_IN:$root ARGS:sync EXIT:0" "$(cat "$sb/tool.log")"
+    rm -f "$sb/.venv/bin/repos-manifest"
+    rc=0; out="$(run_tool "$sb" "$root" setup 2>&1)" || rc=$?
+    assert_eq "tool not installed: exit 1" "1" "$rc"
+    assert_contains "tool not installed: says how to install it" "make install-repos-manifest" "$out"
+    assert_eq "no fetch: curl not reached" "false" "$([ -e "$sb/curl.log" ] && echo true || echo false)"
+}
+
+test_tool_build_and_test_over_the_resolved_layers() {
+    echo "TEST: tool route: build and test run colcon per resolved layer, in order, with --base-paths src"
+    local sb root out rc=0
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb" fakefox)"
+    out="$(run_tool "$sb" "$root" build 2>&1)" || rc=$?
+    assert_eq "build: exit 0" "0" "$rc"
+    assert_eq "build: the unnamed layer, core, then extra, each over the layers before it" \
+        "COLCON_RAN_IN:$root/fakefox CMD:build SOURCED:base
+COLCON_RAN_IN:$root/fakefox/core CMD:build SOURCED:base+fakefox
+COLCON_RAN_IN:$root/fakefox/extra CMD:build SOURCED:base+fakefox+core" "$(cat "$sb/colcon.log")"
+    assert_contains "build: --base-paths src before --cmake-args" \
+        "COLCON_ARGS:$root/fakefox build --base-paths src --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON" \
+        "$(cat "$sb/colcon.log.args")"
+    : > "$sb/colcon.log"
+    : > "$sb/colcon.log.args"
+    rc=0; out="$(run_tool "$sb" "$root" test 2>&1)" || rc=$?
+    assert_eq "test: exit 0" "0" "$rc"
+    assert_eq "test: every layer, in order" \
+        "$root/fakefox $root/fakefox/core $root/fakefox/extra" \
+        "$(sed -n 's/^COLCON_RAN_IN:\([^ ]*\) CMD:test.*/\1/p' "$sb/colcon.log" | tr '\n' ' ' | sed 's/ $//')"
+    assert_contains "test: --base-paths src" "COLCON_ARGS:$root/fakefox/core test --base-paths src --event-handlers" "$(cat "$sb/colcon.log.args")"
+    rc=0; out="$(run_tool "$sb" "$root" env 2>&1)" || rc=$?
+    assert_eq "env: the underlay, then each built layer in order" \
+        "unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
+source $sb/rosroot/fakefox/setup.bash
+source $root/fakefox/install/local_setup.bash
+source $root/fakefox/core/install/local_setup.bash
+source $root/fakefox/extra/install/local_setup.bash" "$out"
+}
+
+test_tool_validate() {
+    echo "TEST: tool route: validate checks the checkouts against the last resolve and says what it did not check"
+    local sb root out rc=0
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb" fakefox)"
+    out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "validate: exit 0" "0" "$rc"
+    assert_eq "validate: the success line names the distro, the files and the limit" \
+        "✅ ros2_colcon checkout matches the tool's last resolve for distro fakefox ($root/.repos-manifest/resolved/fakefox); the manifest itself was not read again (there is no repos-manifest status yet)" "$out"
+    mv "$root/fakefox/core/src/pkg_b" "$(dirname "$root")/pkg_b.aside"
+    rc=0; out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "a missing optional repo: still exit 0" "0" "$rc"
+    mv "$root/fakefox/src/pkg_u" "$(dirname "$root")/pkg_u.aside"
+    rc=0; out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "a missing repo of the unnamed layer: exit 1" "1" "$rc"
+    assert_contains "it is named, with its place" "layer '_unnamed': repo 'pkg_u' in _unnamed.repos but not checked out at $root/fakefox/src/pkg_u" "$out"
+    mv "$(dirname "$root")/pkg_u.aside" "$root/fakefox/src/pkg_u"
+    rm "$root/.repos-manifest/resolved/fakefox/extra.repos"
+    rc=0; out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "a layer's .repos file missing: exit 1" "1" "$rc"
+    assert_contains "it is named" "layer 'extra': missing $root/.repos-manifest/resolved/fakefox/extra.repos" "$out"
+}
+
+test_tool_repos_pin_and_worktree_verbs() {
+    echo "TEST: tool route: repos, repo_pin, worktree_repos and worktree_env read the tool's layout"
+    local sb root out rc=0 wt
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb" fakefox)"
+    out="$(run_tool "$sb" "$sb" repos 2>&1)" || rc=$?
+    assert_eq "repos: every clone, by layer" \
+        "pkg_u:$root/fakefox/src/pkg_u
+pkg_a:$root/fakefox/core/src/pkg_a
+pkg_b:$root/fakefox/core/src/pkg_b
+pkg_c:$root/fakefox/extra/src/pkg_c" "$out"
+    out="$(run_tool "$sb" "$sb" repo_pin pkg_a 2>/dev/null)"
+    assert_eq "repo_pin: the version in core.repos, a branch on origin" $'fakefox\tbranch' "$out"
+    out="$(run_tool "$sb" "$sb" repo_pin pkg_u 2>/dev/null)"
+    assert_eq "repo_pin: a repo of the unnamed layer" $'main\tbranch' "$out"
+    rc=0; out="$(run_tool "$sb" "$sb" worktree_repos --issue owner/pkg_a#9 --layer core --package-repos pkg_a,pkg_b 2>&1)" || rc=$?
+    assert_eq "worktree_repos: exit 0" "0" "$rc"
+    assert_eq "worktree_repos: the clones in <root>/fakefox/core/src, the worktree's own layout" \
+        "$root/fakefox/core/src/pkg_a	core_ws/src/pkg_a	feature/issue-9
+$root/fakefox/core/src/pkg_b	core_ws/src/pkg_b	feature/pkg_a-issue-9" "$out"
+    rc=0; out="$(run_tool "$sb" "$sb" worktree_repos --issue owner/pkg_c#9 --layer core --package-repos pkg_c 2>&1)" || rc=$?
+    assert_contains "worktree_repos: a repo of another layer is named" "package repo 'pkg_c' is in layer 'extra', not 'core'" "$out"
+    wt="$root/worktrees/issue-toolsys-owner-pkg_c-9"
+    mkdir -p "$wt/extra_ws/src"
+    rc=0; out="$(run_tool "$sb" "$sb" worktree_env --worktree "$wt" 2>/dev/null)" || rc=$?
+    assert_eq "worktree_env: exit 0" "0" "$rc"
+    assert_eq "worktree_env: underlay, each lower layer, the root's same layer, the worktree's" \
+        "unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
+source $sb/rosroot/fakefox/setup.bash
+if [ -f $root/fakefox/install/local_setup.bash ]; then source $root/fakefox/install/local_setup.bash; fi
+if [ -f $root/fakefox/core/install/local_setup.bash ]; then source $root/fakefox/core/install/local_setup.bash; fi
+if [ -f $root/fakefox/extra/install/local_setup.bash ]; then source $root/fakefox/extra/install/local_setup.bash; fi
+if [ -f $wt/extra_ws/install/local_setup.bash ]; then source $wt/extra_ws/install/local_setup.bash; fi" "$out"
+    assert_eq "worktree_env: COLCON_IGNORE in <root>/worktrees" "true" "$([ -f "$root/worktrees/COLCON_IGNORE" ] && echo true || echo false)"
+}
+
+test_worktree_env_names_unbuilt_lower_layers() {
+    echo "TEST: worktree_env names on stderr each lower layer with no install/, on every route; stdout unchanged"
+    local sb proj root wt out err
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    wt="$sb/wt"
+    mkdir -p "$wt/l3_ws/src"
+    mkdir -p "$proj/layers/main/l1_ws/install"
+    out="$(run_adapter "$sb" worktree_env --worktree "$wt" 2>"$sb/err")"
+    err="$(cat "$sb/err")"
+    assert_eq "bootstrap route: stdout as it was" \
+        "unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
+source $sb/rosroot/fakefox/setup.bash
+if [ -f $proj/layers/main/l1_ws/install/local_setup.bash ]; then source $proj/layers/main/l1_ws/install/local_setup.bash; fi
+if [ -f $proj/layers/main/l2_ws/install/local_setup.bash ]; then source $proj/layers/main/l2_ws/install/local_setup.bash; fi
+if [ -f $proj/layers/main/l3_ws/install/local_setup.bash ]; then source $proj/layers/main/l3_ws/install/local_setup.bash; fi
+if [ -f $wt/l3_ws/install/local_setup.bash ]; then source $wt/l3_ws/install/local_setup.bash; fi" "$out"
+    assert_eq "bootstrap route: the one unbuilt lower layer named, the built one not" \
+        "NOTE: layer l2 is not built ($proj/layers/main/l2_ws/install missing); this worktree's build will not find its packages until it is" "$err"
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb" fakefox)"
+    wt="$root/worktrees/issue-toolsys-owner-pkg_c-2"
+    mkdir -p "$wt/extra_ws/src" "$root/fakefox/install"
+    run_tool "$sb" "$sb" worktree_env --worktree "$wt" >/dev/null 2>"$sb/err"
+    assert_eq "tool route: core named, the built unnamed layer not" \
+        "NOTE: layer core is not built ($root/fakefox/core/install missing); this worktree's build will not find its packages until it is" "$(cat "$sb/err")"
+}
+
+test_tool_package_worktree() {
+    echo "TEST: tool route: a package worktree made from a session at the root (outside git), its base the resolved pin"
+    local sb root out rc=0 wt
+    sb="$(make_worktree_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb" fakefox)"
+    assert_eq "precondition: the root is in no git repository" "outside" "$(tool_outside_git "$root")"
+    out="$(cd "$root" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --issue owner/pkg_a#503 --type project --project toolsys \
+        --layer core --package-repos pkg_a 2>&1)" || rc=$?
+    wt="$root/worktrees/issue-toolsys-owner-pkg_a-503"
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "creation names the unnamed layer, not built yet" \
+        "NOTE: layer _unnamed is not built ($root/fakefox/install missing)" "$out"
+    assert_eq "the header records the resolved pin as base=" \
+        "# project=toolsys issue=owner/pkg_a#503 layer=core base=fakefox" "$(head -n1 "$wt/.worktree-repos" 2>/dev/null)"
+    assert_eq "on feature/issue-503" "feature/issue-503" "$(git -C "$wt/core_ws/src/pkg_a" branch --show-current 2>/dev/null)"
+    assert_eq "the branch starts at origin's fakefox" \
+        "$(git -C "$root/fakefox/core/src/pkg_a" rev-parse refs/remotes/origin/fakefox)" \
+        "$(git -C "$wt/core_ws/src/pkg_a" rev-parse HEAD 2>/dev/null)"
+    assert_eq "env.sh: the underlay, the unnamed layer, the root's core, the worktree's" \
+        "unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
+source $sb/rosroot/fakefox/setup.bash
+if [ -f $root/fakefox/install/local_setup.bash ]; then source $root/fakefox/install/local_setup.bash; fi
+if [ -f $root/fakefox/core/install/local_setup.bash ]; then source $root/fakefox/core/install/local_setup.bash; fi
+if [ -f $wt/core_ws/install/local_setup.bash ]; then source $wt/core_ws/install/local_setup.bash; fi" \
+        "$(cat "$wt/env.sh" 2>/dev/null)"
+    assert_eq "build.sh generated and executable" "true" "$([ -x "$wt/build.sh" ] && echo true || echo false)"
+    assert_eq "COLCON_IGNORE in <root>/worktrees" "true" "$([ -f "$root/worktrees/COLCON_IGNORE" ] && echo true || echo false)"
+    assert_eq "no worktree inside a distro's directory" "" "$(find "$root/fakefox" -name '*_ws' -print 2>/dev/null)"
+}
+
+test_bootstrap_no_url_names_the_tool() {
+    echo "TEST: bootstrap route: the no-URL error also names setting the root up with the manifest tool (issue 503)"
+    local sb out rc=0
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    make_fresh_project "$sb" >/dev/null
+    out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
+    assert_eq "exit 1" "1" "$rc"
+    assert_contains "names init --distro-dirs" "init <manifest> --distro-dirs --distro <distro>" "$out"
+}
+
+# The real tool (this checkout's source) and vcs: init a system from local
+# repositories, then setup, sync, validate and repo_pin through the
+# adapter. Skipped, saying so, when either is missing.
+test_tool_real_init_and_sync() {
+    echo "TEST: tool route with the real tool and vcs: init by hand, then the adapter's sync, validate and repo_pin"
+    local vcs_bin sb outer root out rc=0 name
+    vcs_bin="$(command -v vcs 2>/dev/null || true)"
+    if [ -z "$vcs_bin" ]; then
+        echo "  SKIPPED: vcs is not on PATH; the real tool's sync needs it"
+        TOOL_SKIPPED=$((TOOL_SKIPPED + 1))
+        return 0
+    fi
+    sb="$(make_sandbox)"
+    outer="$(mktemp -d -p "$SANDBOX")"
+    root="$outer/toolsys"
+    for name in pkg_u pkg_a; do
+        mkdir -p "$outer/remotes/$name"
+        git -C "$outer/remotes/$name" init --quiet -b main
+        echo "$name" > "$outer/remotes/$name/README"
+        git -C "$outer/remotes/$name" add README
+        git -C "$outer/remotes/$name" -c user.name=t -c user.email=t@t commit --quiet -m first
+        git -C "$outer/remotes/$name" branch fakefox
+    done
+    cat > "$outer/m.manifest.yaml" <<EOF
+format: 1
+distros: [fakefox]
+layers: [core]
+repositories:
+  pkg_u:
+    type: git
+    url: file://$outer/remotes/pkg_u
+    version: main
+  pkg_a:
+    type: git
+    url: file://$outer/remotes/pkg_a
+    version: fakefox
+    layer: core
+EOF
+    mkdir -p "$sb/.venv/bin" "$root"
+    printf '#!/usr/bin/env bash\nPYTHONPATH=%q exec %q -m repos_manifest.cli "$@"\n' "$MR_SRC" "$MR_PY" > "$sb/.venv/bin/repos-manifest"
+    chmod +x "$sb/.venv/bin/repos-manifest"
+    out="$(cd "$root" && "$sb/.venv/bin/repos-manifest" init ../m.manifest.yaml --distro-dirs --distro fakefox --yes 2>&1)" || rc=$?
+    assert_eq "init: exit 0" "0" "$rc"
+    echo "toolsys ros2_colcon $root" >> "$sb/.agent/projects.local"
+    make_underlay "$sb" fakefox
+    rc=0; out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" "$sb/.agent/scripts/adapter" --project toolsys sync 2>&1)" || rc=$?
+    assert_eq "adapter sync: the tool's exit 0" "0" "$rc"
+    assert_contains "adapter sync: the tool's own report" "present, not touched (2)" "$out"
+    rc=0; out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" "$sb/.agent/scripts/adapter" --project toolsys validate 2>&1)" || rc=$?
+    assert_eq "adapter validate: exit 0" "0" "$rc"
+    assert_contains "adapter validate: against the last resolve for fakefox" "matches the tool's last resolve for distro fakefox" "$out"
+    out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" "$sb/.agent/scripts/adapter" --project toolsys repo_pin pkg_a 2>/dev/null)"
+    assert_eq "adapter repo_pin: the resolved version, a branch" $'fakefox\tbranch' "$out"
+    rm -rf "$root/fakefox/core/src/pkg_a"
+    rc=0; out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" "$sb/.agent/scripts/adapter" --project toolsys setup 2>&1)" || rc=$?
+    assert_eq "adapter setup: exit 0" "0" "$rc"
+    assert_contains "adapter setup: the tool cloned the missing repo" "cloned (1): fakefox/core/src/pkg_a" "$out"
+    assert_eq "the clone is back, on its pin" "fakefox" "$(git -C "$root/fakefox/core/src/pkg_a" branch --show-current 2>/dev/null)"
+}
+
 # ---- Run all tests ----
 echo "=== ros2_colcon adapter tests ==="
 echo ""
@@ -4197,6 +4710,21 @@ mr_test test_mr_source_lock
 mr_test test_mr_lock_fd_not_inherited
 mr_test test_mr_reader_pinned_to_one_result
 mr_test test_mr_one_source_only
+mr_test test_tool_route_order
+mr_test test_tool_unusable_root_is_an_error_never_a_fetch
+mr_test test_tool_nested_key_refused_by_name
+mr_test test_tool_distro_rule
+mr_test test_tool_setup_and_sync_run_the_tool
+mr_test test_tool_build_and_test_over_the_resolved_layers
+mr_test test_tool_validate
+mr_test test_tool_repos_pin_and_worktree_verbs
+mr_test test_worktree_env_names_unbuilt_lower_layers
+mr_test test_tool_package_worktree
+test_bootstrap_no_url_names_the_tool
+mr_test test_tool_real_init_and_sync
+if [ "$TOOL_SKIPPED" -gt 0 ]; then
+    echo "=== SKIPPED: the real-tool test (vcs is not on PATH) ==="
+fi
 
 echo ""
 if [ "$MR_SKIPPED" -gt 0 ]; then
