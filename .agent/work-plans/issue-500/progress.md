@@ -1491,3 +1491,140 @@ The adversarial specialist found no lost work and no printed credential:
 **Decision**: address
 
 The full pre-commit pass was not run: the answer changes the code, so the pass runs on the head that follows. Fixed in this round: suggestion 1 (the half-change report and the design say the changes were made by git or a hook it ran); suggestion 2 (the two-step half-change report says what really ran: the switch, the fast-forward of the local branch if it happened, the switch back, and where HEAD is); suggestion 3 (a branch left without an upstream after a half-change is reported on the run that finds the repo clean again, or the note is given with the half-change report); suggestion 4 (masking registers nothing for file urls and matches credentials only after ://, so a path or a name such as git@ or main@ is never masked); suggestion 5 (the lock message after a killed sync says a fetch of that sync may still be running, and the design says a fetch waiting at a prompt holds the lock until it ends or is killed); suggestion 6 (--prune and fetch's -p join the forbidden words). The branch also takes origin/main, which now holds pull request 534, and the README conflict is resolved.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 18:12 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a5f44b6979a40343e, resume 2 of 3)
+
+**Branch**: feature/issue-500 at `8279b435`
+**Addressed**: Local Review (Pre-Push) at `3d8601c8` (2026-11-19 17:17 -05:00)
+**Commits**: 64c5d0a2 (merge of origin/main), 3fa23a13, e5bbcde3, 35bb01d0, 9099dcf9, 8279b435 (box checks)
+
+### Step 0: origin/main merged
+- 64c5d0a2 merges `origin/main` into the branch, bringing pull request 534 (issue 531). It is a merge commit, not a rebase.
+- There was one conflict, in `tools/repos-manifest/README.md`'s build paragraph. Both changes are kept: 531's sentence on `--packages-skip` and `--packages-ignore` and the record of skip and ignore options, and this branch's "or a `sync` of that distro" in the lock sentence.
+- `system.py`, `docs/design.md`, `tests/test_build.py` and `tests/test_system.py` merged without conflict. In `system.py`, 531's `without` field and its record read and write (`LayerRecord`, `read_built`, `_read_without`) sit beside this branch's `RepoRecord` `url` and `moving` fields and the lock's `holder`. They share no function. This branch's changed test (`test_the_install_note_names_removed_and_added_repos`, the repo moved by hand) is still there, beside 531's new tests.
+- Whole suite right after the merge: `1551 passed in 504.49s`.
+- The merged design's "build" and "sync" sections were read for sentences the other change made untrue. "A `sync` writes no build record", "the record does not say that a layer is up to date with `sync`", and the shared lock sentences all still hold.
+
+### Actions
+- [x] (suggestion 1) The half-change report and the design say the changes "were made by git or a hook it ran (the repo had no tracked changes before)" — `update.py` `_half_changed`, `docs/design.md` sync
+- [x] (suggestion 2) The half-change report says what ran, in order: each call with its exit status and where it took HEAD; a fast-forward naming the branch and both commits; the switch back when it ran; and where HEAD is now. It ends with "nothing after the steps above was run here". The switch back now runs only from a clean tree, so a hook's edit is never carried onto the old branch. In the review's case 1a the repo is left on dev at origin's commit with the hook's change, and once the person cleans it up the next sync records it as up to date. Tests: case 1a (a post-merge hook edits README), a hook on the switch after the first step, the switch back changed by a hook (three calls listed), and the stub half-switch. Each fails at the commit before 3fa23a13 — `update.py` `_change`, `_what_ran`, `_half_changed`
+- [x] (suggestion 3) A branch that a half-changed move made, when it has no upstream, is reported in the same run with the two `git config` commands ("the move did not finish, so it was not set"). The review's case 1c gives it, and the stub half-switch test asserts it — `update.py` `_change`, `_no_upstream`
+- [x] (suggestion 4) `file://` urls register nothing. A registered user information is masked only right after a scheme's `://`, by the same ssh and file rule as any url. Tests cover the review's three false positives: a system under `w@x` with `file://` urls (both urls and the command printed whole); `git@github.com:...` after an `https://git@` url; and `origin/main@{upstream}` and `/srv/main@2` after an `https://main@` url. A further test covers a registered `git` user next to an `ssh://git@host` url. For a password that is a common word (`git`, `main`, `a`), the registered text is `alice:<word>`, which only matches right after `://`, so the url is masked and the command printed beside it is unchanged. Every round-2 masking test still passes — `masking.py`, `docs/design.md`
+- [x] (suggestion 5) When the lock file names a sync whose process has ended (or cannot be checked), the refusal says: "a sync … has ended (process N), and a git it started, such as a fetch, may still hold its lock … `fuser -v <lock>` names it … The fetch ends on its own, or, when it waits at a password prompt, only when it is killed (`kill <pid>` …)". The design says the same, and that a fetch at a password prompt holds the lock until it is killed. Tests: the dead-pid test and the kill-before-fetch test. The review's `s5_lock.py` now prints this — `system.py` `hold_build_lock`, `docs/design.md`
+- [x] (suggestion 6) `--prune` and `-p` are in `NEVER`. The scan matches whole words, and a test shows `--prune` and `-p` are found while `--no-prune`, `--no-prune-tags` and `--prune-tags` are not. The design's list of what `sync` never passes names them — `update.py`, `tests/test_update_safety.py`
+
+### Tried by hand
+These used the session scratchpad: `fx/s1abc.py` (review cases 1a to 1c), `fx/s4_mask.py`, `fx/s5_lock.py`.
+- 1a (post-merge hook, two-step): the report lists the switch and the fast-forward of dev with both commits. The repo is left on dev, and README is not carried to main.
+- 1b (hook edits BRANCH): the same, no switch back.
+- 1c (post-checkout hook on a new branch): the no-upstream note, then the half-change report.
+- `s4_mask.py`: the system under `w@x` prints its paths whole, and `main@`, `git@github.com` and `origin/main@{upstream}` are unmasked.
+- `s5_lock.py`: an orphaned fetch after a kill gives the new refusal.
+
+### Checks
+- Whole suite at `9099dcf9`: `cd tools/repos-manifest && REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest -p no:cacheprovider` gave `1569 passed in 506.61s` (vcs 0.3.0 at /usr/bin/vcs, colcon at /usr/bin/colcon).
+- Signal and kill tests (`test_sync_distros.py`, `test_vcs_behaviours.py`, `-k "kill or stop or signal or step or ignored_file_made or vcs or no_record or upstream or half or ended"`), three runs: 20 passed each time.
+- The forbidden-commands scan passes with `--prune` and `-p` added. black and flake8 ran in the commit hooks. No workspace script changed. The full pre-commit pass is the host's. Commits used `SKIP=validate-script-tests`.
+
+### For the pull request body
+**What `sync` does with a repo that is there.** The rules are checked in order (tool `docs/design.md`, "sync"):
+- A git repo of its own, with one `origin`, nothing in progress, no tracked changes, not sparse, on the manifest's branch: fast-forwarded (`git merge --ff-only --no-overwrite-ignore`).
+- A repo on the version `sync` last recorded, when the manifest names a new one: moved.
+  - A new branch: `git switch -c <b> --no-track <origin's commit>` (all or nothing), then its upstream. In a `--single-branch` or `--depth` clone git refuses the upstream; the move stands, and a note gives the two `git config` commands.
+  - A local branch: switched to and fast-forwarded. If the fast-forward does not get there from a clean tree, the switch is undone.
+  - A tag or a commit: detached.
+- A repo pinned to a tag stays. A tag moved on origin after `sync` followed it is reported with both commits and the `git tag -d` step; after that, the next `sync` follows it.
+- Every call is judged by the state it leaves, whatever its exit status. A failing `post-checkout` hook after a real switch counts, with a note. A hook that edits tracked files stops the move. A call that leaves a half-change is reported as what ran, in order, where HEAD is now, and the files changed by git or a hook it ran. `sync` puts nothing back, and the next run reports uncommitted changes, never "a sync was stopped".
+- Before any move: a paths check (no untracked or ignored file where an incoming file goes, judged with `lstat`), and a submodule check (no checked-out submodule removed or replaced, and no pointer moved under a submodule whose HEAD differs). Git's `--no-overwrite-ignore` is behind the paths check.
+
+**Left as it is and reported:**
+- tracked changes;
+- commits not on origin (with `git pull --rebase origin <branch>`);
+- another branch or a detached HEAD elsewhere;
+- a rebase, merge, cherry-pick, revert, bisect or `index.lock`;
+- no single origin;
+- not a repository of its own;
+- a link at the repo's place;
+- a sparse checkout;
+- a local branch of the new version with commits not on origin, or checked out in another work tree;
+- a branch rewritten upstream;
+- an untracked or ignored file where an incoming file goes;
+- a commit pin that origin does not hold;
+- a blocked submodule, with the command to run.
+
+Untracked files elsewhere never stop an update.
+
+**Errors that another sync will not fix:**
+- a version not on origin, or both a branch and a tag there;
+- a branch origin deleted (the stale ref is named);
+- a commit beyond a shallow clone's history;
+- a tag clash on the manifest's own tag.
+
+A fetch that fails, or an `ls-remote` that fails, is an error a later sync can fix. An optional repo is skipped, not failed.
+
+**The fetch.** `git fetch --tags --no-prune --no-prune-tags --no-recurse-submodules --refmap= origin +refs/heads/*:refs/remotes/origin/*`:
+- It removes no ref and moves no local branch, whatever `remote.origin.fetch`, `fetch.prune`, `remote.origin.prune`, `fetch.pruneTags` or `fetch.recurseSubmodules` say.
+- A tag clash on a tag the manifest does not name is a note; the branches are fetched again without tags.
+- The version is asked of origin (`ls-remote`), so a stale remote-tracking ref is never followed.
+- Every git runs with automatic gc and maintenance off and `submodule.recurse` off.
+- `sync` never runs reset, `checkout -f`, clean, stash, rebase, pull, push, gc or prune, never deletes a branch, and passes no `--force`, `--no-verify`, `--prune` or `-p`. A test reads `update.py` for each.
+
+**`origin` and urls:**
+- `origin` is repointed only when it has the url `sync` recorded and every local branch is on the manifest's new url (probe refs in a namespace of their own); the new url is recorded at once.
+- An origin set by a person is left as set, with one line per run and the `set-url` command; the update follows it. A system made before urls were recorded is never repointed.
+- No user name or password of a url is printed in any repo line, error or refusal, whatever characters it holds (parsed, registered, masked after `://`). `file://` urls, local paths, scp-like addresses and `origin/main@{upstream}` are never masked.
+
+**Layers and records:**
+- A repo the manifest gives another layer is not moved. The `mkdir -p … && mv …` command is printed, and that is an error (exit 1) for a repo that is not optional.
+- Moved by hand, the repo's record names the new layer.
+- A repo that left the manifest is listed and left on disk.
+- `state.yaml` records each repo's version, commit, url and, while a move runs, a `moving` line.
+
+**Per distro, `init` and the lock:**
+- A distro that does not resolve, whose resolved files cannot be written, or whose lock is held is reported, and the others go on (exit 1).
+- `sync` and `init` (for its first sync) hold the distro's build lock from before the resolved files are written to the end of its repos. Every git that changes a repo, fetches included, is given the lock.
+- A build refused by a running sync says so. After a killed sync, the refusal says a fetch it started may still hold the lock, how to find it with `fuser -v`, and that it ends on its own or, at a password prompt, when killed.
+- A built layer whose repos this sync changed gets a line saying `build` brings it up to date.
+
+**Documents changed:**
+- `tools/repos-manifest/docs/design.md`: "sync", with its rules, the fetch, the paths and submodule checks, the url rule, credentials, the lock, and the stop and kill table; "Where the resolved files and state go"; "Where repos are fetched from"; "Work done on a field machine"; "build", on the shared lock; "What is built".
+- `tools/repos-manifest/README.md`.
+- `tools/repos-manifest/docs/roadmap.md`: a file-exists check.
+- The workspace's `docs/manifest/design.md`: two sentences that said `sync` leaves a repo that is there as it is, and the exit-status line.
+
+**Left for part 3:** step 1 of the design's sync (the manifest's own clone and `local_manifest`), `--local-manifest`, and the arguments after `--` passed to `vcs import`.
+
+**Left for part 4:** the rebase of unpushed commits. Its three test cases, from the first part-2 plan review:
+- an ignored file overwritten and then deleted by an aborted rebase;
+- the rebase running under the person's git settings;
+- a force-pushed upstream replayed as local commits.
+
+**Open on purpose:**
+- A repo left alone while the manifest names another version exits 0 (`sync.py:641-654`, `closing`). `status`, issue 502, is the check a script reads.
+- The hand-set-origin line prints every run (`update.py:709`).
+- One `ls-remote` per repo per run, plus one more for a commit pin (`update.py:486`, `update.py:455` `find_version`). An https origin without a credential helper asks for a password twice.
+- Submodules are never updated (`update.py:957`). A repo with submodules follows one change of a submodule's commit and stops at the next until it is updated by hand.
+- A shallow clone grows by the history of the tags it fetches (`update.py:734`).
+- A manifest with no version follows the clone's `origin/HEAD` until `git remote set-head origin --auto` (`update.py:463`).
+- A detached HEAD at a recorded branch's commit is moved on a pin change, and nothing is lost (`update.py:821-826`, `_on_recorded`; design rule 11).
+- A branch switched by a person during the run is not re-checked before the fast-forward (`update.py:870`, `_change`).
+- An https url whose path holds `@` has more masked than its user information (`masking.py:12`).
+
+**Tests:** 1569 pass in the tool's suite with `REPOS_MANIFEST_REQUIRE_COLCON=1`, the 1315 that came with pull request 534 included.
+
+**By-hand acceptance for the owner,** on his real project. Install the tool from this branch into his venv first (`~/p11-venv/bin/pip install --upgrade <this checkout>/tools/repos-manifest`). Then, in his system directory, with his own pin change in place of `<repo>` and its layer in place of `<layer>`:
+
+```bash
+cd ~/project11
+git -C rolling/<layer>/src/<repo> status --short; git -C rolling/<layer>/src/<repo> log --oneline -1   # before
+~/p11-venv/bin/repos-manifest sync --distro rolling
+git -C rolling/<layer>/src/<repo> status --short; git -C rolling/<layer>/src/<repo> branch --show-current
+grep -A6 '<repo>:' .repos-manifest/state.yaml    # version, commit and url are the new ones
+~/p11-venv/bin/repos-manifest sync --distro rolling     # again: "up to date", nothing changes
+```
+
+His clones whose `origin` is ssh while the manifest says https are left as set, with one line each per run; his record has no urls yet, so none is repointed. For the safety rows, use a throw-away system made the same way (never the real one): a changed tracked file, a local commit, a repo switched by hand, an `origin` set by hand, and an ignored file where an incoming file arrives. After each, run `sync`, then `git status` and `git log -1`, and compare with before.
