@@ -129,3 +129,11 @@ The fix and its placement are right, and no caller relies on the old exit status
 **Decision**: revise
 
 The host takes the Plan Review's three findings as written. (1) The recovery hint is built from the function's own repo_flag, base_flag and pr_title and names gh_create_pr.sh --draft, never bare gh pr create; it also says the plan comment was not posted; the test checks the hint names gh_create_pr.sh. (2) The test's pre-receive hook is made executable, and the "Push failed" assertion stays; the optional preflight-text assertion is dropped. (3) A second run with --print-path-only checks that stdout is exactly the worktree path.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-19 12:52 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-516/plan.md` at `6c93e19a`
+
+Revision after the plan review: the recovery hint is built from repo_flag, base_flag and pr_title and names gh_create_pr.sh --draft; the test hook is executable and a --print-path-only run checks stdout.
