@@ -504,3 +504,28 @@ Each code fix has a test that fails with the fix reverted (6 reverted copies, al
 ### Notes
 - Departure: none from the host's rules. One addition the rules did not cover: with `--keep-going`, a selection run does not try a layer above a failed one (restoring its old record would claim a base it was not rebuilt on).
 - Possible follow-up, not done (outside the host's decision on suggestion 3): an abbreviation that is ambiguous among the options in `COLCON_BUILD_OPTIONS` could be refused before anything runs, since colcon is sure to reject it.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 11:56 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a2232ae6436041c7a, resume 3 of 3)
+
+**Branch**: feature/issue-501 at `7d8e5261`
+**Base**: main
+**Depth**: Deep (reason: round 4 convergence check per handoff)
+**Must-fix**: 3 | **Suggestions**: 3
+**Round**: 4 | **Ship**: continue — round 4: 3 must-fix (all mechanical: two design.md sentences and stray committed files) is above the script's limit of 2
+
+Scope: round 3's findings and the fix diff `69aab154..dfbd1936`. Cross-model: skipped (round-4 convergence check, per handoff). Run: tool suite `1107 passed in 203.41s` (`REPOS_MANIFEST_REQUIRE_COLCON=1`); pre-commit on the changed files clean; a fresh Claude adversarial specialist held to the same scope; by hand with the real colcon.
+
+Round 3's must-fix, re-run: (1) gone — on a fresh system `build -- --packages-select c` is refused before anything runs, naming the three layers; on a built system it rebuilds every layer, exit 0, record file byte-identical. (2) gone — after `sync` cloned the optional `opt` into mid, `build mid -- --packages-select b` is refused ("its repos differ from its record: new opt"), and the next plain `build mid` gives the "new since" note and records `opt`. Suggestions 1 and 2 addressed; suggestion 3 is the documented limit (its sentence is must-fix 2 below). The fixer's `--keep-going` choice is sound: with mid failing in a selection run, top is "not tried", keeps its record, is reported "recorded built, not used", exit 1; after `build mid -- --packages-skip-build-finished` top is back in the run with no rebuild.
+
+### Findings
+- [ ] (must-fix) Stray colcon log files are committed in dfbd1936: `tools/repos-manifest/log/` (`COLCON_IGNORE`, the `latest` and `latest_version-check` links, `version-check_2026-11-19_11-36-25/logger_all.log`) from a `colcon version-check` run in that directory; remove them from the branch — `tools/repos-manifest/log/`
+- [ ] (must-fix) design.md's resume sentence is false: colcon's `--packages-skip-build-finished` skips every package whose last build finished in any earlier run, not "the packages it did not finish last time". After a run that failed with a colcon usage error, it built 0 packages (a changed `a` was not rebuilt) and the layer was recorded built, exit 0 (reproduced; the adversarial specialist also showed a dependent of a rebuilt package left stale). Say what colcon does and that the record then says only that every package has been built at some point, or record such a run only when the layer had been built before — `tools/repos-manifest/docs/design.md:928-931`, `build.py` `RESUMING`
+- [ ] (must-fix) design.md says `repos-manifest build <that layer>` "with correct arguments" restores a layer lost to a colcon usage error; with corrected selection arguments (`-- --packages-select p` after `--packages-sel p`) it is refused as not built: only a build without package selection restores it (Claude adversarial, reproduced) — `tools/repos-manifest/docs/design.md:933-936`
+- [ ] (suggestion) In a selection run the report says "built: X" for a layer where colcon built nothing ("ignoring unknown package", "0 packages finished"); "rebuilt with selection" would not mislead — `tools/repos-manifest/src/repos_manifest/build.py:847`
+- [ ] (suggestion) The selection refusal lists a built layer whose repos differ from its record under "not built" — `tools/repos-manifest/src/repos_manifest/build.py` `not_built_for_selection`
+- [ ] (suggestion) design.md's clause that the "new since" note "still comes at the next build without selection" describes a case a selection run now refuses; drop it — `tools/repos-manifest/docs/design.md:911-912`
