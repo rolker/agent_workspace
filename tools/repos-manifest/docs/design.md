@@ -720,10 +720,11 @@ remote-tracking refs and objects a fetch brings and, under the url rule, `origin
    sync again. `sync` never replaces a tag, and the fetch keeps local tags even where
    `fetch.pruneTags` is set.
 8. The manifest's version is looked up on `origin`: a branch (`origin/<version>`), a tag that
-   `origin` has (a local tag of the same name that `origin` lacks does not count), or a commit
+   `origin` has (a local tag of the same name that `origin` lacks does not count, and nor does
+   a local branch, whatever the version), or a commit
    named by 7 to 40 hex digits that is there; with no version, `origin`'s default branch. A
-   version that is none of these, or both a branch and a tag, is an error that another sync
-   will not change; when `origin` was set by hand the message says so and gives the command
+   version that is none of these, or both a branch and a tag on `origin`, is an error that
+   another sync will not change; when `origin` was set by hand the message says so and gives the command
    that sets it to the manifest's url.
 9. On a branch with commits not on `origin`: left as it is (above). The count is of the
    commits reachable from `HEAD` and from no remote-tracking ref of `origin`. After an upstream

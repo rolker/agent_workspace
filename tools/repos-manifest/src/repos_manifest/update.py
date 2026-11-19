@@ -433,20 +433,31 @@ def find_version(git: Git, version: Optional[str]) -> Tuple[Optional[Version], O
             return None, f"origin's default branch {name} cannot be read", False
         return Version(BRANCH, name, target), None, False
     branch = git.out("rev-parse", "--verify", "-q", f"refs/remotes/origin/{version}^{{commit}}")
-    tag = git.out("rev-parse", "--verify", "-q", f"refs/tags/{version}^{{commit}}")
-    if branch is not None and tag is not None:
-        return None, f"version {version} is both a branch and a tag", False
-    if branch is not None:
-        return Version(BRANCH, version, branch), None, False
-    if tag is not None:
+    tag = None
+    local_tag = git.out("rev-parse", "--verify", "-q", f"refs/tags/{version}")
+    if local_tag is not None:
+        # Only a tag origin has counts, and only when it is origin's (the same object).
         status, printed, error = git.run(
             "ls-remote", "--tags", "origin", f"refs/tags/{version}", prompt=True
         )
         if status != 0:
             return None, f"`git ls-remote origin` exited {status}:\n{error.rstrip()}", True
-        names = {line.split("\t")[-1] for line in printed.splitlines()}
-        if f"refs/tags/{version}" not in names:
+        theirs = {}
+        for line in printed.splitlines():
+            oid, _, ref = line.partition("\t")
+            theirs[ref] = oid
+        origins = theirs.get(f"refs/tags/{version}")
+        if origins is not None and branch is not None:
+            return None, f"version {version} is both a branch and a tag", False
+        if origins is not None and origins != local_tag:
+            return None, f"tag {version} here is not origin's tag {version}", False
+        if origins is not None:
+            tag = git.out("rev-parse", "--verify", "-q", f"refs/tags/{version}^{{commit}}")
+        elif branch is None:
             return None, f"version {version} is a tag here, and origin has no such tag", False
+    if branch is not None:
+        return Version(BRANCH, version, branch), None, False
+    if tag is not None:
         return Version(TAG, version, tag), None, False
     if HEX.fullmatch(version):
         commit = git.out("rev-parse", "--verify", "-q", f"{version}^{{commit}}")

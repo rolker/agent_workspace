@@ -490,6 +490,32 @@ def test_a_local_tag_absent_from_origin_is_not_taken_as_the_version(system, caps
     assert branch(clone) == "main"
 
 
+def test_a_local_only_tag_named_like_the_branch_pinned_does_not_count(system, capsys):
+    sys_dir, manifest, remote, clone = system
+    git("tag", "dev", "origin/other", cwd=clone)
+    mine = git("rev-parse", "refs/tags/dev", cwd=clone)
+    _pin(manifest, "dev")
+    out = _sync(sys_dir, capsys)
+    assert "src/a: moved from main to dev" in out
+    assert git("symbolic-ref", "HEAD", cwd=clone) == "refs/heads/dev"
+    assert head(clone) == git("rev-parse", "refs/heads/dev", cwd=remote)
+    assert git("rev-parse", "refs/tags/dev", cwd=clone) == mine
+    assert "up to date (1)" in _sync(sys_dir, capsys)
+
+
+def test_a_local_only_branch_named_like_the_tag_pinned_does_not_count(system, capsys):
+    sys_dir, manifest, remote, clone = system
+    git("branch", "v1", "origin/other", cwd=clone)
+    mine = git("rev-parse", "refs/heads/v1", cwd=clone)
+    _pin(manifest, "v1")
+    out = _sync(sys_dir, capsys)
+    assert "src/a: moved from main to v1" in out
+    assert branch(clone) == "HEAD"
+    assert head(clone) == git("rev-parse", "refs/tags/v1^{commit}", cwd=remote)
+    assert git("rev-parse", "refs/heads/v1", cwd=clone) == mine
+    assert "up to date (1)" in _sync(sys_dir, capsys)
+
+
 # --- The url rule ---------------------------------------------------------------------------
 
 
