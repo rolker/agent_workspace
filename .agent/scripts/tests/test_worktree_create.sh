@@ -1112,6 +1112,64 @@ else
     fail "multi-repository root outside git, bare --issue: rc=$RC, worktree [$(ls -A "$W10" 2>/dev/null | tr '\n' ' ')] out=${OUT:0:600}"
 fi
 
+# Issue 516: with --plan-file, a refused push skips the draft PR and is
+# non-fatal: the script exits 0, the worktree exists, and the warning
+# prints lines to push and open the PR by hand. The origin's pre-receive
+# hook is written only after the set-up push (it would refuse that too)
+# and made executable (git skips a hook that is not). The worktree's
+# directory name takes the repository slug detected from the origin's
+# name (origin11 -> issue-origin11-71).
+make_refusing_origin() {  # <repo> <bare>
+    local repo="$1" bare="$2"
+    gitq init -q --bare -b main "$bare"
+    gitq -C "$repo" remote add origin "$bare"
+    gitq -C "$repo" push -q origin main
+    gitq -C "$repo" remote set-head origin main
+    printf '#!/bin/sh\nexit 1\n' > "$bare/hooks/pre-receive"
+    chmod +x "$bare/hooks/pre-receive"
+}
+SB11="$SANDBOX/ws11"
+make_ws_repo "$SB11"
+make_refusing_origin "$SB11" "$SANDBOX/origin11.git"
+PLAN11="$SANDBOX/plan11.md"
+printf '# Plan\n' > "$PLAN11"
+OUT="$(cd "$SB11" && PATH="$SB11/stubbin:$PATH" "$SB11/.agent/scripts/worktree_create.sh" \
+    --issue 71 --type workspace --plan-file "$PLAN11" 2>&1)"
+RC=$?
+W11="$SB11/worktrees/workspace/issue-origin11-71"
+if [[ "$RC" -eq 0 && -d "$W11" \
+      && "$(git -C "$W11" branch --show-current 2>/dev/null)" == feature/issue-71 ]]; then
+    pass "refused push with --plan-file: exit 0, the worktree made on feature/issue-71"
+else
+    fail "refused push with --plan-file: rc=$RC, branch [$(git -C "$W11" branch --show-current 2>/dev/null)] out=${OUT:0:800}"
+fi
+CLOSES11="$(printf '%q' 'Closes #71')"
+if [[ "$OUT" == *"Push failed"* \
+      && "$OUT" == *"cd $(printf '%q' "$W11")"* \
+      && "$OUT" == *"git push -u origin feature/issue-71"* \
+      && "$OUT" == *"$SB11/.agent/scripts/gh_create_pr.sh --draft --title "*" --body $CLOSES11"* \
+      && "$OUT" == *"set_git_identity_env.sh"* \
+      && "$OUT" == *"The plan was not posted"* \
+      && "$OUT" == *"gh pr comment feature/issue-71 --body-file $(printf '%q' "$PLAN11")"* \
+      && "$OUT" == *"To enter this worktree"* ]]; then
+    pass "refused push with --plan-file: the warning prints the cd, push, gh_create_pr.sh and plan lines, then the next steps"
+else
+    fail "refused push with --plan-file: hint lines missing: out=${OUT:0:1500}"
+fi
+# The same refused push through --print-path-only (the start-task call):
+# stdout is the worktree path alone, and the exit status is 0.
+SB12="$SANDBOX/ws12"
+make_ws_repo "$SB12"
+make_refusing_origin "$SB12" "$SANDBOX/origin12.git"
+STDOUT12="$(cd "$SB12" && PATH="$SB12/stubbin:$PATH" "$SB12/.agent/scripts/worktree_create.sh" \
+    --issue 72 --type workspace --plan-file "$PLAN11" --print-path-only 2>/dev/null)"
+RC=$?
+if [[ "$RC" -eq 0 && "$STDOUT12" == "$SB12/worktrees/workspace/issue-origin12-72" ]]; then
+    pass "refused push with --plan-file --print-path-only: exit 0, stdout is the worktree path"
+else
+    fail "refused push with --plan-file --print-path-only: rc=$RC stdout=[$STDOUT12]"
+fi
+
 echo
 echo "=== Summary ==="
 echo "  PASS: $PASS"

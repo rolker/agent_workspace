@@ -1266,9 +1266,47 @@ elif [ -n "$PLAN_FILE" ]; then
                 git commit --allow-empty -m "chore: start skill update ($SKILL_NAME)" || true
             fi
         fi
+        local pr_title="$ISSUE_TITLE"
+        if [ -n "$PLAN_FILE" ]; then
+            pr_title="[PLAN] $ISSUE_TITLE"
+        fi
+
         if ! git push -u origin "$BRANCH_NAME" 2>/dev/null; then
+            # Non-fatal: the worktree exists, so the script goes on to its
+            # next steps (issue #516). Print lines that can be pasted to
+            # push and open the draft PR by hand, quoted with printf %q.
             echo "  ⚠️  Push failed — skipping draft PR (non-fatal)"
-            return 1
+            echo "     The branch $BRANCH_NAME is not on origin. To push it and open the draft PR,"
+            echo "     run these in a shell where AGENT_NAME and AGENT_MODEL are set"
+            echo "     (first: source $(printf '%q' "$SCRIPT_DIR/set_git_identity_env.sh") --agent <framework> \"<model-id>\"):"
+            local hint_body
+            if [ -n "$SKILL_NAME" ]; then
+                hint_body="$ISSUE_TITLE"$'\n\n'"Automated update from the \`$SKILL_NAME\` skill."
+            else
+                hint_body="Closes $issue_ref"
+                [ -n "$PARENT_ISSUE_NUM" ] && hint_body+=$'\n'"Part of #${PARENT_ISSUE_NUM}"
+            fi
+            local hint_pr
+            hint_pr="$(printf '%q --draft' "$SCRIPT_DIR/gh_create_pr.sh")"
+            [ -n "$repo_flag" ] && hint_pr+=" -R $(printf '%q' "$repo_flag")"
+            [ -n "$base_flag" ] && hint_pr+=" --base $(printf '%q' "$base_flag")"
+            hint_pr+=" --title $(printf '%q' "$pr_title") --body $(printf '%q' "$hint_body")"
+            echo "       cd $(printf '%q' "$git_dir")"
+            echo "       git push -u origin $(printf '%q' "$BRANCH_NAME")"
+            echo "       $hint_pr"
+            if [ "$HAS_PLAN" = true ]; then
+                local plan_abs="$PLAN_FILE"
+                # A relative plan path was found against ROOT_DIR (the
+                # script's working directory when HAS_PLAN was set).
+                [[ "$plan_abs" == /* ]] || plan_abs="$ROOT_DIR/$plan_abs"
+                local hint_comment
+                hint_comment="gh pr comment $(printf '%q' "$BRANCH_NAME")"
+                [ -n "$repo_flag" ] && hint_comment+=" -R $(printf '%q' "$repo_flag")"
+                hint_comment+=" --body-file $(printf '%q' "$plan_abs")"
+                echo "     The plan was not posted; after the PR exists, post it with:"
+                echo "       $hint_comment"
+            fi
+            return 0
         fi
 
         # Check for existing PR
@@ -1318,11 +1356,6 @@ PREOF
 **Authored-By**: \`${DRAFT_AGENT_NAME}\`
 **Model**: \`${DRAFT_AGENT_MODEL}\`
 PREOF
-        fi
-
-        local pr_title="$ISSUE_TITLE"
-        if [ -n "$PLAN_FILE" ]; then
-            pr_title="[PLAN] $ISSUE_TITLE"
         fi
 
         local gh_args=(pr create --draft --title "$pr_title" --body-file "$BODY_FILE")
