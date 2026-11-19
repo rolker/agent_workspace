@@ -210,3 +210,13 @@ The revision resolves all ten first-review findings as the checkpoint decided. O
 - [ ] Put the one-distro refusal in `system.py` beside `distros_for`, drop "not verified", say how a repeated `--distro` is refused.
 - [ ] Name "Modular" or "Easy to use" in Serves, tied to a bullet.
 - [ ] Make the SIGKILL test kill the tool, or drop it.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 09:40 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (second plan review: needs-work, one high and one medium finding, both mechanism; this is the host's second revise in a row, so a third answer at this checkpoint is the owner's)
+**After**: plan
+**Decision**: revise
+
+The host takes the second Plan Review's five findings and its recommendation as written. (1) "The built run" is defined once beside the definition of built: the layers from the bottom up to the first non-empty layer that is not built. All three uses read it: setup.bash sources the run's last layer; build <layer> refuses when an earlier non-empty layer is outside the run and not named in this run; a layer is built with the run's last layer below it sourced. Records of later layers are still kept, so a later successful rebuild of the failed layer brings them back without rebuilding. This narrows decision 2 of the previous checkpoint: the records stay, but setup.bash follows the run, and the design sentence is rewritten to say so. The closing report prints, for a failed layer, the command that sources what it did build. (2) Each layer's record holds its base (the layer sourced when it was built); a layer counts as built only when that base is the current last layer of the run below it; with a test for a layer that was empty and later filled. (3) The several-distros refusal goes in system.py beside distros_for, and a second --distro is refused, not silently replaced. (4) The Serves line names "Modular" or "Easy to use", tied to a bullet of that README section. (5) The kill test kills the tool itself, or is dropped in favour of the stub's check of the record during its run. The two owner questions (keep-going option, colcon in CI) stay open.
