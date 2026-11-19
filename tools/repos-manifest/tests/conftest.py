@@ -24,8 +24,21 @@ def _vcs_line() -> str:
     return f"vcs: {vcs} ({version})"
 
 
+def _colcon_line() -> str:
+    colcon = shutil.which("colcon", path=_TEST_PATH)
+    if colcon is None:
+        return "colcon: not found; the tests marked colcon are skipped"
+    return f"colcon: {colcon}"
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "colcon: builds with the real colcon; skipped when colcon or cmake is missing"
+    )
+
+
 def pytest_report_header(config):
-    return _vcs_line()
+    return [_vcs_line(), _colcon_line()]
 
 
 @pytest.fixture
