@@ -331,3 +331,25 @@ The closing report names the skip and ignore options as what colcon was given, s
 A record's `without` holds the skip and ignore options given to the layer's colcon when it was last built, as colcon read them, whether or not the layer has such packages. A list of package names ends at any argument starting with `-` and is recorded with leading whitespace stripped, as colcon reads it; a list of patterns is recorded as given and ends only at an option colcon is known to have, so an option of an unlisted colcon extension after a `-regex` list is recorded as patterns (documented). A skip or ignore value holding a control or invisible character, or not UTF-8, is refused before anything runs, e.g. `ERROR: the --packages-skip value 'grid\x0amap' holds a control or invisible character, which the layer's record cannot hold as one line of text; nothing was run. Give the package name or pattern in plain text`; the record and `setup.bash` are untouched.
 
 When a layer is rebuilt with another list, the layers above stay in the built run, because that is an ordinary rebuild of the layer in place on the same chain; a package now left out may still be in its `install/` from an earlier build, and one no longer left out may also have been there from before, so the layers above may or may not have used it, and `build` does not check.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 16:29 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent aacb37fd465dca92c, resume 1 of 3)
+
+**Branch**: feature/issue-531 at `37edd856`
+**Base**: origin/main
+**Depth**: Deep (reason: whole branch diff ~1320 lines across 8 files; changes the on-disk record format read by every build)
+**Must-fix**: 0 | **Suggestions**: 5
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round 1's three must-fix are fixed and re-checked with real colcon: `--packages-skip $'grid\nmap'` and `$'grid\xffmap'` are refused before anything runs, with no record written; on a run that builds three layers, of which only `mid` has the packages, the report reads `built with --packages-skip grid_map_demos grid_map given to colcon: _unnamed, mid, top`; the design.md sentence on the layers above now says they may or may not have used the package. Every fix's rule, reverted in a copy of the tool, fails its new test (8 of 8 mutants caught). Full suite: 1315 passed. black and flake8 pass.
+
+### Findings
+- [ ] (suggestion) A `--packages-skip`/`--packages-ignore` value whose control or line-separator characters are leading whitespace (`$'\nfoo'`, `$' foo'`, `$'\n'`) is stripped to `foo`/`''` and not refused. That matches colcon (`argument_package_name` returns `value.lstrip()`), and the record round-trips, but the design.md sentence "A value that holds a control or invisible character ... is refused" should say "as colcon reads it, after leading whitespace is stripped" — `tools/repos-manifest/docs/design.md:1045`, `build.py:661`
+- [ ] (suggestion) README and design.md say the record keeps the options given "when it was last built"; a selection run rebuilds part of a layer and gives back the old record, so it is the last build that was not a selection — `tools/repos-manifest/README.md:116`, `tools/repos-manifest/docs/design.md:746`
+- [ ] (suggestion) A `-regex` pattern that starts with `--packages` (`--packages-skip-regex --packages-x`) makes `package_selection` read the run as selection, because `_option_names` takes every `--` argument as an option name, although colcon takes it as a pattern and `left_out` records it as one. This errs on the safe side (refused on an unbuilt layer); either skip the values `left_out` consumes or note the exception — `tools/repos-manifest/src/repos_manifest/build.py:801`
+- [ ] (suggestion) `read_built` checks `without` with `_CONTROL` (C0 and DEL) while the command line refuses with `has_unsafe_char`, so a hand-edited record holding `‮`, `\x9b` or a lone surrogate is read and printed in the "changed" line (a surrogate raises UnicodeEncodeError). Only a hand edit can produce it — `tools/repos-manifest/src/repos_manifest/system.py:608`
+- [ ] (suggestion) Where colcon-mixin is not installed, colcon takes a `--mixin` after a `-regex` list as a pattern while `left_out` ends the list there, so the record holds fewer patterns than colcon used. design.md states only the reverse case (an unlisted extension's option recorded as patterns); add this one — `tools/repos-manifest/docs/design.md:1037`
