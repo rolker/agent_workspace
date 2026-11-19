@@ -189,3 +189,11 @@ The three findings of the first review are resolved as the checkpoint decided, a
 **Decision**: revise
 
 The host takes the second Plan Review's finding and its three notes as written. The hint prints the worktree directory to run from, then git push -u origin <branch>, then the script by its absolute path ($SCRIPT_DIR/gh_create_pr.sh) with --draft, -R and --base when set, the title quoted with printf %q, and the body inline (--body with the same Closes / Part of text the function would have written; gh_create_pr.sh adds the signature), with no --body-file naming a file that does not exist. When a plan file was given it also prints the gh pr comment step for the plan that was not posted. The test adds the refusing hook after its set-up push, and asserts the absolute script path and the Closes body in the hint.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-19 12:55 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-516/plan.md` at `d3e7f045`
+
+Second revision: the failed-push hint prints the worktree directory, git push, then the absolute-path gh_create_pr.sh line with --draft, -R and --base when set, printf %q title and an inline --body (Closes / Part of, or the skill text), plus the gh pr comment line for the unposted plan; the test adds the refusing hook after the set-up push and asserts the absolute path and Closes body.
