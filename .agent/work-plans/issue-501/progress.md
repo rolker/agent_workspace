@@ -671,3 +671,29 @@ Each code fix has a test that fails without it: the new tests were run against t
 - Signal, stop and lock tests (`-k "signal or stop or lock or ctrl_z or zombies or outlive or killed or leaves_behind or handlers"`), five runs: `27 passed` each time (22.6-22.7 s)
 - black and flake8 (pre-commit) on the changed files clean; commits with `SKIP=validate-script-tests`; no workspace script changed, so no `.agent/scripts/tests` suite applies; the full pass is left to the host.
 - After the suite: `git status --porcelain` empty, no `log/`, `build/` or `install/` in the worktree.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-19 13:16 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent ac4541685cd426ca6, resume 1 of 3)
+
+**PR**: #518 at `adb63e75`
+**Depth**: Deep (reason: whole diff +3650 lines over 15 files, CI workflow change; fix-round re-review)
+**Must-fix**: 3 | **Suggestions**: 8
+
+Previous must-fix 1 (chain) re-run with real colcon: fixed (`build x b` now leaves c "recorded built, not used", setup.bash sources b; a plain build brings c back with x on the path). Porter path re-run with real colcon (by-hand base, failing mid, `-- --continue-on-error`, `--keep-going`, fix, `build mid -- --packages-skip-build-finished`, plain build): report and setup.bash true at every step. A by-hand system whose first `build` fails in the lowest layer: setup.bash goes back to the stub, the report says "nothing is built" and offers sourcing what colcon wrote. Cross-model: codex completed (8 findings, must-fix 1 reproduced), gemini failed twice (empty response, a tool call denied headless). Tool suite: 1129 passed with real colcon. CI at adb63e75: all checks passed on Python 3.10 and 3.14; no Copilot review.
+
+### Findings
+- [ ] (must-fix) `build -- --cmake-target all` on a fresh system records `_unnamed` "built" with its package not installed (colcon skips the install step but writes the prefix scripts); mid then fails on `find_package(a)`. Reproduced with real colcon. design.md 986-989 covers `--cmake-target` only in a defaults file or mixin. Treat it like package selection (only rebuild built layers, keep their records) or refuse it — `build.py` (forwarded-argument checks)
+- [ ] (must-fix) A failed removal of `install/setup.bash` (e.g. `chmod 555 mid/install`, then `build mid`) drops the layer's valid record, and so the layers above it from the run, though colcon never started; the setup-blocked path just above gives `had` back. Restore the record on that path too — `build.py:931-946`
+- [ ] (must-fix) design.md says the note names "each such file that is there"; `colcon_defaults_files()` names `COLCON_DEFAULTS_FILE` without checking it exists (`COLCON_DEFAULTS_FILE=/nonexistent/x.yaml` prints a NOTE for it) — `build.py:851-853`, `docs/design.md:990`
+- [ ] (suggestion) A layer dropped from the manifest (or emptied) and `sync`: the layer above is rebuilt on the shorter chain and recorded built, but its CMakeCache still points into the dropped layer's leftover `install/` (exit 0, `built: _unnamed, top`); note the leftover `install/` as the keep-going line does — `build.py` report
+- [ ] (suggestion) When colcon ends without writing `install/setup.bash` (argument error, stop signal), the failed line and stop line do not say the file was removed, which a person sourcing it directly will meet — `build.py` report / `run_build`
+- [ ] (suggestion) README "names such a file when one is there" follows "a file of colcon defaults or a mixin"; mixins are never named — `README.md:112-115`
+- [ ] (suggestion) `sync` takes no build lock, so a `sync` during `build` can change the resolved files between `build`'s reads — `build.py` `read_layers`
+- [ ] (suggestion) An unreadable tool-written `setup.bash` is treated as a person's own file, so the run goes on instead of stopping before colcon — `build.py:278`
+- [ ] (suggestion) The ownership check and `os.replace` of `setup.bash` are not atomic (a file put there between them is overwritten) — `build.py:288`
+- [ ] (suggestion) The record write is not fsynced before colcon starts, so a power loss can bring back the old record; plan item 6 promises power loss is covered (the design doc does not) — `system.py:338`, `plan.md:29`
+- [ ] (suggestion) A stop signal between `hold_build_lock` and `progress.lock` assignment leaves the descriptor unclosed for an in-process caller of `cli.main()` — `build.py:1148`
