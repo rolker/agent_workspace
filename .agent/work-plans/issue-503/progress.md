@@ -951,3 +951,20 @@ PR mode, round 1 triage. Hosted reviews: none (0 reviews, 0 inline comments, 0 c
 **Decision**: address
 
 Fix the four open findings of the Integrated Review, each as small as it can be: sentences only for 1 to 3 (state what the code does and nothing more); for 4, list the set-aside names before the plain names in the one function that lists the distros, with a comment giving the reason in one line. No other change.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-18 22:40 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #514 at `d95cd89b`
+**Addressed**: Integrated Review at `7ac39c89` (2026-11-18 22:35 -05:00)
+**Commits**: 95f49169, d2be335f, a8edd315, 28057981, d95cd89b
+
+Per the Checkpoint (After: findings, Decision: address): sentences only for 1 to 3, checked against _rc_tool_sync, _rc_tool_distro_select, the dispatcher's ACTIVE_PROJECT_FROM (pwd -P) and merge_pr.sh:2268-2301; the order change for 4 with a one-line comment and a test of the both-exist case (the only-set-aside case is test_tool_set_aside_resolve_is_a_distro's). Suites (each with bash): test_ros2_colcon 1368 passed 0 failed 0 skipped; test_adapter 248/0; test_register_project 222/0; test_worktree_create PASS 90 FAIL 0; validate_adapter.sh all 13 verbs for both types; check_design_anchors.sh exit 0; removed-or-changed lines in .agent/scripts/tests vs origin/main: 0. Full pre-commit pass left to the host.
+
+### Actions
+- [x] Distro paragraph and header: calling directory taken as a physical path; setup/sync pass --distro <x> from inside <root>/<x>/, the one resolved distro's name from elsewhere, no --distro only from outside every distro's directory when nothing is resolved — `docs/manifest/design.md:133,163`, `.agent/project_types/ros2_colcon/adapter.sh:61,90`
+- [x] Header opening: three routes, tool route checked first; manifest read from the hosting dir on the two older routes, from the tool's resolved files on the tool route — `.agent/project_types/ros2_colcon/adapter.sh:8-13`
+- [x] merge_pr.sh's "fetched only: <reason>" output separated from the reader's own `git -C <clone> pull` — `.agent/WORKTREE_GUIDE.md:318`
+- [x] _rc_tool_distros globs the set-aside .*/ names before */, one-line comment; test_tool_distro_listed_once_beside_its_set_aside — `.agent/project_types/ros2_colcon/adapter.sh:803`, `.agent/scripts/tests/test_ros2_colcon.sh`
