@@ -188,7 +188,8 @@ def cmd_sync(args: argparse.Namespace) -> int:
 
 
 def cmd_build(args: argparse.Namespace) -> int:
-    return run_build([args.distro] if args.distro else [], args.layers, args.colcon_args)
+    distros = [args.distro] if args.distro else []
+    return run_build(distros, args.layers, args.colcon_args, args.keep_going)
 
 
 class _Once(argparse.Action):
@@ -288,6 +289,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     build_p.add_argument(
         "--distro", action=_Once, help="The distro to build, when there are several; once"
+    )
+    build_p.add_argument(
+        "--keep-going",
+        action="store_true",
+        help=(
+            "After a layer fails, still try the later ones, each on the layers below it that"
+            " are built; what they build is not used until the failed layer is fixed"
+        ),
     )
     build_p.add_argument(
         "layers", nargs="*", metavar="LAYER", help="Build only these layers (default: every one)"

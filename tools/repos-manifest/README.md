@@ -107,10 +107,10 @@ there yet. Both need `git`, and `vcs` from vcs2l or vcstool, on `PATH`.
 [docs/design.md](docs/design.md#what-is-built) says how far they go.
 
 `build` builds one distro's layers in order with `colcon`, each on top of the ones below it,
-stops at the first layer that fails, and writes the one `setup.bash` to source. It keeps a
-record of what it built in `.repos-manifest/built.yaml` and trusts nothing else;
-[docs/design.md](docs/design.md#build) says what it builds, what it refuses and what
-`setup.bash` sources. It needs `colcon` on `PATH`, or installed in the same virtual environment
+stops at the first layer that fails (`--keep-going` tries the later ones), and writes the one
+`setup.bash` to source. It keeps a record of what it built in `.repos-manifest/built.yaml`
+and trusts nothing else; [docs/design.md](docs/design.md#build) says what it builds, what it
+refuses and what `setup.bash` sources. It needs `colcon` on `PATH`, or installed in the same virtual environment
 as repos-manifest.
 
 ```bash

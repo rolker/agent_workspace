@@ -696,7 +696,7 @@ access to.
 ### build
 
 ```
-repos-manifest build [--distro <name>] [<layer> ...] [-- <colcon arguments>]
+repos-manifest build [--distro <name>] [--keep-going] [<layer> ...] [-- <colcon arguments>]
 ```
 
 `build` acts on one distro, chosen as under "Which distro a command uses"; `--distro` is given
@@ -773,6 +773,17 @@ last of them with no rebuild of theirs. A rebuild of a lower layer whose own bas
 unchanged keeps the layers above it built in the same way; a layer whose base no longer
 matches, such as one above a layer that was empty and now has repos, is not built and is
 built again by the next plain `build`.
+
+`build --keep-going` tries the later layers after a failed one instead of stopping. Each is
+built on the built run's last layer below it, so it leaves the failed layer out and lacks its
+packages; a layer whose own `colcon` then fails is a failed layer too. When its `colcon`
+exits with 0, its record is written with that base, but it is outside the built run, since
+the failed layer below it is not built, so it is not used: `setup.bash` sources the layer
+below the first failed one, as without the option, and the report says of such a layer that
+it was built without the failed layer and is not used. When the failed layer is fixed and
+built, such a layer's base no longer matches and it is built again by the next plain
+`build`; that is the check of the base at work, not a rule of its own. The exit status is 1
+whenever a layer failed.
 
 `setup.bash` is rewritten from the record, in one step, at the end of every run that started
 a layer, a run stopped by a signal included. It is replaced only where nothing is or where the
@@ -1156,7 +1167,7 @@ not touched, and `sync` says that updating it is not built yet. Two names that a
 ignores case treats as one are not checked yet on the real destination.
 
 `build` is built as "build" describes, for one distro at a time, stopping at the first layer
-that fails. It reads the resolved files `sync` wrote and needs `colcon` on `PATH` or beside the
+that fails unless `--keep-going` is given. It reads the resolved files `sync` wrote and needs `colcon` on `PATH` or beside the
 Python running it.
 
 Not built yet: updating repos that are there (step 1 of "sync" and its rules),
@@ -1177,7 +1188,3 @@ Not built yet: updating repos that are there (step 1 of "sync" and its rules),
 - How a distro is removed from a system with a directory per distro.
 - What a distro's manifest that lacks the system's role or one of its groups gives at
   `add-distro`.
-- Whether `build` should carry on with later layers after one fails. It stops at the first
-  layer that fails: the manifest does not say which layers depend on which, only their
-  order, so stopping is the safe rule. Carrying on, if it is wanted, is an option a person
-  asks for.

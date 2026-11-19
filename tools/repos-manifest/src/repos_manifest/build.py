@@ -390,7 +390,7 @@ class Progress:
     layers: List[Layer]
     started: List[str] = field(default_factory=list)
     built: List[str] = field(default_factory=list)
-    failed: Optional[Tuple[str, int]] = None  # the layer and colcon's exit status
+    failed: List[Tuple[str, int]] = field(default_factory=list)  # layer, colcon's status
     skipped: List[str] = field(default_factory=list)
     not_tried: List[str] = field(default_factory=list)
     setup_problem: Optional[str] = None
@@ -423,14 +423,22 @@ def finish_setup(progress: Progress) -> Run:
 
 
 def build_layers(
-    progress: Progress, chosen: Sequence[str], colcon: Optional[str], colcon_args: Sequence[str]
+    progress: Progress,
+    chosen: Sequence[str],
+    colcon: Optional[str],
+    colcon_args: Sequence[str],
+    keep_going: bool = False,
 ) -> None:
+    """Build the chosen layers in order. After a failed layer the later ones are not tried,
+    unless `keep_going`: then each is built on the built run's last layer below it, which
+    leaves the failed layer out, and its record is written, but it is outside the built run
+    and so not used until it is built again on top of the failed layer, fixed."""
     system, distro, layers = progress.system, progress.distro, progress.layers
     records = read_built(system, distro)
     for index, layer in enumerate(layers):
         if layer.name not in chosen:
             continue
-        if progress.failed is not None:
+        if progress.failed and not keep_going:
             if not layer.empty:
                 progress.not_tried.append(layer.name)
             continue
@@ -453,7 +461,7 @@ def build_layers(
         if stopped is not None:
             raise Stopped(stopped)
         if status != 0:
-            progress.failed = (layer.name, status)
+            progress.failed.append((layer.name, status))
             continue
         records[layer.name] = LayerRecord(_now(), list(layer.on_disk), below)
         _put(progress, records)
@@ -466,10 +474,17 @@ def report(progress: Progress, run: Run) -> None:
     records = read_built(progress.system, progress.distro)
     name = progress.distro if progress.distro is not None else "(no distro)"
     print(f"build, distro {name}:")
-    if progress.built:
-        print(f"  built: {', '.join(progress.built)}")
-    if progress.failed is not None:
-        failed, status = progress.failed
+    used = [name for name in progress.built if name in run.layers]
+    if used:
+        print(f"  built: {', '.join(used)}")
+    failed_names = [failed for failed, _ in progress.failed]
+    for name in progress.built:
+        if name in run.layers:
+            continue
+        below = [each.name for each in layers[: layers.index(by_name[name])]]
+        without = [failed for failed in failed_names if failed in below]
+        print(f"  built without {', '.join(without) or run.end} (failed); not used: {name}")
+    for failed, status in progress.failed:
         directory = by_name[failed].directory
         real = Path(os.path.realpath(directory))
         print(
@@ -518,14 +533,17 @@ def report(progress: Progress, run: Run) -> None:
 
 
 def run_build(
-    named_distros: Sequence[str], layer_names: Sequence[str], colcon_args: Sequence[str]
+    named_distros: Sequence[str],
+    layer_names: Sequence[str],
+    colcon_args: Sequence[str],
+    keep_going: bool = False,
 ) -> int:
     """A stop signal at any point ends the run with one line; once a layer has started,
     `setup.bash` is first written from the record as it then is."""
     holder: List[Progress] = []
     try:
         with signals_end_the_run():
-            return _build(named_distros, layer_names, colcon_args, holder)
+            return _build(named_distros, layer_names, colcon_args, keep_going, holder)
     except Stopped as exc:
         progress = holder[0] if holder else None
         if progress is None or not progress.started:
@@ -537,7 +555,7 @@ def run_build(
         done = ", ".join(progress.built) or "none"
         interrupted = [name for name in progress.started if name not in progress.built]
         line = f"stopped by {signal_name(exc)}; layers built in this run: {done}"
-        if interrupted and progress.failed is None:
+        if interrupted and interrupted[-1] not in [name for name, _ in progress.failed]:
             line += f"; {interrupted[-1]} was stopped and is not built"
         if progress.setup_problem is not None:
             line += f"; {progress.setup_problem}"
@@ -550,6 +568,7 @@ def _build(
     named_distros: Sequence[str],
     layer_names: Sequence[str],
     colcon_args: Sequence[str],
+    keep_going: bool,
     holder: List[Progress],
 ) -> int:
     cwd = current_directory()
@@ -572,11 +591,11 @@ def _build(
             warn(warning)
         progress = Progress(system, config, distro, layers)
         holder.append(progress)
-        build_layers(progress, chosen, colcon, colcon_args)
+        build_layers(progress, chosen, colcon, colcon_args, keep_going)
         if progress.started:
             run = finish_setup(progress)
         else:
             run = built_run(layers, read_built(system, distro))
         report(progress, run)
-    failed = progress.failed is not None or progress.setup_problem is not None
+    failed = bool(progress.failed) or progress.setup_problem is not None
     return 1 if failed else 0

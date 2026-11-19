@@ -175,6 +175,44 @@ def test_a_failure_then_a_rebuild_of_that_layer_brings_the_one_above_back(system
     assert out.endswith("setup.bash: sources top\n")
 
 
+def test_keep_going_tries_later_layers_without_using_them(system, stub, capsys):
+    (system / "mid/src/m/STUB_FAIL").touch()
+    capsys.readouterr()
+    assert run(system, "build", "--keep-going") == 1
+    done = runs(stub)
+    assert [cwd for cwd, _, _ in done] == [str(system), str(system / "mid"), str(system / "top")]
+    assert done[2][1] == "sys"  # top is built on the unnamed layer, without mid
+    assert built(system)["top"]["base"] == BASE
+    assert "mid" not in built(system)
+    assert sourced_by_setup(system) == real(system)
+    out = capsys.readouterr().out
+    assert f"  built: {BASE}\n" in out
+    assert "  built without mid (failed); not used: top\n" in out
+    assert "  failed: mid (colcon exited 1)" in out
+    assert "not tried" not in out
+    assert out.endswith(f"setup.bash: sources {BASE}\n")
+    # mid fixed and built alone: top was built without it, so it is not built until rebuilt.
+    (system / "mid/src/m/STUB_FAIL").unlink()
+    assert run(system, "build", "mid") == 0
+    out = capsys.readouterr().out
+    assert "  top: base changed: built on top of _unnamed, and the built run below it now" in out
+    assert sourced_by_setup(system) == real(system / "mid")
+    assert run(system, "build") == 0
+    assert runs(stub)[-1][1] == "mid"
+    assert sourced_by_setup(system) == real(system / "top")
+
+
+def test_keep_going_with_a_failure_in_the_first_layer(system, stub, capsys):
+    (system / "src/u/STUB_FAIL").touch()
+    assert run(system, "build", "--keep-going") == 1
+    assert [sourced for _, sourced, _ in runs(stub)] == ["", "", ""]
+    assert list(built(system)) == ["mid", "top"]
+    assert (system / "setup.bash").read_text() == SETUP_TEXT
+    out = capsys.readouterr().out
+    assert f"  built without {BASE} (failed); not used: mid\n" in out
+    assert f"  built without {BASE} (failed); not used: top\n" in out
+
+
 def test_a_failure_in_the_first_layer_leaves_the_stub(system, stub, capsys):
     (system / "src/u/STUB_FAIL").touch()
     assert run(system, "build") == 1
