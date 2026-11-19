@@ -245,3 +245,13 @@ The finding and notes of the second review are resolved as the checkpoint decide
 
 - [ ] In the test, match the `printf %q` form of the `Closes` body.
 - [ ] Quote the printed `cd` and plan-file paths with `printf %q`.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 12:56 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (third plan review: ready, five low notes)
+**After**: plan
+**Decision**: proceed
+
+The third Plan Review found every printed line runs as written in all four cases. Its notes 1 to 3 go to the implementer in the handoff: the test matches the escaped form printf %q prints for the body; the printed cd path and plan-file path are quoted with printf %q too; the hint names set_git_identity_env.sh, since gh_create_pr.sh stops when AGENT_NAME or AGENT_MODEL is unset. Note 4 (the inline body has no Summary heading or issue title) is accepted as it is. Note 5 is older behaviour and no action.
