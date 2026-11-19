@@ -69,3 +69,11 @@ issue: 522
 **Decision**: proceed
 
 The Issue Review confirmed the claim and found the skill to be the only text that disagrees with the script. The host takes its recommendation: the skill is changed, not the script (the refusal is deliberate and pinned by a test). A package merge takes --pr <owner/repo#M> with --project when the session's project is not empty, and no --type. The three actions go to the plan as written.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-19 14:45 -05:00
+**By**: Claude Code (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-522/plan.md` at `423afd2f`
+
+Reword step 11, the --project sentence and the usage line of run-issue so a package merge is --pr <owner/repo#M> with --project when project= is not empty and no --type; pin the text in test_skill_paths.sh, add the missing --type project refusal case to test_merge_pr.sh, and fix the design.md row.
