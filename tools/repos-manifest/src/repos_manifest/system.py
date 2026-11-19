@@ -449,12 +449,28 @@ def hold_build_lock(system: Path, distro: Optional[str]) -> int:
         of = f"of distro {distro} " if distro is not None else ""
         pids = [int(each) for each in holders if each.isdigit()]
         tool, colcon = (pids + [None, None])[:2]
-        if tool is not None and _alive(tool):
+        tool_holds = _holds(tool, path)
+        colcon_holds = _holds(colcon, path)
+        if tool_holds:
             who = f" (process {tool})"
-        elif colcon is not None and _alive(colcon):
+        elif colcon_holds and tool_holds is None:
+            who = f": its colcon (process {colcon}) still runs"
+        elif colcon_holds:
             who = (
                 f": its colcon (process {colcon}) still runs, though the `repos-manifest build`"
                 f" that started it (process {tool}) has ended"
+            )
+        elif tool_holds is None or colcon_holds is None:
+            # Which processes have the file open cannot be seen here: the numbers are only
+            # what the lock file says, and a process of that number may be another one.
+            named = [
+                str(pid)
+                for pid, holds in ((tool, tool_holds), (colcon, colcon_holds))
+                if holds is None
+            ]
+            who = (
+                f"; its lock file names process {' and '.join(named)}, which this tool cannot"
+                f" check; `fuser -v {path}` names the process that holds its lock"
             )
         else:
             who = f"; `fuser -v {path}` names the process that holds its lock"
@@ -480,6 +496,30 @@ def note_lock_holders(fd: int, pids: Sequence[int]) -> None:
         pass
 
 
+def _holds(pid: Optional[int], path: Path) -> Optional[bool]:
+    """Whether process `pid` has the lock file `path` open: True or False when its open files
+    can be read (`/proc/<pid>/fd`), None when they cannot. A number from the lock file is not
+    trusted alone: the process may have ended and its number been given to another one."""
+    if pid is None or pid <= 0:
+        return False
+    fds = Path(f"/proc/{pid}/fd")
+    try:
+        entries = list(fds.iterdir())
+    except FileNotFoundError:
+        # No such process, or no /proc at all.
+        return False if Path("/proc/self/fd").is_dir() else (None if _alive(pid) else False)
+    except OSError:
+        return None if _alive(pid) else False
+    target = os.path.realpath(path)
+    for entry in entries:
+        try:
+            if os.path.realpath(os.readlink(entry)) == target:
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def _alive(pid: int) -> bool:
     try:
         os.kill(pid, 0)
@@ -496,13 +536,18 @@ def _alive(pid: int) -> bool:
 
 @dataclass
 class LayerRecord:
-    """A layer `build` built with colcon exiting 0: when, from which repos, and the layer that
-    was sourced when it was built (None when nothing was)."""
+    """A layer `build` built with colcon exiting 0: when, from which repos, and the chain it was
+    built on: the built run below it at the time, its layers with repos from the bottom up
+    (empty when nothing was sourced). Its last layer is the one that was sourced."""
 
     time: str
     repos: List[str]
-    base: Optional[str]
+    below: List[str]
 
+
+# The keys of a layer's record in an unreleased draft that held only the layer sourced when it
+# was built (`base`), not the whole chain below it. Such a record is read as not built.
+_SINGLE_BASE_KEYS = ("time", "repos", "base")
 
 # A newline or another control character in a record's value: a record this tool wrote has
 # none, and its values go into `setup.bash`'s text.
@@ -535,19 +580,23 @@ def read_built(system: Path, distro: Optional[str]) -> Dict[str, LayerRecord]:
         at = f"layers.{layer}"
         if not isinstance(layer, str) or _CONTROL.search(layer):
             raise bad(f"layer {layer!r} is not a layer name")
-        _check_keys(record, at, ("time", "repos", "base"), (), bad)
+        if isinstance(record, dict) and set(record) == set(_SINGLE_BASE_KEYS):
+            continue  # the single-base form of an unreleased draft: read as not built
+        _check_keys(record, at, ("time", "repos", "below"), (), bad)
         if not isinstance(record["time"], str):
             raise bad(f"`{at}.time` is {_kind(record['time'])}, not a string")
-        if not isinstance(record["repos"], list) or not all(
-            isinstance(key, str) for key in record["repos"]
-        ):
-            raise bad(f"`{at}.repos` is not a list of repo keys")
-        if record["base"] is not None and not isinstance(record["base"], str):
-            raise bad(f"`{at}.base` is {_kind(record['base'])}, not a layer or empty")
-        texts = [record["time"], *record["repos"], record["base"] or ""]
+        for key in ("repos", "below"):
+            if not isinstance(record[key], list) or not all(
+                isinstance(each, str) for each in record[key]
+            ):
+                what = "repo keys" if key == "repos" else "layer names"
+                raise bad(f"`{at}.{key}` is not a list of {what}")
+        texts = [record["time"], *record["repos"], *record["below"]]
         if any(_CONTROL.search(text) for text in texts):
             raise bad(f"`{at}` holds a control character")
-        records[str(layer)] = LayerRecord(record["time"], list(record["repos"]), record["base"])
+        records[str(layer)] = LayerRecord(
+            record["time"], list(record["repos"]), list(record["below"])
+        )
     return records
 
 
@@ -556,7 +605,7 @@ def put_built_layers(system: Path, distro: Optional[str], layers: Dict[str, Laye
     data = {
         "format": BUILT_FORMAT,
         "layers": {
-            layer: {"time": record.time, "repos": list(record.repos), "base": record.base}
+            layer: {"time": record.time, "repos": list(record.repos), "below": list(record.below)}
             for layer, record in layers.items()
         },
     }

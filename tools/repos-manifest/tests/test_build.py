@@ -3,6 +3,7 @@ the one `setup.bash`. Most tests use a stand-in for colcon (fixtures/stub_colcon
 marked `colcon` build real plain-CMake packages with the colcon on PATH."""
 
 import os
+import resource
 import shutil
 import signal
 import subprocess
@@ -17,6 +18,7 @@ from helpers import make_package_remote, make_remote, repo, run, write_manifest
 import repos_manifest
 import repos_manifest.cli
 from repos_manifest import build
+from repos_manifest.signals import Stopped, signals_end_the_run
 from repos_manifest.system import SETUP_TEXT, build_lock_file, hold_build_lock
 
 STUB = Path(__file__).parent / "fixtures" / "stub_colcon"
@@ -25,13 +27,15 @@ BASE = "_unnamed"
 
 @pytest.fixture
 def stub(vcs, monkeypatch, tmp_path):
-    """The stand-in colcon first on PATH, its log, and no prefix variable from the caller."""
+    """The stand-in colcon first on PATH, its log, and no prefix variable from the caller; no
+    file of colcon's default arguments from the caller either."""
     os.chmod(STUB / "colcon", 0o755)
     monkeypatch.setenv("PATH", f"{STUB}{os.pathsep}{os.environ['PATH']}")
     log = tmp_path / "colcon.log"
     monkeypatch.setenv("STUB_COLCON_LOG", str(log))
-    for variable in build.PREFIX_VARIABLES + ("STUB_SOURCED",):
+    for variable in build.PREFIX_VARIABLES + ("STUB_SOURCED", "COLCON_DEFAULTS_FILE"):
         monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setenv("COLCON_HOME", str(tmp_path / "colcon-home"))
     return log
 
 
@@ -107,7 +111,7 @@ def test_layers_are_built_in_order_each_on_the_one_below(system, stub, capsys):
     ]
     records = built(system)
     assert list(records) == [BASE, "mid", "top"]
-    assert [records[name]["base"] for name in records] == [None, BASE, "mid"]
+    assert [records[name]["below"] for name in records] == [[], [BASE], [BASE, "mid"]]
     assert records["mid"]["repos"] == ["m"]
     assert sourced_by_setup(system) == real(system / "top")
     out = capsys.readouterr().out
@@ -166,7 +170,7 @@ def test_a_failure_then_a_rebuild_of_that_layer_brings_the_one_above_back(system
     out = capsys.readouterr().out
     assert "  recorded built, not used: top (above mid, which is not built)\n" in out
     assert sourced_by_setup(system) == real(system)
-    assert built(system)["top"]["base"] == "mid"
+    assert built(system)["top"]["below"] == [BASE, "mid"]
     (system / "mid/src/m/STUB_FAIL").unlink()
     stub.unlink()
     assert run(system, "build", "mid") == 0
@@ -184,12 +188,17 @@ def test_keep_going_tries_later_layers_without_using_them(system, stub, capsys):
     done = runs(stub)
     assert [cwd for cwd, _, _ in done] == [str(system), str(system / "mid"), str(system / "top")]
     assert done[2][1] == "sys"  # top is built on the unnamed layer, without mid
-    assert built(system)["top"]["base"] == BASE
+    assert built(system)["top"]["below"] == [BASE]
     assert "mid" not in built(system)
     assert sourced_by_setup(system) == real(system)
     out = capsys.readouterr().out
     assert f"  built: {BASE}\n" in out
-    assert "  built without mid (failed); not used: top\n" in out
+    # colcon wrote mid's install/ before it failed: top may have found it through its cache.
+    assert (
+        "  built without sourcing mid (failed), so not used: top (it may have used what is left"
+        f" in {system / 'mid/install'}/ through paths its build directory kept from an earlier"
+        " build)\n" in out
+    )
     assert "  failed: mid (colcon exited 1)" in out
     assert "not tried" not in out
     assert out.endswith(f"setup.bash: sources {BASE}\n")
@@ -197,7 +206,10 @@ def test_keep_going_tries_later_layers_without_using_them(system, stub, capsys):
     (system / "mid/src/m/STUB_FAIL").unlink()
     assert run(system, "build", "mid") == 0
     out = capsys.readouterr().out
-    assert "  top: base changed: built on top of _unnamed, and the built run below it now" in out
+    assert (
+        "  recorded built, not used: top (built on _unnamed, but the built run below it is now"
+        " _unnamed, mid)\n" in out
+    )
     assert sourced_by_setup(system) == real(system / "mid")
     assert run(system, "build") == 0
     assert runs(stub)[-1][1] == "mid"
@@ -211,8 +223,15 @@ def test_keep_going_with_a_failure_in_the_first_layer(system, stub, capsys):
     assert list(built(system)) == ["mid", "top"]
     assert (system / "setup.bash").read_text() == SETUP_TEXT
     out = capsys.readouterr().out
-    assert f"  built without {BASE} (failed); not used: mid\n" in out
-    assert f"  built without {BASE} (failed); not used: top\n" in out
+    assert f"  built without sourcing {BASE} (failed), so not used: mid (it may have used" in out
+    assert f"  built without sourcing {BASE} (failed), so not used: top (it may have used" in out
+
+
+def test_keep_going_without_output_of_the_failed_layer_names_none(system, stub, capsys):
+    (system / "mid/src/m/STUB_FAIL_EARLY").touch()
+    capsys.readouterr()
+    assert run(system, "build", "--keep-going") == 1
+    assert "  built without sourcing mid (failed), so not used: top\n" in capsys.readouterr().out
 
 
 def test_a_failure_in_the_first_layer_leaves_the_stub(system, stub, capsys):
@@ -248,7 +267,7 @@ def test_a_layer_empty_when_the_one_above_was_built_and_filled_later(stub, tmp_p
     assert run(system, "build") == 0
     out = capsys.readouterr().out
     assert "  skipped, no repos on this machine: mid\n" in out
-    assert built(system)["top"]["base"] == BASE
+    assert built(system)["top"]["below"] == [BASE]
     assert [sourced for _, sourced, _ in runs(stub)] == ["", "sys"]
     make_remote(tmp_path / "remotes", "not-yet")
     assert run(system, "sync") == 0
@@ -276,7 +295,8 @@ def test_a_lower_layer_filled_and_built_alone_makes_the_one_above_not_built(stub
     assert run(system, "build", BASE, "mid") == 0
     out = capsys.readouterr().out
     assert (
-        "  top: base changed: built on top of _unnamed, and the built run below it now ends" in out
+        "  recorded built, not used: top (built on _unnamed, but the built run below it is now"
+        " _unnamed, mid)\n" in out
     )
     assert sourced_by_setup(system) == real(system / "mid")
 
@@ -297,7 +317,7 @@ def test_records_of_layers_no_longer_listed_are_dropped(system, stub):
     assert run(system, "build", BASE) == 0
     path = system / ".repos-manifest/built-jazzy.yaml"
     data = yaml.safe_load(path.read_text())
-    data["layers"]["gone"] = {"time": "t", "repos": ["g"], "base": None}
+    data["layers"]["gone"] = {"time": "t", "repos": ["g"], "below": []}
     path.write_text(yaml.safe_dump(data))
     assert run(system, "build", BASE) == 0
     data = yaml.safe_load(path.read_text())
@@ -431,6 +451,10 @@ def test_a_prefix_variable_holding_this_systems_output_is_warned_about(
     assert "WARNING" not in capsys.readouterr().err
 
 
+def _no_core_dump():
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))  # a SIGQUIT writes no core file
+
+
 def start_tool(system, *argv, env=None):
     """`repos-manifest build <argv>` as a process of its own, to send signals to."""
     package = str(Path(repos_manifest.__file__).parent.parent)
@@ -441,6 +465,7 @@ def start_tool(system, *argv, env=None):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        preexec_fn=_no_core_dump,
     )
 
 
@@ -479,7 +504,7 @@ def gone(pid, seconds=10):
     return True
 
 
-@pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGINT, signal.SIGHUP])
+@pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGQUIT])
 def test_a_stop_signal_to_the_tool_ends_colcons_whole_group_and_is_waited_for(system, stub, signum):
     assert run(system, "build", BASE) == 0
     (system / "mid/src/m/STUB_WAIT").touch()
@@ -934,13 +959,13 @@ def test_a_selection_run_rebuilds_built_layers_and_gives_back_their_records(syst
         "build --packages-select m --packages-select t --base-paths src/m",
         "build --packages-select m --packages-select t --base-paths src/t",
     ]
-    assert built(system) == before  # repos, base and time as they were
+    assert built(system) == before  # repos, chain and time as they were
     assert sourced_by_setup(system) == real(system / "top")
     out = capsys.readouterr().out
     assert f"  rebuilt with selection: {BASE}, mid, top\n" in out
     assert "  built:" not in out and out.endswith("setup.bash: sources top\n")
     # A failure still leaves the layer not built; with --keep-going the layer above it is not
-    # tried, since it could only be built on another base than its record's.
+    # tried, since it could only be built on another chain than its record's.
     (system / "mid/src/m/STUB_FAIL").touch()
     assert run(system, "build", "--keep-going", "--", "--packages-select", "m") == 1
     out = capsys.readouterr().out
@@ -962,17 +987,22 @@ def test_a_layer_whose_repos_differ_from_its_record_is_not_built_for_a_selection
     assert run(system, "build", "mid", "--", "--packages-select", "m") == 1
     err = capsys.readouterr().err
     assert (
-        "built, but its repos differ from its record: mid (new n); nothing was run. A build"
-        " without package selection records the change: `repos-manifest build mid`" in err
+        "built, but its repos differ from its record: mid (new n); nothing was run. Build it"
+        " without package selection first, which also records the changed repos:"
+        " `repos-manifest build mid`" in err
     )
     assert "not built:" not in err
-    # Both kinds at once, each named as what it is.
+    # Both kinds at once, each named as what it is, and one step naming every layer in the
+    # manifest's order, so that top is built on mid as it will be.
     (system / "top/install/setup.bash").unlink()
     assert run(system, "build", "mid", "top", "--", "--packages-select", "m") == 1
     err = capsys.readouterr().err
     assert "; not built: top (recorded built, but" in err
     assert "; built, but its repos differ from its record: mid (new n); nothing was run" in err
-    assert "Build them without package selection first: `repos-manifest build top`" in err
+    assert (
+        "Build them without package selection first, which also records the changed repos:"
+        " `repos-manifest build mid top`\n" in err
+    )
     (system / "top/install/setup.bash").write_text("")
     assert built(system)["mid"]["repos"] == ["m"]
     assert run(system, "build", "mid") == 0
@@ -1069,8 +1099,10 @@ def test_a_failed_rewrite_of_setup_bash_fails_the_run_even_if_a_later_one_works(
 
     def write_setup(*args):
         calls.append(1)
-        if len(calls) == 1:
-            return "setup.bash: cannot be written: No space left on device"
+        if len(calls) == 2:  # the rewrite after the first layer was built
+            return build.SetupProblem(
+                "setup.bash: cannot be written: No space left on device", False
+            )
         return real_write(*args)
 
     monkeypatch.setattr(build, "write_setup", write_setup)
@@ -1082,7 +1114,7 @@ def test_a_failed_rewrite_of_setup_bash_fails_the_run_even_if_a_later_one_works(
     assert sourced_by_setup(system) == real(system / "top")
 
 
-@pytest.mark.parametrize("where", ["time", "repos", "base", "layer"])
+@pytest.mark.parametrize("where", ["time", "repos", "below", "layer"])
 def test_a_record_with_a_control_character_is_unreadable(system, stub, capsys, where):
     assert run(system, "build") == 0
     path = system / ".repos-manifest/built-jazzy.yaml"
@@ -1090,8 +1122,8 @@ def test_a_record_with_a_control_character_is_unreadable(system, stub, capsys, w
     bad = "x\nexport EVIL=1"
     if where == "layer":
         data["layers"][bad] = data["layers"].pop("top")
-    elif where == "repos":
-        data["layers"]["top"]["repos"] = [bad]
+    elif where in ("repos", "below"):
+        data["layers"]["top"][where] = [bad]
     else:
         data["layers"]["top"][where] = bad
     path.write_text(yaml.safe_dump(data))
@@ -1110,6 +1142,295 @@ def test_a_stop_before_the_checks_end_releases_the_lock(system, stub, monkeypatc
     assert run(system, "build") == 128 + signal.SIGINT
     assert "stopped by SIGINT; nothing was changed" in capsys.readouterr().err
     os.close(hold_build_lock(system, "jazzy"))  # not refused: the lock was released
+
+
+# --- Round 6: the chain, real paths, what colcon leaves, signals, setup.bash, the lock -----
+
+
+def four_layers(tmp_path):
+    """A system with no distros: `u` in the unnamed layer, then `x` (its one repo optional and
+    not there yet), `b` and `c`."""
+    remotes = tmp_path / "remotes"
+    data = {
+        "format": 1,
+        "layers": ["x", "b", "c"],
+        "repositories": {
+            "u": repo(make_remote(remotes, "u")),
+            "xr": repo(remotes / "xr", None, "x", optional=True),
+            "br": repo(make_remote(remotes, "br"), None, "b"),
+            "cr": repo(make_remote(remotes, "cr"), None, "c"),
+        },
+    }
+    write_manifest(tmp_path / "m.manifest.yaml", data)
+    system = tmp_path / "sys"
+    system.mkdir()
+    assert run(system, "init", "../m.manifest.yaml", "--yes") == 0
+    return system
+
+
+def test_a_layer_filled_below_takes_every_layer_above_out_of_the_run(stub, tmp_path, capsys):
+    """The record holds the whole chain a layer was built on, not only the layer just below:
+    x filled and built with b, c above b is not built until it is built on x too."""
+    system = four_layers(tmp_path)
+    assert run(system, "build") == 0
+    assert built(system, BASE)["c"]["below"] == [BASE, "b"]
+    make_remote(tmp_path / "remotes", "xr")
+    assert run(system, "sync") == 0
+    capsys.readouterr()
+    assert run(system, "build", "x", "b") == 0
+    out = capsys.readouterr().out
+    assert "  built: x, b\n" in out
+    assert (
+        "  recorded built, not used: c (built on _unnamed, b, but the built run below it is now"
+        " _unnamed, x, b)\n" in out
+    )
+    assert "on the earlier output" not in out
+    assert out.endswith("setup.bash: sources b\n")
+    assert sourced_by_setup(system) == real(system / "b")
+    assert built(system, BASE)["b"]["below"] == [BASE, "x"]
+    # A plain build rebuilds c, on the whole run below it.
+    capsys.readouterr()
+    assert run(system, "build") == 0
+    assert runs(stub)[-1][0] == str(system / "c") and runs(stub)[-1][1] == "b"
+    assert built(system, BASE)["c"]["below"] == [BASE, "x", "b"]
+    assert sourced_by_setup(system) == real(system / "c")
+
+
+def test_a_rebuild_in_place_keeps_the_chain_and_the_layers_above(stub, tmp_path, capsys):
+    system = four_layers(tmp_path)
+    assert run(system, "build") == 0
+    capsys.readouterr()
+    assert run(system, "build", "b") == 0
+    out = capsys.readouterr().out
+    assert f"  built before, in the run: {BASE}, c (on the earlier output of b)\n" in out
+    assert sourced_by_setup(system) == real(system / "c")
+
+
+def test_a_record_in_the_single_base_form_is_read_as_not_built(system, stub, capsys):
+    assert run(system, "build") == 0
+    path = system / ".repos-manifest/built-jazzy.yaml"
+    data = yaml.safe_load(path.read_text())
+    for name, below in ((BASE, None), ("mid", BASE), ("top", "mid")):
+        data["layers"][name] = {"time": "t", "repos": data["layers"][name]["repos"], "base": below}
+    path.write_text(yaml.safe_dump(data))
+    capsys.readouterr()
+    assert run(system, "build", "top") == 1
+    assert f"top is built on {BASE}, which is not built; nothing was run" in capsys.readouterr().err
+    assert run(system, "build") == 0
+    assert [cwd for cwd, _, _ in runs(stub)][3:] == [
+        str(system),
+        str(system / "mid"),
+        str(system / "top"),
+    ]
+    assert built(system)["top"]["below"] == [BASE, "mid"]
+
+
+def test_a_layer_directory_that_is_a_link_is_named_by_its_real_path(system, stub, tmp_path, capsys):
+    """setup.bash and the report name a layer's setup file the same way: through the real
+    directory colcon ran in, not through the link."""
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    shutil.move(str(system / "top"), str(elsewhere / "top"))
+    os.symlink(elsewhere / "top", system / "top")
+    assert run(system, "build") == 0
+    text = (system / "setup.bash").read_text()
+    assert f"source {elsewhere / 'top' / 'install' / 'setup.bash'}\n" in text
+    (system / "top/src/t/STUB_FAIL").touch()
+    capsys.readouterr()
+    assert run(system, "build", "top") == 1
+    out = capsys.readouterr().out
+    assert (
+        f"to use what it did build: source {elsewhere / 'top' / 'install' / 'setup.bash'}\n" in out
+    )
+
+
+def test_files_of_colcon_default_arguments_are_named_in_a_note(
+    system, stub, tmp_path, monkeypatch, capsys
+):
+    (system / "mid/colcon_defaults.yaml").write_text("build: {packages-select: [m]}\n")
+    capsys.readouterr()
+    assert run(system, "build") == 0
+    out = capsys.readouterr().out
+    note = "; `build` sees only the arguments after --, so package selection or a target that"
+    assert (
+        f"NOTE: colcon reads default arguments from {system / 'mid/colcon_defaults.yaml'}{note}"
+        in out
+    )
+    assert out.count("NOTE: colcon reads default arguments") == 1
+    home = tmp_path / "colcon-home"
+    home.mkdir()
+    (home / "defaults.yaml").write_text("{}\n")
+    assert run(system, "build", BASE) == 0
+    assert f"NOTE: colcon reads default arguments from {home / 'defaults.yaml'}{note}" in (
+        capsys.readouterr().out
+    )
+    monkeypatch.setenv("COLCON_DEFAULTS_FILE", str(tmp_path / "mine.yaml"))
+    assert run(system, "build", BASE) == 0
+    out = capsys.readouterr().out
+    assert f"NOTE: colcon reads default arguments from {tmp_path / 'mine.yaml'}{note}" in out
+    assert str(home) not in out
+
+
+def test_a_job_colcon_leaves_behind_is_ended_when_colcon_exits(system, stub):
+    (system / "src/u/STUB_LEAVE").touch()
+    assert run(system, "build", BASE) == 0
+    assert gone(logged_pid(stub, "left"))
+
+
+def test_a_colcon_killed_from_outside_has_the_rest_of_its_group_ended(system, stub):
+    (system / "src/u/STUB_WAIT").touch()
+    tool = start_tool(system)
+    wait_until(logged(stub, "waiting"), tool)
+    colcon, job = logged_pid(stub, "waiting"), logged_pid(stub, "job")
+    os.kill(colcon, signal.SIGKILL)  # as the kernel's out-of-memory killer would
+    out, err = tool.communicate(timeout=30)
+    assert tool.returncode == 1
+    assert gone(job)
+    assert f"  failed: {BASE} (colcon exited -9)" in out
+
+
+def test_a_stop_signal_while_the_handlers_are_put_back_still_ends_the_run(monkeypatch):
+    """A stop signal that comes while run_child puts the run's handlers back is held until they
+    are all back, and then ends the run through the run's own handler."""
+    real_signal = signal.signal
+    restored = []
+
+    def put(sig, handler):
+        if sig in build._STOP and getattr(handler, "__name__", "") == "on_signal":
+            restored.append(sig)
+            if len(restored) == 1:
+                os.kill(os.getpid(), signal.SIGINT)
+        return real_signal(sig, handler)
+
+    with signals_end_the_run():
+        monkeypatch.setattr(build.signal, "signal", put)
+        with pytest.raises(Stopped) as stopped:
+            build.run_child([sys.executable, "-c", "pass"], Path.cwd())
+        monkeypatch.setattr(build.signal, "signal", real_signal)
+        assert stopped.value.signum == signal.SIGINT
+        # Every handler is the run's own again: none of run_child's is left behind.
+        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            assert getattr(signal.getsignal(sig), "__name__", "") == "on_signal"
+
+
+def test_a_failed_rewrite_of_setup_bash_before_a_layer_stops_the_run_there(
+    system, stub, monkeypatch, capsys
+):
+    assert run(system, "build") == 0
+    real_replace = build.replace_file
+    calls = []
+
+    def replace_file(*args):
+        calls.append(1)
+        if len(calls) == 1:  # the rewrite before mid's colcon
+            raise OSError(28, "No space left on device")
+        return real_replace(*args)
+
+    monkeypatch.setattr(build, "replace_file", replace_file)
+    capsys.readouterr()
+    assert run(system, "build", "mid", "top") == 1
+    out = capsys.readouterr().out
+    assert len(runs(stub)) == 3  # colcon was not started on mid
+    assert (
+        "  stopped before mid: setup.bash could not be brought into line with the record, so"
+        " colcon was not started\n" in out
+    )
+    assert "  not tried: mid, top\n" in out
+    assert "cannot be written: No space left on device" in out
+    assert list(built(system)) == [BASE, "mid", "top"]  # mid, untouched, has its record back
+    assert sourced_by_setup(system) == real(system / "top")
+
+
+def test_an_install_setup_left_by_an_earlier_build_is_removed_before_colcon_starts(
+    system, stub, capsys
+):
+    assert run(system, "build") == 0
+    (system / "mid/src/m/STUB_FAIL_EARLY").touch()
+    capsys.readouterr()
+    assert run(system, "build", "mid") == 1
+    assert stub.read_text().splitlines().count("install-setup-at-start=yes") == 0
+    out = capsys.readouterr().out
+    assert f"  failed: mid (colcon exited 1); its log is in {system / 'mid' / 'log'}\n" in out
+    assert "to use what it did build" not in out
+    assert not (system / "mid/install/setup.bash").exists()
+
+
+@pytest.mark.parametrize("given", [["--distro="], ["--distro", ""]])
+def test_an_empty_distro_name_is_refused(two_distros, stub, capsys, given):
+    assert run(two_distros, "build", *given) == 1
+    assert "--distro is given an empty name" in capsys.readouterr().err
+    assert runs(stub) == []
+
+
+@pytest.mark.parametrize("named", ["0", "living"])
+def test_the_lock_message_names_only_a_process_that_holds_the_lock(system, stub, capsys, named):
+    other = subprocess.Popen(["sleep", "30"])
+    fd = hold_build_lock(system, "jazzy")
+    try:
+        pid = 0 if named == "0" else other.pid
+        os.pwrite(fd, f"{pid} {pid}\n".encode(), 0)
+        os.ftruncate(fd, len(f"{pid} {pid}\n"))
+        assert run(system, "build") == 1
+        err = capsys.readouterr().err
+        assert "a build of distro jazzy is still running in this system; `fuser -v" in err
+        assert "process" not in err.split("; `fuser")[0]
+    finally:
+        os.close(fd)
+        other.kill()
+        other.wait()
+
+
+@pytest.mark.parametrize("name", ["layers.txt", "optional.txt"])
+def test_resolved_files_that_are_not_text_give_an_error_naming_them(system, stub, capsys, name):
+    path = system / ".repos-manifest/resolved" / name
+    path.write_bytes(b"\xff\xfe\x00bad\n")
+    assert run(system, "build") == 1
+    err = capsys.readouterr().err
+    assert f"ERROR: {path}: does not read as UTF-8 text; run `repos-manifest sync`" in err
+    assert "internal error" not in err
+
+
+def test_two_layers_whose_repos_differ_are_named_together(stub, tmp_path, capsys):
+    system, path, data = three_layers(tmp_path)
+    assert run(system, "build") == 0
+    data["repositories"]["n"] = repo(make_remote(tmp_path / "remotes", "n"), None, "mid")
+    data["repositories"]["o"] = repo(make_remote(tmp_path / "remotes", "o"), None, "top")
+    write_manifest(path, data)
+    assert run(system, "sync") == 0
+    capsys.readouterr()
+    assert run(system, "build", "--", "--packages-select", "m") == 1
+    err = capsys.readouterr().err
+    assert (
+        "built, but their repos differ from their records: mid (new n), top (new o); nothing was"
+        " run. Build them without package selection first, which also records the changed repos:"
+        " `repos-manifest build mid top`" in err
+    )
+
+
+def test_a_selection_run_says_rebuilt_with_selection_when_stopped(system, stub):
+    assert run(system, "build") == 0
+    (system / "mid/src/m/STUB_WAIT").touch()
+    tool = start_tool(system, "--", "--packages-select", "m")
+    wait_until(logged(stub, "waiting"), tool)
+    os.kill(tool.pid, signal.SIGTERM)
+    out, err = tool.communicate(timeout=30)
+    assert f"stopped by SIGTERM; layers rebuilt with selection in this run: {BASE};" in err
+
+
+def test_a_selection_run_says_rebuilt_with_selection_when_the_record_cannot_be_read(
+    system, stub, monkeypatch, capsys
+):
+    assert run(system, "build") == 0
+    real_build_layers = build.build_layers
+
+    def build_layers(progress, *args):
+        real_build_layers(progress, *args)
+        (system / ".repos-manifest/built-jazzy.yaml").write_text("format: 1\nlayers: 3\n")
+
+    monkeypatch.setattr(build, "build_layers", build_layers)
+    capsys.readouterr()
+    assert run(system, "build", "--", "--packages-select", "m") == 1
+    assert f"  rebuilt with selection in this run: {BASE}, mid, top\n" in capsys.readouterr().out
 
 
 # --- With the real colcon -------------------------------------------------------------------
@@ -1273,3 +1594,48 @@ def test_real_colcon_a_failed_layer_is_resumed_and_recorded(real_colcon, tmp_pat
     assert run(system, "build", "top", "--", "--packages-skip-build-finished") == 0
     assert list(built(system, "_unnamed")) == [BASE, "top"]
     assert sourced_by_setup(system) == real(system / "top")
+
+
+@pytest.mark.colcon
+def test_real_colcon_a_layer_filled_below_takes_the_layers_above_out_of_the_run(
+    real_colcon, tmp_path
+):
+    """The reviewer's case: x optional and absent, b and c built; x's repo put back and
+    `build x b`: c was built without x in its environment, so setup.bash sources b, which
+    brings x in, and a plain build rebuilds c."""
+    remotes = tmp_path / "remotes"
+    data = {
+        "format": 1,
+        "layers": ["x", "b", "c"],
+        "repositories": {
+            "u": repo(make_package_remote(remotes, "u")),
+            "xp": repo(remotes / "xp", None, "x", optional=True),
+            "bp": repo(make_package_remote(remotes, "bp", needs="u"), None, "b"),
+            "cp": repo(make_package_remote(remotes, "cp", needs="bp"), None, "c"),
+        },
+    }
+    write_manifest(tmp_path / "m.manifest.yaml", data)
+    system = tmp_path / "sys"
+    system.mkdir()
+    assert run(system, "init", "../m.manifest.yaml", "--yes") == 0
+    assert run(system, "build") == 0
+    make_package_remote(remotes, "xp", needs="u")
+    assert run(system, "sync") == 0
+    assert run(system, "build", "x", "b") == 0
+    assert sourced_by_setup(system) == real(system / "b")
+
+    def prefixes():
+        done = subprocess.run(
+            ["bash", "-c", "source setup.bash && echo $CMAKE_PREFIX_PATH"],
+            cwd=system,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return done.stdout.strip().split(":")
+
+    assert str(real(system / "x/install/xp")) in prefixes()
+    assert run(system, "build") == 0
+    assert sourced_by_setup(system) == real(system / "c")
+    assert str(real(system / "x/install/xp")) in prefixes()
+    assert built(system, BASE)["c"]["below"] == [BASE, "x", "b"]

@@ -6,6 +6,7 @@ from __future__ import annotations
 import signal
 import sys
 from contextlib import contextmanager
+from typing import Sequence
 
 
 class Stopped(BaseException):
@@ -17,15 +18,15 @@ class Stopped(BaseException):
 
 
 @contextmanager
-def signals_end_the_run():
-    """While in this context, SIGINT, SIGTERM and SIGHUP raise `Stopped`. A signal that was
-    ignored stays ignored."""
+def signals_end_the_run(also: Sequence[str] = ()):
+    """While in this context, SIGINT, SIGTERM and SIGHUP, and the signals named in `also`, raise
+    `Stopped`. A signal that was ignored stays ignored."""
     previous = {}
 
     def on_signal(signum, _frame):
         raise Stopped(signum)
 
-    for name in ("SIGINT", "SIGTERM", "SIGHUP"):
+    for name in ("SIGINT", "SIGTERM", "SIGHUP", *also):
         sig = getattr(signal, name, None)
         if sig is None or signal.getsignal(sig) in (signal.SIG_IGN, None):
             continue

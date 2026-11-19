@@ -188,7 +188,9 @@ def cmd_sync(args: argparse.Namespace) -> int:
 
 
 def cmd_build(args: argparse.Namespace) -> int:
-    distros = [args.distro] if args.distro else []
+    if args.distro == "":
+        raise ManifestError("--distro is given an empty name; name the distro to build")
+    distros = [args.distro] if args.distro is not None else []
     return run_build(distros, args.layers, args.colcon_args, args.keep_going)
 
 

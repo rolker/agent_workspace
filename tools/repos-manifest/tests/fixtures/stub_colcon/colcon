@@ -8,13 +8,21 @@
 # With `--help` among its arguments it prints a line and exits 0 having written nothing.
 # A repo given in --base-paths with a file STUB_FAIL makes it exit 1; STUB_FAIL_EARLY makes it
 # exit 1 before it writes install/setup.bash. One with STUB_WAIT makes it start a job that
-# ignores SIGINT, SIGTERM and SIGHUP (it logs "job pid=<pid>"), log "waiting pid=<its pid>",
-# and wait until it gets SIGINT, SIGTERM or SIGHUP, which it logs, and then exit; with
-# STUB_STUBBORN beside STUB_WAIT it logs those signals and goes on waiting.
+# ignores SIGINT, SIGTERM, SIGHUP and SIGQUIT (it logs "job pid=<pid>"), log "waiting
+# pid=<its pid>", and wait until it gets one of those, which it logs, and then exit; with
+# STUB_STUBBORN beside STUB_WAIT it logs those signals and goes on waiting. One with
+# STUB_LEAVE makes it start such a job (it logs "left pid=<pid>") and go on without waiting
+# for it. It logs whether the layer's install/setup.bash was there when it started
+# ("install-setup-at-start=yes" or "=no").
 set -u
 layer=$(basename "$PWD")
 log=${STUB_COLCON_LOG:?}
 echo "run cwd=$PWD sourced=${STUB_SOURCED:-} args=$*" >>"$log"
+if [ -e install/setup.bash ]; then
+    echo "install-setup-at-start=yes" >>"$log"
+else
+    echo "install-setup-at-start=no" >>"$log"
+fi
 
 for arg in "$@"; do
     if [ "$arg" = --help ]; then
@@ -50,14 +58,19 @@ for arg in "$@"; do
     esac
     if [ "$paths" = 1 ]; then
         [ -e "$arg/STUB_FAIL" ] && status=1
+        if [ -e "$arg/STUB_LEAVE" ]; then
+            (trap '' INT TERM HUP QUIT; exec sleep 300) &
+            echo "left pid=$!" >>"$log"
+        fi
         if [ -e "$arg/STUB_WAIT" ]; then
-            (trap '' INT TERM HUP; exec sleep 300) &
+            (trap '' INT TERM HUP QUIT; exec sleep 300) &
             echo "job pid=$!" >>"$log"
             stubborn=0
             [ -e "$arg/STUB_STUBBORN" ] && stubborn=1
             trap 'echo "got TERM" >>"$log"; [ "$stubborn" = 1 ] || exit 143' TERM
             trap 'echo "got INT" >>"$log"; [ "$stubborn" = 1 ] || exit 130' INT
             trap 'echo "got HUP" >>"$log"; [ "$stubborn" = 1 ] || exit 129' HUP
+            trap 'echo "got QUIT" >>"$log"; [ "$stubborn" = 1 ] || exit 131' QUIT
             echo "waiting pid=$$" >>"$log"
             while :; do sleep 0.05; done
         fi

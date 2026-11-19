@@ -34,7 +34,7 @@ import sys
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Sequence
 
 import yaml
 
@@ -243,13 +243,14 @@ def _put_back_the_previous_output(parent: Path, name: str, out: Path) -> None:
 
 
 @contextmanager
-def signals_held():
-    """Hold SIGINT, SIGTERM and SIGHUP for the two renames, so a signal cannot stop the run
-    between them; a held signal is delivered when the renames are done."""
-    if not hasattr(signal, "pthread_sigmask") or not _SWAP_SIGNALS:
+def signals_held(signals: Optional[Sequence[int]] = None):
+    """Hold SIGINT, SIGTERM and SIGHUP (or `signals`) for the two renames, so a signal cannot
+    stop the run between them; a held signal is delivered when the renames are done."""
+    held = _SWAP_SIGNALS if signals is None else tuple(signals)
+    if not hasattr(signal, "pthread_sigmask") or not held:
         yield
         return
-    previous = signal.pthread_sigmask(signal.SIG_BLOCK, _SWAP_SIGNALS)
+    previous = signal.pthread_sigmask(signal.SIG_BLOCK, held)
     try:
         yield
     finally:
