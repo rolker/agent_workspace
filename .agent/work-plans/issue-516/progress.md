@@ -636,3 +636,30 @@ Outside reviewers:
 - [ ] (suggestion) A CRLF line from a remote hook leaves an extra line holding only `remote:` (git turns the `\r` into a new `remote:` prefix and the filter makes it its own line); dropping a `\r` just before a newline would avoid it (Claude adversarial, reproduced with a pre-receive hook) — `.agent/scripts/worktree_create.sh:1315`
 - [ ] (suggestion) PR body, "Reviews and outcomes": "whole escape sequences are removed" holds for CSI (colour) sequences only; an OSC sequence leaves `]0;title`. "whole colour (CSI) sequences" would be exact. The code comment already says CSI. Also "four small findings ... fixed with tests": the guide-sentence fix has no test, the same point the last review made about the next sentence — PR #526 body
 - [ ] (suggestion) The comment line "pattern takes in. LC_ALL=C makes" is wrapped short — `.agent/scripts/worktree_create.sh:1308`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-19 14:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a747933b6dc344bea, resume 1 of 3)
+
+**PR**: #526 at `81c36f2` (code head `d72f2389`; 81c36f2 adds only this issue's progress.md)
+**Sources**: 2 (Local Review @ `d72f2389`, round 3 convergence check; CI rollup). No GitHub reviews, inline or conversation comments; no Copilot review requested. The two earlier PR-mode Local Reviews (at `e1b99bf1`, `007b26db`) have every box closed by their Implementation entries; the two points in the body's "Left open, on purpose" were ruled on in the Integrated Review at `81edecc` and are judged again below.
+**Cross-source confirmations**: 0
+**CI**: pending
+
+CI at d72f2389 (14:27): Validate Documentation, Validate Adapter Contract and repos-manifest tests (3.10, 3.14) pass in both runs. Lint (pre-commit) is in progress in both, started 19:21:13Z, about 6 minutes in. Slow, not stuck: on the two previous heads (007b26db, b16709b9) the same job took 9 to 14 minutes and passed.
+
+PR body read again (`gh pr view 526 --json body`): it has the level-2 `## Decision summary` heading. The two clauses the round 3 review named are corrected: "whole colour (CSI) escape sequences are removed ..., while other sequences lose only their control bytes" matches the sed pattern at `worktree_create.sh:1314`, and "the code changes with tests (the fourth was one sentence of the guide)" matches the Implementation entry at c4256be2. The rest of the body agrees with progress.md (109 passed, the review rounds, the two left-open points).
+
+This pull request has had three fix rounds on suggestions. None of the points below would harm or mislead a user, so none is sent back.
+
+### Findings
+- [x] (suggestion, Local Review @ d72f2389) A CRLF line from a remote hook leaves an extra line holding only `remote:` in the warning (deferred: rightly left; cosmetic only. git's error text is all still shown and the hint lines after it are unaffected; the extra line carries no false information and appears only when a remote hook writes CRLF)
+- [x] (suggestion, Local Review @ d72f2389) PR body: "whole escape sequences are removed" held for CSI only, and "fixed with tests" missed that the guide-sentence fix has no test (addressed: the host corrected both clauses in the PR #526 body; checked above)
+- [x] (suggestion, Local Review @ d72f2389) The comment line "pattern takes in. LC_ALL=C makes" is wrapped short (deferred: rightly left; layout of a comment, the text is correct and complete) — `.agent/scripts/worktree_create.sh:1308`
+- [x] (suggestion, Local Review (Pre-Push) @ f5c68a46, codex) gh_create_pr.sh's user-tier guard (`registry_require_root`, `gh_create_pr.sh:87`) refuses the pasted line from a worktree folder outside both the project root and the workspace (deferred: rightly left; older behaviour of another script for any PR from such a worktree, the refusal is loud with its own message, and the PR body discloses it; host checkpoint 2026-11-19 13:10 proposes its own issue)
+- [x] (suggestion, Local Review @ 47666fb, codex) An issue title containing `**Authored-By**:` makes the pasted `--body` look already signed, so that PR would get no signature (deferred: rightly left; the cause is `gh_body_is_signed` in `_gh_create_args.sh:310`, which reads the marker anywhere in any body for every caller, and the fix belongs there; the trigger needs an issue title quoting the marker; disclosed in the PR body and should go into the same gh_create_pr.sh issue)
+
+### False positives
+- (none)
