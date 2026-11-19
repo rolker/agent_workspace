@@ -441,3 +441,27 @@ Each fix has a test; each was checked to fail with its fix reverted in a scratch
 ### Notes
 - Departure: a resolving selection option is refused only when the run would build more than one layer, so a run that builds none (every named layer empty) passes it instead of being refused; nothing can fail there.
 - One commit for the round: the fixes all touch the same argument checks, run loop and report in build.py.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 11:41 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a2232ae6436041c7a, resume 2 of 3)
+
+**Branch**: feature/issue-501 at `afb4c937`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 2 | **Suggestions**: 3
+**Round**: 3 | **Ship**: continue — round 3: 2 must-fix, both in the new package-selection rule; one is a design question
+
+Scope: round 2's findings and the fix diff `a8071871..3d17c807`. Cross-model: skipped (round-3 convergence check, per handoff). Run: tool suite `1099 passed in 194.76s` (`REPOS_MANIFEST_REQUIRE_COLCON=1`); pre-commit on the changed files clean; a fresh Claude adversarial specialist; by hand with the real colcon on a three-layer system with an absent optional repo in mid.
+
+Round 2's must-fix, re-run: (1) gone — after a SIGKILL of the tool's whole group a second build was refused naming the colcon still running, and ran once it ended; a sleeper left by a build step holds no lock fd. (2) gone — `build -- mid/src/b` and a second `--` are refused. (3) gone — with an optional repo absent in mid and a required one (`d`) moved out of top, plain `build` and `build top` refuse naming "d (layer top)", `build mid` builds. (4) the up-to kind is refused across layers; the new selection rule has the two must-fix below. The `fuser -v` hint shows when the pids in the lock file are dead and the lock is held. Round 2's suggestions: all addressed (subreaper reaping checked by the adversarial specialist; the rest read in the code and design.md).
+
+### Findings
+- [ ] (must-fix) A selection run stops at the first layer that is not built yet, which is usually not the layer with the selected package: on a fresh system `build -- --packages-select c` (c is in top) ran colcon in the unnamed layer only, reported "selected packages built, not recorded: _unnamed (...not all of it was built...)", "not tried: mid, top", exit 1 (reproduced); nothing was selected there and c was never built, and design.md's "the report says the selected packages were built" is false for such a layer. Exit 1 is not what the person would expect after a successful colcon, and here nothing they asked for happened. Proposed: refuse, before anything runs, a selection run that would build a layer outside the built run, naming those layers and saying to build them without selection first; a selection run then only rebuilds built layers and exits 0 — `tools/repos-manifest/src/repos_manifest/build.py:756,780-784,833-836`, `docs/design.md` (Package selection)
+- [ ] (must-fix) A selection run on a built layer writes a new record listing every repo now on disk, not the record it had: after `sync` cloned the optional `opt` into mid, `build mid -- --packages-select b` recorded `repos: [b, opt]`, exit 0, though `opt` was never built, and the "new since" note is gone afterwards (Claude adversarial, reproduced). design.md says the layer "gets its record back". Restore the previous record's repos, or treat a layer whose repos differ from its record as not built for a selection run — `tools/repos-manifest/src/repos_manifest/build.py:780-784`, `docs/design.md`
+- [ ] (suggestion) colcon's resume options (`--packages-skip-build-finished`, `--packages-select-build-failed`) make a run a selection run, so a layer completed that way is never recorded and the report says "not all of it was built" (Claude adversarial) — `tools/repos-manifest/src/repos_manifest/build.py` `package_selection`
+- [ ] (suggestion) `note_lock_holders` truncates and then writes, so a second build reading in between sees no pid and gives the `fuser` hint while the tool is alive; write then truncate to length (Claude adversarial, from the code) — `tools/repos-manifest/src/repos_manifest/system.py` `note_lock_holders`
+- [ ] (suggestion) A colcon usage error in the forwarded arguments (e.g. ambiguous `-- --packages-ign d`, exit 2) is found only after the first layer's record is removed, so `setup.bash` drops to "nothing is built" until a plain build (reproduced; not new in this round) — `tools/repos-manifest/src/repos_manifest/build.py` `build_layers`
