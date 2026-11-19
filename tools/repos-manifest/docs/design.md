@@ -1037,7 +1037,8 @@ the manifest. It stays with `colcon`:
   A list of patterns ends only at an option `build` knows `colcon` to have (those of colcon-core
   and the usual extensions), since a pattern may start with `-`: an option of another extension
   after a `-regex` list is recorded as patterns of it, though `colcon` reads it as an option, and
-  is best given before the list. Of an option given
+  is best given before the list. A package name is recorded with leading whitespace stripped,
+  as `colcon` strips it (` a` is `a`); a pattern is recorded as given. Of an option given
   more than once only the last occurrence counts (`--packages-skip a --packages-skip b` leaves
   out only `b`), and one whose last occurrence has no values leaves nothing out and is not
   recorded. A regex is recorded as text, not as the names it matched. A value that holds a

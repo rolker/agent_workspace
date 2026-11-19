@@ -637,8 +637,9 @@ def _read_as_option(arg: str) -> bool:
 
 
 # The options of `LEFT_OUT` whose values are package names: colcon-package-selection 0.2.10
-# (`argument_package_name`) rejects a value that starts with `-`, so the layer is not built.
-# The `-regex` forms take any text as a pattern, one starting with `-` too.
+# (`argument_package_name`) rejects a value that starts with `-`, so the layer is not built,
+# and strips leading whitespace from the others. The `-regex` forms take any text as a
+# pattern, one starting with `-` too.
 NAME_LISTS = ("--packages-skip", "--packages-ignore")
 
 
@@ -649,14 +650,15 @@ def left_out(colcon_args: Sequence[str]) -> Dict[str, List[str]]:
     option given more than once only the last occurrence counts. A list of package names
     (`NAME_LISTS`) also ends at any argument that starts with `-`: where `colcon` builds, that
     is an option of a `colcon` extension `COLCON_BUILD_OPTIONS` does not have, since `colcon`
-    rejects such a package name. An option whose last occurrence has no values is not named."""
+    rejects such a package name; and its values are recorded with leading whitespace stripped,
+    as `colcon` strips it. An option whose last occurrence has no values is not named."""
     found: Dict[str, List[str]] = {}
     taking: Optional[str] = None
     for arg in colcon_args:
         ends = taking in NAME_LISTS and arg.startswith("-")
         if not _read_as_option(arg) and not ends:
             if taking is not None:
-                found[taking].append(arg)
+                found[taking].append(arg.lstrip() if taking in NAME_LISTS else arg)
             continue
         taking = None
         if not _read_as_option(arg):
@@ -664,7 +666,8 @@ def left_out(colcon_args: Sequence[str]) -> Dict[str, List[str]]:
         name, equals, value = arg.partition("=")
         option = _left_out_option(name) if arg.startswith("--") else None
         if option is not None:
-            found[option] = [value] if equals else []
+            given = value.lstrip() if option in NAME_LISTS else value
+            found[option] = [given] if equals else []
             taking = None if equals else option
     return {option: found[option] for option in LEFT_OUT if found.get(option)}
 

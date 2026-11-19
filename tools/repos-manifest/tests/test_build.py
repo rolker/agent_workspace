@@ -1102,6 +1102,10 @@ def test_the_same_skip_list_again_changes_nothing_and_another_is_named(system, s
             ["--packages-ignore", "a", "-x", "b", "--packages-skip-regex", "^c"],
             {"--packages-skip-regex": ["^c"], "--packages-ignore": ["a"]},
         ),
+        # colcon strips leading whitespace from a package name, not from a pattern.
+        (["--packages-skip", " a", "\tb "], {"--packages-skip": ["a", "b "]}),
+        (["--packages-ignore= a"], {"--packages-ignore": ["a"]}),
+        (["--packages-skip-regex", " ^a"], {"--packages-skip-regex": [" ^a"]}),
         # A pattern may start with `-`: a regex list ends only at an option colcon has.
         (
             ["--packages-skip-regex", "^a", "--meson-args", "x"],
@@ -1182,6 +1186,14 @@ def test_a_layer_built_leaving_out_under_keep_going_and_not_used_is_named(system
     out = capsys.readouterr().out
     assert f"  built with --packages-skip x given to colcon: {BASE}, top\n" in out
     assert "  built without sourcing mid (failed), so not used: top" in out
+
+
+def test_a_package_name_with_leading_whitespace_is_the_same_name_to_colcon(system, stub, capsys):
+    assert run(system, "build", "--", "--packages-skip", "x") == 0
+    capsys.readouterr()
+    assert run(system, "build", "mid", "--", "--packages-skip", " x") == 0
+    assert built(system)["mid"]["without"] == {"--packages-skip": ["x"]}
+    assert "options given to colcon changed" not in capsys.readouterr().out
 
 
 def test_the_options_are_named_as_given_to_colcon_also_for_a_layer_without_such_packages(
