@@ -40,8 +40,15 @@ STATE_FORMAT = 1
 TEMP_PREFIX = ".repos-manifest-tmp-"
 TEMP_NAME = re.compile(re.escape(TEMP_PREFIX) + r"(?P<pid>[0-9]+)-[a-z0-9_]{8}")
 
+BUILT_FILE = "built.yaml"
+BUILT_FORMAT = 1
+
+# The first line of every `setup.bash` this tool writes starts with it; `build` replaces only
+# a `setup.bash` that does (or none at all).
+SETUP_MARKER = "# Written by repos-manifest."
+
 SETUP_TEXT = (
-    "# Written by repos-manifest. Nothing is built here yet.\n"
+    f"{SETUP_MARKER} Nothing is built here yet.\n"
     'echo "repos-manifest: nothing is built here yet" >&2\n'
     "return 1 2>/dev/null || exit 1\n"
 )
@@ -252,6 +259,19 @@ def distros_for(
     return config.distro_keys
 
 
+def one_distro_for(system: Path, config: Config, named: Sequence[str], cwd: Path) -> Optional[str]:
+    """The one distro a command that acts on one distro uses (`show`, `resolve`, `build`,
+    `freeze` in "Which distro a command uses"): as `distros_for`, and at the top of a system
+    with several distros, an error that lists them."""
+    distros = distros_for(system, config, named, cwd)
+    if len(distros) > 1:
+        raise ManifestError(
+            f"this system has several distros ({', '.join(str(d) for d in distros)}); name one"
+            " with --distro, or run the command from inside that distro's directory"
+        )
+    return distros[0]
+
+
 # --- Where each part is ---------------------------------------------------------------------
 
 
@@ -390,6 +410,80 @@ def put_distro_state(system: Path, distro: Optional[str], state: DistroState) ->
     }
     text = yaml.safe_dump(data, default_flow_style=False, sort_keys=False, width=4096)
     replace_file(system, system / SYSTEM_DIR / STATE_FILE, text)
+
+
+# --- built.yaml -----------------------------------------------------------------------------
+
+
+@dataclass
+class LayerRecord:
+    """A layer `build` built with colcon exiting 0: when, from which repos, and the layer that
+    was sourced when it was built (None when nothing was)."""
+
+    time: str
+    repos: List[str]
+    base: Optional[str]
+
+
+def _read_built_data(system: Path) -> dict:
+    """`built.yaml`, read and checked whole: it has exactly the shape `put_built_layers`
+    writes, and each error names the file and what is wrong."""
+    path = system / SYSTEM_DIR / BUILT_FILE
+
+    def bad(why: str) -> ManifestError:
+        return ManifestError(f"{path}: {why}; repair or remove it")
+
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {"format": BUILT_FORMAT, "distros": {}}
+    except (yaml.YAMLError, UnicodeDecodeError):
+        raise bad("does not read as YAML") from None
+    _check_keys(data, "", ("format", "distros"), (), bad)
+    if data["format"] != BUILT_FORMAT or isinstance(data["format"], bool):
+        raise bad(
+            f"`format` is {data['format']!r}, not {BUILT_FORMAT}, the one this version writes"
+        )
+    _check_keys(data["distros"], "distros", (), None, bad)
+    for distro, entry in data["distros"].items():
+        where = f"distros.{distro}"
+        _check_keys(entry, where, ("layers",), (), bad)
+        _check_keys(entry["layers"], f"{where}.layers", (), None, bad)
+        for layer, record in entry["layers"].items():
+            at = f"{where}.layers.{layer}"
+            _check_keys(record, at, ("time", "repos", "base"), (), bad)
+            if not isinstance(record["time"], str):
+                raise bad(f"`{at}.time` is {_kind(record['time'])}, not a string")
+            if not isinstance(record["repos"], list) or not all(
+                isinstance(key, str) for key in record["repos"]
+            ):
+                raise bad(f"`{at}.repos` is not a list of repo keys")
+            if record["base"] is not None and not isinstance(record["base"], str):
+                raise bad(f"`{at}.base` is {_kind(record['base'])}, not a layer or empty")
+    return data
+
+
+def read_built(system: Path, distro: Optional[str]) -> Dict[str, LayerRecord]:
+    """The layers of one distro that `built.yaml` records as built; none when it is missing."""
+    entry = _read_built_data(system)["distros"].get(state_key(distro)) or {}
+    return {
+        layer: LayerRecord(record["time"], list(record["repos"]), record["base"])
+        for layer, record in (entry.get("layers") or {}).items()
+    }
+
+
+def put_built_layers(system: Path, distro: Optional[str], layers: Dict[str, LayerRecord]) -> None:
+    """Replace one distro's records, written whole by one rename; every other distro's is
+    written back as it was read."""
+    data = _read_built_data(system)
+    data["distros"][state_key(distro)] = {
+        "layers": {
+            layer: {"time": record.time, "repos": list(record.repos), "base": record.base}
+            for layer, record in layers.items()
+        }
+    }
+    text = yaml.safe_dump(data, default_flow_style=False, sort_keys=False, width=4096)
+    replace_file(system, system / SYSTEM_DIR / BUILT_FILE, text)
 
 
 # --- The manifest ---------------------------------------------------------------------------
