@@ -168,3 +168,13 @@ Verified: test_skill_paths.sh 164/0 and test_merge_pr.sh 175/0 pass; the new pin
 - [ ] (suggestion) New test's title/comment imply the refusal is package-specific; with a qualified `--pr`, PJ_REMOTE is never set so `--type project` is refused for any repo (merge_pr.sh 444-445 is dead under `--repo`; a follow-up issue for the script, out of scope here) — `.agent/scripts/tests/test_merge_pr.sh:664`
 - [ ] (suggestion) "finds the package worktree" is unqualified: a `--project` whose resolved instance differs from the manifest header filters every manifest out and the merge proceeds silently with no cleanup (pre-existing script behaviour) — `.claude/skills/run-issue/SKILL.md:1035`
 - [ ] (suggestion) The row merges two entry points: `agent start-task` forwards `--type` only to worktree creation; dispatch, PR targeting and merge are run-issue's — `docs/design.md:529`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 14:46 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review approved with four suggestions; one is an unintended edit to an unrelated line, which is not published as it is)
+**After**: publish
+**Decision**: address
+
+The full pre-commit pass was not run: the answer changes the code, so the pass runs on the head that follows. Fixed in this round: suggestion 1 (restore the space dropped from an unrelated address-findings label in test_skill_paths.sh), suggestion 2 (the new test's title and comment say what is true: with a qualified --pr the script refuses any --type that differs from the derived kind, package or not), suggestion 3 (the skill's "finds the package worktree" gets its condition: when --project names the instance the worktree was made under). Suggestion 4 (the docs/design.md row mixes two entry points) predates the branch and is left; the second half of suggestion 2 (merge_pr.sh treats a qualified --pr for a project's own pull request as a package pull request) is a script matter outside this issue, which the host proposes to the owner as an issue.
