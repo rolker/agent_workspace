@@ -862,11 +862,11 @@ def _repoint(git: Git, origin: str, url: str) -> Optional[Done]:
         status, printed, error = git.run(
             "-c",
             f"remote.{PROBE}.url={url}",
-            "-c",
-            f"remote.{PROBE}.fetch=+refs/heads/*:refs/remotes/{PROBE}/*",
             "fetch",
             "--no-tags",
+            "--refmap=",
             PROBE,
+            f"+refs/heads/*:refs/remotes/{PROBE}/*",
             prompt=True,
         )
         if status != 0:

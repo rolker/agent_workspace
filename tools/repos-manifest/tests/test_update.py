@@ -602,6 +602,21 @@ def test_the_fetch_never_writes_local_branches_whatever_remote_origin_fetch_says
     assert git("rev-parse", "dev", cwd=clone) == mine
 
 
+def test_the_url_probe_never_writes_local_branches_whatever_its_config_says(system, capsys):
+    sys_dir, manifest, remote, clone = system
+    copy = _bare_copy(remote, "a-copy.git")
+    git("branch", "-q", "dev", "origin/dev", cwd=clone)
+    mine = git("rev-parse", "dev", cwd=clone)
+    git("config", f"remote.{update.PROBE}.fetch", "+refs/heads/*:refs/heads/*", cwd=clone)
+    push_commit(remote, "theirs", "t\n", "dev")
+    git("push", "-q", str(copy), "dev:dev", cwd=remote)
+    _url(manifest, str(copy))
+    out = _sync(sys_dir, capsys)
+    assert f"src/a: origin repointed from {remote} to {copy}" in out, out
+    assert git("rev-parse", "dev", cwd=clone) == mine
+    assert "feature" in git("branch", "--format=%(refname:short)", cwd=clone).split()
+
+
 def test_a_local_only_tag_is_kept_by_the_fetch(system, capsys):
     sys_dir, _, remote, clone = system
     git("config", "fetch.pruneTags", "true", cwd=clone)
