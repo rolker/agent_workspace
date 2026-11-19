@@ -838,6 +838,13 @@ a repo that is recorded, is in the same run unless the fetch or the version look
 a repoint `U` is recorded at once, before the fetch, so a fetch or a lookup that fails next does
 not leave the new url read as one a person set.
 
+A url's user name and password are never printed: in every line `sync` prints for a repo,
+what it says and what git says, the user information of a `scheme://user:password@host` url
+is shown as `***` (an ssh url's user name alone is kept; any other user name is masked, since
+an https one is often a token). A `set-url` command whose url is masked says so, and that the
+url to give it is the repo's url as the manifest gives it. The urls are written in full where
+they are kept: the resolved files, `state.yaml` and the clone's configuration.
+
 A person who fetches over https and pushes over ssh sets `remote.origin.pushurl`, or
 `url.<base>.pushInsteadOf`, and keeps `origin`'s url the manifest's.
 

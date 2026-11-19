@@ -797,6 +797,61 @@ def test_a_system_with_no_recorded_url_never_repoints(system, capsys):
     assert state_of(sys_dir)["a"]["url"] == str(moved)
 
 
+SECRET_A = "https://alice:s3cret@example.invalid/a"
+SECRET_B = "https://alice:s3cret@example.invalid/b"
+
+
+def test_credentials_in_a_hand_set_origin_are_never_printed(system, capsys):
+    sys_dir, _, remote, clone = system
+    git("remote", "set-url", "origin", SECRET_A, cwd=clone)
+    git("config", f"url.{remote}.insteadOf", SECRET_A, cwd=clone)
+    new = push_commit(remote, "one", "1\n")
+    out = _sync(sys_dir, capsys)
+    assert "s3cret" not in out and "alice" not in out, out
+    assert (
+        f"src/a: origin is https://***@example.invalid/a, the manifest says {remote}; left as"
+        f" set (to use the manifest's: git -C {clone} remote set-url origin {remote})"
+    ) in out
+    assert head(clone) == new
+
+
+def test_credentials_in_the_manifests_url_are_never_printed(system, capsys):
+    sys_dir, manifest, remote, clone = system
+    copy = _bare_copy(remote, "a-copy.git")
+    git("config", f"url.{copy}.insteadOf", SECRET_B, cwd=clone)
+    _url(manifest, SECRET_B)
+    out = _sync(sys_dir, capsys)
+    assert "s3cret" not in out and "alice" not in out, out
+    assert f"src/a: origin repointed from {remote} to https://***@example.invalid/b" in out
+    assert git("config", "--get", "remote.origin.url", cwd=clone) == SECRET_B
+    other = _bare_copy(remote, "a-other.git")
+    git("remote", "set-url", "origin", str(other), cwd=clone)
+    out = _sync(sys_dir, capsys)
+    assert "s3cret" not in out and "alice" not in out, out
+    assert (
+        f"src/a: origin is {other}, the manifest says https://***@example.invalid/b; left as"
+        f" set (to use the manifest's: git -C {clone} remote set-url origin"
+        " 'https://***@example.invalid/b', with the url of a as the manifest gives it in place"
+        " of the one shown)"
+    ) in out
+
+
+@pytest.mark.parametrize(
+    "text, shown",
+    [
+        ("https://alice:s3cret@host/x", "https://***@host/x"),
+        ("https://ghp_token@host/x", "https://***@host/x"),
+        ("fatal: 'https://a:p@ss@host/x/' not found", "fatal: 'https://***@host/x/' not found"),
+        ("ssh://git@host/x", "ssh://git@host/x"),
+        ("ssh://git:pw@host/x", "ssh://***@host/x"),
+        ("git@github.com:o/x.git", "git@github.com:o/x.git"),
+        ("/srv/git/x and https://host/y", "/srv/git/x and https://host/y"),
+    ],
+)
+def test_mask_urls(text, shown):
+    assert update.mask_urls(text) == shown
+
+
 def test_a_url_equal_but_for_a_trailing_slash_or_git_is_the_same(system, capsys):
     sys_dir, manifest, remote, clone = system
     _url(manifest, f"{remote}.git/")

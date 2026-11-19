@@ -320,15 +320,17 @@ class DistroResult:
 
 
 def _say(done: RepoResult) -> None:
-    """The line for a repo as it is handled; an up-to-date or present repo has none."""
+    """The line for a repo as it is handled; an up-to-date or present repo has none. A url's
+    user name and password, in what `sync` or git says, are never printed."""
+    detail = update.mask_urls(done.detail)
     if done.outcome == FAILED:
-        print(f"ERROR: {done.path}: {done.detail}", flush=True)
+        print(f"ERROR: {done.path}: {detail}", flush=True)
     elif done.outcome == SKIPPED:
-        print(f"skipped {done.path} (optional): {done.detail}", flush=True)
+        print(f"skipped {done.path} (optional): {detail}", flush=True)
     elif done.outcome == UPDATED:
-        print(f"{done.path}: {done.detail}", flush=True)
+        print(f"{done.path}: {detail}", flush=True)
     elif done.outcome == LEFT:
-        print(f"{done.path}: left alone: {done.detail}", flush=True)
+        print(f"{done.path}: left alone: {detail}", flush=True)
 
 
 def layer_moved(
@@ -412,7 +414,7 @@ def present_repo(
             f"{place}: the repo may have been changed and was not recorded: {exc}"
         ) from None
     for note in done.notes:
-        print(f"{shown}: {note}", flush=True)
+        print(f"{shown}: {update.mask_urls(note)}", flush=True)
     outcome = done.outcome
     if outcome == FAILED and repo.optional:
         outcome = SKIPPED
