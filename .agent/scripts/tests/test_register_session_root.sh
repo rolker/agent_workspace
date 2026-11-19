@@ -336,6 +336,19 @@ if [ -n "$MR_PY" ]; then
     out="$("$WS/.agent/scripts/session_root.sh" --dir "$TROOT" 2>&1)"; rc=$?
     check "session_root.sh resolves a session at the root: project=tsys" \
         bash -c '[ "$1" -eq 0 ] && [[ "$2" == *"project=tsys"* ]]' _ "$rc" "$out"
+    echo "TEST: a root the manifest tool set up with two distros, in no git repository, registers from its own session"
+    T2="$TS/t2"
+    mkdir -p "$T2/.repos-manifest/resolved"
+    printf 'format: 1\ndistros: [fakefox, fakefox2]\nlayers: [core]\nrepositories:\n  pkg_a:\n    type: git\n    url: file:///nonexistent/pkg_a.git\n    version: main\n    layer: core\n' > "$TS/m2.manifest.yaml"
+    for _d in fakefox fakefox2; do
+        (cd "$TS" && PYTHONPATH="$MR_SRC" "$MR_PY" -m repos_manifest.cli resolve --manifest m2.manifest.yaml \
+            --distro "$_d" --out "$T2/.repos-manifest/resolved/$_d" >/dev/null)
+        mkdir -p "$T2/$_d/core/src/pkg_a"
+        gitq -C "$T2/$_d/core/src/pkg_a" init --quiet
+    done
+    out="$(rsr "$T2")"; rc=$?
+    check "the real call registers it: STATUS=registered, its gate's adapter validate passed" \
+        bash -c '[ "$1" -eq 0 ] && [ "$2" = registered ] && [[ "$3" == *"OK: adapter validate passed"* ]] && [[ "$(grep -E "^t2[[:space:]]" "$4")" == "t2  ros2_colcon  $5" ]]' _ "$rc" "$(status_of "$out")" "$out" "$REGISTRY" "$T2"
 else
     if command -v repos-manifest >/dev/null 2>&1 || [ -n "${CI:-}" ] \
         || { [ -n "$_common" ] && [ -x "${_common%/.git}/.venv/bin/repos-manifest" ]; }; then

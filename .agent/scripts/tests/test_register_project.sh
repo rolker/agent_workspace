@@ -1084,9 +1084,34 @@ if [ -n "$MR_PY" ]; then
     mkdir -p "$TBAD/.repos-manifest/resolved"
     out="$(reg "$WS" "$TBAD")"; rc=$?
     check "exit 1, STATUS=refused, naming the next step" \
-        bash -c '[ "$1" -eq 1 ] && [ "$2" = refused ] && [[ "$3" == *"nothing is resolved for any distro yet"* && "$3" == *"--project tbad sync"* ]]' _ "$rc" "$(status_of "$out")" "$out"
+        bash -c '[ "$1" -eq 1 ] && [ "$2" = refused ] && [[ "$3" == *"holds nothing resolved for any distro yet"* && "$3" == *"cd $4 && "*"/repos-manifest sync"* && "$3" != *"--project tbad sync"* ]]' _ "$rc" "$(status_of "$out")" "$out" "$TBAD"
     check "rolled back, and setup was not run" \
         bash -c '! grep -q "^tbad " "$1" && [ ! -e "$2/configs" ] && [[ "$3" != *"== adapter --project tbad setup"* ]]' _ "$WS/.agent/projects.local" "$TBAD" "$out"
+    echo "TEST: a dangling .repos-manifest link is typed ros2_colcon, as the adapter routes it, and refused, saying so"
+    TDANGLE="$TS/tdangle"
+    mkdir -p "$TDANGLE"
+    ln -s "$TS/nowhere" "$TDANGLE/.repos-manifest"
+    out="$(reg "$WS" "$TDANGLE")"; rc=$?
+    check "exit 1, STATUS=refused, the link to nothing named, the tool's sync the next step" \
+        bash -c '[ "$1" -eq 1 ] && [ "$2" = refused ] && [[ "$3" == *".repos-manifest is a link to nothing"* && "$3" == *"/repos-manifest sync"* ]]' _ "$rc" "$(status_of "$out")" "$out"
+    check "rolled back" bash -c '! grep -q "^tdangle " "$1"' _ "$WS/.agent/projects.local"
+    echo "TEST: a root the manifest tool set up with two distros, in no git repository, registers from the workspace: validate covers both"
+    T2="$TS/t2"
+    mkdir -p "$T2/.repos-manifest/resolved"
+    printf 'format: 1\ndistros: [fakefox, fakefox2]\nlayers: [core]\nrepositories:\n  pkg_a:\n    type: git\n    url: file:///nonexistent/pkg_a.git\n    version: main\n    layer: core\n' > "$TS/m2.manifest.yaml"
+    for _d in fakefox fakefox2; do
+        (cd "$TS" && PYTHONPATH="$MR_SRC" "$MR_PY" -m repos_manifest.cli resolve --manifest m2.manifest.yaml \
+            --distro "$_d" --out "$T2/.repos-manifest/resolved/$_d" >/dev/null)
+        mkdir -p "$T2/$_d/core/src/pkg_a"
+        gitq -C "$T2/$_d/core/src/pkg_a" init --quiet
+    done
+    out="$(reg "$WS" "$T2")"; rc=$?
+    check "exit 0, STATUS=registered, its gate's adapter validate passed" \
+        bash -c '[ "$1" -eq 0 ] && [ "$2" = registered ] && [[ "$3" == *"OK: adapter validate passed"* && "$3" == *"VERIFY=pass"* ]]' _ "$rc" "$(status_of "$out")" "$out"
+    out="$(cd "$WS" && "$WS/.agent/scripts/adapter" --project t2 validate 2>&1)"; rc=$?
+    check "validate from the workspace, as the gate runs it, covers both distros" \
+        bash -c '[ "$1" -eq 0 ] && [[ "$2" == *"for distro fakefox ("* && "$2" == *"for distro fakefox2 ("* ]]' _ "$rc" "$out"
+    out="$(reg "$WS" --remove t2)"
 else
     if command -v repos-manifest >/dev/null 2>&1 || [ -n "${CI:-}" ] \
         || { [ -n "$_common" ] && [ -x "${_common%/.git}/.venv/bin/repos-manifest" ]; }; then

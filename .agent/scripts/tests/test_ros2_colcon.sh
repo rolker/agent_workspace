@@ -4254,9 +4254,37 @@ test_tool_unusable_root_is_an_error_never_a_fetch() {
         # shellcheck disable=SC2086
         out="$(run_tool "$sb" "$root" $verb 2>&1)" || rc=$?
         assert_eq "nothing resolved: $verb exits 1" "1" "$rc"
-        assert_contains "nothing resolved: $verb names the next step" "nothing is resolved for any distro yet" "$out"
-        assert_contains "nothing resolved: $verb says to sync" "--project toolsys sync" "$out"
+        assert_contains "nothing resolved: $verb says what is wrong" "holds nothing resolved for any distro yet" "$out"
+        assert_contains "nothing resolved: $verb names the tool's own sync in the root" \
+            "cd $root && $sb/.venv/bin/repos-manifest sync" "$out"
+        assert_not_contains "nothing resolved: $verb names no adapter verb" "--project toolsys sync" "$out"
     done
+    # Not a directory, a link to nothing, unreadable: said so, the same next step.
+    mv "$root/.repos-manifest" "$root/.rm.aside"
+    for kind in file dangling unreadable; do
+        rm -rf "$root/.repos-manifest"
+        case "$kind" in
+            file) echo x > "$root/.repos-manifest"; want="is not a directory" ;;
+            dangling) ln -s "$root/nowhere" "$root/.repos-manifest"; want="is a link to nothing" ;;
+            unreadable) mkdir -p "$root/.repos-manifest/resolved"; chmod 000 "$root/.repos-manifest"; want="cannot be read" ;;
+        esac
+        if [ "$kind" = unreadable ] && [ -r "$root/.repos-manifest" ]; then
+            chmod 755 "$root/.repos-manifest"
+            echo "  SKIPPED: an unreadable directory is readable here (running as root)"
+            continue
+        fi
+        for verb in validate env; do
+            rc=0
+            out="$(run_tool "$sb" "$root" "$verb" 2>&1)" || rc=$?
+            assert_eq "$kind: $verb exits 1" "1" "$rc"
+            assert_contains "$kind: $verb says what is wrong" "$root/.repos-manifest $want" "$out"
+            assert_contains "$kind: $verb names the tool's own sync in the root" \
+                "cd $root && $sb/.venv/bin/repos-manifest sync" "$out"
+        done
+        [ "$kind" = unreadable ] && chmod 755 "$root/.repos-manifest"
+    done
+    rm -rf "$root/.repos-manifest"
+    mv "$root/.rm.aside" "$root/.repos-manifest"
     # A flat system: setup and sync refuse before running the tool.
     mkdir -p "$root/.repos-manifest/resolved"
     printf 'core\n' > "$root/.repos-manifest/resolved/layers.txt"
@@ -4275,10 +4303,25 @@ test_tool_unusable_root_is_an_error_never_a_fetch() {
 
 test_tool_nested_key_refused_by_name() {
     echo "TEST: tool route: a repo key with a directory in it is refused by name in validate and the worktree verbs"
-    local sb root out rc verb
+    local sb root out rc verb key
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     root="$(make_tool_root "$sb" fakefox)"
+    # Every key line the reader cannot read is refused by name, not only
+    # one with a directory in it: a quoted key, a key with another character.
+    for key in "'on'" 'pkg+x'; do
+        cp "$root/.repos-manifest/resolved/fakefox/extra.repos" "$sb/extra.repos.aside"
+        printf '  %s:\n    type: git\n    url: git@github.com:owner/pkg_q.git\n    version: main\n' "$key" \
+            >> "$root/.repos-manifest/resolved/fakefox/extra.repos"
+        for verb in validate repos "repo_pin pkg_a"; do
+            rc=0
+            # shellcheck disable=SC2086
+            out="$(run_tool "$sb" "$root" $verb 2>&1)" || rc=$?
+            assert_eq "key $key: $verb exits 1" "1" "$rc"
+            assert_contains "key $key: $verb names it and its layer" "extra: $key" "$out"
+        done
+        mv "$sb/extra.repos.aside" "$root/.repos-manifest/resolved/fakefox/extra.repos"
+    done
     printf '  grp/pkg_n:\n    type: git\n    url: git@github.com:owner/pkg_n.git\n    version: main\n' \
         >> "$root/.repos-manifest/resolved/fakefox/core.repos"
     for verb in validate repos "repo_pin pkg_a" "worktree_repos --issue owner/pkg_a#1 --layer core --package-repos pkg_a" "worktree_env --worktree $root/worktrees/x"; do
@@ -4296,10 +4339,32 @@ test_tool_distro_rule() {
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     root="$(make_tool_root "$sb" fakefox fakefox2)"
-    out="$(run_tool "$sb" "$root" validate 2>&1)" || rc=$?
-    assert_eq "from the root, two distros: exit 1" "1" "$rc"
+    out="$(run_tool "$sb" "$root" env 2>&1)" || rc=$?
+    assert_eq "from the root, two distros: env exit 1" "1" "$rc"
     assert_contains "the refusal lists both" "several distros (fakefox, fakefox2)" "$out"
     assert_contains "the refusal says how to choose" "pass --from $root/<distro>" "$out"
+    # validate with no distro chosen covers every one, one after another.
+    rc=0; out="$(run_tool "$sb" "$root" validate 2>&1)" || rc=$?
+    assert_eq "from the root, two distros: validate exit 0" "0" "$rc"
+    assert_contains "validate checked fakefox" "for distro fakefox (" "$out"
+    assert_contains "validate checked fakefox2" "for distro fakefox2 (" "$out"
+    mv "$root/fakefox2/extra/src/pkg_c" "$(dirname "$root")/pkg_c.aside"
+    rc=0; out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "from the workspace, fakefox2 broken: validate exit 1" "1" "$rc"
+    assert_contains "the failing distro named" "(failing distro: fakefox2)" "$out"
+    assert_contains "fakefox still checked and passed" "for distro fakefox (" "$out"
+    assert_not_contains "no success line for fakefox2" "for distro fakefox2 (" "$out"
+    rc=0; out="$(run_tool "$sb" "$root/fakefox" validate 2>&1)" || rc=$?
+    assert_eq "from inside <root>/fakefox: validate covers fakefox alone, exit 0" "0" "$rc"
+    assert_not_contains "from inside <root>/fakefox: fakefox2 not checked" "fakefox2" "$out"
+    mv "$(dirname "$root")/pkg_c.aside" "$root/fakefox2/extra/src/pkg_c"
+    for verb in build test sync repos "repo_pin pkg_a"; do
+        rc=0
+        # shellcheck disable=SC2086
+        out="$(run_tool "$sb" "$root" $verb 2>&1)" || rc=$?
+        assert_eq "from the root, two distros: $verb refused" "1" "$rc"
+        assert_contains "from the root: $verb lists the distros" "several distros (fakefox, fakefox2)" "$out"
+    done
     rc=0; out="$(run_tool "$sb" "$sb" env 2>&1)" || rc=$?
     assert_eq "from the workspace, two distros: refused" "1" "$rc"
     rc=0; out="$(run_tool "$sb" "$root/fakefox2" validate 2>&1)" || rc=$?
@@ -4408,6 +4473,14 @@ test_tool_validate() {
     assert_eq "validate: exit 0" "0" "$rc"
     assert_eq "validate: the success line names the distro, the files and the limit" \
         "✅ ros2_colcon checkout matches the tool's last resolve for distro fakefox ($root/.repos-manifest/resolved/fakefox); the manifest itself was not read again (there is no repos-manifest status yet)" "$out"
+    # A leftover of another route is noted, without failing.
+    mkdir -p "$root/configs/manifest"
+    echo "file:///x/bootstrap.yaml" > "$root/configs/project_bootstrap.url"
+    rc=0; out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "leftover configs/: still exit 0" "0" "$rc"
+    assert_contains "leftover configs/: noted, both named" \
+        "NOTE: $root/configs/manifest and $root/configs/project_bootstrap.url, left from another route, is not read on the tool route" "$out"
+    rm -rf "$root/configs"
     mv "$root/fakefox/core/src/pkg_b" "$(dirname "$root")/pkg_b.aside"
     rc=0; out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
     assert_eq "a missing optional repo: still exit 0" "0" "$rc"
@@ -4468,6 +4541,7 @@ test_worktree_env_names_unbuilt_lower_layers() {
     wt="$sb/wt"
     mkdir -p "$wt/l3_ws/src"
     mkdir -p "$proj/layers/main/l1_ws/install"
+    : > "$proj/layers/main/l1_ws/install/local_setup.bash"
     out="$(run_adapter "$sb" worktree_env --worktree "$wt" 2>"$sb/err")"
     err="$(cat "$sb/err")"
     assert_eq "bootstrap route: stdout as it was" \
@@ -4478,15 +4552,16 @@ if [ -f $proj/layers/main/l2_ws/install/local_setup.bash ]; then source $proj/la
 if [ -f $proj/layers/main/l3_ws/install/local_setup.bash ]; then source $proj/layers/main/l3_ws/install/local_setup.bash; fi
 if [ -f $wt/l3_ws/install/local_setup.bash ]; then source $wt/l3_ws/install/local_setup.bash; fi" "$out"
     assert_eq "bootstrap route: the one unbuilt lower layer named, the built one not" \
-        "NOTE: layer l2 is not built ($proj/layers/main/l2_ws/install missing); this worktree's build will not find its packages until it is" "$err"
+        "NOTE: layer l2 is not built ($proj/layers/main/l2_ws/install/local_setup.bash missing); this worktree's build will not find its packages until it is" "$err"
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     root="$(make_tool_root "$sb" fakefox)"
     wt="$root/worktrees/issue-toolsys-owner-pkg_c-2"
-    mkdir -p "$wt/extra_ws/src" "$root/fakefox/install"
+    mkdir -p "$wt/extra_ws/src" "$root/fakefox/install" "$root/fakefox/core/install"
+    : > "$root/fakefox/install/local_setup.bash"
     run_tool "$sb" "$sb" worktree_env --worktree "$wt" >/dev/null 2>"$sb/err"
-    assert_eq "tool route: core named, the built unnamed layer not" \
-        "NOTE: layer core is not built ($root/fakefox/core/install missing); this worktree's build will not find its packages until it is" "$(cat "$sb/err")"
+    assert_eq "tool route: core named (an install/ without local_setup.bash, which env.sh sources), the built unnamed layer not" \
+        "NOTE: layer core is not built ($root/fakefox/core/install/local_setup.bash missing); this worktree's build will not find its packages until it is" "$(cat "$sb/err")"
 }
 
 test_tool_package_worktree() {
@@ -4502,7 +4577,7 @@ test_tool_package_worktree() {
     wt="$root/worktrees/issue-toolsys-owner-pkg_a-503"
     assert_eq "exit 0" "0" "$rc"
     assert_contains "creation names the unnamed layer, not built yet" \
-        "NOTE: layer _unnamed is not built ($root/fakefox/install missing)" "$out"
+        "NOTE: layer _unnamed is not built ($root/fakefox/install/local_setup.bash missing)" "$out"
     assert_eq "the header records the resolved pin as base=" \
         "# project=toolsys issue=owner/pkg_a#503 layer=core base=fakefox" "$(head -n1 "$wt/.worktree-repos" 2>/dev/null)"
     assert_eq "on feature/issue-503" "feature/issue-503" "$(git -C "$wt/core_ws/src/pkg_a" branch --show-current 2>/dev/null)"
@@ -4519,6 +4594,67 @@ if [ -f $wt/core_ws/install/local_setup.bash ]; then source $wt/core_ws/install/
     assert_eq "build.sh generated and executable" "true" "$([ -x "$wt/build.sh" ] && echo true || echo false)"
     assert_eq "COLCON_IGNORE in <root>/worktrees" "true" "$([ -f "$root/worktrees/COLCON_IGNORE" ] && echo true || echo false)"
     assert_eq "no worktree inside a distro's directory" "" "$(find "$root/fakefox" -name '*_ws' -print 2>/dev/null)"
+}
+
+test_tool_build_and_test_with_no_layer_left_fail() {
+    echo "TEST: tool route: a build or test loop that finds no layer (a sync of the tool meanwhile) is an error, not a success"
+    local sb root out rc verb
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb" fakefox)"
+    # The underlay, sourced after the checks and before the loop, moves the
+    # resolved directory aside, as the tool's first rename would.
+    printf 'export SOURCED_LAYERS=base\nmv %q %q 2>/dev/null || true\n' \
+        "$root/.repos-manifest/resolved/fakefox" "$root/.repos-manifest/resolved/.aside" > "$sb/rosroot/fakefox/setup.bash"
+    for verb in build test; do
+        if [ -d "$root/.repos-manifest/resolved/.aside" ]; then
+            mv "$root/.repos-manifest/resolved/.aside" "$root/.repos-manifest/resolved/fakefox"
+        fi
+        rc=0
+        out="$(run_tool "$sb" "$root" "$verb" 2>&1)" || rc=$?
+        assert_eq "$verb with no layer left: exit 1" "1" "$rc"
+        assert_contains "$verb with no layer left: said so" "$verb went over no layer" "$out"
+        assert_not_contains "$verb with no layer left: no success line" "successfully" "$out"
+        assert_not_contains "$verb with no layer left: no pass line" "tests passed" "$out"
+    done
+}
+
+# A package worktree on a root with two distros: from inside <root>/<d>/
+# every adapter call reads d; from the root it is refused before anything
+# is made, listing the distros.
+test_tool_package_worktree_two_distros() {
+    echo "TEST: tool route, two distros: a package worktree from inside <root>/<d>/ reads d throughout; from the root it is refused"
+    local sb root out rc=0 wt
+    sb="$(make_worktree_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb" fakefox fakefox2)"
+    wt="$root/worktrees/issue-toolsys-owner-pkg_a-504"
+    out="$(cd "$root" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --issue owner/pkg_a#504 --type project --project toolsys \
+        --layer core --package-repos pkg_a 2>&1)" || rc=$?
+    assert_eq "from the root: exit 1" "1" "$rc"
+    assert_contains "from the root: the distros listed" "several distros (fakefox, fakefox2)" "$out"
+    assert_eq "from the root: nothing made" "false" "$([ -e "$wt" ] && echo true || echo false)"
+    assert_eq "from the root: no branch made" "" \
+        "$(git -C "$root/fakefox/core/src/pkg_a" branch --list feature/issue-504; git -C "$root/fakefox2/core/src/pkg_a" branch --list feature/issue-504)"
+    rc=0
+    out="$(cd "$root/fakefox" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/stubbin:$PATH" \
+        "$sb/.agent/scripts/worktree_create.sh" --issue owner/pkg_a#504 --type project --project toolsys \
+        --layer core --package-repos pkg_a 2>&1)" || rc=$?
+    assert_eq "from inside <root>/fakefox: exit 0" "0" "$rc"
+    assert_eq "base= is fakefox's pin" \
+        "# project=toolsys issue=owner/pkg_a#504 layer=core base=fakefox" "$(head -n1 "$wt/.worktree-repos" 2>/dev/null)"
+    assert_eq "the branch starts at origin's fakefox" \
+        "$(git -C "$root/fakefox/core/src/pkg_a" rev-parse refs/remotes/origin/fakefox)" \
+        "$(git -C "$wt/core_ws/src/pkg_a" rev-parse HEAD 2>/dev/null)"
+    assert_eq "env.sh: fakefox's underlay, then layers under <root>/fakefox/ only, then the worktree's" \
+        "unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
+source $sb/rosroot/fakefox/setup.bash
+if [ -f $root/fakefox/install/local_setup.bash ]; then source $root/fakefox/install/local_setup.bash; fi
+if [ -f $root/fakefox/core/install/local_setup.bash ]; then source $root/fakefox/core/install/local_setup.bash; fi
+if [ -f $wt/core_ws/install/local_setup.bash ]; then source $wt/core_ws/install/local_setup.bash; fi" \
+        "$(cat "$wt/env.sh" 2>/dev/null)"
+    assert_not_contains "env.sh names nothing of fakefox2" "fakefox2" "$(cat "$wt/env.sh" 2>/dev/null)"
 }
 
 test_bootstrap_no_url_names_the_tool() {
@@ -4720,6 +4856,8 @@ mr_test test_tool_validate
 mr_test test_tool_repos_pin_and_worktree_verbs
 mr_test test_worktree_env_names_unbuilt_lower_layers
 mr_test test_tool_package_worktree
+mr_test test_tool_build_and_test_with_no_layer_left_fail
+mr_test test_tool_package_worktree_two_distros
 test_bootstrap_no_url_names_the_tool
 mr_test test_tool_real_init_and_sync
 if [ "$TOOL_SKIPPED" -gt 0 ]; then
