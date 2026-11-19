@@ -224,15 +224,16 @@ if [ "$sub" = "$STUB_ON" ]; then
     kill-after) "$REAL_GIT" "$@"; s=$?; kill -9 "$PPID"; exit "$s";;
     term-during) kill -TERM "$PPID"; sleep 0.3; exec "$REAL_GIT" "$@";;
     fail) echo "stub refuses" >&2; exit 1;;
+    plant) printf 'precious\n' >"$STUB_PLANT"; exec "$REAL_GIT" "$@";;
   esac
 fi
 exec "$REAL_GIT" "$@"
 """
 
 
-def _sync_with_stub(tmp_path, system, on, do):
+def _sync_with_stub(tmp_path, system, on, do, plant=""):
     """`sync` in a process of its own, with a `git` first on PATH that acts on the subcommand
-    `on` as `do` says; returns the process's exit status."""
+    `on` as `do` says (`plant`: write the file `plant` just before it); returns the process."""
     stub = tmp_path / "stub-bin" / "git"
     stub.parent.mkdir(exist_ok=True)
     stub.write_text(STUB_GIT)
@@ -243,6 +244,7 @@ def _sync_with_stub(tmp_path, system, on, do):
         "REAL_GIT": shutil.which("git"),
         "STUB_ON": on,
         "STUB_DO": do,
+        "STUB_PLANT": str(plant),
         "PYTHONPATH": os.path.dirname(os.path.dirname(repos_manifest.__file__)),
     }
     done = subprocess.run(
@@ -331,4 +333,29 @@ def test_a_second_step_that_fails_is_undone_and_the_repo_left_as_it_was(two, tmp
     assert "src/a: left alone: `git merge` exited 1; left as it was:\nstub refuses" in done.stdout
     assert snapshot_repo(clone, fetched=True) == before
     assert branch(clone) == "dev"
+    assert state_of(system, "jazzy")["a"] == recorded
+
+
+@pytest.mark.parametrize("on", ["merge", "switch"])
+def test_an_ignored_file_made_just_before_the_move_is_never_overwritten(two, tmp_path, capsys, on):
+    # The paths check found nothing; an ignored file appears where an incoming file goes
+    # between the check and git's call (a build writing a log): git itself refuses.
+    system, manifest, remote = two
+    clone = system / "jazzy/core/src/a"
+    push_commit(remote, ".gitignore", "*.log\n")
+    assert run(system, "sync", "--distro", "jazzy") == 0
+    if on == "merge":
+        push_commit(remote, "incoming.log", "theirs\n")
+    else:
+        push_commit(remote, "incoming.log", "theirs\n", "dev")
+        rewrite_manifest(manifest, lambda d: d["repositories"]["a"].update(version="dev"))
+    git("fetch", "-q", "origin", cwd=clone)
+    was = head(clone)
+    recorded = state_of(system, "jazzy")["a"]
+    done = _sync_with_stub(tmp_path, system, on, "plant", clone / "incoming.log")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert f"src/a: left alone: `git {on}` exited" in done.stdout
+    assert "left as it was" in done.stdout
+    assert (clone / "incoming.log").read_text() == "precious\n"
+    assert head(clone) == was and branch(clone) == "main"
     assert state_of(system, "jazzy")["a"] == recorded

@@ -763,7 +763,10 @@ without a word (git 2.53.0), so `sync` makes the check itself: a path that is th
 tracked in `HEAD`, a directory on the way to it that is there and is not a directory (a link is
 never taken for one), or a directory the move replaces with a file that holds anything not
 tracked in `HEAD`, leaves the repo as it is, and the report names up to ten of the paths and
-says which are ignored. Git's own refusal stays behind that check.
+says which are ignored. Git's own refusal stays behind that check: every `git merge` and
+`git switch` of `sync`, the undo included, is given `--no-overwrite-ignore` (both commands
+accept it in git 2.53.0), so an ignored file written where an incoming file goes between the
+check and the call (a build writing a log) makes git refuse, and the repo is left as it was.
 
 Every `git` that changes a repo is one call (a switch, or a fast-forward), except the switch to
 a local branch followed by its fast-forward, whose first step is undone if the second fails.

@@ -635,7 +635,9 @@ def update_repo(
                 f"origin's {found.name} no longer contains this commit (rewritten upstream)"
             )
         moved = count(git, f"{head}..{found.target}")
-        steps = [(["merge", "--ff-only", "-q", found.target], found.target)]
+        steps = [
+            (["merge", "--ff-only", "--no-overwrite-ignore", "-q", found.target], found.target)
+        ]
         said = f"fast-forwarded {moved} commits"
         return _change(turn, head, [found.target], steps, symbolic, said)
     if found.kind != BRANCH and branch is None and head == found.target:
@@ -677,22 +679,31 @@ def _move(turn: _Turn, head: str, found: Version, said: Optional[str] = None) ->
     if said is None:
         said = f"moved from {turn.record.version or 'the default branch'} to {found.name}"
     if found.kind != BRANCH:
-        steps = [(["switch", "-q", "--detach", found.target], found.target)]
+        steps = [
+            (["switch", "-q", "--no-overwrite-ignore", "--detach", found.target], found.target)
+        ]
         return _change(turn, head, [found.target], steps, None, said)
     want = f"refs/heads/{found.name}"
     local = git.out("rev-parse", "--verify", "-q", want)
     if local is None:
         track = f"refs/remotes/origin/{found.name}"
-        steps = [(["switch", "-q", "-c", found.name, "--track", track], found.target)]
+        steps = [
+            (
+                ["switch", "-q", "--no-overwrite-ignore", "-c", found.name, "--track", track],
+                found.target,
+            )
+        ]
         return _change(turn, head, [found.target], steps, want, said)
     if not ancestor(git, local, found.target):
         return turn.left(f"a local branch {found.name} has commits not on origin; not switched")
     holder = worktree_holding(git, found.name)
     if holder is not None:
         return turn.left(f"branch {found.name} is checked out in {holder}; not switched")
-    steps = [(["switch", "-q", found.name], local)]
+    steps = [(["switch", "-q", "--no-overwrite-ignore", found.name], local)]
     if local != found.target:
-        steps.append((["merge", "--ff-only", "-q", found.target], found.target))
+        steps.append(
+            (["merge", "--ff-only", "--no-overwrite-ignore", "-q", found.target], found.target)
+        )
     return _change(turn, head, [local, found.target], steps, want, said)
 
 
@@ -739,9 +750,14 @@ def _change(
             notes.append(f"moved, but `git {step[0]}` exited {status}:\n{said_by_git}")
             continue
         if index > 0:  # undo the first step: back where it was
-            back = ["switch", "-q", "--detach", before.head]
+            back = ["switch", "-q", "--no-overwrite-ignore", "--detach", before.head]
             if before.symbolic is not None:
-                back = ["switch", "-q", before.symbolic[len("refs/heads/") :]]
+                back = [
+                    "switch",
+                    "-q",
+                    "--no-overwrite-ignore",
+                    before.symbolic[len("refs/heads/") :],
+                ]
             git.run(*back, change=True)
         after = Before.read(git, turn.git_dir)
         if after == before:
