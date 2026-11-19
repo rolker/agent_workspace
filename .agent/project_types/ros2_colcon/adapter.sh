@@ -56,8 +56,9 @@
 # The distro on the tool route (owner, 2026-11-18: "the directory the
 # session is started in decides"), chosen by _rc_tool_distro_select alone:
 #   1. the directory the call comes from (ACTIVE_PROJECT_FROM: --from, else
-#      the cwd, physical) is <root>/<x> or below it, where <x> is a real
-#      directory (not a link) directly under the physical root, other than
+#      the cwd, taken as a physical path) is <root>/<x> or below it, where
+#      <x> is a real directory (not a link) directly under the physical
+#      root, other than
 #      worktrees and names starting with a dot: x, and only x. The adapter
 #      does not read the tool's settings, so a directory there that is not
 #      a distro is taken as one and refused below: a wrong distro chosen
@@ -83,8 +84,10 @@
 # The distro's name is the ROS distribution's (/opt/ros/<distro>).
 #
 # On the tool route `setup` and `sync` run the tool's sync in the root
-# (<main checkout>/.venv/bin/repos-manifest sync --distro <d>; with no
-# --distro when nothing is resolved yet) and pass its output and exit
+# (<main checkout>/.venv/bin/repos-manifest sync --distro <d>: --distro <x>
+# from inside <root>/<x>/, from elsewhere the one resolved distro's name;
+# with no --distro only from outside every distro's directory when nothing
+# is resolved yet) and pass its output and exit
 # status through: the adapter never pulls, fetches or moves a clone here.
 # `build` and `test` are today's colcon loops over the resolved layers,
 # with --base-paths src so the unnamed layer's build in <root>/<distro>

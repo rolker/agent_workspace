@@ -131,8 +131,8 @@ The root need not be a git repository. The registry line holds its name, type an
   unnamed layer in `<root>/<distro>`, its repos in `src/` below it. A repo's pin, and so the
   base of a package worktree's branch, is the `version` of its entry in `<layer>.repos`.
 - **The distro.** The directory the call comes from decides (the owner, 2026-11-18). A call
-  from inside `<root>/<x>/`, where `<x>` is a real directory (not a link) directly under the
-  physical root, other than `worktrees` and names starting with a dot, is for distro `<x>`,
+  from inside `<root>/<x>/` (the calling directory taken as a physical path), where `<x>` is a
+  real directory (not a link) directly under the physical root, other than `worktrees` and names starting with a dot, is for distro `<x>`,
   and only `<x>`: if the
   tool's last resolve for `<x>` cannot be used (no `resolved/<x>/layers.txt`, or it lists no
   layer), the call is refused, naming the tool's own `cd <root> && repos-manifest sync
@@ -160,8 +160,10 @@ The root need not be a git repository. The registry line holds its name, type an
   instead). A session is still started at the
   root; a session started inside a distro's directory is a later part (ADR-0020 refuses a
   subdirectory of a root in no git repository).
-- **`setup` and `sync`** run `repos-manifest sync --distro <distro>` in the root, or `sync`
-  with no `--distro` when nothing is resolved yet, and pass its output and exit status through
+- **`setup` and `sync`** run `repos-manifest sync --distro <distro>` in the root: `--distro
+  <x>` from inside `<root>/<x>/`, from elsewhere the one resolved distro's name; `sync` with
+  no `--distro` only from outside every distro's directory when nothing is resolved yet. They
+  pass its output and exit status through
   (0; 1 when a repo that is not optional failed, or on a refusal; 128+n on a signal). The
   adapter pulls, fetches and moves no clone on this route. The tool's `sync` clones what is
   missing and leaves a repo that is there as it is. When the layers changed, `sync` says that
