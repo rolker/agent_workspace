@@ -1178,6 +1178,17 @@ def test_a_selection_run_keeps_the_recorded_list_and_says_a_given_one_is_not_rec
     assert "given to colcon:" not in out and "options given to colcon changed" not in out
 
 
+def test_no_unrecorded_line_when_no_layer_of_a_selection_run_was_built(system, stub, capsys):
+    assert run(system, "build") == 0
+    (system / "mid/src/m/STUB_FAIL").touch()
+    capsys.readouterr()
+    status = run(system, "build", "mid", "--", "--packages-select", "m", "--packages-skip", "y")
+    assert status == 1
+    out = capsys.readouterr().out
+    assert "  failed: mid (colcon exited" in out
+    assert "not recorded" not in out
+
+
 def test_a_layer_built_leaving_out_under_keep_going_and_not_used_is_named(system, stub, capsys):
     (system / "mid/src/m/STUB_FAIL").touch()
     capsys.readouterr()

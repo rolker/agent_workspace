@@ -1256,7 +1256,7 @@ def report(progress: Progress, run: Optional[Run]) -> None:
                     f" {by_name[name].directory / 'install'}/"
                 )
             print(line)
-    if progress.unrecorded:
+    if progress.unrecorded and progress.built:  # no line when no layer was built
         print(
             f"  not recorded, given with {progress.selection}: {without_text(progress.unrecorded)}"
             " (a run that builds only part of a layer gives each layer back the record it had)"
