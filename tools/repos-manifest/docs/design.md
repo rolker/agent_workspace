@@ -888,7 +888,8 @@ A distro's lock: `sync`, and `init` for its first sync, hold the distro's lock (
 holds, "build") from before the distro's resolved files are written to the end of its repos;
 until a lock for every command is designed, this is that lock reused. A distro whose lock a
 `build` or another `sync` holds is reported and the others go on. Every `git` that changes a
-repo is given the lock, so a `sync` killed while one runs does not release it early; the lock
+repo, its fetches included, is given the lock, so a `sync` killed while one runs does not
+release it early; the lock
 file names only the `sync`. A `sync` writes no build record; after a distro's repos, for each
 layer `build` has built and some of whose repos this run cloned or moved, it says that the
 layer is behind and that `build` brings it up to date. When the manifest's own file is in a
