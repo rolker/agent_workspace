@@ -79,3 +79,43 @@ The Issue Review confirmed the claim against the script and found the push failu
 **Plan**: `.agent/work-plans/issue-516/plan.md` at `47cf2630`
 
 Return 0 from create_draft_pr after a failed push, with a warning that says how to open the pull request later. Test with a bare origin whose pre-receive hook refuses the push (exit 0, worktree exists, warning, next steps). The documents need one added sentence in WORKTREE_GUIDE and no corrections.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-19 12:51 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #516 — worktree_create.sh exits 1 when only the draft pull request's push failed
+**Plan**: `.agent/work-plans/issue-516/plan.md` at `47cf2630`
+**Branch**: `feature/issue-516`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One function, one test, one guide sentence; a single PR. |
+| Issue alignment | Good | Covers the issue and the Issue Review's actions (fix inside `create_draft_pr`, actionable warning, refused-push test, check of callers' docs). Serves: "A safeguard has to earn its cost (a message that says non-fatal must act non-fatal); Isolated worktrees for every task: `docs/design.md#worktrees`". The anchor exists (`docs/design.md` "## Worktrees"); the goal is quoted as a bullet of README "Quality of the work" rather than the section name, same form the Issue Review used. |
+| File targeting | Good | The three files are the right ones. No caller needs a change (checked below). |
+| Consequences | Good | Callers checked: `start-task` calls `worktree_create.sh ... --print-path-only` in an `elif`; with the fix it gets the path (stdout is redirected to stderr until line 1434 prints the path), so the session enters the worktree instead of stopping and offering `worktree_remove.sh`. That is the intended outcome. `run-issue` does not pass `--plan-file`; its PR probe (`gh pr list --head ... isDraft`) sees no PR after a failed push and answers `--pr none`, and the publish step then creates the PR with `gh_create_pr.sh`, which is correct. No script reads the exit status or output to learn whether a draft exists. `script_reference.md` does not describe this exit path. |
+| Principle alignment | Needs work | The warning's recovery commands (finding 1). Test design is sound otherwise (finding 2). |
+| ADR compliance | Good | No ADR triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Principle alignment / AGENTS.md rule] (needs-work)** — The planned hint `git push -u origin <branch>`, then `gh pr create --draft` is wrong in three of the cases the function serves. It names bare `gh pr create`, which AGENTS.md forbids for PRs (`.agent/scripts/gh_create_pr.sh` adds the AI signature and checks the target repo); for a project worktree `create_draft_pr` passes `--repo "$PROJECT_GH_SLUG"`, which the hint drops; and for a `--parent-issue` worktree it passes `--base "$PR_PARENT_BASE"`, so the hint as planned would open the PR against the default branch. Print the command from the function's own variables: `gh_create_pr.sh --draft --title "<pr_title>"` plus `-R <repo_flag>` and `--base <base_flag>` when set (the package-worktree message at line 1215 already uses this form), and say that the plan was not posted as a comment when `HAS_PLAN` is true. Have the test assert the hint names `gh_create_pr.sh`, not `gh pr create`.
+2. **[Test] (low)** — The `pre-receive` hook must be `chmod +x`; git skips a non-executable hook, the push then succeeds and the path under test is not reached. The plan's "no new file, so no `chmod`" is about the test file; say the hook needs it. The "Push failed" assertion guards against this silently, so it must stay. Without the fix the test fails on RC (current code exits 1), so it does exercise the bug. The conditional "hook preflight" block is unnecessary: RC 0 already proves the script ran to its end, past the preflight.
+3. **[Test] (low, optional)** — `start-task` uses `--print-path-only`; a second run of the same refused-push case with that flag, asserting stdout is exactly the worktree path, would cover the caller that was actually broken. `run_create` merges stderr, so this needs stdout captured on its own.
+
+Checked and fine: the empty `chore: start work on #N` commit made before the push stays on the local branch only; it is the same commit the success path pushes, and it goes up with the first later push, so it is harmless. A re-run of `/start-task` finds the existing worktree through `worktree_enter.sh` and makes no second commit.
+
+### Summary
+
+The fix and its placement are right, and no caller relies on the old exit status. The one change before implementation is the warning's recovery command, which must use `gh_create_pr.sh` with the repo and base the function already knows.
+
+### Recommended Actions
+
+- [ ] Build the warning's recovery command from `repo_flag`, `base_flag` and `pr_title` with `gh_create_pr.sh --draft`, and mention the unposted plan; assert `gh_create_pr.sh` in the test.
+- [ ] Make the test's `pre-receive` hook executable and keep the "Push failed" assertion; drop the conditional preflight block.
+- [ ] Optionally add a `--print-path-only` run asserting stdout is exactly the worktree path.
