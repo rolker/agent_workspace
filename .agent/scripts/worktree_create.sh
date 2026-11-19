@@ -304,7 +304,7 @@ while [[ $# -gt 0 ]]; do
             # A relative path is relative to the caller's directory: made
             # absolute here, before the script changes directory (the plan
             # is read later from ROOT_DIR and from inside the worktree).
-            [[ -z "$PLAN_FILE" || "$PLAN_FILE" == /* ]] || PLAN_FILE="$PWD/$PLAN_FILE"
+            [[ -z "$PLAN_FILE" || "$PLAN_FILE" == /* ]] || PLAN_FILE="$CALLER_DIR/$PLAN_FILE"
             shift 2
             ;;
         --workflow)

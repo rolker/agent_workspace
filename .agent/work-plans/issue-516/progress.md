@@ -483,13 +483,13 @@ Outside reviewers:
   - The plan-drift notes are folded into the last finding below.
 
 ### Findings
-- [ ] (must-fix) The PR body (its Decision summary) has sentences that are now false or stale; fixing it is a body edit, no code change:
+- [x] (must-fix) The PR body (its Decision summary) has sentences that are now false or stale; fixing it is a body edit, no code change: (deferred: no code change here: the host corrected the PR #526 body on the pull request (Left open list, the caller-relative path change, the success-path sentence, Reviews and outcomes with 103 passed))
   - "Left open, on purpose: Five suggestions from the last review..." lists the guide sentence, the relative --plan-file, the dangling "said:" and the test points as open, but all four are fixed at e1b99bf1. Only the `**Authored-By**:` title point (with the user-tier guard) is still open.
   - "Also fixed... The path is now made absolute once" leaves out that a relative path is now relative to the caller's directory. That is a behaviour change: a path relative to the workspace root, given from elsewhere, is no longer found.
   - "Unchanged: the success path... apart from the relative-path fix": the four sandbox cases predate the caller-relative change, and the push's stdout is now hidden too (next finding).
   - "Reviews and outcomes: ... Two pre-push code reviews ... test_worktree_create.sh: 101 passed" omits the integrated review, its fix round and this PR review, and the suite now passes 103.
   — PR #526 body
 - [ ] (suggestion) A successful push no longer shows git's stdout line "branch '<b>' set up to track 'origin/<b>'." The push used `2>/dev/null` before and now uses `2>&1 >/dev/null` on every path; reproduced by the adversarial reviewer. Harmless, but undisclosed: either say so, or drop only stderr on success (Claude adversarial) — `.agent/scripts/worktree_create.sh:1290`
-- [ ] (suggestion) The parse case uses `$PWD`; `CALLER_DIR` (line 40) holds the same value and exists for this purpose, which would keep "caller's directory" in one place (Claude adversarial) — `.agent/scripts/worktree_create.sh:307`
+- [x] (suggestion) The parse case uses `$PWD`; `CALLER_DIR` (line 40) holds the same value and exists for this purpose, which would keep "caller's directory" in one place (Claude adversarial) — `.agent/scripts/worktree_create.sh:307`
 - [ ] (suggestion) Remote hook output is relayed raw, so terminal control characters in it reach the screen; stripping them with `tr -d` or `cat -v` before indenting would keep the pasted lines legible (codex, low) — `.agent/scripts/worktree_create.sh:1296-1299`
 - [ ] (suggestion) The plan does not mention the caller-relative --plan-file change, the start-task SKILL.md edit, or the full Summary body in the hint; a line under the plan's Approach or the PR body's "what changes" would record the scope (codex) — `.agent/work-plans/issue-516/plan.md`
