@@ -138,8 +138,8 @@ def test_no_version_when_origins_default_branch_changes(vcs, tmp_path, capsys, o
         )
     else:
         assert (
-            f"origin's default branch main cannot be read; `git -C {clone} remote set-head"
-            " origin --auto` reads it from origin again"
+            f"origin's default branch as recorded here, main, is gone from origin; `git -C"
+            f" {clone} remote set-head origin --auto` reads it from origin again"
         ) in out
         git("remote", "set-head", "origin", "--auto", cwd=clone)
         _left_alone(sys_dir, clone, capsys, "moved by a person: it is on main")
@@ -559,15 +559,44 @@ def test_a_fetch_that_fails(system, capsys, optional):
         assert "run `repos-manifest sync` to finish once they can be fetched" in out
 
 
-def test_a_tag_moved_on_origin_is_reported_with_its_next_step(system, capsys):
+def test_a_tag_clash_on_a_tag_the_manifest_does_not_name_is_a_note(system, capsys):
+    # git exits 1 for the tag it will not replace and still fetches the branches; sync fetches
+    # the branches again without tags and goes on.
     sys_dir, _, remote, clone = system
+    mine = git("rev-parse", "refs/tags/v1", cwd=clone)
     git("tag", "-f", "v1", "other", cwd=remote)
-    out = _sync(sys_dir, capsys, 1)
+    new = push_commit(remote, "one", "1\n")
+    out = _sync(sys_dir, capsys)
     assert (
-        f"tag v1 was moved on origin, and sync never replaces a tag: to take origin's, git -C"
-        f" {clone} tag -d v1, then sync again"
-    ) in out
-    assert git("rev-parse", "v1^{commit}", cwd=clone) != git("rev-parse", "other", cwd=remote)
+        "src/a: tag v1 here and origin's tag v1 name other objects; sync never replaces a tag,"
+        " and this one is not the manifest's version"
+    ) in out, out
+    assert "src/a: fast-forwarded 1 commits" in out
+    assert head(clone) == new
+    assert git("rev-parse", "refs/tags/v1", cwd=clone) == mine
+
+
+def test_a_tag_of_a_persons_own_that_origin_also_made_is_never_advised_away(system, capsys):
+    sys_dir, manifest, remote, clone = system
+    git("switch", "-q", "--detach", "origin/other", cwd=clone)
+    mine = commit_file(clone, "mine.txt", "mine\n", "a person's commit")
+    git("tag", "rel", cwd=clone)
+    git("switch", "-q", "main", cwd=clone)
+    theirs = git("rev-parse", "dev", cwd=remote)
+    git("tag", "rel", "dev", cwd=remote)
+    _pin(manifest, "rel")
+    git("fetch", "-q", "--no-tags", "origin", cwd=clone)
+    before = snapshot_repo(clone, fetched=True)
+    recorded = state_of(sys_dir)["a"]
+    out = _sync(sys_dir, capsys, 1)
+    assert snapshot_repo(clone, fetched=True) == before
+    assert state_of(sys_dir)["a"] == recorded
+    assert (
+        f"ERROR: src/a: a tag rel is here at {mine[:12]}, and origin's tag rel is at"
+        f" {theirs[:12]}; sync never replaces a tag, and which to keep is for a person to decide"
+    ) in out, out
+    assert "tag -d" not in out
+    assert git("rev-parse", "refs/tags/rel", cwd=clone) == mine
 
 
 def test_a_tag_moved_on_origin_is_followed_once_the_stale_tag_is_deleted(system, capsys):
@@ -633,6 +662,61 @@ def test_the_url_probe_never_writes_local_branches_whatever_its_config_says(syst
     assert f"src/a: origin repointed from {remote} to {copy}" in out, out
     assert git("rev-parse", "dev", cwd=clone) == mine
     assert "feature" in git("branch", "--format=%(refname:short)", cwd=clone).split()
+
+
+@pytest.mark.parametrize("config", [None, "fetch.prune", "remote.origin.prune"])
+def test_the_fetch_removes_no_remote_tracking_ref(system, capsys, config):
+    """A person's refs fetched by a refspec of their own (pull request heads) and a branch
+    origin has deleted stay; `sync` prunes nothing, whatever the configuration asks."""
+    sys_dir, _, remote, clone = system
+    git("update-ref", "refs/pull/1/head", "dev", cwd=remote)
+    git("config", "--add", "remote.origin.fetch", "+refs/pull/*/head:refs/remotes/origin/pr/*",
+        cwd=clone)  # fmt: skip
+    git("fetch", "-q", "origin", cwd=clone)
+    if config:
+        git("config", config, "true", cwd=clone)
+    git("update-ref", "-d", "refs/heads/other", cwd=remote)
+    refs = git("for-each-ref", "--format=%(refname) %(objectname)", "refs/remotes/", cwd=clone)
+    assert "refs/remotes/origin/pr/1" in refs and "refs/remotes/origin/other" in refs
+    new = push_commit(remote, "one", "1\n")
+    out = _sync(sys_dir, capsys)
+    assert "src/a: fast-forwarded 1 commits" in out
+    after = git("for-each-ref", "--format=%(refname) %(objectname)", "refs/remotes/", cwd=clone)
+    kept = [r for r in refs.splitlines() if "origin/main" not in r and "origin/HEAD" not in r]
+    assert all(r in after.splitlines() for r in kept), after
+    assert head(clone) == new
+
+
+def test_a_pinned_branch_deleted_on_origin_is_not_followed_from_its_stale_ref(system, capsys):
+    sys_dir, manifest, remote, clone = system
+    _pin(manifest, "dev")
+    _sync(sys_dir, capsys)
+    git("checkout", "-q", "main", cwd=remote)
+    git("update-ref", "-d", "refs/heads/dev", cwd=remote)
+    stale = git("rev-parse", "refs/remotes/origin/dev", cwd=clone)
+    before = snapshot_repo(clone)
+    out = _sync(sys_dir, capsys, 1)
+    assert (
+        "ERROR: src/a: version dev is not on origin: origin no longer has the branch dev"
+        " (refs/remotes/origin/dev here is left from an earlier fetch; sync removes no"
+        " remote-tracking ref)"
+    ) in out, out
+    assert snapshot_repo(clone) == before
+    assert git("rev-parse", "refs/remotes/origin/dev", cwd=clone) == stale
+
+
+def test_a_commit_held_only_by_a_stale_remote_tracking_ref_is_not_followed(system, capsys):
+    sys_dir, manifest, remote, clone = system
+    commit = git("rev-parse", "other", cwd=remote)
+    git("update-ref", "-d", "refs/heads/other", cwd=remote)
+    _pin(manifest, commit)
+    _left_alone(
+        sys_dir,
+        clone,
+        capsys,
+        f"src/a: left alone: version {commit} is a commit here that no branch of origin, and no"
+        " tag origin has, holds; not followed",
+    )
 
 
 def test_a_local_only_tag_is_kept_by_the_fetch(system, capsys):
@@ -885,7 +969,11 @@ def test_a_version_missing_from_an_origin_set_by_hand_says_so(system, capsys):
     git("remote", "set-url", "origin", str(mine), cwd=clone)
     _pin(manifest, "dev")
     out = _sync(sys_dir, capsys, 1)
-    assert "version dev is not on origin; origin was set by hand: origin is" in out
+    assert (
+        "version dev is not on origin: origin no longer has the branch dev"
+        " (refs/remotes/origin/dev here is left from an earlier fetch; sync removes no"
+        " remote-tracking ref); origin was set by hand: origin is"
+    ) in out, out
     assert f"git -C {clone} remote set-url origin {remote}" in out
 
 
@@ -1002,6 +1090,22 @@ def test_a_new_branch_gets_its_upstream_when_the_fetch_settings_cover_it(system,
     out = _sync(sys_dir, capsys)
     assert "no upstream" not in out
     assert git("rev-parse", "--abbrev-ref", "dev@{upstream}", cwd=clone) == "origin/dev"
+
+
+def test_a_commit_pin_beyond_a_shallow_clones_history_says_so(system, capsys):
+    sys_dir, manifest, remote, clone = system
+    push_commit(remote, "one", "1\n")
+    old = git("rev-parse", "main~1", cwd=remote)  # in no tag's history: the fetch keeps it out
+    _narrow_clone(clone, remote, "--depth 1")
+    git("fetch", "-q", "--tags", "origin", cwd=clone)
+    before = snapshot_repo(clone, fetched=True)
+    _pin(manifest, old)
+    out = _sync(sys_dir, capsys, 1)
+    assert (
+        f"ERROR: src/a: version {old} is not in this shallow clone's history; sync never deepens"
+        f" a clone (`git -C {clone} fetch --unshallow origin`, run by hand, makes it whole)"
+    ) in out, out
+    assert snapshot_repo(clone, fetched=True) == before
 
 
 def test_a_failing_post_checkout_hook_after_the_switch_still_counts_as_moved(system, capsys):

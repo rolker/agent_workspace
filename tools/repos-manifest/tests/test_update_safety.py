@@ -49,7 +49,8 @@ def git_argument_texts(source: str):
 def test_the_update_module_runs_no_command_that_can_lose_work(word):
     texts = git_argument_texts(UPDATE.read_text())
     assert any(text.startswith("merge --ff-only") for text in texts)  # the scan reads steps
-    assert any(text.startswith("fetch --prune") for text in texts)  # and calls
+    assert any(text.startswith("fetch --tags") for text in texts)  # and calls
+    assert any(text.startswith("--no-prune --no-prune-tags") for text in texts)
     for text in texts:
         assert f" {word} " not in f" {text} ", f"{word!r} in {text!r}"
 

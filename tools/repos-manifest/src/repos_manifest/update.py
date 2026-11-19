@@ -111,12 +111,19 @@ class Git:
         self.lock = lock
 
     def run(
-        self, *args: str, change: bool = False, prompt: bool = False, stdin: Optional[str] = None
+        self,
+        *args: str,
+        change: bool = False,
+        prompt: bool = False,
+        stdin: Optional[str] = None,
+        hold: bool = False,
     ) -> Tuple[int, str, str]:
         """Exit status, stdout and stderr. A call that may change the work tree or the
         configuration runs with the stop signals held, so it is not cut short by one here
         (a held signal is delivered when it has ended, and `git` inherits it held), and with
-        the lock passed to it. Only a fetch may prompt (for a password or a passphrase)."""
+        the lock passed to it. A fetch (`hold`) is given the lock too, so a `sync` killed while
+        it writes refs does not free the lock before it ends, but not the signals held: a
+        Ctrl-C stops a fetch that hangs or asks for a password. Only a fetch may prompt."""
         argv = ["git", "-C", str(self.place), *GIT_OPTIONS, *args]
         kwargs = dict(
             input=stdin,
@@ -128,11 +135,12 @@ class Git:
         )
         if stdin is None:
             kwargs["stdin"] = None if prompt else subprocess.DEVNULL
+        fds = (self.lock,) if self.lock is not None else ()
         if change:
             with signals_held():
-                done = subprocess.run(
-                    argv, pass_fds=(self.lock,) if self.lock is not None else (), **kwargs
-                )
+                done = subprocess.run(argv, pass_fds=fds, **kwargs)
+        elif hold:
+            done = subprocess.run(argv, pass_fds=fds, **kwargs)
         else:
             done = subprocess.run(argv, **kwargs)
         return done.returncode, done.stdout, done.stderr
@@ -423,10 +431,27 @@ class Version:
     target: str  # the commit
 
 
-def find_version(git: Git, version: Optional[str]) -> Tuple[Optional[Version], Optional[str], bool]:
-    """The manifest's version on origin, after a fetch: (version, problem, fetch). A tag
-    counts only when origin has it, not a local tag of the same name; a commit when it is
-    there and is named by 7 to 40 hex digits."""
+def ask_origin(git: Git, *patterns: str) -> Tuple[Optional[Dict[str, str]], str]:
+    """What origin has now, as `git ls-remote origin <patterns>` lists it: ref to object (a
+    peeled tag's commit under `<tag>^{}`); with git's message when it cannot be asked."""
+    status, printed, error = git.run("ls-remote", "origin", *patterns, prompt=True)
+    if status != 0:
+        return None, f"`git ls-remote origin` exited {status}:\n{error.rstrip()}"
+    theirs = {}
+    for line in printed.splitlines():
+        oid, _, ref = line.partition("\t")
+        theirs[ref] = oid
+    return theirs, ""
+
+
+def find_version(
+    git: Git, version: Optional[str], record: Optional[RepoRecord] = None
+) -> Tuple[Optional[Version], Optional[str], bool]:
+    """The manifest's version on origin, after a fetch: (version, problem, fetch). Origin is
+    asked for the branch or tag itself (`ls-remote`), since `sync` prunes nothing and a
+    remote-tracking ref may be left from a branch origin has deleted. A tag counts only when
+    origin has it and the tag here is the same object; a commit when it is there and is named
+    by 7 to 40 hex digits (whether origin holds it is `commit_on_origin`)."""
     if version is None:
         ref = git.out("symbolic-ref", "-q", "refs/remotes/origin/HEAD")
         prefix = "refs/remotes/origin/"
@@ -439,76 +464,115 @@ def find_version(git: Git, version: Optional[str]) -> Tuple[Optional[Version], O
                 False,
             )
         name = ref[len(prefix) :]
-        target = git.out("rev-parse", "--verify", "-q", f"{ref}^{{commit}}")
-        if target is None:
+        theirs, problem = ask_origin(git, f"refs/heads/{name}")
+        if theirs is None:
+            return None, problem, True
+        if f"refs/heads/{name}" not in theirs:
             return (
                 None,
-                f"origin's default branch {name} cannot be read; `git -C <place> remote"
-                " set-head origin --auto` reads it from origin again",
+                f"origin's default branch as recorded here, {name}, is gone from origin;"
+                " `git -C <place> remote set-head origin --auto` reads it from origin again",
                 False,
             )
-        return Version(BRANCH, name, target), None, False
-    branch = git.out("rev-parse", "--verify", "-q", f"refs/remotes/origin/{version}^{{commit}}")
-    tag = None
+        return _branch(git, name, theirs[f"refs/heads/{name}"])
+    theirs, problem = ask_origin(git, f"refs/heads/{version}", f"refs/tags/{version}")
+    if theirs is None:
+        return None, problem, True
+    on_branch = theirs.get(f"refs/heads/{version}")
+    on_tag = theirs.get(f"refs/tags/{version}")
+    if on_branch is not None and on_tag is not None:
+        return None, f"version {version} is both a branch and a tag on origin", False
+    if on_branch is not None:
+        return _branch(git, version, on_branch)
     local_tag = git.out("rev-parse", "--verify", "-q", f"refs/tags/{version}")
+    if on_tag is not None:
+        if local_tag is None:
+            return None, f"origin's tag {version} was not fetched here; sync again", True
+        if local_tag != on_tag:
+            return None, _tag_clash(git, version, theirs, record), False
+        tag = git.out("rev-parse", "--verify", "-q", f"refs/tags/{version}^{{commit}}")
+        return Version(TAG, version, tag or ""), None, False
     if local_tag is not None:
-        # Only a tag origin has counts, and only when it is origin's (the same object).
-        status, printed, error = git.run(
-            "ls-remote", "--tags", "origin", f"refs/tags/{version}", prompt=True
-        )
-        if status != 0:
-            return None, f"`git ls-remote origin` exited {status}:\n{error.rstrip()}", True
-        theirs = {}
-        for line in printed.splitlines():
-            oid, _, ref = line.partition("\t")
-            theirs[ref] = oid
-        origins = theirs.get(f"refs/tags/{version}")
-        if origins is not None and branch is not None:
-            return None, f"version {version} is both a branch and a tag", False
-        if origins is not None and origins != local_tag:
-            return None, f"tag {version} here is not origin's tag {version}", False
-        if origins is not None:
-            tag = git.out("rev-parse", "--verify", "-q", f"refs/tags/{version}^{{commit}}")
-        elif branch is None:
-            return None, f"version {version} is a tag here, and origin has no such tag", False
-    if branch is not None:
-        return Version(BRANCH, version, branch), None, False
-    if tag is not None:
-        return Version(TAG, version, tag), None, False
+        return None, f"version {version} is a tag here, and origin has no such tag", False
     if HEX.fullmatch(version):
         commit = git.out("rev-parse", "--verify", "-q", f"{version}^{{commit}}")
         if commit is not None and commit.startswith(version):
             return Version(COMMIT, version, commit), None, False
+        if git.out("rev-parse", "--is-shallow-repository") == "true":
+            return (
+                None,
+                f"version {version} is not in this shallow clone's history; sync never deepens"
+                " a clone (`git -C <place> fetch --unshallow origin`, run by hand, makes it"
+                " whole)",
+                False,
+            )
+    if git.out("rev-parse", "--verify", "-q", f"refs/remotes/origin/{version}") is not None:
+        return (
+            None,
+            f"version {version} is not on origin: origin no longer has the branch {version}"
+            f" (refs/remotes/origin/{version} here is left from an earlier fetch; sync removes"
+            " no remote-tracking ref)",
+            False,
+        )
     return None, f"version {version} is not on origin", False
 
 
+def _branch(git: Git, name: str, theirs: str) -> Tuple[Optional[Version], Optional[str], bool]:
+    """Origin's branch `name`, which origin has at `theirs`, as the fetch just brought it."""
+    here = git.out("rev-parse", "--verify", "-q", f"refs/remotes/origin/{name}^{{commit}}")
+    if here != theirs:
+        return (
+            None,
+            f"origin's {name} is at {theirs[:12]} and was fetched here as"
+            f" {(here or 'nothing')[:12]}; origin changed it meanwhile: sync again",
+            True,
+        )
+    return Version(BRANCH, name, here), None, False
+
+
+def _tag_clash(git: Git, version: str, theirs: Dict[str, str], record: Optional[RepoRecord]) -> str:
+    """A tag here and origin's tag of the same name name other objects. Origin "moved" it only
+    when the record shows `sync` followed that tag at the commit it holds here; only then is
+    deleting it the advice, since then origin had it and HEAD holds its commit."""
+    here = git.out("rev-parse", "--verify", "-q", f"refs/tags/{version}^{{commit}}") or "?"
+    origins = theirs.get(f"refs/tags/{version}^{{}}") or theirs.get(f"refs/tags/{version}", "?")
+    if record is not None and record.version == version and record.commit == here:
+        return (
+            f"tag {version} was moved on origin, from {here[:12]}, where sync followed it, to"
+            f" {origins[:12]}; sync never replaces a tag: to take origin's, git -C <place> tag"
+            f" -d {quoted(version)}, then sync again"
+        )
+    return (
+        f"a tag {version} is here at {here[:12]}, and origin's tag {version} is at"
+        f" {origins[:12]}; sync never replaces a tag, and which to keep is for a person to"
+        " decide"
+    )
+
+
 def commit_on_origin(git: Git, commit: str) -> Tuple[Optional[bool], str]:
-    """Whether `commit` is reachable, in the history the clone has, from a remote-tracking
-    branch of origin or from a tag that origin has (the same object); with git's message when
-    that cannot be told."""
+    """Whether `commit` is reachable, in the history the clone has, from a branch or a tag that
+    origin has now: a ref here that holds it, which origin lists at the same object (a
+    remote-tracking ref left from a branch origin deleted does not count); with git's message
+    when that cannot be told."""
     status, printed, error = git.run(
         "for-each-ref", "--contains", commit, "--format=%(refname) %(objectname)",
         "refs/remotes/origin/", "refs/tags/",
     )  # fmt: skip
     if status != 0:
         return None, f"`git for-each-ref --contains` exited {status}:\n{error.rstrip()}"
-    tags = {}
+    holders = {}
     for line in printed.splitlines():
         ref, _, oid = line.partition(" ")
         if ref.startswith("refs/remotes/origin/") and ref != "refs/remotes/origin/HEAD":
-            return True, ""
-        if ref.startswith("refs/tags/"):
-            tags[ref] = oid
-    if not tags:
+            holders["refs/heads/" + ref[len("refs/remotes/origin/") :]] = oid
+        elif ref.startswith("refs/tags/"):
+            holders[ref] = oid
+    if not holders:
         return False, ""
-    status, printed, error = git.run("ls-remote", "--tags", "origin", prompt=True)
-    if status != 0:
-        return None, f"`git ls-remote origin` exited {status}:\n{error.rstrip()}"
-    for line in printed.splitlines():
-        oid, _, ref = line.partition("\t")
-        if tags.get(ref) == oid:
-            return True, ""
-    return False, ""
+    theirs, problem = ask_origin(git, "refs/heads/*", "refs/tags/*")
+    if theirs is None:
+        return None, problem
+    return any(theirs.get(ref) == oid for ref, oid in holders.items()), ""
 
 
 def ancestor(git: Git, older: str, newer: str) -> bool:
@@ -648,30 +712,34 @@ def update_repo(
         return turn.left(f"has uncommitted changes ({changes} files){also}")
 
     # The refspec is sync's own, and --refmap= keeps git from also applying the person's
-    # remote.origin.fetch: nothing but origin's remote-tracking refs and new tags is written.
-    status, printed, error = git.run(
-        "fetch",
-        "--prune",
+    # remote.origin.fetch; --no-prune and --no-prune-tags keep any fetch.prune or
+    # remote.origin.prune from removing a ref: the fetch writes origin's remote-tracking refs
+    # and new tags, and removes nothing.
+    fetch_args = [
+        "--no-prune",
         "--no-prune-tags",
-        "--tags",
         "--no-recurse-submodules",
         "--refmap=",
         "origin",
         "+refs/heads/*:refs/remotes/origin/*",
-        prompt=True,
-    )
+    ]
+    status, printed, error = git.run("fetch", "--tags", *fetch_args, prompt=True, hold=True)
+    clashes = CLOBBERED_TAG.findall(error) if status != 0 else []
+    if clashes:
+        # git updates each ref on its own and exits 1 for a tag it would not replace; the
+        # branches are fetched again without tags, so the result rests on an exit status of 0.
+        status, printed, error = git.run("fetch", "--no-tags", *fetch_args, prompt=True, hold=True)
+        for tag in clashes:
+            if tag != repo.version:
+                notes.append(
+                    f"tag {tag} here and origin's tag {tag} name other objects; sync never"
+                    " replaces a tag, and this one is not the manifest's version"
+                )
     if status != 0:
         detail = f"`git fetch origin` exited {status}:\n{(printed + error).rstrip()}"
-        clobbered = CLOBBERED_TAG.search(error)
-        if clobbered:
-            tag = clobbered.group(1)
-            detail += (
-                f"\ntag {tag} was moved on origin, and sync never replaces a tag: to take"
-                f" origin's, git -C {quoted(place)} tag -d {quoted(tag)}, then sync again"
-            )
         return Done(FAILED, detail, notes, fetch=True)
 
-    found, problem, fetch = find_version(git, repo.version)
+    found, problem, fetch = find_version(git, repo.version, record)
     if found is None:
         problem = (problem or "").replace("<place>", quoted(place))
         if by_hand is not None and not fetch:
@@ -952,6 +1020,7 @@ def _repoint(git: Git, origin: str, url: str) -> Optional[Done]:
             PROBE,
             f"+refs/heads/*:refs/remotes/{PROBE}/*",
             prompt=True,
+            hold=True,
         )
         if status != 0:
             return Done(

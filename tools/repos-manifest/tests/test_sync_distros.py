@@ -8,6 +8,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 
 import pytest
 import yaml
@@ -34,6 +35,7 @@ from repos_manifest.system import (
     LayerRecord,
     build_lock_file,
     built_file,
+    Refusal,
     hold_build_lock,
     put_built_layers,
 )
@@ -271,9 +273,20 @@ def test_a_kill_before_the_fetch_changes_nothing_and_the_next_sync_follows(two, 
     recorded = state_of(system, "jazzy")
     done = _sync_with_stub(tmp_path, system, "fetch", "kill-before")
     assert done.returncode == -signal.SIGKILL, done.stderr
+    # The fetch the killed sync started (here the stub, which goes on for 5 s) holds the
+    # distro's lock until it ends, as a git that changes the tree does.
+    with pytest.raises(Refusal, match="a sync of distro jazzy is still running"):
+        os.close(hold_build_lock(system, "jazzy", holder="sync"))
     assert snapshot_repo(clone) == before
     assert state_of(system, "jazzy") == recorded
-    assert run(system, "sync", "--distro", "jazzy") == 0
+    for _ in range(150):
+        try:
+            os.close(hold_build_lock(system, "jazzy", holder="sync"))
+            break
+        except Refusal:
+            time.sleep(0.1)
+    capsys.readouterr()
+    assert run(system, "sync", "--distro", "jazzy") == 0, capsys.readouterr().out
     assert head(clone) == new
 
 

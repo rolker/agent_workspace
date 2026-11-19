@@ -697,9 +697,11 @@ The rules for a repo that is there are checked in this order, and the first that
 the repo's turn. Before a fast-forward or a switch, the only changes in the repo are what the
 fetch brings, and, under the url rule, `origin`'s url (its probe refs are removed again). The
 fetch brings `origin`'s
-remote-tracking refs (and removes those of branches `origin` no longer has), objects, the local
-tags that `origin` has and the clone lacks (`--tags`; a local tag is never replaced or removed),
-and `FETCH_HEAD`. No local branch, `HEAD`, index or work-tree file changes before then.
+remote-tracking refs for its branches, objects, the local tags that `origin` has and the clone
+lacks (`--tags`; a local tag is never replaced or removed), and `FETCH_HEAD`. It removes no
+ref: `sync` prunes nothing, so a remote-tracking ref a person fetched with a refspec of their
+own (pull request heads) stays, and so does one left from a branch `origin` has deleted. No
+local branch, `HEAD`, index or work-tree file changes before then.
 
 1. The manifest gives the repo another layer than its record, and the old place is there:
    it is not moved, and nothing is cloned at the new place. The repo is reported with the
@@ -722,31 +724,46 @@ and `FETCH_HEAD`. No local branch, `HEAD`, index or work-tree file changes befor
    files, leave the repo as it is. Untracked and ignored files are not local work and do not
    stop an update. A submodule whose checked-out commit differs from the one recorded, which
    is what a fast-forward that moves its pointer leaves, is not counted.
-7. `git fetch --prune --no-prune-tags --tags --no-recurse-submodules --refmap= origin
+7. `git fetch --tags --no-prune --no-prune-tags --no-recurse-submodules --refmap= origin
    +refs/heads/*:refs/remotes/origin/*`: the refspec is `sync`'s own, and `--refmap=` keeps
    git from applying the person's `remote.origin.fetch` too, so a refspec there that writes
-   into `refs/heads/` never moves or prunes a local branch; a submodule is never fetched into,
-   whatever `fetch.recurseSubmodules` says. A fetch that fails skips an optional
-   repo and is an error for any other. A tag moved on `origin` fails the fetch every run (git
-   refuses to replace it); the message says to delete the local tag with `git tag -d` and
-   sync again. The next `sync` fetches origin's tag and, when the repo is still detached at the
-   commit `sync` recorded for that tag, follows it there (rule 11); a repo a person moved
-   elsewhere is left as it is. `sync` never replaces a tag, and the fetch keeps local tags even where
-   `fetch.pruneTags` is set.
-8. The manifest's version is looked up on `origin`: a branch (`origin/<version>`), a tag that
+   into `refs/heads/` never moves a local branch; `--no-prune` and `--no-prune-tags` win over
+   `fetch.prune`, `remote.origin.prune` and `fetch.pruneTags`; a submodule is never fetched
+   into, whatever `fetch.recurseSubmodules` says. The fetch is given the distro's lock, as a
+   call that changes the tree is, so a `sync` killed while git writes refs does not free the
+   lock before git ends; its stop signals are not held, so a Ctrl-C still stops a fetch that
+   hangs or asks for a password. A fetch that fails skips an optional repo and is an error
+   for any other. A tag here and `origin`'s tag of the same name that name other objects make
+   git refuse that tag and exit 1, though it fetches the branches; `sync` then fetches the
+   branches again without tags and goes on when that exits 0. A clash on a tag the manifest
+   does not name is a note. For the manifest's own tag it is an error (rule 8) that gives both
+   commits: when the record shows `sync` followed that tag at the commit it holds here, the
+   message says `origin` moved it and that `git tag -d` and another sync take `origin`'s, and
+   the next `sync` then follows it when the repo is still detached at the recorded commit (rule
+   11); otherwise the tag is taken for a person's, and which to keep is left to a person, with
+   no advice to delete it. `sync` never replaces a tag.
+8. The manifest's version is looked up on `origin` itself (`git ls-remote origin` for the
+   branch and the tag of that name, since a remote-tracking ref may be left from a branch
+   `origin` deleted): a branch (`origin/<version>`, which must be at the commit `origin` lists), a tag that
    `origin` has (a local tag of the same name that `origin` lacks does not count, and nor does
    a local branch, whatever the version), or a commit
    named by 7 to 40 hex digits that is there; with no version, `origin`'s default branch. A
    commit counts only when it is reachable, in the history the clone has, from a branch of
-   `origin` or from a tag `origin` has; one that is in the clone and nowhere on `origin` (a
+   `origin` or from a tag `origin` has, as `origin` lists them now (a remote-tracking ref left
+   from a deleted branch does not count); one that is in the clone and nowhere on `origin` (a
    person's own commit) is not followed, and the repo is left as it is and reported. In a
-   shallow clone a commit beyond the shallow history is not there, and so is not on `origin`
-   here. A version that is none of these, or both a branch and a tag on `origin`, is an error
+   shallow clone a commit beyond the shallow history is not there: the error says so and that
+   `sync` never deepens a clone. A branch `origin` has deleted is an error that says so and
+   names the remote-tracking ref left here. A version that is none of these, or both a branch and a tag on `origin`, is an error
    that another sync will not change; when `origin` was set by hand the message says so and gives the command
    that sets it to the manifest's url.
 9. On a branch with commits not on `origin`: left as it is (above). The count is of the
    commits reachable from `HEAD` and from no remote-tracking ref of `origin`. After an upstream
-   force-push the old upstream commits count, so such a repo is left as it is too.
+   force-push the old upstream commits count, so such a repo is left as it is too. A
+   remote-tracking ref left from a branch `origin` deleted, or one a person fetched with a
+   refspec of their own, still counts as `origin`'s here: a commit only it holds reads as on
+   `origin`. That is safe: it can only let a repo be moved, and a move never loses a commit
+   (a fast-forward keeps them all, and a switch leaves the branch it leaves as it was).
 10. On the manifest's version (`HEAD` on the branch of that name; for a tag or a commit,
     detached at its commit): followed. A branch whose `HEAD` is behind `origin/<version>` is
     fast-forwarded (`git merge --ff-only`), whatever the branch's own upstream is; one that
@@ -888,7 +905,7 @@ happens to the repo. It only changes wording: no rule reads it to decide what to
 
 | Where a run ends | What it leaves | The next `sync` |
 |---|---|---|
-| A stop signal or a kill during a fetch | At most remote-tracking refs, and a lock file git did not remove | Fetches again; a lock file git left is named in git's message, and `sync` never removes one |
+| A stop signal or a kill during a fetch | At most remote-tracking refs, and a lock file git did not remove; the distro's lock stays held until the fetch ends | Fetches again; a lock file git left is named in git's message, and `sync` never removes one |
 | A stop signal while a fast-forward or a switch runs | The call ends whole first | Records it |
 | A kill during a fast-forward or a switch | Possibly a half-changed tree, an `index.lock`, and the `moving` line | A changed tree or an `index.lock` leaves the repo as it is, the report saying a sync was stopped while moving it and that `git status` shows what it left; a repo git had not changed yet is moved again |
 | A kill after the call, before the record | The repo on the new version, the `moving` line | Records it |
