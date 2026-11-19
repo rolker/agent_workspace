@@ -524,7 +524,7 @@ def update_repo(
         if ahead is None:
             return turn.left("the commits not on origin cannot be counted")
         if ahead:
-            detail = f"has {ahead} commits not on origin; left alone"
+            detail = f"has {ahead} commits not on origin"
             if found.kind == BRANCH and branch == found.name:
                 if not ancestor(git, found.target, head):
                     detail += (
@@ -541,8 +541,7 @@ def update_repo(
             return turn.current(head, "up to date")
         if not ancestor(git, head, found.target):
             return turn.left(
-                f"origin's {found.name} no longer contains this commit (rewritten upstream);"
-                " left alone"
+                f"origin's {found.name} no longer contains this commit (rewritten upstream)"
             )
         moved = count(git, f"{head}..{found.target}")
         steps = [["merge", "--ff-only", "-q", found.target]]

@@ -227,7 +227,9 @@ def test_an_upstream_that_was_force_pushed_reads_as_commits_not_on_origin(system
     _sync(sys_dir, capsys)
     git("reset", "-q", "--hard", "HEAD~1", cwd=remote)
     push_commit(remote, "rewritten", "2\n")
-    _left_alone(sys_dir, clone, capsys, "has 1 commits not on origin; left alone")
+    # The old upstream commit reads as one of the clone's own: left alone (part 4 tells them
+    # apart).
+    _left_alone(sys_dir, clone, capsys, "src/a: left alone: has 1 commits not on origin;")
 
 
 def test_a_branch_rewound_upstream_while_head_is_on_another_origin_branch(system, capsys):

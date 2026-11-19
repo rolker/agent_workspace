@@ -223,6 +223,7 @@ if [ "$sub" = "$STUB_ON" ]; then
     kill-before) kill -9 "$PPID"; sleep 5; exit 1;;
     kill-after) "$REAL_GIT" "$@"; s=$?; kill -9 "$PPID"; exit "$s";;
     term-during) kill -TERM "$PPID"; sleep 0.3; exec "$REAL_GIT" "$@";;
+    fail) echo "stub refuses" >&2; exit 1;;
   esac
 fi
 exec "$REAL_GIT" "$@"
@@ -311,3 +312,23 @@ def test_a_stop_signal_while_git_moves_the_repo_waits_for_it(two, tmp_path, caps
     capsys.readouterr()
     assert run(system, "sync", "--distro", "jazzy") == 0
     assert "moving" not in state_of(system, "jazzy")["a"]
+
+
+def test_a_second_step_that_fails_is_undone_and_the_repo_left_as_it_was(two, tmp_path, capsys):
+    # Back to a branch that exists locally and is behind: a switch, then a fast-forward. The
+    # fast-forward fails, so the switch is undone.
+    system, manifest, remote = two
+    clone = system / "jazzy/core/src/a"
+    rewrite_manifest(manifest, lambda d: d["repositories"]["a"].update(version="dev"))
+    assert run(system, "sync", "--distro", "jazzy") == 0
+    push_commit(remote, "one", "1\n")
+    rewrite_manifest(manifest, lambda d: d["repositories"]["a"].update(version="main"))
+    git("fetch", "-q", "origin", cwd=clone)
+    before = snapshot_repo(clone, fetched=True)
+    recorded = state_of(system, "jazzy")["a"]
+    done = _sync_with_stub(tmp_path, system, "merge", "fail")
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "src/a: left alone: `git merge` exited 1; left as it was:\nstub refuses" in done.stdout
+    assert snapshot_repo(clone, fetched=True) == before
+    assert branch(clone) == "dev"
+    assert state_of(system, "jazzy")["a"] == recorded
