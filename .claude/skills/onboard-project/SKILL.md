@@ -235,10 +235,11 @@ the rest of the run.
     so it lacks the workspace layer the `SessionStart` hook gives a session
     at a registered root; a new session at the root has it.
   - **The real run ends `STATUS=refused` or `STATUS=NOT READY`**: show it
-    as printed and stop; its `NEXT=` says what to do. A folder in no git
-    repository is refused there ("not a git repository") and rolled back,
-    although its dry run looked clean: registration needs a git repository
-    today, a known gap, so say this folder cannot be registered yet.
+    as printed and stop; its `NEXT=` says what to do. A single-repository
+    folder in no git repository is refused there ("not a git repository")
+    and rolled back, although its dry run looked clean: such a folder needs
+    a git repository today, a known gap, so say it cannot be registered yet
+    (a root the manifest tool set up registers outside git).
 - **`type=workspace`**: stop. Onboarding runs in a session started at the
   project's root, not in the workspace; start a session there and run this
   skill, which offers to register the folder when it is not registered.
