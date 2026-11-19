@@ -10,8 +10,9 @@ that table stands in for it. Design basis: pull request 508 (issue 495, branch
 from that branch). A change to 508 changes only the part of this plan that cites it.
 
 Status (2026-11-19): part 1 is delivered (pull request 512, merged); its text below is the record of
-what was planned and built and is not rewritten. Part 2 is written out in full under "Part 2: `sync`
-against clones that exist"; part 3 is named there.
+what was planned, not of what was built (the design and pull request 512 say what was built, and
+they differ in places). Part 2 is written out in full under "Part 2: `sync` against clones that
+exist"; parts 3 and 4 are named there.
 
 This is the second version of the plan. It answers the `## Plan Review` entry (eleven findings)
 and the `## Checkpoint` after it. Part 1 is much smaller than the first version; what was cut is
@@ -473,10 +474,13 @@ left" under Part 2); the `vcs` tests row stayed in part 2.
 ## Part 2: `sync` against clones that exist (the next pull request)
 
 Status: written out in full on 2026-11-19, after pull request 512 (part 1) merged and the owner
-answered the three held questions. Everything above is part 1 as it was planned and delivered;
-it is not changed. This pull request says "Part of #500" because part 3 (below) remains.
+answered the three held questions; revised the same day after the plan review (`## Plan Review`,
+needs-work) and the checkpoint after it. Everything above is part 1 as it was planned; what was
+built is in the tool's design and in pull request 512, and the two differ in places (for example
+the clone's temporary directory is in `.repos-manifest/`, not in the layer's `src/`). This pull
+request says "Part of #500" because parts 3 and 4 (below) remain.
 
-### The owner's three answers (decisions; the rules below follow them exactly)
+### The owner's answers (decisions; the rules below follow them exactly)
 
 - Untracked files: "Update it (Recommended)": untracked files do not count as local work; the
   clone is fast-forwarded as if clean; if an incoming commit would overwrite one of those files,
@@ -487,6 +491,18 @@ it is not changed. This pull request says "Part of #500" because part 3 (below) 
 - A repo given another layer: "Report, do not move (Recommended)": `sync` leaves the clone where
   it is, reports it with the exact `mv` command, and clones nothing at the new place while the
   old one exists.
+- Unpushed commits (2026-11-19, after the plan review): the rebase of unpushed commits is "Later,
+  its own part (Recommended)": this pull request leaves a clone with unpushed commits alone and
+  reports it, with the `git pull --rebase` command to run by hand; the rebase rule gets its own
+  pull request with the reviewer's three findings as its test list; the design keeps the rule and
+  says it is not built yet.
+
+How the first answer's "git itself refuses" is made true (host decision 1): git refuses an
+incoming file only over an untracked file that is not ignored. Over an ignored file it overwrites
+silently (tried with git 2.53.0: an ignored `local.yaml` holding text, a tracked `local.yaml`
+arriving by `merge --ff-only`: exit 0, the file replaced). So `sync` checks first, for every
+fast-forward and every switch (rung 12 and 13, below), and git's own refusal is only the
+backstop.
 
 The first real use (issue comment, 2026-11-19) is the acceptance case: a pin changed in the
 manifest for one distro, `resolved/rolling/<layer>.repos` named the new version, `state.yaml`
@@ -498,46 +514,88 @@ and commit.
 
 | Item | Where | Why |
 |---|---|---|
-| The update rules for a repo that is there (every row of the table below), the per-distro reports, the lock, the build hint | This pull request | The owner's first need, delivered completely |
+| The update rules for a repo that is there (every rung below), the per-distro reports, the lock, the build hint, the recorded `url` | This pull request | The owner's first need, delivered completely |
 | The `vcs` behaviour tests for existing repos, and the three wording suggestions of 512's last review | This pull request | Small; the first justifies using `git`; the three touch the code this pull request edits |
-| Step 1 of the design's `sync` (the manifest's own clone updated by the same rules), the local-copy read (`local_manifest`), `--local-manifest` | Part 3 | Step 1 adds no rule: the manifest's clone is a repo like any other and gets the rules below once they exist. What it adds is a new key in `config.yaml`, a new order in which the manifest is read ("Which manifest a distro reads") and a flag on `init`; that is a second design question set (where the copy sits, which distro's version it is) and would double the review. The git form of a manifest location that normally sets `local_manifest` needs issue 498 part 2's fetcher, which is not built |
-| `--` pass-through of `vcs import` arguments | Part 3 | It changes what a clone looks like (`--shallow`, `--recursive`), so it needs its own answer for how the update rules treat a shallow clone or submodules; this pull request does not update submodules and says so |
+| The rebase rule: a clone on the manifest's branch with commits not on origin gets origin's new commits and its own put back on top (the design's `git pull --rebase` rule, for field machines) | Part 4, its own pull request (owner's answer) | See "Left for later: the rebase rule" below. This pull request leaves such a clone alone in every case |
+| Step 1 of the design's `sync` (the manifest's own clone updated by the same rules), the local-copy read (`local_manifest`), `--local-manifest` | Part 3 | Step 1 adds no rule: the manifest's clone is a repo like any other and gets the rules once they exist. What it adds is a new key in `config.yaml`, a new order in which the manifest is read ("Which manifest a distro reads") and a flag on `init`; that is a second design question set (where the copy sits, which distro's version it is) and would double the review. The git form of a manifest location that normally sets `local_manifest` needs issue 498 part 2's fetcher, which is not built |
+| `--` pass-through of `vcs import` arguments | Part 3 | It changes what a clone looks like (`--shallow`, `--recursive`). What this pull request does for clones that are already shallow or have submodules is stated below and tested; it does not update submodules |
 
-Part 3 is filed as its own issue by the host once this plan is accepted. Nothing is dropped.
+Parts 3 and 4 are filed as their own issues by the host once this plan is accepted. Nothing is
+dropped.
+
+### Left for later: the rebase rule (part 4), and its test list
+
+Part 4 is the rule the design's field-machine paragraph describes: a repo with commits not on
+`origin`, while it stays on the manifest's branch, is updated with what was fetched first and the
+local commits put back on top. The design keeps that paragraph and says plainly, in "sync" and in
+"What is built", that the rule is not built yet. Its test list is the plan review's three findings
+(the first two are tried results on git 2.53.0 quoted from that review), each a test of part 4's
+before it can be reviewed:
+
+1. An ignored file that an incoming commit adds as tracked is overwritten by the rebase, and then
+   `git rebase --abort`, which restores `HEAD` and the branch, deletes it, because it is not in
+   the original commit. The checks after an abort (`HEAD`, branch, tracked status) pass and
+   report "put back as it was". Part 4 checks the paths the rebase adds against the work tree
+   first (the same check as rung 12 below), and its put-back check compares the ignored files too.
+2. The rebase runs under the person's git settings. With `rebase.updateRefs=true` it rewrote
+   another local branch that pointed into the rebased range; `--no-verify` skips the person's
+   `pre-rebase` hook, whose usual use is to refuse rebasing published commits; hooks that run
+   during a rebase run. Part 4 passes `--no-update-refs`, keeps `--no-autosquash` explicit, does
+   not pass `--no-verify` (a refusing hook means "left alone"), and tests each setting. A rebase
+   of `V` in the main clone also rewrites the base of package worktrees branched from it:
+   nothing is lost, but they diverge; part 4's design text says so.
+3. A force-pushed upstream: its old commits count as local work and are replayed on top of the
+   rewritten branch (tried: exit 0, "rebased 1 local commit"). Part 4 counts local commits
+   excluding the history of the commit `sync` recorded, falls back to `--fork-point` without a
+   record, and leaves the repo alone, saying origin was rewritten, when the two counts differ.
+
+Until part 4, every clone with unpushed commits is left alone (rung 11) and the report gives the
+command to run by hand. That includes the force-pushed case, which reads there as "has commits
+not on origin": left alone and reported, the safe outcome.
 
 ### Rules, in the order they are checked, for one repo that is there
 
 A repo is "there" when `os.path.lexists(P)` (part 1's meaning). `P` is its place under the layer
 the manifest now gives it. For each repo, in manifest order, `update_repo` in the new
-`update.py` walks the ladder; the first rung that applies ends the repo's turn. Rungs 1 to 8 read
-and decide; no rung before the one that acts changes anything in the repo except what is named.
+`update.py` walks the ladder; the first rung that applies ends the repo's turn. Rungs 0 to 11
+read and decide; nothing in the repo changes before rung 12 or 13 acts, except what is named
+(`remote.origin.url` at rung 7, remote-tracking refs and objects at rungs 7 and 9).
 
 | # | Condition | Result and report line | Test |
 |---|---|---|---|
-| 0 | The repo's record says another layer and the old place exists | Left alone, exit 0: `<new path>: the manifest now has it in layer <new>; it is in <old path>. To move it: mkdir -p <new parent> && mv <old path> <new path>` (paths shell-quoted). Nothing cloned at the new place, state unchanged. If the old place is gone, the repo is missing at the new place and part 1's clone runs; its record then names the new layer | `test_layer_moved_reports_mv` (the printed command, run by the test, leaves a system `sync` finds in line; old and new places byte-identical before that); `..._old_gone_clones_new` |
+| 0 | The repo's record says another layer and the old place exists | Failed, exit 1 for a non-optional repo (an optional one is skipped and listed; host decision 7: the repo is not at its place and `build` refuses that layer): `<new path>: the manifest now has it in layer <new>; it is in <old path>. To move it: mkdir -p <new parent> && mv <old path> <new path>` (paths shell-quoted). Nothing cloned at the new place, nothing at either place touched, state unchanged. If the old place is gone, the repo is missing at the new place and part 1's clone runs; its record then names the new layer | `test_layer_moved_reports_mv_exit_1`, `..._optional_exit_0` (the printed command, run by the test, leaves a system `sync` finds in line; both places byte-identical before that); `..._old_gone_clones_new` |
 | 1 | The destination check (`place_problem`) fails, now made before a repo counts as present | Failed, exit 1: `<path>: <problem>; left alone` | `test_link_on_the_way_to_a_cloned_repo` (link to a clone elsewhere: nothing in the target touched) |
 | 2 | `P` is there and is not a directory (part 1's message) | Failed, exit 1, unchanged | existing part 1 test kept |
 | 3 | `type` is not `git` | Left alone: `type <t>: sync updates git repos only` | `test_other_type_left_alone` |
 | 4 | `git -C P rev-parse --show-toplevel` is not `P` itself (not a repository, a bare repository, or inside another repository) | Left alone: `is not a git repository of its own` | `test_plain_directory`, `..._inside_other_repo` (the system directory inside a repo) |
-| 5 | A rebase, merge, cherry-pick, revert or bisect is in progress, or `index.lock` exists (git-dir entries `rebase-merge`, `rebase-apply`, `MERGE_HEAD`, `CHERRY_PICK_HEAD`, `REVERT_HEAD`, `BISECT_LOG`, `sequencer`, `index.lock`; the git-dir from `git rev-parse --absolute-git-dir`) | Left alone: `a <rebase> is in progress` (or `index.lock exists; another git may be running here`) | one test per state, made with real git, each `snapshot_repo` equal |
+| 5 | A rebase, merge, cherry-pick, revert or bisect is in progress, or `index.lock` exists (git-dir entries `rebase-merge`, `rebase-apply`, `MERGE_HEAD`, `CHERRY_PICK_HEAD`, `REVERT_HEAD`, `BISECT_LOG`, `sequencer`, `index.lock`; the git-dir from `git rev-parse --absolute-git-dir`) | Left alone: `a <rebase> is in progress` (or `index.lock exists; another git may be running here`). If the record holds a `moving` line (below), the line is `a sync was stopped while moving this repo from <from> to <to>; git status shows what it left` | one test per state, made with real git, each `snapshot_repo` equal; `test_stopped_move_is_worded` |
 | 6 | `origin` missing, or `remote.origin.url` has more than one value | Left alone: `has no single origin` | `test_no_origin` |
-| 7 | `remote.origin.url` (raw value of `git config --get-all`, not `get-url`, which applies `insteadOf` rewrites) differs from the manifest's `url` | The url rule below. Origin is repointed or the repo is left alone; if repointed the ladder goes on | the url tests below |
-| 8 | Tracked changes: any `1`, `2` or `u` line of `git --no-optional-locks status --porcelain=v2 --untracked-files=no`, or a file flagged assume-unchanged or skip-worktree (`git ls-files -v`: first letter lower case or `S`) | Left alone: `has uncommitted changes (<n> files)`. Untracked and ignored files are not counted (owner's answer 1) | `test_dirty_tracked`, `..._staged`, `..._deleted`, `..._submodule_modified`, `..._assume_unchanged`, `test_untracked_does_not_block` |
-| 9 | `git fetch --prune --tags origin` fails | Fetch failure: optional repo skipped, other repo failed (exit 1), the message holds git's own output; nothing in the repo but remote-tracking refs and objects changed. A tag that moved on the remote is refused by git (`would clobber existing tag`, tested with git 2.53.0) and reported this way; it is never force-updated | `test_fetch_fails_optional_and_not`, `test_tag_moved_on_remote_reported` |
+| 7 | The url rule (below), with `W` the raw `remote.origin.url` (`git config --get-all`, not `get-url`, which applies `insteadOf`), `U` the manifest's url, `Ur` the recorded one | `W == U`: nothing. `W == Ur != U`: repointed, or left alone (below). Otherwise a person set `origin`: left as it is, the ladder goes on from it, one line says so | the url tests below |
+| 8 | Tracked changes: a line of `git --no-optional-locks status --porcelain=v2 --untracked-files=no --ignore-submodules=untracked` that is not a submodule line, or is a submodule line whose third status character is `M` (the submodule's own tracked files changed); or a file flagged assume-unchanged or skip-worktree (`git ls-files -v`: first letter lower case or `S`). A submodule line that says only `C` (a different commit checked out; `SC..`, what a fast-forward leaves after it moves the pointer) is not local work | Left alone: `has uncommitted changes (<n> files)`. Untracked and ignored files are not counted (owner's answer 1) | `test_dirty_tracked`, `..._staged`, `..._deleted`, `..._assume_unchanged`, `test_untracked_does_not_block`; submodules: `test_submodule_pointer_moved_is_clean`, `..._submodule_modified_blocks` |
+| 9 | `git fetch --prune --tags origin` fails | Fetch failure: optional repo skipped, other repo failed (exit 1), the message holds git's own output and a next step: a tag that moved on origin is refused by git (`would clobber existing tag`, tested) and fails the whole fetch every run until a person decides: `git -C P tag -d <tag>`, then `sync` again; `sync` never force-updates a tag. Nothing in the repo but remote-tracking refs and objects changed. A shallow clone is fetched at its own depth, no `--unshallow` | `test_fetch_fails_optional_and_not`, `test_tag_moved_on_remote_reported_with_next_step` |
 | 10 | The manifest's version `V` cannot be found on origin: not a branch (`refs/remotes/origin/V`), not a tag (`refs/tags/V`), not a commit that exists (`V` is 7 to 40 hex digits and `rev-parse --verify V^{commit}` works); or both a branch and a tag are named `V`; or `V` is not given and `refs/remotes/origin/HEAD` is absent | Failed, exit 1, "another sync will not change that": `version <V> is not on origin` (or `is both a branch and a tag`) | `test_version_not_on_origin`, `..._ambiguous` |
-| 11 | On the manifest's version (below) | Followed: up to date, fast-forwarded or rebased (table after this one); `state.yaml` records `V` and the new `HEAD` | the follow tests |
-| 12 | The record's version `Vr` differs from `V`, the repo is on `Vr` (below), and no commit of `HEAD` is missing from origin | Moved to `V` (the move below); recorded | `test_changed_pin_branch`, `..._tag`, `..._commit`, `..._back_and_forth` (the acceptance case) |
-| 13 | The same, but `HEAD` has commits not on origin | Left alone: `has <n> commits not on origin; not switched to <V>` and the manifest's version is named. Record unchanged | `test_local_commits_block_switch`; `HEAD` unchanged |
+| 11 | `HEAD` is on a branch and `git rev-list --count HEAD --not --remotes=origin` is not 0 (commits not on origin: below), whether or not the manifest names another version | Left alone, reported: `has <n> commits not on origin; left alone` and, when origin also has commits `HEAD` lacks (`merge-base --is-ancestor HEAD O` is false), `to bring origin's in by hand: git -C <P> pull --rebase`; when it names another version, `the manifest names <V>; it is not switched` too. Record unchanged, nothing moved | `test_unpushed_left_alone` (behind, ahead, diverged, version changed: each `snapshot_repo(fetched=True)` equal), `test_force_pushed_upstream_left_alone` |
+| 12 | On the manifest's version (below) | Followed: up to date, or fast-forwarded after the paths check below; `state.yaml` records `V`, the new `HEAD` and `U` | the follow tests (below) |
+| 13 | The record's version `Vr` differs from `V` and the repo is on `Vr` (below) | Moved to `V` (the move below), after the paths check and the worktree row; recorded | `test_changed_pin_branch`, `..._tag`, `..._commit`, `..._back_and_forth` (the acceptance case) |
 | 14 | Anything else (on another branch, `HEAD` detached elsewhere, or no record and not on `V`) | Left alone: `moved by a person: it is on <branch or short sha>; the manifest names <V>` (and the recorded version when there is one). Record unchanged | `test_other_branch`, `..._detached`, `..._no_record_not_on_version` |
+
+How "commits not on origin" is decided now that it only gates leaving the repo alone: after the
+fetch of rung 9 (or 7), the commits reachable from `HEAD` that are reachable from no
+remote-tracking ref of `origin` (`git rev-list --count HEAD --not --remotes=origin`). Only the
+position `HEAD` is on is counted: other local branches are never moved by this pull request, so
+their commits are safe whatever the count says; the url rule counts them separately. A repo on a
+detached `HEAD` at the commit the record holds counts as none (that is what `sync` put there).
+After an upstream force-push, `fetch --prune` drops the old remote-tracking tip, so the old
+upstream commits are reachable from no `origin` ref and read as "has commits not on origin": the
+repo is left alone and reported. That is the safe outcome; telling it from a person's own commits
+is part 4's work (finding 3 above).
 
 Layer rule note (rung 0): what `build` then sees. `build` reads the layer's resolved `.repos` and
 looks for each repo at `src/<key>` of that layer. The repo is listed at the new layer and absent
 there, so `build` refuses that layer ("not on disk, and not optional ... run `sync`"), as it does
 for any missing repo; it does not build from the old place and does not fail quietly. The hint in
 that refusal says to run `sync`; `sync` then prints the `mv` line. `build.py` is not changed in
-this pull request. The old layer's directory still holds the repo, so a later build of the old
-layer (if it still lists other repos) is unaffected, and its colcon may see the repo twice only
-if a person leaves both copies. Test: `test_layer_moved_then_build_refuses`.
+this pull request. Test: `test_layer_moved_then_build_refuses`.
 
 "On the manifest's version `V`", exactly (a pure function `on_version(state, V)` of what git
 reports, tested without a remote):
@@ -552,75 +610,109 @@ reports, tested without a remote):
 "On the recorded version `Vr`": the same table for `Vr`, except that for a tag or a commit it is
 `HEAD` detached at the commit the record holds (what `sync` put there). A person who checks out
 another commit has moved it. A version `V` that is a tag or a commit never moves by itself: a
-clean clone on it has nothing to fetch (`HEAD` already is the target) and says `pinned at <V>`.
-Clean means rungs 3 to 8 passed: a git repository of its own, no operation in progress, one
+clean clone on it has nothing to move (`HEAD` already is the target) and says `pinned at <V>`.
+"Clean" means rungs 3 to 8 passed: a git repository of its own, no operation in progress, one
 origin, no tracked changes, no flagged files. The record is checked after the position, so a
-`sync` stopped between the move and the write of `state.yaml` is put right by the next one: the
-repo is then on `V`, and rung 11 records it.
+`sync` stopped between a move and the write of `state.yaml` is put right by the next one: the
+repo is then on `V`, and rung 12 records it.
 
 ### Following, moving, repointing: the exact git commands
 
-Every `git` call is `git -C P --no-optional-locks ...` for reads (so reading the status does not
-write the index) with the environment part 1's `require_tools` builds, plus `GIT_EDITOR=true`
-and `-c advice.detachedHead=false`, run by one function `run_git(args, may_change)` that returns
-status and output. A call that may change the tree runs with the stop signals held (part 1's
-`signals_held`) and with the distro's lock descriptor passed to the child (`pass_fds`), so a
-killed `sync` does not release the lock while its `git` runs on. Nothing here parses a message:
-exit status and the plain-text outputs named below (a sha, a count, a porcelain line) only.
+Every `git` call is `git -C P --no-optional-locks -c gc.auto=0 -c maintenance.auto=false -c
+advice.detachedHead=false ...` (host decision 8b: a background `gc` or `maintenance` would inherit
+the lock's descriptor and outlive `sync`, and `gc` is a command this tool never runs), with the
+environment part 1's `require_tools` builds plus `GIT_EDITOR=true`, through one function
+`run_git(args, may_change)` that returns status and output. A call that may change the tree runs
+with the stop signals held (part 1's `signals_held`) and with the distro's lock descriptor passed
+to the child (`pass_fds`), so a killed `sync` does not release the lock while its `git` runs on.
+Nothing here parses a message: exit status and the plain-text outputs named below (a sha, a
+count, a porcelain line) only. A call's success is judged by the state afterwards (host note
+11): `HEAD` equals the target and the tracked status is clean. A non-zero exit with that state
+is "moved, but git exited <n>" (a failing `post-checkout` hook, as `git-lfs` installs, makes
+`switch` exit non-zero after it has switched), reported with git's output and recorded; a zero
+exit without that state is an error. A branch whose own upstream is not `origin` is still
+followed against `origin/V`; the design says so.
 
-Following, `HEAD` on branch `V`, `O` = `refs/remotes/origin/V`, `H` = `HEAD`:
+The paths check (rung 12 and 13, before each tree-changing call, host decision 1): `D` = the paths
+`git diff --name-only --no-renames --diff-filter=A -z H T` lists, `H` the current `HEAD` and `T`
+the tree the call produces (for a switch to an existing local branch followed by a
+fast-forward, both trees it passes through). For each path in `D`, and for each parent directory of
+it: `os.path.lexists` in the work tree; a hit that is not a tracked path of `H` (`git ls-files -z`)
+and, for a parent, is not a directory, stops the repo. Left as it was, reported:
+`<path> is in the way of an incoming file (not tracked<, ignored>); not updated`, naming up to ten
+paths and the count. It covers untracked files that git would also refuse and ignored files that
+it would not, so both read alike. Git's own refusal remains the backstop: a non-zero exit is
+followed by the check that `HEAD`, the branch and the tracked status are as before, and the repo is
+reported left as it was; a difference is the exit 1 `ERROR` below.
+
+Following, `HEAD` on branch `V` (rung 12), `O` = `refs/remotes/origin/V`, `H` = `HEAD`, rung 11
+having passed (so `H` is on origin):
 
 | Relation of `H` to `O` | Commands | Result |
 |---|---|---|
 | Equal | none | `up to date` |
-| `O` is an ancestor of `H` (`merge-base --is-ancestor O H`) | none | `up to date; <n> local commits not on origin` |
-| `H` is an ancestor of `O` | `git merge --ff-only O` | `fast-forwarded <n> commits`; checked afterwards: `HEAD` equals `O`, status clean. If `git` exits non-zero (an incoming file would overwrite an untracked file: tested, git prints `would be overwritten by merge` and changes nothing) the repo is checked unchanged (`HEAD`, status) and left alone, reported with git's message. This is the owner's answer 1 |
-| Diverged | If `git rev-list --merges --count H --not O` is not 0: left alone, `has local merge commits; not rebased`. Otherwise `git -c rebase.autoStash=false rebase --no-autostash --no-verify O` | `rebased <n> local commits onto origin/V`. On non-zero exit: `git rebase --abort` (signals held), then the check: `HEAD` equals the sha read before (`B`), the branch ref equals `B`, `git status --porcelain=v2 --untracked-files=no` equals what it was, no `rebase-*` entry in the git-dir. Passed: left alone, `local commits do not go on cleanly onto origin/V; put back as it was (HEAD <B>)`. Failed (abort refused, or a difference): exit 1 `ERROR`, the message gives `B` and the repo's state; nothing more is run in this repo (tested: abort verified restored on a real conflict, git 2.53.0) |
+| `H` is an ancestor of `O` | the paths check, then `git merge --ff-only O` | `fast-forwarded <n> commits`; checked afterwards. A repo with a `.gitmodules` file adds `submodules not updated: git -C <P> submodule update` (this pull request never runs a submodule command; after the pointer moves, the submodule's line reads `SC..`, which rung 8 does not count, tested) |
 
-Moving to `V` (rung 12), from `Vr` with the same checks, `T` the target commit:
+The original rows for ahead and diverged do not exist any more: both have commits not on origin
+and end at rung 11.
+
+Moving to `V` (rung 13), from `Vr` with the same checks, `T` the target commit:
 
 | `V` is | Commands |
 |---|---|
-| A branch not yet local | `git switch -c V --track O`: one call, all or nothing |
-| A branch that exists locally | Only if `refs/heads/V` is an ancestor of `O`; else left alone (`a local branch <V> has commits not on origin`). `git switch V`, then `git merge --ff-only O` if behind. If the second step fails the first is undone with `git switch <where it was: the branch, or --detach <sha>>` and the check above; a failure to undo is the same exit 1 `ERROR` |
-| A tag or a commit | `git switch --detach T` where `T` = `git rev-parse --verify V^{commit}`: one call |
+| A branch not yet local | the paths check against `O`, then `git switch -c V --track O`: one call, all or nothing |
+| A branch that exists locally | Only if `refs/heads/V` is an ancestor of `O`; else left alone (`a local branch <V> has commits not on origin`). If it is checked out in a linked worktree (`git worktree list --porcelain` has `branch refs/heads/V` for another path): left alone, `branch <V> is checked out in <path>; not switched`, without calling `git switch`, which would exit 128 (tried). The paths check against both trees, then `git switch V`, then `git merge --ff-only O` if behind. If the second step fails the first is undone with `git switch <where it was: the branch, or --detach <sha>>` and the check above; a failure to undo is the same exit 1 `ERROR` |
+| A tag or a commit | `T` = `git rev-parse --verify V^{commit}`; the paths check against `T`; `git switch --detach T`: one call |
+| Any `git switch` that exits non-zero for a reason not named above | The repo is checked unchanged; left alone, reported with git's message |
 
-Afterwards the commit is read with `rev-parse HEAD`, compared with `T` or `O`, and only then is
-the record written (`put_distro_state`, as part 1 does after each repo, not held over the git
-call). The branch left behind keeps every commit it had; none is deleted: `branch -d/-D`,
-`reset --hard`, `checkout -f`, `clean`, `stash`, `gc`, `prune`, `push` and `--force` are never
-run. A test scans `update.py` for these words.
+After every tree-changing call the commit is read with `rev-parse HEAD`, compared with `T` or `O`,
+and only then is the record written (`put_distro_state`, as part 1 does after each repo, not held
+over the git call). Before the call a `moving` line (`from`, `to` shas) is written into the repo's
+record, and removed with the final write; a failure to write it ends that repo before `git` runs.
+The branch left behind by a move keeps every commit it had; none is deleted. `branch -d/-D`,
+`reset`, `checkout -f`, `clean`, `stash`, `gc`, `prune`, `push`, `rebase`, `pull`,
+`--force` and `--no-verify` are never run by this pull request: a test scans the argument lists in
+`update.py` for these words (the report text names `git pull --rebase` for a person to run). The one exception is `remote set-url` (rung 7) and the probe's `update-ref -d` of the
+probe's own refs.
 
-The url rule (rung 7), `U` = the manifest's `url`, `W` = the old raw value:
+Failure of a step puts the repo back by this rule: a step that git does as one call is all or
+nothing; the only two-step path (switch to an existing branch, then fast-forward) is undone as
+described; after any failed call `HEAD`, the branch ref, `.git/config`, the index and the tracked
+status are compared with what was read before. If they differ, or the undo fails, the repo is
+left as git left it, exit 1 `ERROR`, with the shas and `git status`'s words; nothing more is run
+in that repo.
 
-1. Probe without changing the repo's configuration: `git -c remote.repos-manifest-probe.url=U -c
-   remote.repos-manifest-probe.fetch=+refs/heads/*:refs/remotes/repos-manifest-probe/* fetch
-   --no-tags repos-manifest-probe` (that remote name is reserved; its refs from an earlier killed
-   run are deleted first). A failure: fetch failure as rung 9, origin unchanged.
-2. Local commits: `git rev-list --count --branches HEAD --not --remotes=repos-manifest-probe`
-   (every local branch and `HEAD`, since repointing changes what every branch is measured
-   against). Not 0: left alone, origin unchanged: `url changed to <U> but <n> local commits
-   (branches <names>) are not on it; origin stays <W>`.
-3. Otherwise `git remote set-url origin U` (git writes the file under its own lock), then the
-   probe's refs are deleted (`git for-each-ref refs/remotes/repos-manifest-probe`, `git update-ref
-   -d`), in a `finally`. Report: `origin repointed from <W> to <U>`. The ladder goes on from rung
-   8; rung 9's fetch now uses the new origin. No local branch or file is touched.
+The url rule (rung 7). `state.yaml` records each repo's `url` (the manifest's value when it was
+last recorded). `W` = the raw `remote.origin.url`, `U` = the manifest's, `Ur` = the recorded
+one (host decision 2). First, every time the rung runs, the probe's refs
+(`refs/remotes/repos-manifest-probe/*`, a name `sync` reserves) are deleted (`git for-each-ref`,
+`git update-ref -d`): refs left by a killed run go at the next check, whatever it finds.
 
-The old URL is dropped, not kept as another remote: a stray remote is configuration `sync` would
-then own without the manifest saying it (extra remotes are a separate feature, `remotes` in the
-design, not built); the report prints the old URL, so a person can put it back with one command.
-A consequence of the owner's answer, not a new question: a person who deliberately pointed
-`origin` at a fork gets it pointed back at the manifest's URL when everything they committed is on
-the manifest's URL too; if not, the clone is left alone.
+| Case | What `sync` does |
+|---|---|
+| `W == U` | Nothing. If `Ur` is not `U`, `url: U` is recorded with the repo's next record write (a system made before the record held urls gets it this way) |
+| `Ur` exists, `W == Ur`, `U != Ur` (the manifest changed the url: the owner's answer) | Probe: `git -c remote.repos-manifest-probe.url=U -c remote.repos-manifest-probe.fetch=+refs/heads/*:refs/remotes/repos-manifest-probe/* fetch --no-tags repos-manifest-probe`; a failure is a fetch failure as rung 9, origin unchanged. Then `git rev-list --count --branches HEAD --not --remotes=repos-manifest-probe` (every local branch and `HEAD`, since repointing changes what every branch is measured against; this is also what keeps a package worktree's unpushed branch safe). Not 0: left alone, origin unchanged: `url changed to <U> but <n> local commits (branches <names>) are not on it; origin stays <W>`. 0: `git remote set-url origin U`, probe refs deleted in a `finally`, `origin repointed from <W> to <U>`, `url: U` recorded, the ladder goes on from rung 8 |
+| Anything else: `W != U` and `W` is not `Ur` (a person set `origin`: ssh for pushing, a fork), or there is no `Ur` | Left as it is, not counted as left alone, no exit status. The ladder goes on, fetching from `W`. One line: `origin is <W>, the manifest says <U>; left as set (to use the manifest's: git -C <P> remote set-url origin <U>)`, printed every run. `url: U` is recorded, so a later change of the manifest's url is still told apart from the person's choice |
 
-### The record and a repo that has left the manifest
+A system made before the record held urls (the owner's, from part 1) has no `Ur` anywhere: a clone
+whose `origin` equals the manifest's gets `url` recorded; every other `origin` is a person's and is
+never repointed. The old URL of a repointed repo is dropped, not kept as another remote: a stray
+remote is configuration `sync` would then own without the manifest saying it (extra remotes are a
+separate feature, not built); the report prints the old URL so a person can put it back with one
+command. The design names `remote.origin.pushurl` (or `url.<base>.pushInsteadOf`) as the way to
+push over ssh while fetching from the manifest's url.
 
-`state.yaml` keeps its shape (`format: 1`; layer, version, commit): this pull request writes it
-after each repo that was followed, moved, recorded without a record (rung 11 on a repo with no
-record: followed if on `V`, which is "treated as one a person has moved" otherwise, rung 14) and
-leaves it unchanged for every repo left alone. A repo recorded and no longer in the manifest, with
-its directory present: left alone, listed every run as `no longer in the manifest; left on disk`
-and its record kept; if its directory is gone its record is dropped. Nothing is deleted.
+### The record, and a repo that has left the manifest
+
+`state.yaml` keeps `format: 1`; each repo's record gains two optional keys, `url` (a string) and
+`moving` (`from`, `to`). A missing key reads as not recorded, so every file part 1 wrote is
+still read; the check in `system.py` that rejects other keys allows these two. This pull request
+writes the record after each repo that was followed, moved or recorded (a repo with no record that
+is on `V` is followed and recorded; one that is not is "moved by a person", rung 14) and leaves it
+unchanged for every repo left alone, except that `url` may be added (above) and `moving` is
+removed when a later `sync` finds the repo on `V`. A repo recorded and no longer in the manifest,
+with its directory present: left alone, listed every run as `no longer in the manifest; left on
+disk`, record kept; if its directory is gone its record is dropped. Nothing is deleted.
 
 ### Per-distro reports, and the manifest against `config.yaml`
 
@@ -634,7 +726,9 @@ manifest lists and the system does not record: nothing happens (no directory is 
 `DistroResult` gains `reported`. The part 1 tests that assert the whole run ends are changed and
 named in the commit (found by grepping `nothing was changed`); the manifest's own read error
 stays a whole-run error and ends with the recorded path (review suggestion 2 of 512 applies to
-the output error here too).
+the output error here too). One interaction: when the recorded manifest file is inside a clone
+that this `sync` moves, phase one has already read the old text; the next `sync` reads the new
+one. The report says so when a repo that holds the manifest file was moved.
 
 ### How `sync` and `build` meet
 
@@ -643,47 +737,84 @@ Part 2 takes the existing per-distro build lock (`hold_build_lock`, `.repos-mani
 rewritten, through its clones and updates, to the report. Reasons: the lock exists and is tested;
 a `build` reads the resolved files and the repos while it runs, and moving a clone under a running
 `colcon` corrupts the build; leaving it to issue 510 would deliver the update rules with the one
-race they most invite. 510 still owns the general lock (two syncs, `init`, the state file): when
-it lands it replaces this call; nothing here is built on assumptions about it. A distro whose lock
-is held is reported (`a build of distro <d> is still running (process <n>); nothing was changed
-for it`), skipped, exit 1, the other distros go on. To keep the wording true both ways,
-`hold_build_lock` takes the name of what holds it (`build` or `sync`, default `build`); `build`
-refused by a `sync` says "a sync of distro <d> is still running". Two syncs of the same distro are
-therefore refused too; two syncs of different distros can still lose one `state.yaml` update (part
-1's documented hazard, 510's). The descriptor is closed in a `finally`.
+race they most invite. 510 still owns the general lock (two syncs, `init`, the state file): the
+design says this lock is the build lock reused until 510 lands, which replaces this call. A
+distro whose lock is held is reported (`a build of distro <d> is still running (process <n>);
+nothing was changed for it`), skipped, exit 1, the other distros go on. The three points (host
+decision 8):
+
+- Holder wording: `hold_build_lock` takes the name of what holds it (`build` or `sync`, default
+  `build`) and `sync` writes only its own pid into the lock file (`note_lock_holders(fd, [pid])`),
+  never a `git` child's. The refusal's second-slot text ("its colcon ... still runs") therefore
+  never names a `git`; when a killed `sync`'s `git` still holds the descriptor the refusal falls
+  to its `fuser -v` text. `build` refused by a `sync` says "a sync of distro <d> is still
+  running". Tests for both directions.
+- `gc.auto=0` and `maintenance.auto=false` on every `git` call (above), so nothing that inherits
+  the descriptor outlives the run.
+- `init`'s first sync does not take the lock: `init` refuses when a system exists, so no `build`
+  of that distro can; `sync_distros` takes a `lock` argument, false for `init`, true for `sync`.
+  Two syncs of the same distro are refused by the lock; two syncs of different distros can still
+  lose one `state.yaml` update (part 1's documented hazard, 510's).
 
 What the build record says afterwards: `sync` does not write `built-<distro>.yaml` (`build` is its
 one writer) and the record cannot show a moved repo (it holds layer, repo keys and times, not
-commits; the design says it does not mean up to date). The existing text in `build` about changes
+commits; the design says it does not mean up to date). The existing text in `build`
 (`install_notes`) names only repos added to or dropped from a layer; there is no note for a moved
-commit. So `sync` adds one: after a distro's updates, for each layer that had a repo moved, cloned,
-fast-forwarded or rebased and for which `read_built` returns a record, it prints `layer <name> was
-built before and <n> of its repos changed since; `repos-manifest build` brings it, and the layers
-above it, up to date`. Read-only; an unreadable record is a warning, not an error. Test: build a
-layer (a stub `colcon` as `test_build.py` has), move a repo, `sync`, assert the line, assert
+commit. So `sync` adds one: after a distro's updates, for each layer that had a repo moved, cloned
+or fast-forwarded and for which `read_built` returns a record, it prints `layer <name> was built
+before and <n> of its repos changed since; `repos-manifest build` brings it, and the layers above
+it, up to date`. Read-only; an unreadable record is a warning, not an error. Test: build a layer (a
+stub `colcon` as `test_build.py` has), move a repo, `sync`, assert the line, assert
 `built-<distro>.yaml` byte-identical.
+
+### Clones with submodules, and shallow clones (host decision 5)
+
+Submodules: this pull request never runs a submodule command. A clone that already has an
+initialised submodule is followed and moved like any other; after the pointer moves, `sync`'s own
+status check does not read the submodule's different checked-out commit (`SC..`, tried) as local
+work, but does read changed tracked files inside it (`SCM.`, tried) as local work; untracked files
+inside a submodule are ignored, as untracked files are everywhere (`--ignore-submodules=
+untracked`). After a move the report adds the `git submodule update` command. Tests: a fast-forward
+of a clone with a submodule, then a second `sync` that says `up to date` and not "uncommitted
+changes"; a submodule with a modified tracked file is left alone.
+
+Shallow clones: the ancestry and commit counts work on the history the clone has. Tried on a
+`--depth 1` clone with git 2.53.0: `fetch --prune --tags origin` keeps it shallow and connects the
+new commits, `HEAD` is an ancestor of `O`, the count of commits not on origin is 0, and
+`merge --ff-only O` succeeds. The design says `sync` never deepens or un-shallows a clone. Test:
+a shallow clone followed through rung 12, the second run `up to date`.
 
 ### Stop signals and a hard kill, per repo
 
 | Where it ends | Left behind | The next `sync` |
 |---|---|---|
 | Stop signal during a fetch | Nothing in the tree; git removes its own lock files on these signals; some remote-tracking refs may be updated | Fetches again |
-| Stop signal while a tree-changing `git` runs | The signal is held until the call ends (and a terminal Ctrl-C reaches `git` itself, which stops); then the check above runs and the repo is put back or left in the one state git reports; `Stopped` is raised after. Any rebase this call started is aborted first (signals held) | Whatever state remains is rung 5 or 8: left alone, reported |
+| Stop signal while a tree-changing `git` runs | The signal is held until the call ends (and a terminal Ctrl-C reaches `git` itself, which stops it); the check above then runs and the repo is put back or left in the one state git reports; `Stopped` is raised after | Whatever state remains is rung 5 or 8: left alone, reported |
 | `SIGKILL` during a fetch | Possibly a `.lock` file git did not remove under `.git`; no tree change | The fetch fails with git's own message naming the file (rung 9); `sync` never removes a git lock file |
-| `SIGKILL` during `merge --ff-only` or `switch` | The repo had no tracked changes before, so a half-written tree differs from `HEAD` only by incoming files; possibly `index.lock` | Rung 5 (`index.lock`) or rung 8: left alone, reported; no local work was at risk |
-| `SIGKILL` during a rebase | A rebase in progress; the original is `ORIG_HEAD` and the reflog | Rung 5: left alone; the person runs `git rebase --abort` |
-| `SIGKILL` during the url probe | Refs `refs/remotes/repos-manifest-probe/*`; origin unchanged | Deleted at the start of the next probe |
-| After the git call, before `state.yaml` | Repo on `V`, record on `Vr` | Rung 11 records it |
+| `SIGKILL` during `merge --ff-only` or `switch` | The repo had no tracked changes before, so a half-written tree differs from `HEAD` only by incoming files; possibly `index.lock`; the record holds the `moving` line | Rung 5 (`index.lock`) or rung 8: left alone, worded `a sync was stopped while moving this repo from <from> to <to>; git status shows what it left`; a person may commit the incoming files as their own, `sync` does not repair it |
+| `SIGKILL` during the url probe or after `set-url` | Probe refs under `refs/remotes/repos-manifest-probe/`, origin unchanged or repointed (one config write) | The probe refs are deleted at the next rung 7, whatever it finds; a repointed `origin` is `W == U` |
+| After the git call, before `state.yaml` | Repo on `V`, record on `Vr` with the `moving` line | Rung 12 records it and removes the line |
 | Anywhere in a repo's update | Other repos are whole: each repo's update is independent and recorded on its own | The rest are done |
+
+There is no rebase in this pull request, so a rebase in progress is only ever a person's.
 
 The tests compare the whole repo: a function `snapshot_repo(path, fetched=False)` returns `HEAD`,
 the symbolic branch, every ref (all of `git for-each-ref`, minus `refs/remotes` and `refs/tags`
 when `fetched=True`), `.git/config` text, `git ls-files -s`, `git status --porcelain=v2
---untracked-files=all`, the hash and mode of every file outside `.git`, and the names present
-among the git-dir's state entries. No test accepts a deleted file, a moved branch ref or a changed
-config where the row says "left alone". Interrupt tests use a stub `git` first on `PATH` that
-`exec`s the real one after a pause or a marker file (as part 1's `test_interrupted.py` does for
-`vcs`): SIGTERM and SIGKILL to `sync` before a fetch, a merge, a switch and a rebase.
+--untracked-files=all --ignored`, the hash and mode of every file outside `.git` (ignored files
+included), the names present among the git-dir's state entries, and `git worktree list
+--porcelain`. The fixtures include an ignored file and a linked worktree, so the same comparison
+covers rungs 12 and 13's checks and the worktree row. No test accepts a deleted file, a moved
+branch ref or a changed config where the row says "left alone". Interrupt tests use a stub `git`
+first on `PATH` that `exec`s the real one after a pause or a marker file (as part 1's
+`test_interrupted.py` does for `vcs`): SIGTERM and SIGKILL to `sync` before a fetch, a merge and a
+switch; and a stub `post-checkout` hook that fails (success judged by state).
+
+The ignored-file tests, one per tree-changing row: a fast-forward over an ignored file the
+incoming commit adds as tracked; a switch to a new local branch; a switch to an existing local
+branch then fast-forward; a detached switch to a tag; each also with an untracked file that is not
+ignored, and with an incoming file whose parent directory is a file in the work tree. Each
+asserts `snapshot_repo` equal (`fetched=True`) and that the report names the path.
 
 ### What the adapter's `validate` sees
 
@@ -703,34 +834,43 @@ cd <system dir>
 git -C <layer>/src/<repo> status --short; git -C <layer>/src/<repo> log --oneline -1   # before
 ~/p11-venv/bin/repos-manifest sync --distro rolling
 git -C <layer>/src/<repo> status --short; git -C <layer>/src/<repo> branch --show-current
-grep -A3 '<repo>' .repos-manifest/state.yaml    # version and commit are the new ones
+grep -A5 '<repo>' .repos-manifest/state.yaml    # version, commit and url are the new ones
 ~/p11-venv/bin/repos-manifest sync --distro rolling     # run again: nothing changes, "up to date"
 ```
 
 and, for the safety rows, on a throw-away copy made the same way in `~/p11-test` (never his real
-directory): a dirty file, a local commit, a repo moved by hand to another branch, each followed by
-`sync` and a `git status`/`git log` comparison like part 1's.
+directory): a dirty file (left alone), a local commit (left alone, with the `git pull --rebase`
+command printed), a repo moved by hand to another branch (left alone), an `origin` set by hand to
+another URL (left as set, one line), an ignored file where an incoming file arrives (left as it
+was, the path named), each followed by `sync` and a `git status`/`git log` comparison like part
+1's. His clones whose `origin` is ssh while the manifest says https are left as set and reported
+once per run; `sync` does not repoint them.
 
 ### Documentation in the same change
 
-`tools/repos-manifest/docs/design.md`: "sync" (the ladder's rules, the owner's three answers, the
-url rule and the dropped old URL, untracked files, the lock and the build hint, per-distro
-reports, how a pin that is a tag or a commit behaves, stop and kill table), "Where the resolved
-files and state go" (state written after each repo updated too), "What is built" (updating built;
-step 1, `local_manifest`, `--` and shallow or submodule handling not built: part 3), and "Open
-questions": the layer question is removed. `roadmap.md`: the `init`/`sync` row; part 3 named.
-`README.md`: what `sync` does to a repo that is there; needs `git`. `docs/manifest/roadmap.md`:
-the row for the tool's commands if it changes. The tool's documents do not mention the workspace.
+`tools/repos-manifest/docs/design.md`: "sync" (the rungs' rules, the owner's answers, the paths
+check that makes "git itself refuses" true for ignored files, the url rule and the recorded url
+with `pushurl` / `pushInsteadOf`, the dropped old URL, untracked files, how "commits not on
+origin" is decided and that a force-pushed upstream reads as such, the rebase rule kept with the
+field-machine paragraph and said plainly not to be built yet, how a pin that is a tag or a commit
+behaves, branch in a linked worktree, submodules and shallow clones, `origin/V` followed whatever a
+branch's upstream, the lock and the build hint, per-distro reports, stop and kill table), "Where
+the resolved files and state go" (state written after each repo updated too; the optional `url`
+and `moving` keys), "What is built" (updating built except the rebase rule; step 1, `local_manifest`
+and `--` not built: part 3), and "Open questions": the layer question is removed. `roadmap.md`:
+the `init`/`sync` row; parts 3 and 4 named. `README.md`: what `sync` does to a repo that is there;
+needs `git`. `docs/manifest/roadmap.md`: the row for the tool's commands if it changes. The tool's
+documents do not mention the workspace.
 
 ### Part 2 files and size
 
 | File | Change |
 |---|---|
-| `src/repos_manifest/update.py` | New: `run_git`, `update_repo` (the ladder), `on_version`, follow, move, probe, `snapshot` helpers for state words (about 330 lines) |
-| `src/repos_manifest/sync.py` | Per-distro phase one, lock, calls `update_repo` for present repos, layer rule, repos that left the manifest, report lines, build hint (about 150 lines) |
-| `src/repos_manifest/system.py` | `hold_build_lock(..., holder="build")` wording (about 15 lines) |
+| `src/repos_manifest/update.py` | New: `run_git`, `update_repo` (the ladder), `on_version`, the paths check, follow, move, the url rule and probe (about 300 lines) |
+| `src/repos_manifest/sync.py` | Per-distro phase one, lock, calls `update_repo` for present repos, layer rule, repos that left the manifest, report lines, build hint, `url` and `moving` in the record (about 150 lines) |
+| `src/repos_manifest/system.py` | `hold_build_lock(..., holder="build")` wording; `RepoRecord` gains `url` and `moving`; the state shape check allows them (about 40 lines) |
 | `src/repos_manifest/init.py`, `sync.py` | The three suggestions of 512's review: the live-pid warning only for an empty directory or one holding only `config.yaml`; the manifest-output error names the recorded path; the head-comment refusal says nothing was set up |
-| `tests/helpers.py` | `snapshot_repo`, `make_system(tmp, ...)` over `init`, `push_commit(remote, ...)`, `git_stub(tmp)` |
+| `tests/helpers.py` | `snapshot_repo`, `make_system(tmp, ...)` over `init`, `push_commit(remote, ...)`, `git_stub(tmp)`, fixtures with an ignored file and a linked worktree |
 | `tests/test_update.py`, `test_update_safety.py`, `test_sync_distros.py`, `test_sync_lock.py`, `test_vcs_behaviours.py` | The rows above; the interrupt and kill tests; two `vcs` behaviours for existing repos (switch of a clean repo on another branch; refusal of a changed url), asserted on the installed `vcs` (about 900 lines) |
 | the docs above | about 120 lines |
 
@@ -812,7 +952,7 @@ Part 1, `tools/repos-manifest/docs/design.md`:
   updating clones, `add-distro`, the git and URL forms, the local copy of the manifest.
 - The tool's own documents do not mention the workspace or its adapter.
 
-Part 2: "sync" (the rules, untracked files and mid-rebase states included), "Open questions",
+Part 2: "sync" (the rules, untracked and ignored files, the recorded url, and mid-rebase states left alone; the rebase rule said not built), "Open questions",
 "What is built".
 
 **How the branch gets 508's text**: 508 merges first, then `feature/issue-500` merges `main`
@@ -859,17 +999,18 @@ part 1 starts after 508 has merged.
 ## Open questions for the owner
 
 None for part 1. The three held for part 2 were answered on 2026-11-19 and are quoted under
-Part 2. Left for the owner, with a default the plan has chosen (each is one line to flip, and a
-test pins it): whether a repo that is left alone while the manifest names another version, or a
-layer move waiting for a `mv`, should make the exit status 1 (the design says left-alone repos
-do not; the plan keeps that, and `status`, issue 502, is the script-readable check); and whether
-the layer-move report should also exit 1 because `build` refuses that layer meanwhile.
+Part 2, with the fourth (the rebase is a later part). Nothing is open for the owner. Two choices
+are the plan's and each is one line to flip, pinned by a test: a repo left alone while the manifest
+names another version, or with unpushed commits, exits 0 (the design's rule; `status`, issue 502,
+is the script-readable check); and the report line for an `origin` a person set is printed on
+every run.
 
 ## Estimated Scope
 
 Part 1: about 480 lines of code in four new modules (`sync.py` about 190, `system.py` about
 170, `init.py` about 90, `signals.py` and `cli.py` additions about 30), about 620 lines of tests,
 about 130 lines of documentation: about 1,230 lines against about 1,700 in the first version.
-One pull request. Part 2 (one pull request, "Part of #500"): about 500 lines of code, 900 of tests,
-120 of documentation; part 3 (step 1, `local_manifest`, `--local-manifest`, `--`) is its own issue.
+One pull request. Part 2 (one pull request, "Part of #500"): about 490 lines of code, 900 of tests,
+120 of documentation; part 3 (step 1, `local_manifest`, `--local-manifest`, `--`) and part 4 (the rebase
+rule) are their own issues.
 `add-distro`: its own issue, small once `sync_distro` exists.
