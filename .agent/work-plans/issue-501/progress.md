@@ -158,3 +158,11 @@ The plan is thorough and its colcon facts were measured, but it builds several d
 **Decision**: revise
 
 The host read the Plan Review's ten findings and decides them as follows for the revision. (1) One distro per run: a single --distro, and the design's refusal at the top of a system with several distros. (2) A successful rebuild of an earlier layer keeps the later layers' records, as the design sentence says (setup.bash sources the last layer built, whichever layers this run built). (3) A layer's record is removed, and the file written, before colcon starts, and set to built only on exit 0; with a test. (4) A layer recorded built without install/setup.bash counts as not built; records of layers no longer in layers.txt are dropped; the install note covers repos added as well as removed. (5) build warns when the caller's environment already holds this system's own install prefixes, and runs the first layer's colcon directly. (6, 9) The design document and the Serves line are corrected. (7) build <layer> still refuses when an earlier non-empty layer has no record, the message says a plain build fixes it, and the design says the record is the only thing build trusts. (8) A setup.bash that is a person's own file or any link is left alone with a warning and exit 1, the design states the difference from sync, and the tool forwards a stop signal to colcon and waits. (10) The plan must work with and without the CI change. Two questions are with the owner and are not decided here: an opt-in option to keep going to later layers after a failure, and installing colcon in CI (Ask First).
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-19 09:38 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-501/plan.md` at `49c3b137`
+
+Revision after the plan review and checkpoint: one distro per run; records kept across rebuilds (built = record plus install/setup.bash); record removed before colcon and set on exit 0; own-prefix warning; stop signal forwarded; design-document list completed; Serves names a README goal; CI change split out as an optional step; keep-going restated against the new rules.
