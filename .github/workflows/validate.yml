@@ -71,7 +71,17 @@ jobs:
       - name: Install repos-manifest (editable, with test extras)
         run: pip install -e tools/repos-manifest[test]
 
+      # The tests of `build` marked `colcon` build small CMake packages with the real colcon;
+      # with REPOS_MANIFEST_REQUIRE_COLCON=1 a missing colcon or cmake fails them, not skips.
+      - name: Install colcon (for the build tests)
+        run: |
+          pip install colcon-common-extensions
+          command -v colcon
+          cmake --version
+
       - name: Run tests
+        env:
+          REPOS_MANIFEST_REQUIRE_COLCON: '1'
         run: pytest tools/repos-manifest/tests
 
   validate-documentation:

@@ -1,5 +1,5 @@
 """`repos-manifest` CLI: resolve and validate; init and sync set up a system directory and
-clone its repos.
+clone its repos; build builds its layers with colcon and writes its setup.bash.
 
 A manifest with a top-level `repositories:` or `base:` key is read by the reader for the format
 in docs/spec.md (``base.py``); any other file, one that does not read or parse included, by
@@ -15,6 +15,7 @@ from pathlib import Path
 
 from . import manifest as new_manifest
 from . import output, selection
+from .build import run_build
 from .emit import LAYOUT_FLAT, LAYOUT_MANIFEST_DIR, LAYOUTS, emit_manifest
 from .extends import resolve_chain
 from .init import run_init
@@ -186,6 +187,22 @@ def cmd_sync(args: argparse.Namespace) -> int:
     return run_sync(args.distro or [])
 
 
+def cmd_build(args: argparse.Namespace) -> int:
+    if args.distro == "":
+        raise ManifestError("--distro is given an empty name; name the distro to build")
+    distros = [args.distro] if args.distro is not None else []
+    return run_build(distros, args.layers, args.colcon_args, args.keep_going)
+
+
+class _Once(argparse.Action):
+    """An option that may be given once: a second one is an error, not a silent replacement."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        if getattr(namespace, self.dest, None) is not None:
+            parser.error(f"{option_string} may be given only once")
+        setattr(namespace, self.dest, values)
+
+
 def _add_with(sub_parser: argparse.ArgumentParser) -> None:
     sub_parser.add_argument(
         "--with",
@@ -265,12 +282,48 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sync_p.set_defaults(func=cmd_sync, parser=sync_p)
 
+    build_p = sub.add_parser(
+        "build",
+        help=(
+            "Build one distro's layers in order with colcon and write its setup.bash; arguments"
+            " after -- go to colcon for every layer"
+        ),
+        usage="%(prog)s [-h] [--distro DISTRO] [--keep-going] [LAYER ...] [-- COLCON_ARGS ...]",
+        epilog=(
+            "Arguments after -- are passed to colcon for every layer built; --base-paths,"
+            " --paths, --install-base and --build-base are refused."
+        ),
+    )
+    build_p.add_argument(
+        "--distro", action=_Once, help="The distro to build, when there are several; once"
+    )
+    build_p.add_argument(
+        "--keep-going",
+        action="store_true",
+        help=(
+            "After a layer fails, still try the later ones, each on the layers below it that"
+            " are built; what they build is not used until the failed layer is fixed"
+        ),
+    )
+    build_p.add_argument(
+        "layers", nargs="*", metavar="LAYER", help="Build only these layers (default: every one)"
+    )
+    build_p.set_defaults(func=cmd_build, parser=build_p, colcon_args=[])
+
     return parser
 
 
 def main(argv=None) -> int:
     parser = build_parser()
+    argv = list(sys.argv[1:] if argv is None else argv)
+    passed: list = []
+    if argv[:1] == ["build"] and "--" in argv:
+        # What follows the first `--` goes to colcon; argparse would take it as layer names.
+        at = argv.index("--")
+        argv, passed = argv[:at], argv[at + 1 :]
     args = parser.parse_args(argv)
+    if passed:
+        args.colcon_args = passed
     try:
         return args.func(args)
     except ManifestError as exc:

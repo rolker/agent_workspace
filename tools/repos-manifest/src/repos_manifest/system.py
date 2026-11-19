@@ -12,6 +12,7 @@ Every temporary this tool makes in a system, after ``init``'s first step, is in
 
 from __future__ import annotations
 
+import fcntl
 import os
 import re
 import sys
@@ -40,8 +41,16 @@ STATE_FORMAT = 1
 TEMP_PREFIX = ".repos-manifest-tmp-"
 TEMP_NAME = re.compile(re.escape(TEMP_PREFIX) + r"(?P<pid>[0-9]+)-[a-z0-9_]{8}")
 
+BUILT_PREFIX = "built-"  # built-<distro>.yaml: the layers `build` built for the distro
+BUILD_LOCK_PREFIX = "build-"  # build-<distro>.lock: held by a `build` of the distro
+BUILT_FORMAT = 1
+
+# The first line of every `setup.bash` this tool writes starts with it; `build` replaces only
+# a `setup.bash` that does (or none at all).
+SETUP_MARKER = "# Written by repos-manifest."
+
 SETUP_TEXT = (
-    "# Written by repos-manifest. Nothing is built here yet.\n"
+    f"{SETUP_MARKER} Nothing is built here yet.\n"
     'echo "repos-manifest: nothing is built here yet" >&2\n'
     "return 1 2>/dev/null || exit 1\n"
 )
@@ -252,6 +261,19 @@ def distros_for(
     return config.distro_keys
 
 
+def one_distro_for(system: Path, config: Config, named: Sequence[str], cwd: Path) -> Optional[str]:
+    """The one distro a command that acts on one distro uses (`show`, `resolve`, `build`,
+    `freeze` in "Which distro a command uses"): as `distros_for`, and at the top of a system
+    with several distros, an error that lists them."""
+    distros = distros_for(system, config, named, cwd)
+    if len(distros) > 1:
+        raise ManifestError(
+            f"this system has several distros ({', '.join(str(d) for d in distros)}); name one"
+            " with --distro, or run the command from inside that distro's directory"
+        )
+    return distros[0]
+
+
 # --- Where each part is ---------------------------------------------------------------------
 
 
@@ -390,6 +412,205 @@ def put_distro_state(system: Path, distro: Optional[str], state: DistroState) ->
     }
     text = yaml.safe_dump(data, default_flow_style=False, sort_keys=False, width=4096)
     replace_file(system, system / SYSTEM_DIR / STATE_FILE, text)
+
+
+# --- The build record and its lock ---------------------------------------------------------
+
+
+def built_file(system: Path, distro: Optional[str]) -> Path:
+    """The record of one distro's layers that `build` built: `built-<distro>.yaml`."""
+    return system / SYSTEM_DIR / f"{BUILT_PREFIX}{state_key(distro)}.yaml"
+
+
+def build_lock_file(system: Path, distro: Optional[str]) -> Path:
+    """The file a `build` of one distro holds a lock on while it runs."""
+    return system / SYSTEM_DIR / f"{BUILD_LOCK_PREFIX}{state_key(distro)}.lock"
+
+
+def hold_build_lock(system: Path, distro: Optional[str]) -> int:
+    """Take the lock of one distro's `build` (`flock`): held while the returned descriptor is
+    open in this process or in a colcon it was passed to, and gone when they have all ended,
+    however they end. A second `build` of the same distro is refused; one of another distro
+    takes another lock and reads and writes another record."""
+    path = build_lock_file(system, distro)
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags, 0o666)
+    except OSError as exc:
+        raise ManifestError(f"{path}: cannot be opened: {exc.strerror or type(exc).__name__}")
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        try:
+            holders = os.pread(fd, 64, 0).decode("ascii", "replace").split()
+        except OSError:
+            holders = []
+        os.close(fd)
+        of = f"of distro {distro} " if distro is not None else ""
+        pids = [int(each) for each in holders if each.isdigit()]
+        tool, colcon = (pids + [None, None])[:2]
+        tool_holds = _holds(tool, path)
+        colcon_holds = _holds(colcon, path)
+        if tool_holds:
+            who = f" (process {tool})"
+        elif colcon_holds and tool_holds is None:
+            who = f": its colcon (process {colcon}) still runs"
+        elif colcon_holds:
+            who = (
+                f": its colcon (process {colcon}) still runs, though the `repos-manifest build`"
+                f" that started it (process {tool}) has ended"
+            )
+        elif tool_holds is None or colcon_holds is None:
+            # Which processes have the file open cannot be seen here: the numbers are only
+            # what the lock file says, and a process of that number may be another one.
+            named = [
+                str(pid)
+                for pid, holds in ((tool, tool_holds), (colcon, colcon_holds))
+                if holds is None
+            ]
+            who = (
+                f"; its lock file names process {' and '.join(named)}, which this tool cannot"
+                f" check; `fuser -v {path}` names the process that holds its lock"
+            )
+        else:
+            who = f"; `fuser -v {path}` names the process that holds its lock"
+        raise Refusal(
+            f"a build {of}is still running in this system{who}; nothing was run",
+            f"It holds the lock on {path}. Wait for it to end, or stop it, then run this again",
+        ) from None
+    except OSError as exc:
+        os.close(fd)
+        raise ManifestError(f"{path}: cannot be locked: {exc.strerror or type(exc).__name__}")
+    note_lock_holders(fd, [os.getpid()])
+    return fd
+
+
+def note_lock_holders(fd: int, pids: Sequence[int]) -> None:
+    """Write the pids of the processes that hold a build lock into its file: the tool's, and
+    colcon's while one runs. Only the refusal of a second `build` reads them."""
+    text = (" ".join(str(pid) for pid in pids) + "\n").encode("ascii")
+    try:  # written first, then cut to length: a reader never finds the file empty
+        os.pwrite(fd, text, 0)
+        os.ftruncate(fd, len(text))
+    except OSError:
+        pass
+
+
+def _holds(pid: Optional[int], path: Path) -> Optional[bool]:
+    """Whether process `pid` has the lock file `path` open: True or False when its open files
+    can be read (`/proc/<pid>/fd`), None when they cannot. A number from the lock file is not
+    trusted alone: the process may have ended and its number been given to another one."""
+    if pid is None or pid <= 0:
+        return False
+    fds = Path(f"/proc/{pid}/fd")
+    try:
+        entries = list(fds.iterdir())
+    except FileNotFoundError:
+        # No such process, or no /proc at all.
+        return False if Path("/proc/self/fd").is_dir() else (None if _alive(pid) else False)
+    except OSError:
+        return None if _alive(pid) else False
+    target = os.path.realpath(path)
+    for entry in entries:
+        try:
+            if os.path.realpath(os.readlink(entry)) == target:
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    try:  # a zombie has ended
+        stat = Path(f"/proc/{pid}/stat").read_text()
+        return stat.rsplit(")", 1)[1].split()[0] not in ("Z", "X")
+    except (OSError, IndexError):
+        return True
+
+
+@dataclass
+class LayerRecord:
+    """A layer `build` built with colcon exiting 0: when, from which repos, and the chain it was
+    built on: the built run below it at the time, its layers with repos from the bottom up
+    (empty when nothing was sourced). Its last layer is the one that was sourced."""
+
+    time: str
+    repos: List[str]
+    below: List[str]
+
+
+# The keys of a layer's record in an unreleased draft that held only the layer sourced when it
+# was built (`base`), not the whole chain below it. Such a record is read as not built.
+_SINGLE_BASE_KEYS = ("time", "repos", "base")
+
+# A newline or another control character in a record's value: a record this tool wrote has
+# none, and its values go into `setup.bash`'s text.
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def read_built(system: Path, distro: Optional[str]) -> Dict[str, LayerRecord]:
+    """The layers of one distro that its record has as built; none when there is no record.
+    The file is read and checked whole: it has exactly the shape `put_built_layers` writes,
+    and each error names the file and what is wrong."""
+    path = built_file(system, distro)
+
+    def bad(why: str) -> ManifestError:
+        return ManifestError(f"{path}: {why}; repair or remove it")
+
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except (yaml.YAMLError, UnicodeDecodeError):
+        raise bad("does not read as YAML") from None
+    _check_keys(data, "", ("format", "layers"), (), bad)
+    if data["format"] != BUILT_FORMAT or isinstance(data["format"], bool):
+        raise bad(
+            f"`format` is {data['format']!r}, not {BUILT_FORMAT}, the one this version writes"
+        )
+    _check_keys(data["layers"], "layers", (), None, bad)
+    records = {}
+    for layer, record in data["layers"].items():
+        at = f"layers.{layer}"
+        if not isinstance(layer, str) or _CONTROL.search(layer):
+            raise bad(f"layer {layer!r} is not a layer name")
+        if isinstance(record, dict) and set(record) == set(_SINGLE_BASE_KEYS):
+            continue  # the single-base form of an unreleased draft: read as not built
+        _check_keys(record, at, ("time", "repos", "below"), (), bad)
+        if not isinstance(record["time"], str):
+            raise bad(f"`{at}.time` is {_kind(record['time'])}, not a string")
+        for key in ("repos", "below"):
+            if not isinstance(record[key], list) or not all(
+                isinstance(each, str) for each in record[key]
+            ):
+                what = "repo keys" if key == "repos" else "layer names"
+                raise bad(f"`{at}.{key}` is not a list of {what}")
+        texts = [record["time"], *record["repos"], *record["below"]]
+        if any(_CONTROL.search(text) for text in texts):
+            raise bad(f"`{at}` holds a control character")
+        records[str(layer)] = LayerRecord(
+            record["time"], list(record["repos"]), list(record["below"])
+        )
+    return records
+
+
+def put_built_layers(system: Path, distro: Optional[str], layers: Dict[str, LayerRecord]) -> None:
+    """Write one distro's record whole, by one rename."""
+    data = {
+        "format": BUILT_FORMAT,
+        "layers": {
+            layer: {"time": record.time, "repos": list(record.repos), "below": list(record.below)}
+            for layer, record in layers.items()
+        },
+    }
+    text = yaml.safe_dump(data, default_flow_style=False, sort_keys=False, width=4096)
+    replace_file(system, built_file(system, distro), text)
 
 
 # --- The manifest ---------------------------------------------------------------------------

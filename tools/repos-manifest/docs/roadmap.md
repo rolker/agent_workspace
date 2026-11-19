@@ -32,7 +32,7 @@ are relative to the tool's own directory.
 | `base` and the manifest itself can be given as a path, a URL, or a file in a git repo | |
 | `show` prints what a manifest comes to for a machine, with what is left out and why | |
 | `init` and `sync` set up and update a system directory, and `sync` leaves local work alone | |
-| `build` builds the layers in order and writes one setup file | |
+| `build` builds the layers in order and writes one setup file | `file-exists src/repos_manifest/build.py` |
 | `status` shows what differs from the manifest | |
 | A machine can fetch every repo from another place: a developer's forks where they exist, or a private server for a field machine | |
 | A manifest can be read from a private git server | |

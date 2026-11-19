@@ -93,9 +93,10 @@
 # `build` and `test` are today's colcon loops over the resolved layers,
 # with --base-paths src so the unnamed layer's build in <root>/<distro>
 # does not take in the named layers below it; `build` is interim until
-# the tool's own build, and stops at the first failing layer. The tool's
-# <root>/<distro>/setup.bash is its stub until then: the instance's
-# environment is `adapter env`.
+# the tool's own build, and stops at the first failing layer. The adapter
+# does not run `repos-manifest build`, so <root>/<distro>/setup.bash stays
+# the tool's stub unless someone runs that by hand (it then sources the
+# built layers); the instance's environment is `adapter env` either way.
 #
 # Fresh hosting dir (#237, step 6 phase 2): `setup` bootstraps the manifest
 # when configs/manifest is absent, porting ros2's setup_layers.sh flow
