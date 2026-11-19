@@ -1019,3 +1019,21 @@ PR mode, round 3: the round-2 review's findings and the fix diff since it (ff93f
 ### Findings
 - [ ] (suggestion) The "gone once globbed" block stages nothing at this head: the `[` override never fires because `_rc_tool_distros` no longer calls `[`, so the label "a set-aside directory gone once globbed: its distro still listed" checks a directory that is still there; it guards only against a return to a `[ -d ]` re-test (not `test -d` or `[[ -d ]]`); reword the comment and label to say that. Low value — `.agent/scripts/tests/test_ros2_colcon.sh:4775-4793`
 - [ ] (suggestion) PR body out of date, not false: "**Recommendation**: review on the pull request with the outside models, then the owner's merge decision." (that review has run twice; what remains is the merge decision), and "one of its suggestions (...) was done" (two were: the test comment and labels too). Optional — PR #514 body
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-18 23:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #514 at `ac032538`
+**Sources**: 2 (Local Review @ `d5eead98` (covers ac032538 via bookkeeping; round 3, approved, 0 must-fix, 2 suggestions; reviewing the code at 436dfeae), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+PR mode, round 3 triage, final before the owner's merge decision. Hosted reviews: none (0 reviews, 0 inline comments, 0 conversation comments). CI at the code-and-record head d5eead98: every job passed on both the push and pull_request runs (Lint (pre-commit), Validate Adapter Contract, Validate Documentation, repos-manifest tests 3.10 and 3.14). At the record-only head ac032538 (436dfeae..ac032538 changes only progress.md), after about 5 minutes: Validate Adapter Contract, Validate Documentation and both repos-manifest test jobs pass on both runs; Lint (pre-commit) still pending on both. Mergeable: MERGEABLE. PR body checked with `gh pr view 514 --json body`: the Recommendation line says "ready for the owner's merge decision", the reviews paragraph says two of the second read's suggestions were done, and it names the test-label note for a later part; no sentence found untrue (the "full pre-commit pass over the branch's files passed" claim is the host's and was not re-run here). Open boxes after the `## Checkpoint` with After: merge (line 608): only the two below, both ruled here; the earlier open boxes at lines 893-894 and 918-922 were ruled by the round-1 Integrated Review. Carried from round 2, not part of this pull request: suggestion 3 (the worktree guide and a failed fetch) was ruled no action; Codex's two findings about code this pull request does not change (a `heads/` or `tags/` version and `_rc_pin_kind`; an emptied clone directory passing validate) are to be proposed to the owner as a separate issue. Nothing remains open before the owner's merge decision but Lint (pre-commit) at the record-only head, which `merge_pr.sh` gates on.
+
+### Findings
+- [x] (suggestion, Local Review @ `d5eead98`) The "a set-aside directory gone once globbed" block stages nothing at this head (the `[` override never fires; checked at `.agent/scripts/tests/test_ros2_colcon.sh:4787-4790`) — no action in this pull request (host ruling): the label overstates, the check is still a valid guard against a return of the old `[ -d ]` re-check, and the PR body names it for a later part of #503 — `.agent/scripts/tests/test_ros2_colcon.sh:4775-4793`
+- [x] (suggestion, Local Review @ `d5eead98`) PR body out of date (Recommendation line; "one of its suggestions was done") — fixed by the host, who owns the body; verified: "ready for the owner's merge decision" and "two of its suggestions were done" — PR #514 body
+
+### False positives
