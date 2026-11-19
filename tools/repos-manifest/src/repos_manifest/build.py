@@ -35,6 +35,7 @@ from .system import (
     SETUP_MARKER,
     SETUP_TEXT,
     SYSTEM_DIR,
+    LEFT_OUT,
     Config,
     LayerRecord,
     Refusal,
@@ -534,6 +535,12 @@ RESOLVING_SELECTION = (
 # a package that was never tried is not built by it.)
 RESUMING = "--packages-skip-build-finished"
 
+# `LEFT_OUT` (from `system`): `--packages-skip`, `--packages-ignore` and their `-regex` forms
+# build the whole layer but the packages their values name, so they are not package selection
+# either, and the record keeps them (`left_out`). `--packages-skip-by-dep`,
+# `--packages-skip-up-to` and `--packages-skip-test-passed` are: what they leave out follows
+# from the dependency graph or from test results in `build/`, not from a list.
+
 # Builds one CMake target and skips the install step (colcon-cmake 0.2.30: "skip install step if
 # a specific target was requested"), while colcon still writes the layer's prefix scripts and
 # exits 0: a layer built with it has its packages built but not installed. So it is read as
@@ -610,6 +617,65 @@ def _could_be(name: str) -> List[str]:
     return [option for option in COLCON_BUILD_OPTIONS if option.startswith(name)]
 
 
+def _left_out_option(name: str) -> Optional[str]:
+    """The one option of `LEFT_OUT` that `name` is or abbreviates; None when it is another
+    option or could be several (`colcon` rejects such an abbreviation as ambiguous)."""
+    could = _could_be(name)
+    return could[0] if len(could) == 1 and could[0] in LEFT_OUT else None
+
+
+def _read_as_option(arg: str) -> bool:
+    """`colcon` reads `arg` as one of its options, which ends the values of the option before
+    it: `--`, an option of `colcon build` or an abbreviation of one, in either form, or `-h`.
+    Any other argument, even one starting with `-` (`-1`, `--foo`), is read as a value: colcon
+    reads an argument it does not know as one (checked with colcon-core 0.21.3)."""
+    if arg == "--":
+        return True
+    if arg.startswith("--"):
+        return bool(_could_be(arg.split("=", 1)[0]))
+    return arg.startswith("-h")
+
+
+def left_out(colcon_args: Sequence[str]) -> Dict[str, List[str]]:
+    """The packages the arguments leave out of a whole layer: each option of `LEFT_OUT` given,
+    named in full, to its values as given. As `colcon` reads them, an option's values run to
+    the next argument it reads as an option, the `=value` form has one, and of an option given
+    more than once only the last occurrence counts. An option whose last occurrence has no
+    values leaves nothing out and is not named."""
+    found: Dict[str, List[str]] = {}
+    taking: Optional[str] = None
+    for arg in colcon_args:
+        if not _read_as_option(arg):
+            if taking is not None:
+                found[taking].append(arg)
+            continue
+        name, equals, value = arg.partition("=")
+        option = _left_out_option(name) if arg.startswith("--") else None
+        taking = None
+        if option is not None:
+            found[option] = [value] if equals else []
+            taking = None if equals else option
+    return {option: found[option] for option in LEFT_OUT if found.get(option)}
+
+
+def without_text(without: Dict[str, List[str]]) -> str:
+    """A record's `without` as the report names it: `--packages-skip a b; --packages-ignore c`."""
+    if not without:
+        return "none"
+    return "; ".join(
+        " ".join([option, *(shlex.quote(value) for value in values)])
+        for option, values in without.items()
+    )
+
+
+def _same_without(one: Dict[str, List[str]], other: Dict[str, List[str]]) -> bool:
+    """Two lists of options leave the same packages out: the same options, each with the same
+    values in any order."""
+    return {option: set(values) for option, values in one.items()} == {
+        option: set(values) for option, values in other.items()
+    }
+
+
 def refused_arguments(colcon_args: Sequence[str]) -> None:
     """Refuse, before anything runs, an argument after `--` that colcon would read as part of
     what the record stands on: a plain argument first (`colcon build` takes none, and it would
@@ -647,10 +713,10 @@ def refused_arguments(colcon_args: Sequence[str]) -> None:
 
 def package_selection(colcon_args: Sequence[str], to_build: Sequence[str]) -> str:
     """What in the arguments builds only part of a layer, as the messages name it ("" when
-    nothing does): package selection (any `--packages-` option but `RESUMING`) and
-    `INSTALL_SKIPPING`, or an abbreviation that could be one. A package selection colcon must
-    resolve in the layer's packages is refused, before anything runs, when the run would build
-    more than one layer."""
+    nothing does): package selection (any `--packages-` option but `RESUMING` and those of
+    `LEFT_OUT`) and `INSTALL_SKIPPING`, or an abbreviation that could be one. A package
+    selection colcon must resolve in the layer's packages is refused, before anything runs,
+    when the run would build more than one layer."""
     selecting = False
     skipping = False
     for name in _option_names(colcon_args):
@@ -668,6 +734,8 @@ def package_selection(colcon_args: Sequence[str], to_build: Sequence[str]) -> st
             continue
         if could == [RESUMING]:
             continue  # it completes a layer: not a selection
+        if _left_out_option(name) is not None:
+            continue  # the whole layer but the packages named: not a selection
         selecting = True
         resolving = [option for option in could if option in RESOLVING_SELECTION]
         if resolving and len(to_build) > 1:
@@ -812,6 +880,15 @@ class Progress:
     wrote_setup: List[str] = field(default_factory=list)  # layers whose colcon wrote it this run
     ready: bool = False  # the checks have passed: every way the run ends now settles
     selection: str = ""  # what in the arguments builds part of a layer (`package_selection`)
+    # Layer: what the run left out of it (`left_out`), for each layer built leaving some out.
+    without: Dict[str, Dict[str, List[str]]] = field(default_factory=dict)
+    # Layer: what its record left out before and what it leaves out now, when they differ.
+    without_changed: Dict[str, Tuple[Dict[str, List[str]], Dict[str, List[str]]]] = field(
+        default_factory=dict
+    )
+    # Packages left out given beside `selection`: not recorded, since such a run gives each
+    # layer back the record it had.
+    unrecorded: Dict[str, List[str]] = field(default_factory=dict)
 
     @property
     def stopped_at(self) -> List[str]:
@@ -912,7 +989,8 @@ def _defaults_note(path: str) -> str:
     return (
         f"colcon reads default arguments from {path}; `build` sees only the arguments after --, so"
         " package selection or a target that skips the install set there is not seen, and the"
-        " layer is recorded built as a whole"
+        " layer is recorded built as a whole; packages left out there (--packages-skip,"
+        " --packages-ignore) are not recorded either"
     )
 
 
@@ -957,6 +1035,9 @@ def build_layers(
     has not touched it) and the run stops there."""
     system, distro, layers = progress.system, progress.distro, progress.layers
     records = read_built(system, distro)
+    without = {} if selection else left_out(colcon_args)
+    if selection:
+        progress.unrecorded = left_out(colcon_args)
     noted = False
     for index, layer in enumerate(layers):
         if layer.name not in chosen:
@@ -1028,9 +1109,15 @@ def build_layers(
             progress.failed.append((layer.name, None))
             continue
         if selection:
-            records[layer.name] = had  # the record it had: repos, chain and time unchanged
+            records[layer.name] = had  # the record it had: repos, chain, time and list unchanged
         else:
-            records[layer.name] = LayerRecord(_now(), list(layer.on_disk), list(below))
+            records[layer.name] = LayerRecord(
+                _now(), list(layer.on_disk), list(below), dict(without)
+            )
+            if without:
+                progress.without[layer.name] = without
+            if had is not None and not _same_without(had.without, without):
+                progress.without_changed[layer.name] = (had.without, without)
         _put(progress, records, lambda: progress.built.append(layer.name))
         settle(progress)
 
@@ -1096,6 +1183,25 @@ def report(progress: Progress, run: Optional[Run]) -> None:
     used = [name for name in progress.built if name in run.layers]
     if used:
         print(f"  {_built_label(progress)}: {', '.join(used)}")
+    leaving = [name for name in progress.built if name in progress.without]
+    for text in dict.fromkeys(without_text(progress.without[name]) for name in leaving):
+        names = [name for name in leaving if without_text(progress.without[name]) == text]
+        print(f"  built leaving out: {', '.join(names)} ({text})")
+    for name in progress.built:
+        if name in progress.without_changed:
+            was, now = progress.without_changed[name]
+            line = f"  skip list changed: {name} (was {without_text(was)}, now {without_text(now)})"
+            if now:
+                line += (
+                    "; what an earlier build installed of a package left out now is still in"
+                    f" {by_name[name].directory / 'install'}/"
+                )
+            print(line)
+    if progress.unrecorded:
+        print(
+            f"  not recorded, given with {progress.selection}: {without_text(progress.unrecorded)}"
+            " (a run that builds only part of a layer gives each layer back the record it had)"
+        )
     for name in progress.built:
         if name in progress.left_behind:
             print(

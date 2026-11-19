@@ -1016,6 +1016,168 @@ def test_resuming_a_layer_is_not_package_selection(system, stub, given):
     assert list(built(system)) == [BASE, "mid", "top"]
 
 
+# --- Packages left out of a whole layer ------------------------------------------------------
+
+
+def test_a_skip_list_on_a_first_build_is_recorded_and_the_layers_above_build_on_it(
+    system, stub, capsys
+):
+    capsys.readouterr()
+    assert run(system, "build", BASE, "mid", "--", "--packages-skip", "x", "y") == 0
+    assert built(system)[BASE]["without"] == {"--packages-skip": ["x", "y"]}
+    assert built(system)["mid"]["without"] == {"--packages-skip": ["x", "y"]}
+    out = capsys.readouterr().out
+    assert f"  built: {BASE}, mid\n" in out
+    assert f"  built leaving out: {BASE}, mid (--packages-skip x y)\n" in out
+    assert "skip list changed" not in out and "built without sourcing" not in out
+    assert sourced_by_setup(system) == real(system / "mid")
+    # The layer above builds on it, with nothing left out of its own.
+    assert run(system, "build", "top") == 0
+    assert "without" not in built(system)["top"]
+    assert runs(stub)[-1][1] == "mid"
+    assert sourced_by_setup(system) == real(system / "top")
+    out = capsys.readouterr().out
+    assert "built leaving out" not in out
+
+
+def test_the_same_skip_list_again_changes_nothing_and_another_is_named(system, stub, capsys):
+    assert run(system, "build", "--", "--packages-skip", "x", "y") == 0
+    capsys.readouterr()
+    assert run(system, "build", "mid", "--", "--packages-skip", "y", "x") == 0
+    assert built(system)["mid"]["without"] == {"--packages-skip": ["y", "x"]}
+    out = capsys.readouterr().out
+    assert "skip list changed" not in out
+    assert "  built leaving out: mid (--packages-skip y x)\n" in out
+    # Another list: named, and the layers above stay in the built run (a rebuild in place).
+    assert run(system, "build", "mid", "--", "--packages-skip", "z") == 0
+    out = capsys.readouterr().out
+    assert (
+        "  skip list changed: mid (was --packages-skip y x, now --packages-skip z); what an"
+        " earlier build installed of a package left out now is still in"
+        f" {system / 'mid/install'}/\n" in out
+    )
+    assert "  built before, in the run: _unnamed, top (on the earlier output of mid)\n" in out
+    assert "not used" not in out
+    assert sourced_by_setup(system) == real(system / "top")
+    # No list: the record drops it, and the change says so.
+    assert run(system, "build", "mid") == 0
+    assert "without" not in built(system)["mid"]
+    out = capsys.readouterr().out
+    assert "  skip list changed: mid (was --packages-skip z, now none)\n" in out
+    assert "built leaving out" not in out
+    assert sourced_by_setup(system) == real(system / "top")
+
+
+@pytest.mark.parametrize(
+    "given, recorded",
+    [
+        (["--packages-ignore", "x"], {"--packages-ignore": ["x"]}),
+        (["--packages-skip-regex", "^x$"], {"--packages-skip-regex": ["^x$"]}),
+        (["--packages-ignore-regex", "^x$", "y.*"], {"--packages-ignore-regex": ["^x$", "y.*"]}),
+        (["--packages-skip-r", "^x$"], {"--packages-skip-regex": ["^x$"]}),
+        (["--packages-ignore-=^x$"], {"--packages-ignore-regex": ["^x$"]}),
+        (["--packages-skip=x"], {"--packages-skip": ["x"]}),
+        (["--packages-skip", "a", "--packages-skip", "b"], {"--packages-skip": ["b"]}),
+        (["--packages-skip", "a", "b"], {"--packages-skip": ["a", "b"]}),
+        (
+            ["--packages-ignore", "c", "--packages-skip", "a"],
+            {"--packages-skip": ["a"], "--packages-ignore": ["c"]},
+        ),
+        # colcon reads an argument that is not one of its options as a value, `-1` too.
+        (["--packages-skip-regex", "-1", "x"], {"--packages-skip-regex": ["-1", "x"]}),
+        (
+            ["--packages-skip", "a", "--cmake-args", "-DX=1", "--packages-skip-r", "^b$"],
+            {"--packages-skip": ["a"], "--packages-skip-regex": ["^b$"]},
+        ),
+        (["--packages-skip", "a", "--packages-skip-build-finished"], {"--packages-skip": ["a"]}),
+    ],
+)
+def test_each_way_of_leaving_packages_out_is_recorded_as_colcon_reads_it(
+    system, stub, given, recorded
+):
+    assert run(system, "build", "--", *given) == 0
+    assert all(built(system)[name]["without"] == recorded for name in (BASE, "mid", "top"))
+    assert runs(stub)[0][2] == f"build {' '.join(given)} --base-paths src/u"
+
+
+@pytest.mark.parametrize(
+    "given", [["--packages-skip"], ["--packages-skip", "b", "--packages-skip"]]
+)
+def test_an_option_whose_last_occurrence_has_no_values_leaves_nothing_out(
+    system, stub, capsys, given
+):
+    capsys.readouterr()
+    assert run(system, "build", "--", *given) == 0
+    assert all("without" not in record for record in built(system).values())
+    assert "built leaving out" not in capsys.readouterr().out
+    assert run(system, "build") == 0  # the record reads
+
+
+@pytest.mark.parametrize(
+    "given",
+    [
+        ["--packages-ig", "x"],  # --packages-ignore or its -regex form: ambiguous to colcon
+        ["--packages-s", "x"],
+        ["--packages-skip-", "x"],
+        ["--packages-skip-by-dep", "x"],
+        ["--packages-skip-up-to", "x"],
+        ["--packages-skip-test-passed"],
+        ["--packages-skip", "x", "--packages-select", "y"],
+        ["--packages-select", "y"],
+    ],
+)
+def test_leaving_out_by_the_graph_or_beside_selection_is_still_refused_on_a_layer_not_built(
+    system, stub, capsys, given
+):
+    capsys.readouterr()
+    assert run(system, "build", "--", *given) == 1
+    err = capsys.readouterr().err
+    # `--packages-s` could be `--packages-start`, refused first for naming packages to find.
+    assert "a run with package selection builds only part of a layer" in err or (
+        given[0] == "--packages-s" and "--packages-s (--packages-start) names packages" in err
+    )
+    assert runs(stub) == []
+    assert not (system / ".repos-manifest/built-jazzy.yaml").exists()
+
+
+def test_a_selection_run_keeps_the_recorded_list_and_says_a_given_one_is_not_recorded(
+    system, stub, capsys
+):
+    assert run(system, "build", "--", "--packages-skip", "x") == 0
+    before = built(system)
+    capsys.readouterr()
+    assert run(system, "build", "--", "--packages-select", "m", "--packages-skip", "y") == 0
+    assert built(system) == before
+    out = capsys.readouterr().out
+    assert f"  rebuilt with selection: {BASE}, mid, top\n" in out
+    assert (
+        "  not recorded, given with package selection: --packages-skip y (a run that builds"
+        " only part of a layer gives each layer back the record it had)\n" in out
+    )
+    assert "built leaving out" not in out and "skip list changed" not in out
+
+
+def test_a_layer_built_leaving_out_under_keep_going_and_not_used_is_named(system, stub, capsys):
+    (system / "mid/src/m/STUB_FAIL").touch()
+    capsys.readouterr()
+    assert run(system, "build", "--keep-going", "--", "--packages-skip", "x") == 1
+    assert built(system)["top"]["without"] == {"--packages-skip": ["x"]}
+    out = capsys.readouterr().out
+    assert f"  built leaving out: {BASE}, top (--packages-skip x)\n" in out
+    assert "  built without sourcing mid (failed), so not used: top" in out
+
+
+def test_a_record_with_a_list_written_by_build_reads_back_for_the_next_build(system, stub):
+    given = ["--packages-skip", "a b", "--packages-ignore-regex", "-1", "'q'", "yes", "1"]
+    assert run(system, "build", "--", *given) == 0
+    assert built(system)["top"]["without"] == {
+        "--packages-skip": ["a b"],
+        "--packages-ignore-regex": ["-1", "'q'", "yes", "1"],
+    }
+    assert run(system, "build", "top") == 0
+    assert run(system, "build", "top", "--", "--packages-select", "t") == 0
+
+
 def test_the_lock_file_is_written_before_it_is_cut_to_length(system, monkeypatch):
     from repos_manifest import system as system_module
 
@@ -1257,6 +1419,11 @@ def test_files_of_colcon_default_arguments_are_named_in_a_note(
         in out
     )
     assert out.count("NOTE: colcon reads default arguments") == 1
+    # A skip list set there is not seen either, so the record has no list for it.
+    assert (
+        " the layer is recorded built as a whole; packages left out there (--packages-skip,"
+        " --packages-ignore) are not recorded either\n" in out
+    )
     home = tmp_path / "colcon-home"
     home.mkdir()
     (home / "defaults.yaml").write_text("{}\n")
@@ -1875,3 +2042,49 @@ def test_real_colcon_a_layer_filled_below_takes_the_layers_above_out_of_the_run(
     assert sourced_by_setup(system) == real(system / "c")
     assert str(real(system / "x/install/xp")) in prefixes()
     assert built(system, BASE)["c"]["below"] == [BASE, "x", "b"]
+
+
+@pytest.mark.colcon
+def test_real_colcon_a_skip_list_on_a_first_build(real_colcon, tmp_path, capsys):
+    """The issue's case: a layer with a package that cannot build, built leaving it out on a
+    system built for the first time, and a layer above built on it."""
+    remotes = tmp_path / "remotes"
+    data = {
+        "format": 1,
+        "layers": ["mid", "top"],
+        "repositories": {
+            "good": repo(make_package_remote(remotes, "good")),
+            "bad": repo(make_package_remote(remotes, "bad", bad=True), None, "mid"),
+            "mid2": repo(make_package_remote(remotes, "mid2", needs="good"), None, "mid"),
+            "top2": repo(make_package_remote(remotes, "top2", needs="mid2"), None, "top"),
+        },
+    }
+    write_manifest(tmp_path / "m.manifest.yaml", data)
+    system = tmp_path / "sys"
+    system.mkdir()
+    assert run(system, "init", "../m.manifest.yaml", "--yes") == 0
+    assert run(system, "build", "--", "--packages-select", "mid2") == 1  # still refused
+    capsys.readouterr()
+    assert run(system, "build", "--", "--packages-skip", "bad") == 0
+    assert list(built(system, "_unnamed")) == [BASE, "mid", "top"]
+    assert built(system, "_unnamed")["mid"]["without"] == {"--packages-skip": ["bad"]}
+    assert not (system / "mid/install/bad").exists()
+    assert (system / "mid/install/mid2").is_dir() and (system / "top/install/top2").is_dir()
+    assert sourced_by_setup(system) == real(system / "top")
+    out = capsys.readouterr().out
+    assert f"  built leaving out: {BASE}, mid, top (--packages-skip bad)\n" in out
+    assert run(system, "build", "mid", "--", "--packages-skip-regex", "^ba") == 0
+    out = capsys.readouterr().out
+    assert (
+        "  skip list changed: mid (was --packages-skip bad, now --packages-skip-regex '^ba')" in out
+    )
+    assert sourced_by_setup(system) == real(system / "top")
+
+
+@pytest.mark.colcon
+def test_real_colcon_the_last_occurrence_of_a_skip_option_counts(real_colcon, tmp_path):
+    system = packages_system(tmp_path, {"bad": {"bad": True}, "other": {}})
+    assert run(system, "build", "--", "--packages-skip", "other", "--packages-skip", "bad") == 0
+    assert built(system, "_unnamed")["top"]["without"] == {"--packages-skip": ["bad"]}
+    assert (system / "top/install/other").is_dir()
+    assert not (system / "top/install/bad").exists()

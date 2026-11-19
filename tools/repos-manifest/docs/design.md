@@ -735,11 +735,22 @@ layers:
     time: '2026-11-19T14:40:00-05:00'
     repos: [project11/core, marine_msgs]   # the repos it was built from
     below: [_unnamed, underlay]   # the built run below it when it was built; [] when none
+    without:                      # only when the run left packages out
+      --packages-skip: [core_demos, core_docs]
 ```
 
 `below` is the chain the layer was built on: the layers of the built run below it at the time,
 from the bottom up, the last of them the one that was sourced. A record in the form of an
 unreleased draft, with only the layer that was sourced (`base`), is read as not built.
+
+`without` holds the options given after `--` that left named packages out of the layer
+(`--packages-skip`, `--packages-ignore` and their `-regex` forms, see "Packages left out"
+below), each named in full with its values as given. It is written only when the run left
+something out, so a record written before the field existed reads as before, leaving nothing
+out. A version of the tool from before the field refuses a record that has it, as it refuses any
+key it does not read ("repair or remove it"); `format` stays 1, since this version reads every
+record the earlier one wrote. A skip set in a file of `colcon` defaults or a mixin is not seen
+by `build` and is not in `without`, so the list may be shorter than what `colcon` left out.
 
 Before `colcon` starts on a layer, the layer's record is removed and the file written, and
 `setup.bash` is brought into line with it, so it no longer sources that layer or one built on
@@ -755,15 +766,15 @@ the report says why, and the exit status is 1. The record is written
 again with the layer's record only when `colcon` exits with 0 and has written the layer's
 `install/setup.bash` in this run; a `colcon` that exits with 0 and writes no
 `install/setup.bash`, as with `-- --help`, leaves the layer not built, says so, and the exit
-status is 1. A run with package selection writes back the record the layer had, unchanged (see
-"Package selection" below). So a `colcon` or a `build` killed outright leaves that layer not
-built, never a "built" over a half-written `install/`, and a `setup.bash` that `build` may
-replace never sources a layer while its `colcon` runs. Other layers' records are not touched by
-a build of one layer; records of layers the resolved files no longer list are dropped at the
-next write. The file is written whole by one rename, and one without exactly this shape, or
-with a control character (a newline, say) in any of its names or values, is an error that names
-it. A system built by other means, such as another tool or by hand, has no record, and a plain
-`build` builds it from the bottom.
+status is 1. A run with package selection writes back the record the layer had, unchanged, its
+`without` included (see "Package selection" below). So a `colcon` or a `build` killed outright
+leaves that layer not built, never a "built" over a half-written `install/`, and a `setup.bash`
+that `build` may replace never sources a layer while its `colcon` runs. Other layers' records
+are not touched by a build of one layer; records of layers the resolved files no longer list
+are dropped at the next write. The file is written whole by one rename, and one without
+exactly this shape, or with a control character (a newline, say) in any of its names or values,
+is an error that names it. A system built by other means, such as another tool or by hand, has
+no record, and a plain `build` builds it from the bottom.
 
 A `build` holds a lock on `.repos-manifest/build-<distro>.lock` (`flock`) from before it reads
 the record to its end. Each `colcon` it starts inherits the lock, so the lock is held while
@@ -825,7 +836,8 @@ is 1. Records of layers above the failed one are kept, but they are outside the 
 `setup.bash` sources the layer below the failed one. Once the failed layer is built again
 with `build <layer>`, the run reaches the layers above it again, and `setup.bash` sources the
 last of them with no rebuild of theirs. A rebuild of a lower layer on its own chain keeps
-the layers above it built in the same way; a layer whose chain no longer matches, such as
+the layers above it built in the same way, also when it was rebuilt leaving out other packages
+than before (see "Packages left out" below); a layer whose chain no longer matches, such as
 one anywhere above a layer that was empty and now has repos, is not built and is built again
 by the next plain `build`.
 
@@ -864,7 +876,13 @@ the run: it is not the tool's to keep in line.
 That differs from `sync`, which creates `setup.bash` only where nothing is and does not change
 its exit status for what it finds there.
 
-The closing report, after `colcon`'s own output, gives the layers built; a layer built on a shorter
+The closing report, after `colcon`'s own output, gives the layers built; the layers built leaving
+packages out, with the options that did ("built leaving out:", worded apart from the "built without
+sourcing" line below), a layer built under `--keep-going` and not used included; a layer whose
+list of packages left out differs from its record's, with both ("skip list changed:", `none` for
+no list), adding when it now leaves packages out that what an earlier build installed of them is
+still in its `install/`; the options leaving packages out given with package selection, as not
+recorded; a layer built on a shorter
 chain than before, because a layer below it left the manifest or has no repos now, with that layer's
 `install/` when it is still there, since the build may have used what is left in it as the
 `--keep-going` line below says; a layer built with `--keep-going` without sourcing a failed layer,
@@ -951,8 +969,13 @@ the manifest. It stays with `colcon`:
   (`--packages-select a b`) ends where `--base-paths` starts. `--merge-install` is passed:
   the layer's `install/setup.bash` is there with it and the layers chain as without it
   (checked with colcon-core 0.21.3).
-- Package selection, any `--packages-` option but `--packages-skip-build-finished`, is passed too,
-  and builds only part of a layer. So does `--cmake-target`, also in its `=value` form (every
+- Package selection, any `--packages-` option but `--packages-skip-build-finished` and the four
+  that leave named packages out of a whole layer (`--packages-skip`, `--packages-skip-regex`,
+  `--packages-ignore`, `--packages-ignore-regex`; see "Packages left out" below), is passed too,
+  and builds only part of a layer (`--packages-skip-by-dep`, `--packages-skip-up-to` and
+  `--packages-skip-test-passed` are package selection: what they leave out follows from the
+  dependency graph or from the test results `colcon` left in `build/`, not from a list a record
+  could hold). So does `--cmake-target`, also in its `=value` form (every
   shorter spelling of it is also the start of `--cmake-target-skip-unavailable`, so `colcon` would
   reject it as ambiguous, and `build` refuses it first, as ambiguous, naming the options it could
   be): `colcon` builds that one target and skips the install step, yet exits with 0 and writes
@@ -980,9 +1003,43 @@ the manifest. It stays with `colcon`:
   that does not have them; so `build` refuses those, before anything is touched, when the
   run would build more than one layer, and says to name the layer. A run that builds one
   layer (one layer named, or only one layer with repos) passes them. The other selection
-  options (`--packages-select`, `--packages-skip`, `--packages-ignore`, their `-regex` forms
-  and the rest) only warn about a name a layer does not have (checked with colcon-core
-  0.21.3).
+  options (`--packages-select`, its `-regex` form and the rest), and the options that leave
+  packages out (`--packages-skip`, `--packages-ignore` and their `-regex` forms), only warn about
+  a name a layer does not have (checked with colcon-core 0.21.3).
+- Packages left out: `--packages-skip`, `--packages-skip-regex`, `--packages-ignore` and
+  `--packages-ignore-regex` build the whole layer but the packages their values name, and
+  install the rest (checked with colcon-core 0.21.3 and colcon-package-selection 0.2.10;
+  `--packages-ignore` also drops the package from discovery, as a `COLCON_IGNORE` file does). A
+  run whose only `--packages-` options are these and `--packages-skip-build-finished` is not
+  package selection: without `--cmake-target` it builds a layer that is not built yet, and a
+  layer whose `colcon` exits with 0 is recorded built with the options in its record's
+  `without`. That is the way to build
+  a layer one of whose packages does not build on a machine. An abbreviation counts when it
+  stands for one of the four only (`--packages-skip-r` is `--packages-skip-regex`); one that
+  could be several (`--packages-s`, `--packages-skip-`, `--packages-ig`), which `colcon`
+  rejects as ambiguous, is read as package selection, so it is refused on a layer that is not
+  built, before anything runs. Beside any other selection option the run is package selection,
+  refused on a layer that is not built as before; on a built layer it gives back the record the
+  layer had, its list unchanged, and the report names the options leaving packages out as not
+  recorded. The record holds them as `colcon` reads them: each option named in full, its values
+  up to the next argument `colcon` reads as one of its options (any other argument is a value,
+  even one starting with `-`, such as `-1`, which the `-regex` forms take as a pattern and
+  `--packages-skip` and `--packages-ignore` reject, so the layer is not built), one value in the
+  `=value` form; of an option given
+  more than once only the last occurrence counts (`--packages-skip a --packages-skip b` leaves
+  out only `b`), and one whose last occurrence has no values leaves nothing out and is not
+  recorded. A regex is recorded as text, not as the names it matched. The list says what the
+  last run left out, not what `install/` holds: `colcon` does not clean `install/`, so a package
+  an earlier build installed stays there when a later run leaves it out (`--packages-skip b`,
+  then `--packages-skip d`, left a, b, c and d installed). A rebuild with another list is a
+  rebuild in place on the same chain, so the layers above stay in the built run: a package newly
+  left out stays installed from the earlier build, and one no longer left out was missing when
+  they were built, so they did not use it; the report names the change. `build` does not check
+  what depends on a package left out: `colcon` builds a dependent anyway, and it fails only in
+  its own build step where it needs the package (a CMake `find_package`, say), so the layer is
+  then not built, as without a list. With `--packages-skip-build-finished` beside the list the
+  list is recorded as for any run that is not selection; an earlier run that did not leave a
+  package out may have built it, as above.
 - `--packages-skip-build-finished` is not package selection: `colcon` skips every package
   of the layer whose most recent build finished, in whichever run that was (it reads the
   result `colcon` left in the package's `build/` directory), and builds the others. A layer
@@ -1011,7 +1068,9 @@ the manifest. It stays with `colcon`:
   not even `$COLCON_HOME/defaults.yaml`, but still reads the layer's `colcon_defaults.yaml`. A mixin
   (`--mixin`) adds arguments `build` does not see either. Package selection set there, or a
   `--cmake-target`, builds only part of a layer, yet `build` does not see it: when `colcon` exits
-  with 0 and writes `install/setup.bash`, the layer is recorded built as a whole. Before it starts
+  with 0 and writes `install/setup.bash`, the layer is recorded built as a whole. Packages left
+  out there (`--packages-skip`, `--packages-ignore`) are not seen either, so they are not in the
+  record's `without`, and the note below says so. Before it starts
   `colcon`, `build` prints a note naming each such file `colcon` will read, as `colcon` finds it:
   the global file once (before the layer when its path is relative), a layer's
   `colcon_defaults.yaml` before that layer. A file `colcon` will not read is not named; a mixin is
@@ -1020,9 +1079,9 @@ the manifest. It stays with `colcon`:
   argument that drops the install rules: `colcon` then warns that the package has no `install`
   target and goes on (read in colcon-cmake 0.2.30).
 - A person who wants a layer always built a certain way, such as a release build, can put
-  that in the layer's `colcon_defaults.yaml`, as long as it selects no packages and skips no
-  install: what is set there is not seen by `build`, and the record cannot tell a whole layer
-  from part of one.
+  that in the layer's `colcon_defaults.yaml`, as long as it selects no packages, leaves none out
+  and skips no install: what is set there is not seen by `build`, and the record cannot tell a
+  whole layer from part of one, nor say what was left out.
 
 ### status
 

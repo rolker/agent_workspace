@@ -8,13 +8,17 @@ from repos_manifest.yamlload import ManifestError
 from repos_manifest.system import (
     Config,
     DistroState,
+    LayerRecord,
     RepoRecord,
+    built_file,
     config_text,
     distros_for,
     find_system,
     layer_src_parts,
     paths_init_creates,
+    put_built_layers,
     put_distro_state,
+    read_built,
     read_config,
     read_state,
     resolved_parts,
@@ -232,3 +236,56 @@ def test_a_state_that_cannot_be_used_names_the_file_and_what_is_wrong(tmp_path, 
             call()
         assert str(raised.value).startswith(f"{tmp_path}/.repos-manifest/state.yaml: {why}")
         assert str(raised.value).endswith("; repair or remove it")
+
+
+_OLD_RECORD = """format: 1
+layers:
+  core:
+    time: '2026-11-19T14:40:00-05:00'
+    repos: [a]
+    below: [_unnamed]
+"""
+
+
+def test_a_built_record_without_a_list_reads_as_leaving_nothing_out(tmp_path):
+    (tmp_path / ".repos-manifest").mkdir()
+    built_file(tmp_path, "jazzy").write_text(_OLD_RECORD)
+    record = read_built(tmp_path, "jazzy")["core"]
+    assert record == LayerRecord("2026-11-19T14:40:00-05:00", ["a"], ["_unnamed"])
+    assert record.without == {}
+
+
+def test_a_built_record_with_a_list_is_written_and_read_back(tmp_path):
+    (tmp_path / ".repos-manifest").mkdir()
+    records = {
+        "core": LayerRecord("t", ["a"], [], {"--packages-skip": ["x", "y"]}),
+        "top": LayerRecord("t", ["b"], ["core"], {"--packages-ignore-regex": ["-1", "^z$"]}),
+        "plain": LayerRecord("t", ["c"], ["core", "top"]),
+    }
+    put_built_layers(tmp_path, "jazzy", records)
+    data = yaml.safe_load(built_file(tmp_path, "jazzy").read_text())
+    assert "without" not in data["layers"]["plain"]  # nothing left out: no key at all
+    assert read_built(tmp_path, "jazzy") == records
+
+
+@pytest.mark.parametrize(
+    "without, why",
+    [
+        ("x", "`layers.core.without` is a string, not a mapping"),
+        ("{}", "`layers.core.without` is empty"),
+        ("{--packages-select: [x]}", "`layers.core.without` has '--packages-select', which is not"),
+        ("{--packages-skip: []}", "`layers.core.without.--packages-skip` is not a list of one or"),
+        ("{--packages-skip: x}", "`layers.core.without.--packages-skip` is not a list of one or"),
+        ("{--packages-skip: [1]}", "`layers.core.without.--packages-skip` is not a list of one or"),
+        ('{--packages-skip: ["x\\ny"]}', "`layers.core` holds a control character"),
+    ],
+)
+def test_a_built_record_with_a_list_that_is_not_one_build_writes_names_the_file(
+    tmp_path, without, why
+):
+    (tmp_path / ".repos-manifest").mkdir()
+    path = built_file(tmp_path, "jazzy")
+    path.write_text(_OLD_RECORD + f"    without: {without}\n")
+    with pytest.raises(ManifestError) as raised:
+        read_built(tmp_path, "jazzy")
+    assert str(raised.value).startswith(f"{path}: {why}")
