@@ -635,9 +635,9 @@ def update_repo(
                 f"origin's {found.name} no longer contains this commit (rewritten upstream)"
             )
         moved = count(git, f"{head}..{found.target}")
-        steps = [["merge", "--ff-only", "-q", found.target]]
+        steps = [(["merge", "--ff-only", "-q", found.target], found.target)]
         said = f"fast-forwarded {moved} commits"
-        return _change(turn, head, [found.target], steps, found.target, symbolic, said)
+        return _change(turn, head, [found.target], steps, symbolic, said)
     if found.kind != BRANCH and branch is None and head == found.target:
         return turn.current(head, f"pinned at {found.name}")
 
@@ -677,39 +677,43 @@ def _move(turn: _Turn, head: str, found: Version, said: Optional[str] = None) ->
     if said is None:
         said = f"moved from {turn.record.version or 'the default branch'} to {found.name}"
     if found.kind != BRANCH:
-        steps = [["switch", "-q", "--detach", found.target]]
-        return _change(turn, head, [found.target], steps, found.target, None, said)
+        steps = [(["switch", "-q", "--detach", found.target], found.target)]
+        return _change(turn, head, [found.target], steps, None, said)
     want = f"refs/heads/{found.name}"
     local = git.out("rev-parse", "--verify", "-q", want)
     if local is None:
-        steps = [["switch", "-q", "-c", found.name, "--track", f"refs/remotes/origin/{found.name}"]]
-        return _change(turn, head, [found.target], steps, found.target, want, said)
+        track = f"refs/remotes/origin/{found.name}"
+        steps = [(["switch", "-q", "-c", found.name, "--track", track], found.target)]
+        return _change(turn, head, [found.target], steps, want, said)
     if not ancestor(git, local, found.target):
         return turn.left(f"a local branch {found.name} has commits not on origin; not switched")
     holder = worktree_holding(git, found.name)
     if holder is not None:
         return turn.left(f"branch {found.name} is checked out in {holder}; not switched")
-    steps = [["switch", "-q", found.name]]
+    steps = [(["switch", "-q", found.name], local)]
     if local != found.target:
-        steps.append(["merge", "--ff-only", "-q", found.target])
-    return _change(turn, head, [local, found.target], steps, found.target, want, said)
+        steps.append((["merge", "--ff-only", "-q", found.target], found.target))
+    return _change(turn, head, [local, found.target], steps, want, said)
 
 
 def _change(
     turn: _Turn,
     head: str,
     targets: Sequence[str],
-    steps: Sequence[Sequence[str]],
-    target: str,
+    steps: Sequence[Tuple[Sequence[str], str]],
     want: Optional[str],
     said: str,
 ) -> Done:
-    """Run `steps`, the calls that change the work tree, after the paths check; `target` is the
-    commit and `want` the symbolic `HEAD` (None: detached) they end on. A `moving` line is
-    recorded before the first call, and the record is written after the state is read and
-    found right. A failed call is put back (the second of two is undone by switching back);
-    if the repo is then not as it was, the result is an error with what git left."""
+    """Run `steps`, the calls that change the work tree, after the submodule and paths checks:
+    each call with the commit it puts `HEAD` on; `want` is the symbolic `HEAD` (None: detached)
+    every step ends on, and the last step's commit is the target. A `moving` line is recorded
+    before the first call, and the record is written after the state is read and found right.
+    Each call is judged by the state it leaves, not its exit status: one that exited non-zero
+    (a failing hook) but left `HEAD` where it was to go, with no tracked changes, counts, with a
+    note. A call that did not get there is put back (the second of two is undone by switching
+    back); if the repo is then not as it was, the result is an error with what git left."""
     git, notes = turn.git, turn.notes
+    target = steps[-1][1]
     submodules = submodules_in_the_way(git, head, targets)
     if submodules is None:
         return turn.left("the submodules cannot be listed; not updated")
@@ -726,14 +730,14 @@ def _change(
     except (OSError, ManifestError) as exc:
         return Done(FAILED, f"its record cannot be written ({exc}); not updated", notes)
     before = Before.read(git, turn.git_dir)
-    for index, step in enumerate(steps):
+    for index, (step, end) in enumerate(steps):
         status, printed, error = git.run(*step, change=True)
         said_by_git = (printed + error).rstrip()
         if status == 0:
             continue
-        if index == len(steps) - 1 and _arrived(git, target, want):
+        if _arrived(git, end, want):
             notes.append(f"moved, but `git {step[0]}` exited {status}:\n{said_by_git}")
-            break
+            continue
         if index > 0:  # undo the first step: back where it was
             back = ["switch", "-q", "--detach", before.head]
             if before.symbolic is not None:

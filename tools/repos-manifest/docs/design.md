@@ -761,9 +761,11 @@ says which are ignored. Git's own refusal stays behind that check.
 
 Every `git` that changes a repo is one call (a switch, or a fast-forward), except the switch to
 a local branch followed by its fast-forward, whose first step is undone if the second fails.
-After each call `sync` reads the repo's state: success is `HEAD` on the target with no tracked
-changes, whatever git's exit status (a `post-checkout` hook that fails makes `git switch` exit
-non-zero after it has switched; that is reported, and the move counts). A call that failed and
+After each call `sync` reads the repo's state: success is `HEAD` where that call was to put it
+(for the switch of a two-step move, the local branch) with no tracked changes, whatever git's
+exit status (a `post-checkout` hook that fails makes `git switch` exit non-zero after it has
+switched; that is reported, and the step counts, so a two-step move goes on to its
+fast-forward). A call that failed and
 left the repo as it was (`HEAD`, the branch, the configuration, the index and the tracked
 status compared) is reported and the repo left; one that left it otherwise is an error with
 what git left, and nothing more runs in that repo. `sync` never runs `reset`, `checkout -f`,

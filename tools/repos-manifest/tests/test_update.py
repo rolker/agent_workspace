@@ -743,6 +743,26 @@ def test_a_failing_post_checkout_hook_after_the_switch_still_counts_as_moved(sys
     assert state_of(sys_dir)["a"]["version"] == "dev"
 
 
+def test_a_failing_post_checkout_hook_in_a_two_step_move_still_counts_as_moved(system, capsys):
+    """The switch to a local branch that is behind, then its fast-forward: the hook fails the
+    switch after it has switched, and the move goes on and ends on origin's commit."""
+    sys_dir, manifest, remote, clone = system
+    git("branch", "-q", "dev", "origin/dev", cwd=clone)
+    new = push_commit(remote, "more", "x\n", "dev")
+    hook = clone / ".git" / "hooks" / "post-checkout"
+    hook.write_text("#!/bin/sh\necho hook says no >&2\nexit 1\n")
+    hook.chmod(0o755)
+    _pin(manifest, "dev")
+    out = _sync(sys_dir, capsys)
+    assert "src/a: moved, but `git switch` exited 1:\nhook says no\nsrc/a: moved from main" in out
+    assert "updated (1): src/a" in out and "ERROR" not in out
+    assert branch(clone) == "dev" and head(clone) == new
+    assert state_of(sys_dir)["a"]["version"] == "dev"
+    assert state_of(sys_dir)["a"]["commit"] == new
+    assert "moving" not in state_of(sys_dir)["a"]
+    assert "up to date (1)" in _sync(sys_dir, capsys)
+
+
 # --- The record and the layer ----------------------------------------------------------------
 
 
