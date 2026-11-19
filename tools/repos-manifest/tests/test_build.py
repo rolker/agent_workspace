@@ -1264,6 +1264,7 @@ def test_files_of_colcon_default_arguments_are_named_in_a_note(
     assert f"NOTE: colcon reads default arguments from {home / 'defaults.yaml'}{note}" in (
         capsys.readouterr().out
     )
+    (tmp_path / "mine.yaml").write_text("{}\n")
     monkeypatch.setenv("COLCON_DEFAULTS_FILE", str(tmp_path / "mine.yaml"))
     assert run(system, "build", BASE) == 0
     out = capsys.readouterr().out
@@ -1333,9 +1334,10 @@ def test_a_failed_rewrite_of_setup_bash_before_a_layer_stops_the_run_there(
     assert len(runs(stub)) == 3  # colcon was not started on mid
     assert (
         "  stopped before mid: setup.bash could not be brought into line with the record, so"
-        " colcon was not started\n" in out
+        " colcon was not started on it; it keeps its record\n" in out
     )
-    assert "  not tried: mid, top\n" in out
+    assert "  not tried: top\n" in out
+    assert f"  built before, in the run: {BASE}, mid, top\n" in out
     assert "cannot be written: No space left on device" in out
     assert list(built(system)) == [BASE, "mid", "top"]  # mid, untouched, has its record back
     assert sourced_by_setup(system) == real(system / "top")
@@ -1350,7 +1352,11 @@ def test_an_install_setup_left_by_an_earlier_build_is_removed_before_colcon_star
     assert run(system, "build", "mid") == 1
     assert stub.read_text().splitlines().count("install-setup-at-start=yes") == 0
     out = capsys.readouterr().out
-    assert f"  failed: mid (colcon exited 1); its log is in {system / 'mid' / 'log'}\n" in out
+    assert (
+        f"  failed: mid (colcon exited 1); its log is in {system / 'mid' / 'log'}; its earlier"
+        f" {system / 'mid/install/setup.bash'} was removed when this run started on it and is"
+        " not there now\n" in out
+    )
     assert "to use what it did build" not in out
     assert not (system / "mid/install/setup.bash").exists()
 
@@ -1431,6 +1437,149 @@ def test_a_selection_run_says_rebuilt_with_selection_when_the_record_cannot_be_r
     capsys.readouterr()
     assert run(system, "build", "--", "--packages-select", "m") == 1
     assert f"  rebuilt with selection in this run: {BASE}, mid, top\n" in capsys.readouterr().out
+
+
+# --- Round 7: --cmake-target, a failed removal, the defaults note, what is left behind -------
+
+
+@pytest.mark.parametrize(
+    "given", [["--cmake-target", "all"], ["--cmake-target=all"], ["--cmake-targ", "all"]]
+)
+def test_a_cmake_target_is_refused_on_a_layer_not_built(system, stub, capsys, given):
+    """`--cmake-target` builds one target and skips the install step, while colcon still exits
+    0 and writes install/setup.bash: like package selection, it only rebuilds built layers."""
+    capsys.readouterr()
+    assert run(system, "build", "--", *given) == 1
+    err = capsys.readouterr().err
+    assert (
+        "a run with `--cmake-target` builds only part of a layer, so it only rebuilds layers that"
+        f" are built, with the repos their record has; not built: {BASE} (not built)" in err
+    )
+    assert (
+        f"Build them without `--cmake-target` first: `repos-manifest build {BASE} mid top`" in err
+    )
+    assert runs(stub) == []
+    assert not (system / ".repos-manifest/built-jazzy.yaml").exists()
+
+
+def test_a_cmake_target_on_built_layers_keeps_their_records(system, stub, capsys):
+    assert run(system, "build") == 0
+    before = built(system)
+    capsys.readouterr()
+    assert run(system, "build", "mid", "--", "--cmake-target", "all") == 0
+    assert built(system) == before
+    assert "  rebuilt with selection: mid\n" in capsys.readouterr().out
+    assert run(system, "build", "--", "--packages-select", "m", "--cmake-target", "all") == 0
+    assert built(system) == before
+
+
+def test_cmake_target_skip_unavailable_alone_is_not_selection(system, stub):
+    assert run(system, "build", "--", "--cmake-target-skip-unavailable") == 0
+    assert list(built(system)) == [BASE, "mid", "top"]
+
+
+def test_a_failed_removal_of_install_setup_keeps_the_record_and_stops_the_run(system, stub, capsys):
+    if os.geteuid() == 0:
+        pytest.skip("root removes a file from a read-only directory")
+    assert run(system, "build") == 0
+    before = built(system)
+    os.chmod(system / "mid/install", 0o555)
+    try:
+        capsys.readouterr()
+        assert run(system, "build", "mid", "top") == 1
+    finally:
+        os.chmod(system / "mid/install", 0o755)
+    out = capsys.readouterr().out
+    assert len(runs(stub)) == 3  # colcon was not started on mid
+    assert (
+        f"  stopped before mid: {system / 'mid/install/setup.bash'} cannot be removed before colcon"
+        " writes it again (Permission denied), so colcon was not started on it; it keeps its"
+        " record\n" in out
+    )
+    assert "  not tried: top\n" in out
+    assert f"  built before, in the run: {BASE}, mid, top\n" in out
+    assert built(system) == before
+    assert sourced_by_setup(system) == real(system / "top")
+
+
+def test_a_defaults_file_that_is_not_there_is_not_named(
+    system, stub, tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setenv("COLCON_DEFAULTS_FILE", str(tmp_path / "missing.yaml"))
+    home = tmp_path / "colcon-home"
+    home.mkdir()
+    (home / "defaults.yaml").write_text("{}\n")  # not read: COLCON_DEFAULTS_FILE is set
+    capsys.readouterr()
+    assert run(system, "build", BASE) == 0
+    assert "NOTE: colcon reads default arguments" not in capsys.readouterr().out
+    # A relative path is read by colcon in the layer's directory, where it runs.
+    monkeypatch.setenv("COLCON_DEFAULTS_FILE", "mine.yaml")
+    (system / "mid/mine.yaml").write_text("{}\n")
+    assert run(system, "build", BASE, "mid") == 0
+    out = capsys.readouterr().out
+    assert f"NOTE: colcon reads default arguments from {system / 'mid/mine.yaml'};" in out
+    assert out.count("NOTE: colcon reads default arguments") == 1
+
+
+def test_a_layer_built_on_a_shorter_chain_notes_what_is_left_below(stub, tmp_path, capsys):
+    system, path, data = three_layers(tmp_path)
+    assert run(system, "build") == 0
+    data["layers"] = ["top"]
+    del data["repositories"]["m"]
+    write_manifest(path, data)
+    assert run(system, "sync") == 0
+    capsys.readouterr()
+    assert run(system, "build") == 0
+    out = capsys.readouterr().out
+    assert (
+        "  built on a shorter chain than before: top (it may have used what is left in"
+        f" {system / 'mid/install'}/ through paths its build directory kept from an earlier"
+        " build)\n" in out
+    )
+    assert built(system)["top"]["below"] == [BASE]
+
+
+def test_a_stop_before_colcon_writes_install_setup_says_it_was_removed(system, stub):
+    assert run(system, "build") == 0
+    (system / "mid/src/m/STUB_WAIT_EARLY").touch()
+    tool = start_tool(system, "mid")
+    wait_until(logged(stub, "waiting"), tool)
+    os.kill(tool.pid, signal.SIGTERM)
+    out, err = tool.communicate(timeout=30)
+    assert (
+        f"mid was stopped and is not built; its earlier {system / 'mid/install/setup.bash'} was"
+        " removed when this run started on it and is not there now; setup.bash sources" in err
+    )
+
+
+def test_a_setup_bash_the_tool_cannot_read_stops_the_run_before_colcon(system, stub, capsys):
+    if os.geteuid() == 0:
+        pytest.skip("root reads a file without read permission")
+    assert run(system, "build") == 0
+    before = built(system)
+    os.chmod(system / "setup.bash", 0)
+    try:
+        capsys.readouterr()
+        assert run(system, "build") == 1
+    finally:
+        os.chmod(system / "setup.bash", 0o644)
+    out = capsys.readouterr().out
+    assert len(runs(stub)) == 3  # colcon was not started
+    assert f"  stopped before {BASE}: setup.bash could not be brought into line" in out
+    assert "cannot be read (Permission denied), so whether this tool wrote it" in out
+    assert built(system) == before
+
+
+@pytest.mark.colcon
+def test_real_colcon_a_cmake_target_installs_nothing_so_it_is_selection(real_colcon, tmp_path):
+    system = packages_system(tmp_path, {"good2": {"needs": "good"}})
+    assert run(system, "build", "--", "--cmake-target", "all") == 1
+    assert not (system / ".repos-manifest/built-_unnamed.yaml").exists()
+    assert run(system, "build") == 0
+    before = built(system, "_unnamed")
+    assert run(system, "build", "--", "--cmake-target", "all") == 0
+    assert built(system, "_unnamed") == before
+    assert sourced_by_setup(system) == real(system / "top")
 
 
 # --- With the real colcon -------------------------------------------------------------------

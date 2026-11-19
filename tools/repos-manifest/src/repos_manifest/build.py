@@ -255,7 +255,8 @@ def setup_text(layers: Sequence[Layer], records, run: Run) -> str:
 @dataclass
 class SetupProblem:
     why: str
-    # The file there is not one this tool wrote (or cannot be read to tell): it is left alone.
+    # The file there is not one this tool wrote: it is left alone, and never sources a layer for
+    # the tool. False for a failed write, and for a file that cannot be read to tell.
     left_alone: bool
 
 
@@ -274,8 +275,13 @@ def write_setup(
         try:
             there = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as exc:
+            # It may be one this tool wrote, sourcing a layer: not taken for a person's own.
             why = getattr(exc, "strerror", None) or exc
-            return SetupProblem(f"{path}: cannot be read ({why}); left as it is", True)
+            return SetupProblem(
+                f"{path}: cannot be read ({why}), so whether this tool wrote it cannot be told;"
+                " left as it is",
+                False,
+            )
         if not there.startswith(SETUP_MARKER):
             return SetupProblem(
                 f"{path}: holds text repos-manifest did not write; left as it is", True
@@ -528,13 +534,22 @@ RESOLVING_SELECTION = (
 # a package that was never tried is not built by it.)
 RESUMING = "--packages-skip-build-finished"
 
+# Builds one CMake target and skips the install step (colcon-cmake 0.2.30: "skip install step if
+# a specific target was requested"), while colcon still writes the layer's prefix scripts and
+# exits 0: a layer built with it has its packages built but not installed. So it is read as
+# package selection. `--cmake-target-skip-unavailable` acts only together with it.
+INSTALL_SKIPPING = "--cmake-target"
+
 
 def not_built_for_selection(
-    layers: Sequence[Layer], to_build: Sequence[str], records: Dict[str, LayerRecord]
+    layers: Sequence[Layer],
+    to_build: Sequence[str],
+    records: Dict[str, LayerRecord],
+    what: str = "package selection",
 ) -> None:
-    """A run with package selection builds only part of each layer, so it only rebuilds layers
-    that are built, with the repos their record has: any other layer it would build is refused
-    before anything runs."""
+    """A run with package selection (or `--cmake-target`; `what` names which) builds only part
+    of each layer, so it only rebuilds layers that are built, with the repos their record has:
+    any other layer it would build is refused before anything runs."""
     not_built, changed = [], []
     for index, layer in enumerate(layers):
         if layer.name not in to_build:
@@ -573,11 +588,11 @@ def not_built_for_selection(
         affected = {entry.split(" (", 1)[0] for entry in not_built} | {n for n, _ in changed}
         names = [layer.name for layer in layers if layer.name in affected]
         them = "it" if len(names) == 1 else "them"
-        step = f"Build {them} without package selection first"
+        step = f"Build {them} without {what} first"
         if changed:
             step += ", which also records the changed repos"
         raise Refusal(
-            "a run with package selection builds only part of a layer, so it only rebuilds"
+            f"a run with {what} builds only part of a layer, so it only rebuilds"
             f" layers that are built, with the repos their record has; {'; '.join(found)};"
             " nothing was run",
             f"{step}: `repos-manifest build {' '.join(names)}`",
@@ -630,13 +645,19 @@ def refused_arguments(colcon_args: Sequence[str]) -> None:
             raise Refusal(f"{given} is not passed to colcon: {why}; nothing was run", next_step)
 
 
-def package_selection(colcon_args: Sequence[str], to_build: Sequence[str]) -> bool:
-    """Whether the arguments select packages (any `--packages-` option but `RESUMING`): a run
-    with one builds only part of a layer. One colcon must resolve in the layer's packages is
-    refused, before anything runs, when the run would build more than one layer."""
+def package_selection(colcon_args: Sequence[str], to_build: Sequence[str]) -> str:
+    """What in the arguments builds only part of a layer, as the messages name it ("" when
+    nothing does): package selection (any `--packages-` option but `RESUMING`) and
+    `INSTALL_SKIPPING`, or an abbreviation that could be one. A package selection colcon must
+    resolve in the layer's packages is refused, before anything runs, when the run would build
+    more than one layer."""
     selecting = False
+    skipping = False
     for name in _option_names(colcon_args):
         could = _could_be(name)
+        if INSTALL_SKIPPING in could:
+            skipping = True
+            continue
         if not (name.startswith("--packages") or any(o.startswith("--packages-") for o in could)):
             continue
         if could == [RESUMING]:
@@ -652,7 +673,9 @@ def package_selection(colcon_args: Sequence[str], to_build: Sequence[str]) -> bo
                 "Name the one layer that has those packages: `repos-manifest build <layer> --"
                 " ...`",
             )
-    return selecting
+    kinds = ["package selection"] if selecting else []
+    kinds += [f"`{INSTALL_SKIPPING}`"] if skipping else []
+    return " and ".join(kinds)
 
 
 def colcon_argv(
@@ -773,10 +796,16 @@ class Progress:
     setup_written: bool = False
     # A rewrite of setup.bash before a layer's colcon failed: the run stops before that colcon.
     setup_blocked: Optional[str] = None
-    halted: Optional[str] = None  # the layer the run stopped before, setup.bash not in line
+    halted: Optional[str] = None  # the layer the run stopped before colcon started on it
+    halted_why: Optional[str] = None  # why it stopped there
+    halted_kept: bool = False  # that layer had a record, which it keeps
+    # Layers whose install/setup.bash from an earlier build was removed before their colcon.
+    removed_setup: List[str] = field(default_factory=list)
+    # Layer: the directories `install/` left by layers its last chain had and this one lacks.
+    left_behind: Dict[str, List[str]] = field(default_factory=dict)
     wrote_setup: List[str] = field(default_factory=list)  # layers whose colcon wrote it this run
     ready: bool = False  # the checks have passed: every way the run ends now settles
-    selection: bool = False  # the run passes package selection to colcon
+    selection: str = ""  # what in the arguments builds part of a layer (`package_selection`)
 
     @property
     def stopped_at(self) -> List[str]:
@@ -840,20 +869,34 @@ def _setup_failed(progress: Progress, problem: str, left_alone: bool = False) ->
         progress.setup_problems.append(problem)
 
 
-def colcon_defaults_files(layer: Optional[Layer] = None) -> List[str]:
-    """The files of default arguments colcon reads (colcon-defaults): without `layer`, the one
-    named by COLCON_DEFAULTS_FILE, else `$COLCON_HOME/defaults.yaml` (`~/.colcon/` without
-    COLCON_HOME) when it is there; with `layer`, its `colcon_defaults.yaml` when it is there.
-    `build` sees only the arguments after `--`, not what these files set."""
-    if layer is not None:
-        found = layer.directory / "colcon_defaults.yaml"
-        return [str(found)] if found.is_file() else []
+def _defaults_file() -> str:
+    """The file of default arguments colcon-defaults reads (0.2.9): the one COLCON_DEFAULTS_FILE
+    names, else `$COLCON_HOME/defaults.yaml` (`~/.colcon/` without COLCON_HOME). A relative
+    path is read by colcon against the layer's directory, where it runs. colcon reads it only
+    when it is a file, and with COLCON_DEFAULTS_FILE set it reads no other."""
     named = os.environ.get("COLCON_DEFAULTS_FILE")
     if named:
-        return [named]
+        return named
     home = os.environ.get("COLCON_HOME") or os.path.join(os.path.expanduser("~"), ".colcon")
-    found = os.path.join(home, "defaults.yaml")
-    return [found] if os.path.isfile(found) else []
+    return os.path.join(home, "defaults.yaml")
+
+
+def colcon_defaults_files(layer: Optional[Layer] = None) -> List[str]:
+    """The files of default arguments colcon will read that are there, as colcon finds them:
+    without `layer`, the defaults file when its path is absolute; with `layer`, the defaults
+    file when its path is relative (read in the layer's directory) and the layer's
+    `colcon_defaults.yaml`. A file that is not there is not named: colcon reads nothing from
+    it. `build` sees only the arguments after `--`, not what these files set."""
+    path = _defaults_file()
+    if layer is None:
+        return [path] if os.path.isabs(path) and os.path.isfile(path) else []
+    found = []
+    if not os.path.isabs(path) and (layer.directory / path).is_file():
+        found.append(str(layer.directory / path))
+    workspace = layer.directory / "colcon_defaults.yaml"
+    if workspace.is_file():
+        found.append(str(workspace))
+    return found
 
 
 def _defaults_note(path: str) -> str:
@@ -864,18 +907,20 @@ def _defaults_note(path: str) -> str:
     )
 
 
-def _remove_install_setup(layer: Layer) -> None:
+def _remove_install_setup(layer: Layer) -> Tuple[bool, Optional[str]]:
     """Remove the layer's `install/setup.bash` before its colcon starts, so that one there when
-    colcon has ended was written by that colcon: no file time is relied on."""
+    colcon has ended was written by that colcon: no file time is relied on. Returns whether a
+    file was removed, and why it could not be, or None."""
     try:
         os.unlink(layer.install_setup)
     except FileNotFoundError:
-        pass
+        return False, None
     except OSError as exc:
-        raise ManifestError(
-            f"{layer.install_setup}: cannot be removed before colcon writes it again"
-            f" ({exc.strerror or type(exc).__name__}); colcon was not started on {layer.name}"
-        ) from None
+        return False, (
+            f"{layer.install_setup} cannot be removed before colcon writes it again"
+            f" ({exc.strerror or type(exc).__name__})"
+        )
+    return True, None
 
 
 def build_layers(
@@ -885,20 +930,22 @@ def build_layers(
     colcon_args: Sequence[str],
     keep_going: bool = False,
     bash: str = "bash",
-    selection: bool = False,
+    selection: str = "",
 ) -> None:
     """Build the chosen layers in order. After a failed layer the later ones are not tried,
     unless `keep_going`: then each is built on the built run below it, which leaves the failed
     layer out, and its record is written with that chain, but it is outside the built run and
     so not used until it is built again on top of the failed layer, fixed.
 
-    With `selection` (package selection among colcon's arguments) colcon builds only part of
-    a layer, and every layer the run builds was checked to be built: when colcon succeeds the
-    layer gets back the record it had, unchanged. A layer that could only be built on another
-    chain than its record's (after a failure, with `keep_going`) is not tried.
+    With `selection` (package selection or `--cmake-target` among colcon's arguments) colcon
+    builds only part of a layer, and every layer the run builds was checked to be built: when
+    colcon succeeds the layer gets back the record it had, unchanged. A layer that could only
+    be built on another chain than its record's (after a failure, with `keep_going`) is not
+    tried.
 
-    When `setup.bash` cannot be brought into line with the record before a layer's colcon, the
-    layer gets its record back (colcon has not touched it) and the run stops there."""
+    When `setup.bash` cannot be brought into line with the record before a layer's colcon, or
+    the layer's `install/setup.bash` cannot be removed, the layer gets its record back (colcon
+    has not touched it) and the run stops there."""
     system, distro, layers = progress.system, progress.distro, progress.layers
     records = read_built(system, distro)
     noted = False
@@ -934,16 +981,25 @@ def build_layers(
         progress.setup_blocked = None
         settle(progress)
         if progress.setup_blocked is not None:
-            # It may still source this layer: colcon is not started, and the layer, untouched,
-            # gets its record back.
-            if had is not None:
-                records[layer.name] = had
-            _put(progress, records, lambda: progress.started.remove(layer.name))
-            progress.halted = layer.name
-            progress.not_tried.append(layer.name)
-            settle(progress)
+            # It may still source this layer: colcon is not started.
+            _halt(
+                progress,
+                records,
+                layer,
+                had,
+                "setup.bash could not be brought into line" " with the record",
+            )
             continue
-        _remove_install_setup(layer)
+        removed, problem = _remove_install_setup(layer)
+        if problem is not None:
+            _halt(progress, records, layer, had, problem)
+            continue
+        if removed:
+            progress.removed_setup.append(layer.name)
+        if had is not None:
+            left = _left_behind(progress, had.below, below)
+            if left:
+                progress.left_behind[layer.name] = left
         print(f"building {layer.name} in {layer.directory}", flush=True)
         status, stopped = run_child(
             colcon_argv(colcon, layer, base_setup, colcon_args, bash),
@@ -970,6 +1026,53 @@ def build_layers(
         settle(progress)
 
 
+def _halt(progress: Progress, records, layer: Layer, had: Optional[LayerRecord], why: str):
+    """Stop the run before colcon starts on `layer`: the layer, untouched, gets back the record
+    it had, setup.bash is brought into line with it, and the later layers are not tried."""
+    if had is not None:
+        records[layer.name] = had
+    _put(progress, records, lambda: progress.started.remove(layer.name))
+    progress.halted, progress.halted_why, progress.halted_kept = layer.name, why, had is not None
+    settle(progress)
+
+
+def _left_behind(progress: Progress, was: Sequence[str], now: Sequence[str]) -> List[str]:
+    """The `install/` directories still on disk of the layers a layer's last chain (`was`) had
+    and its chain now lacks because they left the manifest or have no repos now: a rebuild can
+    still find their earlier output through paths its build directory kept."""
+    by_name = {layer.name: layer for layer in progress.layers}
+    distro_dir = progress.system.joinpath(*distro_parts(progress.config.layout, progress.distro))
+    found = []
+    for name in was:
+        if name in now:
+            continue
+        layer = by_name.get(name)
+        if layer is not None and not layer.empty:
+            continue  # not built: the run below stops under it, or --keep-going says so
+        if layer is not None:
+            directory = layer.directory
+        elif name == UNNAMED_LAYER:
+            directory = distro_dir
+        elif _plain_name(name):
+            directory = distro_dir / name
+        else:
+            continue
+        if (directory / "install").is_dir():
+            found.append(f"{directory / 'install'}/")
+    return found
+
+
+def _removed_note(progress: Progress, layer: Layer) -> str:
+    """For a layer whose colcon ended without writing `install/setup.bash` again: the earlier
+    one was removed before colcon started, so a shell that sources it directly finds none."""
+    if layer.name not in progress.removed_setup or layer.install_setup.exists():
+        return ""
+    return (
+        f"; its earlier {layer.install_setup} was removed when this run started on it and is"
+        " not there now"
+    )
+
+
 def report(progress: Progress, run: Optional[Run]) -> None:
     layers = progress.layers
     by_name = {layer.name: layer for layer in layers}
@@ -984,6 +1087,13 @@ def report(progress: Progress, run: Optional[Run]) -> None:
     used = [name for name in progress.built if name in run.layers]
     if used:
         print(f"  {_built_label(progress)}: {', '.join(used)}")
+    for name in progress.built:
+        if name in progress.left_behind:
+            print(
+                f"  built on a shorter chain than before: {name} (it may have used what is left"
+                f" in {', '.join(progress.left_behind[name])} through paths its build directory"
+                " kept from an earlier build)"
+            )
     failed_names = progress.stopped_at
     for name in progress.built:
         if name in run.layers:
@@ -1011,7 +1121,7 @@ def report(progress: Progress, run: Optional[Run]) -> None:
         if status is None:
             print(
                 f"  not built: {failed} (colcon exited 0 but did not write"
-                f" {layer.install_setup}, so nothing was built)"
+                f" {layer.install_setup}, so nothing was built){_removed_note(progress, layer)}"
             )
             continue
         line = (
@@ -1022,11 +1132,14 @@ def report(progress: Progress, run: Optional[Run]) -> None:
                 "; to use what it did build:"
                 f" source {shlex.quote(str(real_install_setup(layer)))}"
             )
+        else:
+            line += _removed_note(progress, layer)
         print(line)
     if progress.halted is not None:
+        kept = "; it keeps its record" if progress.halted_kept else ""
         print(
-            f"  stopped before {progress.halted}: setup.bash could not be brought into line"
-            " with the record, so colcon was not started"
+            f"  stopped before {progress.halted}: {progress.halted_why}, so colcon was not"
+            f" started on it{kept}"
         )
     if progress.not_tried:
         print(f"  not tried: {', '.join(progress.not_tried)}")
@@ -1113,6 +1226,10 @@ def run_build(
             line = f"stopped by {signal_name(exc)}; layers {label} in this run: {done}"
             if interrupted and interrupted[-1] not in progress.stopped_at:
                 line += f"; {interrupted[-1]} was stopped and is not built"
+                stopped_layer = next(
+                    each for each in progress.layers if each.name == interrupted[-1]
+                )
+                line += _removed_note(progress, stopped_layer)
             line += f"; {_setup_says(progress, run)}"
             return stop_exit(exc, line)
     finally:
@@ -1149,7 +1266,7 @@ def _build(
         records = read_built(system, distro)
         refusal(layers, chosen, built_run(layers, records))
         if selection:
-            not_built_for_selection(layers, [layer.name for layer in to_build], records)
+            not_built_for_selection(layers, [layer.name for layer in to_build], records, selection)
         colcon = find_colcon() if to_build else None
         bash = find_bash() if to_build else "bash"
         for warning in own_prefix_warnings(layers) if to_build else []:
@@ -1168,5 +1285,5 @@ def _build(
             raise
         run = settle(progress)
         report(progress, run)
-    failed = bool(progress.stopped_at) or bool(progress.setup_problems)
+    failed = bool(progress.stopped_at) or bool(progress.setup_problems) or bool(progress.halted)
     return 1 if failed else 0
