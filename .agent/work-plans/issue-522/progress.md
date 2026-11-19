@@ -217,3 +217,13 @@ Verified: the three fixes are in (label space restored, test renamed and comment
 ### Findings
 - [ ] (suggestion) "which the session's `project=` does": for a session at a parent root `project=` names the parent, which resolves to the instance; say "names, or resolves to,". Also, the qualified `--pr`, not the refused `--type`, is what targets the package repository; the "so" reads otherwise — `.claude/skills/run-issue/SKILL.md:1034`
 - [ ] (suggestion) The pin checks only that phrases are present: it does not cover the sibling passage (SKILL.md 1216-1217) and would not catch a package merge command that pairs `--pr <owner/repo#M>` with `--type`, so its "never --type" title claims more than it checks — `.agent/scripts/tests/test_skill_paths.sh:769`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 14:55 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 2 approved with no must-fix; the host's full pre-commit pass over the branch passed at 4eea01ef, every hook, no SKIP)
+**After**: publish
+**Decision**: publish
+
+Round 2, with the outside reviewers, approved the branch and left two wording suggestions, which the pull request lists. The full pass ran on head 4eea01ef with exit 0, the script test suites included.
