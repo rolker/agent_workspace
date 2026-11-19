@@ -204,6 +204,86 @@ def delete_probe_refs(git: Git) -> None:
         git.run("update-ref", "-d", ref, change=True)
 
 
+def gitlinks(git: Git, commit: str) -> Optional[Dict[str, str]]:
+    """The submodules of `commit`: path to the commit it records. None when git cannot say."""
+    status, printed, _ = git.run("ls-tree", "-r", "-z", "--full-tree", commit)
+    if status != 0:
+        return None
+    found = {}
+    for entry in printed.split("\0"):
+        meta, _, path = entry.partition("\t")
+        fields = meta.split(" ")
+        if len(fields) == 3 and fields[1] == "commit":
+            found[path] = fields[2]
+    return found
+
+
+def _populated(path: Path) -> bool:
+    """Whether anything is at `path`: a file, a link, or a directory that is not empty."""
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        return False
+    if not stat.S_ISDIR(info.st_mode):
+        return True
+    with os.scandir(path) as entries:
+        return any(True for _ in entries)
+
+
+def submodules_in_the_way(git: Git, head: str, targets: Sequence[str]) -> Optional[List[str]]:
+    """What, of the submodules of `head`, a move to each of `targets` would put at risk: a
+    submodule the move removes or replaces with something else (a file, a link, a directory of
+    the superproject's), when its directory holds anything; and a submodule whose pointer the
+    move changes, when its directory holds a checkout that is not on the commit `head` records
+    (a person committed or moved it there), or is not a repository of its own. Whether the
+    submodule's content could be lost is never judged: it is left to a person. None when git
+    cannot list the submodules."""
+    here = gitlinks(git, head)
+    if here is None:
+        return None
+    if not here:
+        return []
+    theirs = []
+    for target in targets:
+        links = gitlinks(git, target)
+        if links is None:
+            return None
+        theirs.append(links)
+    found: List[str] = []
+    for path, recorded in sorted(here.items()):
+        after = [links.get(path) for links in theirs]
+        if all(commit == recorded for commit in after):
+            continue
+        place = git.place / path
+        if not _populated(place):
+            continue
+        if any(commit is None for commit in after):
+            found.append(
+                f"submodule {path} is checked out here, and the move removes it or puts"
+                " something else in its place"
+            )
+            continue
+        sub = Git(place, git.env, None)
+        top = sub.out("rev-parse", "--show-toplevel")
+        if top is None or os.path.realpath(top) != os.path.realpath(place):
+            found.append(f"submodule {path} holds files and is not a repository of its own")
+            continue
+        sub_head = sub.out("rev-parse", "--verify", "-q", "HEAD")
+        if sub_head != recorded:
+            found.append(
+                f"submodule {path} is on {(sub_head or 'no commit')[:12]}, not on"
+                f" {recorded[:12]}, the commit recorded here, and the move changes that commit"
+            )
+    return found
+
+
+def submodules_note(paths: Sequence[str]) -> str:
+    return (
+        f"{'; '.join(paths)}; not updated (a submodule has to be dealt with by hand, then sync"
+        " again)"
+    )
+
+
 def in_the_way(git: Git, head: str, targets: Sequence[str]) -> Optional[List[str]]:
     """The paths in the work tree, not tracked in `head`, that a move from `head` to each of
     `targets` would overwrite or remove: for each path a target adds, the path itself, or a
@@ -616,6 +696,11 @@ def _change(
     found right. A failed call is put back (the second of two is undone by switching back);
     if the repo is then not as it was, the result is an error with what git left."""
     git, notes = turn.git, turn.notes
+    submodules = submodules_in_the_way(git, head, targets)
+    if submodules is None:
+        return turn.left("the submodules cannot be listed; not updated")
+    if submodules:
+        return turn.left(submodules_note(submodules))
     blocking = in_the_way(git, head, targets)
     if blocking is None:
         return turn.left("the incoming files cannot be listed; not updated")

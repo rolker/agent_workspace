@@ -768,7 +768,19 @@ no `--force` or `--no-verify`. Each `git` runs with automatic `gc` and `maintena
 with `submodule.recurse` off.
 
 A clone with submodules is followed like any other, and its submodules are not updated: the
-report gives the `git submodule update` command. A shallow clone is followed on the history it
+report gives the `git submodule update` command. Before every fast-forward or switch, `sync`
+compares each submodule of `HEAD` with the same path in the target, and leaves the repo as it
+is, naming the submodule and saying it has to be dealt with by hand, when the move removes a
+submodule whose directory holds anything (a `.git`, a file or a directory), or puts something
+else in its place (a file, a link, a directory of the superproject's); and when the move
+changes the commit a submodule points to while the submodule's own `HEAD` is not the commit
+`HEAD` records, or its directory holds files and is not a repository of its own. `sync` never
+judges whether a submodule's content could be lost. A submodule that is not checked out (an
+empty directory) is no obstacle, and nor are untracked files in a submodule whose pointer a move
+changes, since with `submodule.recurse` off git does not touch its work tree; a path the move
+turns from a file or directory into a submodule goes through the paths check above. A
+submodule left on its old commit by an earlier `sync` stops the next move of its pointer until
+a person updates it. A shallow clone is followed on the history it
 has and is never deepened or made whole; the fetch brings the history of every tag, so a
 shallow clone of a repo with tags grows at its first `sync`. A linked work tree of a repo is
 safe: its branch is never moved, and the url rule counts its commits.

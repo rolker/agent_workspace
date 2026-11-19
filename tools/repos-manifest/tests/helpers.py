@@ -164,7 +164,8 @@ def snapshot_repo(path: Path, fetched: bool = False) -> Dict[str, object]:
     ref (less the remote-tracking refs and tags when `fetched`: a fetch may change those),
     the configuration's text, the index, the full status with untracked and ignored files, the
     content hash and mode of every entry outside `.git` (ignored files included), the
-    operations in progress, and the work trees."""
+    operations in progress, the work trees, and for each repository inside it (a submodule, or
+    a clone a person made there) its `HEAD`, branch, refs, configuration and full status."""
 
     def out(*args):
         done = subprocess.run(
@@ -201,6 +202,34 @@ def snapshot_repo(path: Path, fetched: bool = False) -> Dict[str, object]:
         "rebase-merge rebase-apply MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD BISECT_LOG"
         " sequencer index.lock"
     ).split()
+    # Each repository below the top (a submodule, or a clone a person made inside): its HEAD,
+    # its branch, every ref, its configuration and its full status. Its files are in `files`.
+    nested = {}
+    for directory, dirs, names in os.walk(path):
+        if Path(directory) != path and (".git" in dirs or ".git" in names):
+            inner = Path(directory)
+
+            def sub(*args, inner=inner):
+                done = subprocess.run(
+                    ["git", "-C", str(inner), "--no-optional-locks", *args],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                return done.stdout
+
+            inner_common = Path(
+                sub("rev-parse", "--path-format=absolute", "--git-common-dir").strip()
+            )
+            nested[str(inner.relative_to(path))] = {
+                "head": sub("rev-parse", "HEAD").strip(),
+                "symbolic": sub("symbolic-ref", "-q", "HEAD").strip(),
+                "refs": sub("for-each-ref", "--format=%(refname) %(objectname)").splitlines(),
+                "config": (inner_common / "config").read_text(),
+                "status": sub("status", "--porcelain=v2", "--untracked-files=all", "--ignored"),
+            }
+        if ".git" in dirs:
+            dirs.remove(".git")
     return {
         "head": out("rev-parse", "HEAD")[1].strip(),
         "symbolic": out("symbolic-ref", "-q", "HEAD")[1].strip(),
@@ -211,6 +240,7 @@ def snapshot_repo(path: Path, fetched: bool = False) -> Dict[str, object]:
         "files": files,
         "in progress": [name for name in states if os.path.lexists(git_dir / name)],
         "worktrees": out("worktree", "list", "--porcelain")[1],
+        "nested repositories": nested,
     }
 
 
