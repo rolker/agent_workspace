@@ -846,3 +846,31 @@ Checks: CI at 047e8413: tool tests (Python 3.10, 3.14), Validate Adapter Contrac
 - Hand check (a), scratchpad, local remote: `init --yes` with `GIT_CONFIG_COUNT=1` and a url rewrite from a made-up `file://` prefix: "cloned (1): src/a", exit 0.
 - Hand check (b): flat system from a manifest with no distros, then `distros: [jazzy]` added, `sync`: the new message, exit 1, tree unchanged.
 - Full pre-commit pass left to the host; commits made with `SKIP=validate-script-tests`.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-18 19:33 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #512 at `824e1d2b`
+**Depth**: Deep (reason: whole-diff classification, +5382/-118 over 20 files; code that creates, renames and removes on a person's disk; fix round, same tier)
+**Must-fix**: 1 | **Suggestions**: 3
+
+Cross-model: codex completed (EXIT=0); gemini failed twice (EXIT=1: empty response, a Bash tool action auto-denied in headless mode), so this round has one outside model. Claude adversarial completed. Every point checked against the code; the must-fix reproduced with local repos in the session scratchpad.
+
+The first PR-mode review's three must-fix are fixed, each run by hand and asserted by a test:
+- Environment: kept `GIT_CONFIG_PARAMETERS` and `GIT_CONFIG_COUNT`, removed `GIT_CONFIG`. The fixer's narrowing is right: git's `sanitize_repo_env` (run-command.c, called by `prepare_other_repo_env`) skips exactly `CONFIG_DATA_ENVIRONMENT` and `CONFIG_COUNT_ENVIRONMENT`, and `git help config` says `GIT_CONFIG` affects `git config` alone. `GIT_CONFIG_KEY_<n>`/`VALUE_<n>` are not in `git rev-parse --local-env-vars` and pass through; so do `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`, `GIT_CONFIG_NOSYSTEM`, `GIT_SSH_COMMAND`, `GIT_SSH`, `GIT_ASKPASS`, `SSH_ASKPASS`, `SSH_AUTH_SOCK`, `GIT_TERMINAL_PROMPT`, `HOME`, `XDG_CONFIG_HOME` (probe of `require_tools`). `init` cloned through a `file:///nowhere/` rewrite given by COUNT/KEY_0/VALUE_0 with `GIT_DIR`/`GIT_WORK_TREE` at another repo, by `GIT_CONFIG_PARAMETERS` in the `git -c` form with `GIT_DIR`, and through a real `git -c ... <alias>`: exit 0 each, the other repo untouched; without a rewrite it fails.
+- Flat system gaining `distros:`: the new message, exit 1, tree unchanged; `sync --distro jazzy` there is refused ("this system does not record it (it records: none)"), and the message names no `--distro`. Neighbours: dropping `distros:` and no longer listing the recorded distro each end "the manifest is what failed; nothing was changed" naming the distro, exit 1, unchanged; a `--distro-dirs` system whose manifest gains rolling: exit 0, nothing made for rolling, no `add-distro` named; `--distro rolling` there is refused. All consistent with design.md "sync" and "What is built".
+- Sweep: dead-pid empty and config-only asides removed; a dead-pid directory with another file, a file, and a link left and warned; a live process's aside left and warned.
+The four suggestions taken (HEAD before the last check, state.yaml not recorded, setup.bash not a file, config.yaml write failure) each have a test and design.md matches; the config.yaml failure is covered by design's "before that step nothing of the system exists".
+
+### Findings
+- [ ] (must-fix) A refusal after `.repos-manifest/` is made: `head_comment`'s unsafe-character check first runs in `sync_distro`, after `make_system_dir`, so a manifest whose path holds a no-break space or control character makes the system and then prints "refusing to write the head comment ...; the system is set up: run `repos-manifest sync` to finish", and every `sync` fails the same way. False against init.py's docstring and design.md:182 ("before anything is created"). Build `output_files` for each resolved distro in phase one (init and `resolve_all`) and pass them on; add a test (Claude adversarial; reproduced) — `tools/repos-manifest/src/repos_manifest/init.py:262`, `tools/repos-manifest/src/repos_manifest/sync.py:294`
+- [ ] (suggestion, worth doing) A live process's aside, which is exactly what init leaves (a second init at the same moment, or a crashed init's pid reused), is warned as "named like a temporary of repos-manifest, but not what init leaves"; say its process may still be running (Claude adversarial; hand check) — `tools/repos-manifest/src/repos_manifest/init.py:146`
+- [ ] (suggestion) The flat-gains-distros message and the wrapped resolver errors start with `manifest` as recorded (relative to the system directory); from a subdirectory `../m.yaml` points elsewhere. Add the "taken from the system directory" note the read error has (Claude adversarial) — `tools/repos-manifest/src/repos_manifest/sync.py:424`
+- [ ] (suggestion) Not worth doing beyond wording: a failed `os.rename` of init's aside (something made at `.repos-manifest` after the check) gives a bare error naming the removed aside, without "nothing was set up" (Claude adversarial, read from code) — `tools/repos-manifest/src/repos_manifest/init.py:183`
+
+Dropped: codex 1 (no-replace rename / parent swapped for a link: ruled suggestion, not worth doing, last round; reason still true); codex 2 (clone in place but unrecorded after a failed state write: the run now says so, and design's rule records an unrecorded repo on the manifest's version when part 2 is built); codex 3 (link at `.repos-manifest/resolved`: ruled last round); codex 4 (setup.bash empty for an instant: ruled not worth doing); codex 5 (staging in `.repos-manifest/`: host decision); codex 6 (present-entry rule differs from the plan: recorded in design.md and the Checkpoints).
+
+Checks: CI at 824e1d2b, push and pull_request runs, every job pass: Lint (pre-commit), Validate Adapter Contract, Validate Documentation, repos-manifest tests Python 3.10 (header `vcs 1.1.7`, `1015 passed`) and Python 3.14 (`vcs 1.1.7`, `1015 passed`), none skipped. Local: `pytest tools/repos-manifest/tests` 1015 passed (vcstool 0.3.0); `test_ros2_colcon.sh` 1014 passed, 0 failed, 0 skipped; flake8 (F, E501, E9) clean on the changed files. Mergeable: MERGEABLE.
