@@ -286,6 +286,11 @@ def build_parser() -> argparse.ArgumentParser:
             "Build one distro's layers in order with colcon and write its setup.bash; arguments"
             " after -- go to colcon for every layer"
         ),
+        usage="%(prog)s [-h] [--distro DISTRO] [--keep-going] [LAYER ...] [-- COLCON_ARGS ...]",
+        epilog=(
+            "Arguments after -- are passed to colcon for every layer built; --base-paths,"
+            " --paths, --install-base and --build-base are refused."
+        ),
     )
     build_p.add_argument(
         "--distro", action=_Once, help="The distro to build, when there are several; once"
