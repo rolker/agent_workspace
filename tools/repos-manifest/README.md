@@ -115,7 +115,8 @@ updated by hand (the report gives the `git submodule update` command), and a spa
 it is. A version given as a commit is followed only when `origin` holds it. An
 `origin` a person set is left as set; the manifest's new url replaces `origin` only when the
 clone still has the url `sync` recorded and no local branch has commits it lacks. No line
-`sync` prints shows a url's user name and password. A repo the
+`sync`, `init`, `resolve` or `validate` prints, an error included, shows a url's user name
+and password, whatever characters they hold. A repo the
 manifest moves to another layer is not moved: `sync` prints the `mv` command. A clone with
 commits not on `origin` is not rebased yet; `sync` prints the `git pull --rebase` command for a
 person to run. Both need `git`, and `vcs` from vcs2l or vcstool, on `PATH`.
