@@ -1037,3 +1037,12 @@ PR mode, round 3 triage, final before the owner's merge decision. Hosted reviews
 - [x] (suggestion, Local Review @ `d5eead98`) PR body out of date (Recommendation line; "one of its suggestions was done") — fixed by the host, who owns the body; verified: "ready for the owner's merge decision" and "two of its suggestions were done" — PR #514 body
 
 ### False positives
+
+## Checkpoint
+**When**: 2026-11-19 00:38 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner chose "Merge (Recommended)" in a dialog for pull request 514 (part 1B: the adapter's route for a root the manifest tool set up, and its registration), which named the AGENTS.md sentence, the dated note under ADR-0021 and the rule that a folder of the user's own directly under the root is treated as a distro. The issue stays open: later parts are a session started inside a distro's directory, /run-issue from the root of a project with several distros, and the switch to the tool's build, status and show when they exist. Noted for a later part: the test block labelled "a set-aside directory gone once globbed" does not stage a real disappearance.
