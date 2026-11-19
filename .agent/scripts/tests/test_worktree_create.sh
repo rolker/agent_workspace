@@ -1221,17 +1221,23 @@ else
     fail "refused push: title or gh calls wrong: gh calls=[$(tr '\n' ';' < "$GH_LOG11" 2>/dev/null)] out=${OUT:0:1500}"
 fi
 # The same refused push through --print-path-only (the start-task call):
-# stdout is the worktree path alone, and the exit status is 0.
+# stdout is the worktree path alone, the exit status is 0, and the warning
+# and the hint went to stderr.
 SB12="$SANDBOX/ws12"
 make_ws_repo "$SB12"
 make_refusing_origin "$SB12" "$SANDBOX/origin12.git"
+ERR12="$SANDBOX/stderr12"
 STDOUT12="$(cd "$SB12" && PATH="$SB12/stubbin:$PATH" "$SB12/.agent/scripts/worktree_create.sh" \
-    --issue 72 --type workspace --plan-file "$PLAN11" --print-path-only 2>/dev/null)"
+    --issue 72 --type workspace --plan-file "$PLAN11" --print-path-only 2>"$ERR12")"
 RC=$?
-if [[ "$RC" -eq 0 && "$STDOUT12" == "$SB12/worktrees/workspace/issue-origin12-72" ]]; then
-    pass "refused push with --plan-file --print-path-only: exit 0, stdout is the worktree path"
+STDERR12="$(cat "$ERR12" 2>/dev/null)"
+if [[ "$RC" -eq 0 && "$STDOUT12" == "$SB12/worktrees/workspace/issue-origin12-72" \
+      && "$STDERR12" == *"Push failed — skipping draft PR (non-fatal)"* \
+      && "$STDERR12" == *"git push -u origin feature/issue-72"* \
+      && "$STDERR12" == *"gh_create_pr.sh --draft"* ]]; then
+    pass "refused push with --plan-file --print-path-only: exit 0, stdout is the worktree path, the warning on stderr"
 else
-    fail "refused push with --plan-file --print-path-only: rc=$RC stdout=[$STDOUT12]"
+    fail "refused push with --plan-file --print-path-only: rc=$RC stdout=[$STDOUT12] stderr=[${STDERR12:0:1200}]"
 fi
 
 # Issue 516 (review suggestion 2): a relative --plan-file is relative to
@@ -1253,7 +1259,7 @@ OUT="$(cd "$SB13" && PATH="$SB13/stubbin:$PATH" "$SB13/.agent/scripts/worktree_c
 RC=$?
 if [[ "$RC" -eq 0 && "$OUT" == *"Draft PR created"* && "$OUT" == *"Plan posted as PR comment"* ]] \
    && grep -qx 'comment-file readable' "$GH_LOG13" 2>/dev/null \
-   && grep -q "^pr comment https://github.com/o/r/pull/1 --body-file $SB13/notes/plan 73.md\$" "$GH_LOG13"; then
+   && grep -qxF "pr comment https://github.com/o/r/pull/1 --body-file $SB13/notes/plan 73.md" "$GH_LOG13"; then
     pass "relative --plan-file, push succeeds: the plan comment reads the plan by its absolute path"
 else
     fail "relative --plan-file, push succeeds: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG13" 2>/dev/null)] out=${OUT:0:1200}"
@@ -1262,7 +1268,7 @@ fi
 if [[ "$(cat "$GH_LOG13.body" 2>/dev/null)" == $'## Summary\n\nIssue #73\n\nCloses #73\n\n---\n**Authored-By**: `'*$'`\n**Model**: `'*'`' ]]; then
     pass "push succeeds: the draft PR's body file is the Summary, the title, Closes and the signature"
 else
-    fail "relative --plan-file, push succeeds: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG13" 2>/dev/null)] out=${OUT:0:1200}"
+    fail "push succeeds: the draft PR's body file is wrong: [$(cat "$GH_LOG13.body" 2>/dev/null || echo 'not saved')]"
 fi
 
 # Integrated review, PR 526: a push that fails with nothing on stderr
