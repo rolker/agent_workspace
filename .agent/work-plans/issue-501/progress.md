@@ -79,3 +79,13 @@ issue: 501
 - [ ] Define in the plan how "built" is decided for a layer (colcon success in this run, `install/setup.bash` on disk, or a recorded state), and what `build <layer>` does when an earlier layer is not built.
 - [ ] Add an acceptance test for a layer where one package fails and another succeeds (with and without `--continue-on-error` passed after `--`), and for the exit status and the summary of what built, failed and was not tried.
 - [ ] Say in the plan where colcon runs for the unnamed first layer (the distro directory, beside the named layers' directories) and give it a test.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 09:31 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the open actions are inputs to the plan; none changes the issue's scope)
+**After**: issue-actions
+**Decision**: proceed
+
+The host read the Issue Review's eight actions. Seven are mechanism and go to the plan: the pull request's record of the by-hand build, what the output and exit status say, the stub setup.bash, how "built" is decided, the partial-failure test, the unnamed first layer, and the corrected paths (the tool is at tools/repos-manifest/; the issue body is left as written and the review comment on the issue carries the correction). One is the owner's: whether build gets an option to keep going to later layers after a layer fails, which the issue text does not ask for ("it stops at the first layer that fails"). The host puts that question to the owner while the plan is written; the plan is written to the issue as it stands (stop at the first failing layer, a layer fails when colcon exits non-zero) and says what the option would add, so the owner's answer can be applied at the plan checkpoint.
