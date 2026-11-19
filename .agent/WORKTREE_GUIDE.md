@@ -316,8 +316,8 @@ package repos, and issue are all explicit:
   layer not built yet is named in a note when the worktree is made. After a
   package pull request merges, `merge_pr.sh` fast-forwards the root's clone
   when it is clean and on the base; otherwise it fetches only and prints
-  "fetched only: <reason>" (not clean, or on another branch or a detached
-  HEAD). You can then bring the clone up to date yourself, for example with
+  "fetched only: <reason>" (no base known, a detached HEAD, another branch,
+  or not clean). You can then bring the clone up to date yourself, for example with
   `git -C <clone> pull` once it is clean and on the base. That layer is
   rebuilt by hand until the tool builds.
 
