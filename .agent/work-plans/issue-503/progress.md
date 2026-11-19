@@ -942,3 +942,12 @@ PR mode, round 1 triage. Hosted reviews: none (0 reviews, 0 inline comments, 0 c
 ### False positives
 - (Local Review, suggestion 5: no action, host ruling) A `worktrees=` override placed directly under the root is taken as a distro by step 1 and calls from a package worktree there are refused — neither the tool nor the workspace places it there by default, and the refusal it gives is true, not a wrong answer.
 - (Local Review (Pre-Push) round 5, suggestion 2: no action, triage ruling) A root that can be entered but not listed skips step 1 — then step 2 decides: on a one-distro root it answers the only distro, the same answer step 1 would give from that distro's directory and the same as any call from outside it; on a root with several it refuses. No call gets a wrong distro, and the tool never makes such a root.
+
+## Checkpoint
+**When**: 2026-11-18 22:34 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the four open findings are three sentences that say something other than the code and a one-line order change; fixing them is mechanism)
+**After**: findings
+**Decision**: address
+
+Fix the four open findings of the Integrated Review, each as small as it can be: sentences only for 1 to 3 (state what the code does and nothing more); for 4, list the set-aside names before the plain names in the one function that lists the distros, with a comment giving the reason in one line. No other change.
