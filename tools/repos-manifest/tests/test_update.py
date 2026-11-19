@@ -456,6 +456,38 @@ def test_a_tag_moved_on_origin_is_reported_with_its_next_step(system, capsys):
     assert git("rev-parse", "v1^{commit}", cwd=clone) != git("rev-parse", "other", cwd=remote)
 
 
+def test_a_tag_moved_on_origin_is_followed_once_the_stale_tag_is_deleted(system, capsys):
+    sys_dir, manifest, remote, clone = system
+    _pin(manifest, "v1")
+    assert "src/a: moved from main to v1" in _sync(sys_dir, capsys)
+    old = head(clone)
+    git("tag", "-f", "v1", "other", cwd=remote)
+    new = git("rev-parse", "other", cwd=remote)
+    before = snapshot_repo(clone, fetched=True)
+    out = _sync(sys_dir, capsys, 1)
+    assert f"git -C {clone} tag -d v1, then sync again" in out
+    assert snapshot_repo(clone, fetched=True) == before
+    assert git("rev-parse", "refs/tags/v1", cwd=clone) == old
+    git("tag", "-d", "v1", cwd=clone)
+    out = _sync(sys_dir, capsys)
+    assert f"src/a: tag v1 was moved on origin: moved from {old[:12]} to it" in out
+    assert "updated (1): src/a" in out
+    assert head(clone) == new and branch(clone) == "HEAD"
+    assert state_of(sys_dir)["a"]["commit"] == new and state_of(sys_dir)["a"]["version"] == "v1"
+    assert "up to date (1)" in _sync(sys_dir, capsys)
+    assert head(clone) == new
+
+
+def test_a_repo_moved_off_the_tag_by_a_person_is_not_taken_for_a_moved_tag(system, capsys):
+    sys_dir, manifest, remote, clone = system
+    _pin(manifest, "v1")
+    _sync(sys_dir, capsys)
+    git("switch", "-q", "--detach", "origin/dev", cwd=clone)
+    git("tag", "-f", "v1", "other", cwd=remote)
+    git("tag", "-d", "v1", cwd=clone)
+    _left_alone(sys_dir, clone, capsys, "moved by a person: it is on a detached HEAD at")
+
+
 def test_a_local_only_tag_is_kept_by_the_fetch(system, capsys):
     sys_dir, _, remote, clone = system
     git("config", "fetch.pruneTags", "true", cwd=clone)

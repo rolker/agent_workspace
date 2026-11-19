@@ -642,12 +642,14 @@ def update_repo(
         return turn.current(head, f"pinned at {found.name}")
 
     # On the recorded version, which the manifest has changed: moved to the new one.
-    if (
-        record is not None
-        and record.version != repo.version
-        and _on_recorded(git, record, head, branch)
-    ):
-        return _move(turn, head, found)
+    if record is not None and _on_recorded(git, record, head, branch):
+        if record.version != repo.version:
+            return _move(turn, head, found)
+        # The same tag, detached where sync put it, and origin's tag now names another commit
+        # (the person deleted the stale local tag, as the failed fetch said): followed.
+        if found.kind == TAG and branch is None:
+            said = f"tag {found.name} was moved on origin: moved from {head[:12]} to it"
+            return _move(turn, head, found, said)
 
     where = branch if branch is not None else f"a detached HEAD at {head[:12]}"
     detail = f"moved by a person: it is on {where}; the manifest names {wanted}"
@@ -668,11 +670,12 @@ def _on_recorded(git: Git, record: RepoRecord, head: str, branch: Optional[str])
     return ref == f"refs/remotes/origin/{branch}"
 
 
-def _move(turn: _Turn, head: str, found: Version) -> Done:
+def _move(turn: _Turn, head: str, found: Version, said: Optional[str] = None) -> Done:
     """From the recorded version to the manifest's: one `git switch`, or, to a branch that
     exists locally, a switch and then a fast-forward."""
     git = turn.git
-    said = f"moved from {turn.record.version or 'the default branch'} to {found.name}"
+    if said is None:
+        said = f"moved from {turn.record.version or 'the default branch'} to {found.name}"
     if found.kind != BRANCH:
         steps = [["switch", "-q", "--detach", found.target]]
         return _change(turn, head, [found.target], steps, found.target, None, said)

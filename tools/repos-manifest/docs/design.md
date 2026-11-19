@@ -717,7 +717,9 @@ remote-tracking refs and objects a fetch brings and, under the url rule, `origin
 7. `git fetch --prune --no-prune-tags --tags origin`. A fetch that fails skips an optional
    repo and is an error for any other. A tag moved on `origin` fails the fetch every run (git
    refuses to replace it); the message says to delete the local tag with `git tag -d` and
-   sync again. `sync` never replaces a tag, and the fetch keeps local tags even where
+   sync again. The next `sync` fetches origin's tag and, when the repo is still detached at the
+   commit `sync` recorded for that tag, follows it there (rule 11); a repo a person moved
+   elsewhere is left as it is. `sync` never replaces a tag, and the fetch keeps local tags even where
    `fetch.pruneTags` is set.
 8. The manifest's version is looked up on `origin`: a branch (`origin/<version>`), a tag that
    `origin` has (a local tag of the same name that `origin` lacks does not count, and nor does
@@ -740,7 +742,8 @@ remote-tracking refs and objects a fetch brings and, under the url rule, `origin
     out detached. A local branch of that name is used when `origin/<version>` contains it: it
     is switched to and then fast-forwarded. If that local branch has commits not on `origin`,
     or is checked out in another work tree, the repo is left as it is. The branch left behind
-    keeps every commit it had.
+    keeps every commit it had. A repo pinned to a tag the manifest still names, detached at the
+    commit recorded for it, is moved the same way when origin's tag now names another commit.
 12. Anything else (another branch, a detached `HEAD` elsewhere, or no record and not on the
     version) is a repo a person has moved: left as it is and reported.
 
