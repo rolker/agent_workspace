@@ -380,3 +380,26 @@ Verified by hand: test_worktree_create.sh 101 passed / 0 failed; shellcheck --se
 **Decision**: publish
 
 Round 2, with the outside reviewers, approved the branch and left five suggestions, which the pull request lists. The full pass ran on head 70e6632b with exit 0, the script test suites included.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-19 13:39 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #526 at `81edecc`
+**Sources**: 3 (Local Review (Pre-Push) round 2 @ `47666fb` (covers 81edecc via bookkeeping), Local Review (Pre-Push) round 1 @ `f5c68a46` (all boxes closed; its deferred user-tier guard finding re-checked), CI rollup). No GitHub reviews, inline or conversation comments; no Copilot review requested.
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Checked by hand at 81edecc: test_worktree_create.sh 101 passed / 0 failed. The PR body has a level-2 `## Decision summary` heading (read from `gh pr view 526 --json body`). Body claims checked against the code: git's stderr is shown, the hint lines (cd, push, gh_create_pr.sh --draft with -R/--base/title/body, skip-if-exists line, identity reminder) match `create_draft_pr`; one imprecision: "when a plan file was given, the gh pr comment line" is printed only when the plan file was found (HAS_PLAN), the same point as finding 1. ROOT_DIR is the workspace root (`worktree_create.sh:35`), confirming finding 2 for project sessions.
+
+### Findings
+- [ ] (suggestion, Local Review @ 47666fb) The guide sentence says the script prints the command to post the plan, but it does so only when the plan file was found; say "and, if the plan file was found, post the plan" (false documentation, one-line fix; fix now) — `.agent/WORKTREE_GUIDE.md:394`
+- [ ] (suggestion, Local Review @ 47666fb) A relative --plan-file is resolved against the workspace root after the `cd "$ROOT_DIR"` (line 852), not the caller's cwd; a project session (start-task passes the user's path as typed) gets "Plan file not found", a PR titled [PLAN] with no plan comment. Make PLAN_FILE absolute against $PWD at parse time (the `--plan-file)` case near line 302) and drop the in-function absolutization; update the SB13/relative-plan tests to run from the directory the path is relative to (fix now) — `.agent/scripts/worktree_create.sh`
+- [ ] (suggestion, Local Review @ 47666fb) When git writes nothing to stderr the warning line ends in "said:" with nothing after it; print the "git push ... said:" phrase only when push_err is non-empty (fix now) — `.agent/scripts/worktree_create.sh`
+- [ ] (suggestion, Local Review @ 47666fb) Tests: the body-file check after the SB13 case reuses the previous check's fail message (wrong diagnostics on failure); the `grep -q "^pr comment ... $SB13/..."` treats the sandbox path as a regex (use `grep -qxF` with the full line); the --print-path-only case discards stderr and so does not check the warning reached it (fix now) — `.agent/scripts/tests/test_worktree_create.sh`
+- [x] (suggestion, Local Review @ 47666fb) An issue title containing `**Authored-By**:` lands in the hint's --body, so gh_create_pr.sh treats it as signed and the pasted PR goes unsigned (deferred: rightly left; the cause is `gh_body_is_signed` in `_gh_create_args.sh:310`, which treats the marker anywhere in any body as a signature, for every caller; a fix in the hint alone would paper over it. Belongs with the gh_create_pr.sh issue the host is proposing to the owner)
+- [x] (suggestion, Local Review @ f5c68a46, codex) gh_create_pr.sh's user-tier guard (`registry_require_root`, `.agent/scripts/gh_create_pr.sh:87`) refuses a worktree folder outside both the project root and the workspace, so the pasted line is refused there (deferred: host checkpoint 2026-11-19 13:10; older behaviour of another script, unchanged here and disclosed in the PR body; rightly left for its own issue)
+
+### False positives
+- (none)
