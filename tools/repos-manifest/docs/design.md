@@ -722,10 +722,11 @@ and `FETCH_HEAD`. No local branch, `HEAD`, index or work-tree file changes befor
    files, leave the repo as it is. Untracked and ignored files are not local work and do not
    stop an update. A submodule whose checked-out commit differs from the one recorded, which
    is what a fast-forward that moves its pointer leaves, is not counted.
-7. `git fetch --prune --no-prune-tags --tags --refmap= origin
+7. `git fetch --prune --no-prune-tags --tags --no-recurse-submodules --refmap= origin
    +refs/heads/*:refs/remotes/origin/*`: the refspec is `sync`'s own, and `--refmap=` keeps
    git from applying the person's `remote.origin.fetch` too, so a refspec there that writes
-   into `refs/heads/` never moves or prunes a local branch. A fetch that fails skips an optional
+   into `refs/heads/` never moves or prunes a local branch; a submodule is never fetched into,
+   whatever `fetch.recurseSubmodules` says. A fetch that fails skips an optional
    repo and is an error for any other. A tag moved on `origin` fails the fetch every run (git
    refuses to replace it); the message says to delete the local tag with `git tag -d` and
    sync again. The next `sync` fetches origin's tag and, when the repo is still detached at the

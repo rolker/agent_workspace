@@ -670,6 +670,7 @@ def update_repo(
         "--prune",
         "--no-prune-tags",
         "--tags",
+        "--no-recurse-submodules",
         "--refmap=",
         "origin",
         "+refs/heads/*:refs/remotes/origin/*",

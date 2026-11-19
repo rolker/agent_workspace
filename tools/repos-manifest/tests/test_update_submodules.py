@@ -210,3 +210,18 @@ def test_a_directory_with_an_ignored_file_replaced_by_a_submodule_is_left(vcs, t
     git("commit", "-q", "-m", "sm becomes a submodule", cwd=top)
     _left_alone(sys_dir, clone, capsys, "in the way of incoming files: sm")
     assert (clone / "sm" / "keep.log").is_file()
+
+
+@pytest.mark.parametrize("setting", ["fetch.recurseSubmodules=true", "submodule.recurse=true"])
+def test_the_fetch_never_goes_into_a_submodule(vcs, tmp_path, capsys, monkeypatch, setting):
+    monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "file")
+    sub, top = _top_with_submodule(tmp_path)
+    sys_dir, _, clone = _system(tmp_path, top)
+    _check_out(clone, sub, "init")
+    key, value = setting.split("=")
+    git("config", key, value, cwd=clone)
+    before = snapshot_repo(clone)["nested repositories"]
+    _move_pointer(sub, top)
+    out = _sync(sys_dir, capsys)
+    assert "src/top: fast-forwarded 1 commits" in out
+    assert snapshot_repo(clone)["nested repositories"] == before
