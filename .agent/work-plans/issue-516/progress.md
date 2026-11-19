@@ -493,3 +493,36 @@ Outside reviewers:
 - [x] (suggestion) The parse case uses `$PWD`; `CALLER_DIR` (line 40) holds the same value and exists for this purpose, which would keep "caller's directory" in one place (Claude adversarial) — `.agent/scripts/worktree_create.sh:307`
 - [x] (suggestion) Remote hook output is relayed raw, so terminal control characters in it reach the screen; stripping them with `tr -d` or `cat -v` before indenting would keep the pasted lines legible (codex, low) — `.agent/scripts/worktree_create.sh:1296-1299`
 - [x] (suggestion) The plan does not mention the caller-relative --plan-file change, the start-task SKILL.md edit, or the full Summary body in the hint; a line under the plan's Approach or the PR body's "what changes" would record the scope (codex) — `.agent/work-plans/issue-516/plan.md`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 14:03 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent abcbbae1ea267062f, resume 2 of 3)
+
+**PR**: #526 at `4414296c`
+**Addressed**: Local Review at `e1b99bf1` (its entry committed as f2db50af)
+**Commits**: 994e6b34, 1d7215c3, 637b477b, 4414296c
+
+### Actions
+- [x] (must-fix) PR body stale sentences — PR #526 body (deferred: no code change here; the host corrected the body on the pull request)
+- [x] A successful push shows git's stdout again: the push runs as `{ push_err="$(git push ... 2>&1 >&4 4>&-)"; } 4>&1`, so stdout (the "branch ... set up to track ..." line) goes out as before and stderr is kept only for the failure warning. New test on the SB13 success case asserts the line; fails without the fix. Sandbox comparison with origin/main (dd53c590): a successful `--issue 77 --type workspace --plan-file <abs>` run printed the same lines on main and HEAD, the only differences being two commit hashes — `.agent/scripts/worktree_create.sh` create_draft_pr (1d7215c3)
+- [x] The parse case uses `$CALLER_DIR` (set at line 40, before the argument loop, to the same `$PWD`). No test can fail without it, since both hold the same value at that point; the existing relative-plan tests still pass — `.agent/scripts/worktree_create.sh:307` (994e6b34)
+- [x] Control characters other than tab and newline are dropped from git's error (`tr -d '\000-\010\013-\037\177'`) before it is indented. New test: a pre-receive hook printing `\033[31mred\033[0m alert\r`; the warning shows `remote: [31mred[0m alert` with no ESC or CR; fails without the fix — `.agent/scripts/worktree_create.sh` create_draft_pr (637b477b)
+- [x] Plan section "Added after the plan was approved": the caller-relative `--plan-file`, the start-task SKILL.md and usage text, and the hint's body with the Summary heading, each with the review entry that asked for it — `.agent/work-plans/issue-516/plan.md` (4414296c)
+
+Note for the PR body: its sentence that after a successful push git's "branch ... set up to track ..." line is no longer shown is now false (1d7215c3 restores it).
+
+Suites run (each on its own with bash; the full pre-commit pass is left to the host):
+- test_worktree_create.sh: PASS: 105 / FAIL: 0
+- test_precommit_hook_path.sh: 19 passed, 0 failed
+- test_merge_pr_skill.sh: 132 passed, 0 failed
+- test_user_tier_guard.sh: 64 passed, 0 failed
+- test_validate_workspace_stale.sh: 126 passed, 0 failed
+- test_user_tier_install.sh: 276 passed, 0 failed
+- test_package_issue_loop.sh: 220 passed, 0 failed
+- test_records_write_gate.sh: 68 passed, 0 failed
+- test_skill_paths.sh: 163 passed, 0 failed
+- test_project_registry.sh: Results: 425 passed, 0 failed
+- test_merge_pr.sh: Results: 170 passed, 0 failed
+- test_ros2_colcon.sh: Results: 1375 passed, 0 failed, 0 skipped
