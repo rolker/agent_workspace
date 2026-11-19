@@ -380,3 +380,31 @@ Each fix has a test; each was checked to fail with its fix reverted in a scratch
 ### Notes
 - Commits are grouped rather than one per finding: the five must-fix and S1-S5 all reshape the same run loop in build.py and its tests.
 - A SIGKILL of the tool itself still leaves colcon running (it cannot be caught); its layer is already out of the record and setup.bash (design.md says so).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 11:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a2232ae6436041c7a, resume 1 of 3)
+
+**Branch**: feature/issue-501 at `f5775bda`
+**Base**: main
+**Depth**: Deep (reason: whole branch diff, ~2600 lines; child-process and signal handling, a lock, a CI change; fix-round rule)
+**Must-fix**: 4 | **Suggestions**: 7
+**Round**: 2 | **Ship**: continue — round 2: 4 must-fix is high; two are design questions
+
+Round 1's five must-fix were re-run and are gone: a signal at the end of either record write now leaves the line, record and `setup.bash` in agreement; a relative PATH entry and an empty one find colcon; SIGTERM, SIGINT and `timeout 5` during a slow make job leave no job running and no `SLOW_DONE`; `--b`/`--pa` are refused; a second build of the distro is refused naming the pid. A no-op rebuild still counts as built (colcon rewrites `install/setup.bash`, mtime/ctime change). Tool suite `1075 passed in 172.74s` with `REPOS_MANIFEST_REQUIRE_COLCON=1`; the 11 signal/stop/lock tests passed 5 runs of 5 (10.2 s each). The Claude adversarial specialist checked Ctrl-C and Ctrl-Z/fg in a real pty, `| tee`, a closed terminal and the stale lock with the real colcon and found them sound except as below. Outside reviewers: codex completed; gemini failed once (stream interrupted), completed on the one retry.
+
+### Findings
+- [ ] (must-fix) The distro lock ends with the tool, not with colcon: a SIGKILL of the tool's group (a CI cancel, `kill -9 -PGID`) leaves colcon running in its own session, and a second `build` starts at once on the same layer (reproduced: two colcon in `top/`). Let colcon inherit the lock descriptor (`pass_fds`) and adjust the design text (Claude adversarial, codex) — `tools/repos-manifest/src/repos_manifest/build.py:353`, `system.py` `hold_build_lock`
+- [ ] (must-fix) A non-option argument first after `--` joins the layer's `--base-paths` list (nargs `*`): `build -- mid/src/b` built `b` into the unnamed layer's `install/` (reproduced); put `--base-paths` last or refuse a leading positional (gemini) — `tools/repos-manifest/src/repos_manifest/build.py:400-413`
+- [ ] (must-fix) A required repo missing from disk is treated like an optional one: with `mid/src/b` moved away, `build mid` said "skipped, no repos on this machine: mid", exit 0 (reproduced), and a layer with some required repos missing is built and recorded from the rest; design.md says only repos left out by the role or skipped as optional are left out. Name or refuse missing required repos (codex) — `tools/repos-manifest/src/repos_manifest/build.py:128-131`, `docs/design.md` (build)
+- [ ] (must-fix) Package selection that colcon must resolve fails in every layer that lacks the package: `build -- --packages-up-to c` failed the unnamed layer ("Package 'c' specified with --packages-up-to was not found"), removed its record and left `setup.bash: nothing is built` until a plain build (reproduced); design.md says package selection "is passed too". Say which selection options work across layers, or refuse/handle them — `tools/repos-manifest/docs/design.md` (build, arguments after `--`), `build.py`
+- [ ] (suggestion) `_end_the_rest` waits the full 10 s when the tool is a subreaper or PID 1 (zombies stay in the group; reproduced with `PR_SET_CHILD_SUBREAPER`), and says nothing if members outlive the wait; reap with `waitpid(-pgid, WNOHANG)` and warn (Claude adversarial) — `tools/repos-manifest/src/repos_manifest/build.py:281-291`
+- [ ] (suggestion) Jobs in colcon's new session cannot open `/dev/tty` (ssh/git credential prompts in FetchContent, sudo), unlike plain colcon; say so in design.md (Claude adversarial) — `tools/repos-manifest/docs/design.md` (build, session paragraph)
+- [ ] (suggestion) On a terminal hangup the tool exits 120, not by SIGHUP as design.md says: `stop_exit`'s print to the dead tty raises before `raise_signal`; guard it (Claude adversarial) — `tools/repos-manifest/src/repos_manifest/signals.py` `stop_exit`
+- [ ] (suggestion) The refusal of an ambiguous abbreviation (`--b`, `--pa`, `--i`) says "taken by colcon as <option>", but colcon itself rejects those as ambiguous; word it as "could be" (Claude adversarial) — `tools/repos-manifest/src/repos_manifest/build.py:390-392`
+- [ ] (suggestion) A failed `settle()` before colcon starts does not stop the run, and a later successful one clears the problem, so the run can exit 0 after `setup.bash` kept sourcing a layer during its rebuild (codex) — `tools/repos-manifest/src/repos_manifest/build.py:595`
+- [ ] (suggestion) A record's `time` is put into `setup.bash`'s comment as read; a newline in it would put a command line into `setup.bash`. Only by hand-editing, but rejecting control characters in `read_built` is cheap (codex, gemini) — `tools/repos-manifest/src/repos_manifest/system.py` `read_built`, `build.py:194`
+- [ ] (suggestion) A stop signal between the lock's checks and `holder.append` (the prefix warnings) leaves the lock descriptor open for an in-process caller (codex, gemini) — `tools/repos-manifest/src/repos_manifest/build.py:762-767`
