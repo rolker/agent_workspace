@@ -1094,6 +1094,19 @@ def test_the_same_skip_list_again_changes_nothing_and_another_is_named(system, s
             {"--packages-skip": ["a"], "--packages-skip-regex": ["^b$"]},
         ),
         (["--packages-skip", "a", "--packages-skip-build-finished"], {"--packages-skip": ["a"]}),
+        # A list of package names ends at any argument starting with `-`: an option of a colcon
+        # extension `build` does not know, which colcon reads as an option when it has it (and
+        # otherwise rejects as a package name, building nothing).
+        (["--packages-skip", "a", "--meson-args", "x"], {"--packages-skip": ["a"]}),
+        (
+            ["--packages-ignore", "a", "-x", "b", "--packages-skip-regex", "^c"],
+            {"--packages-skip-regex": ["^c"], "--packages-ignore": ["a"]},
+        ),
+        # A pattern may start with `-`: a regex list ends only at an option colcon has.
+        (
+            ["--packages-skip-regex", "^a", "--meson-args", "x"],
+            {"--packages-skip-regex": ["^a", "--meson-args", "x"]},
+        ),
     ],
 )
 def test_each_way_of_leaving_packages_out_is_recorded_as_colcon_reads_it(

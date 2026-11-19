@@ -636,22 +636,33 @@ def _read_as_option(arg: str) -> bool:
     return arg.startswith("-h")
 
 
+# The options of `LEFT_OUT` whose values are package names: colcon-package-selection 0.2.10
+# (`argument_package_name`) rejects a value that starts with `-`, so the layer is not built.
+# The `-regex` forms take any text as a pattern, one starting with `-` too.
+NAME_LISTS = ("--packages-skip", "--packages-ignore")
+
+
 def left_out(colcon_args: Sequence[str]) -> Dict[str, List[str]]:
-    """The packages the arguments leave out of a whole layer: each option of `LEFT_OUT` given,
-    named in full, to its values as given. As `colcon` reads them, an option's values run to
-    the next argument it reads as an option, the `=value` form has one, and of an option given
-    more than once only the last occurrence counts. An option whose last occurrence has no
-    values leaves nothing out and is not named."""
+    """The skip and ignore options the arguments give `colcon`: each option of `LEFT_OUT`
+    given, named in full, to its values as `colcon` reads them. An option's values run to the
+    next argument `colcon` reads as one of its options, the `=value` form has one, and of an
+    option given more than once only the last occurrence counts. A list of package names
+    (`NAME_LISTS`) also ends at any argument that starts with `-`: where `colcon` builds, that
+    is an option of a `colcon` extension `COLCON_BUILD_OPTIONS` does not have, since `colcon`
+    rejects such a package name. An option whose last occurrence has no values is not named."""
     found: Dict[str, List[str]] = {}
     taking: Optional[str] = None
     for arg in colcon_args:
-        if not _read_as_option(arg):
+        ends = taking in NAME_LISTS and arg.startswith("-")
+        if not _read_as_option(arg) and not ends:
             if taking is not None:
                 found[taking].append(arg)
             continue
+        taking = None
+        if not _read_as_option(arg):
+            continue  # an option `build` does not know: what follows is its, not the list's
         name, equals, value = arg.partition("=")
         option = _left_out_option(name) if arg.startswith("--") else None
-        taking = None
         if option is not None:
             found[option] = [value] if equals else []
             taking = None if equals else option

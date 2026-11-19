@@ -1028,10 +1028,16 @@ the manifest. It stays with `colcon`:
   refused on a layer that is not built as before; on a built layer it gives back the record the
   layer had, its list unchanged, and the report names the skip and ignore options given as not
   recorded. The record holds them as `colcon` reads them: each option named in full, its values
-  up to the next argument `colcon` reads as one of its options (any other argument is a value,
-  even one starting with `-`, such as `-1`, which the `-regex` forms take as a pattern and
-  `--packages-skip` and `--packages-ignore` reject, so the layer is not built), one value in the
-  `=value` form; of an option given
+  up to the next argument `colcon` reads as one of its options, one value in the `=value` form.
+  `colcon` reads an argument that is none of its options as a value, even one starting with `-`
+  (`-1`, `--foo`): the `-regex` forms take it as a pattern, and `--packages-skip` and
+  `--packages-ignore` reject it, so the layer is not built (checked with colcon-core 0.21.3). So
+  a list of package names ends at any argument starting with `-` (where `colcon` builds, that
+  can only be an option of a `colcon` extension `build` does not list, such as `--meson-args`).
+  A list of patterns ends only at an option `build` knows `colcon` to have (those of colcon-core
+  and the usual extensions), since a pattern may start with `-`: an option of another extension
+  after a `-regex` list is recorded as patterns of it, though `colcon` reads it as an option, and
+  is best given before the list. Of an option given
   more than once only the last occurrence counts (`--packages-skip a --packages-skip b` leaves
   out only `b`), and one whose last occurrence has no values leaves nothing out and is not
   recorded. A regex is recorded as text, not as the names it matched. A value that holds a
