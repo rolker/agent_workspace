@@ -814,6 +814,37 @@ def test_a_repo_given_another_layer_is_reported_with_the_mv_command(layered, cap
     assert state_of(sys_dir)["a"]["layer"] == "extra"
 
 
+@pytest.mark.parametrize("work", ["a local commit", "a changed file", "an index.lock"])
+def test_a_repo_moved_by_hand_to_its_new_layer_and_left_alone_records_the_layer(
+    layered, capsys, work
+):
+    sys_dir, manifest, remote = layered
+    old, new = sys_dir / "core/src/a", sys_dir / "extra/src/a"
+    if work == "a local commit":
+        commit_file(old, "mine", "mine\n", "a person's commit")
+        says = "left alone: has 1 commits not on origin"
+    elif work == "a changed file":
+        (old / "README").write_text("mine\n")
+        says = "left alone: has uncommitted changes (1 files)"
+    else:
+        (old / ".git" / "index.lock").write_text("")
+        says = "left alone: index.lock exists"
+    push_commit(remote, "later", "x\n")
+    rewrite_manifest(manifest, lambda d: d["repositories"]["a"].update(layer="extra"))
+    out = _sync(sys_dir, capsys, 1)
+    command = f"mkdir -p {new.parent} && mv {old} {new}"
+    assert command in out
+    subprocess.run(command, shell=True, check=True)
+    git("fetch", "-q", "--tags", "origin", cwd=new)
+    before = snapshot_repo(new, fetched=True)
+    out = _sync(sys_dir, capsys)
+    assert f"extra/src/a: {says}" in out, out
+    assert snapshot_repo(new, fetched=True) == before
+    assert state_of(sys_dir)["a"]["layer"] == "extra"
+    out = _sync(sys_dir, capsys)
+    assert "mv " not in out and state_of(sys_dir)["a"]["layer"] == "extra"
+
+
 def test_a_repo_given_another_layer_whose_old_place_is_gone_is_cloned_there(layered, capsys):
     sys_dir, manifest, _ = layered
     rewrite_manifest(manifest, lambda d: d["repositories"]["a"].update(layer="extra"))

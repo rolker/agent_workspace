@@ -752,7 +752,9 @@ and `FETCH_HEAD`. No local branch, `HEAD`, index or work-tree file changes befor
     version) is a repo a person has moved: left as it is and reported.
 
 A repo left as it is does not change the exit status, apart from the layer rule above; its
-record is unchanged, except that the manifest's url is recorded when it is not yet. `status`
+record is unchanged, except that the manifest's url is recorded when it is not yet, and a repo
+moved by hand to the layer the manifest now gives it has that layer recorded, by whichever rule
+its turn ends. `status`
 is the check a script reads.
 
 Before every fast-forward or switch, `sync` lists the paths the move adds and looks at each in

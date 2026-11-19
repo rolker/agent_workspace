@@ -15,7 +15,7 @@ import shlex
 import shutil
 import subprocess
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -378,12 +378,6 @@ def present_repo(
         return RepoResult(shown, skip, f"{problem}; left alone")
     if not place.is_dir():
         return RepoResult(shown, skip, "is there and is not a directory; left as it is")
-    if os.path.islink(place):
-        return RepoResult(
-            shown,
-            LEFT,
-            f"is a link to {os.readlink(place)}; sync does not update a repo through a link",
-        )
     state_file = system / SYSTEM_DIR / STATE_FILE
 
     def write(record: RepoRecord) -> None:
@@ -391,6 +385,21 @@ def present_repo(
         with signals_held():
             put_distro_state(system, distro, state)
 
+    had = state.repos.get(repo.key)
+    if had is not None and had.layer != layer:
+        # Moved by hand to the layer the manifest gives it: the record names where it is now,
+        # whatever the rules below then do with it.
+        try:
+            write(replace(had, layer=layer))
+        except (OSError, ManifestError) as exc:
+            why = exc.strerror if isinstance(exc, OSError) else str(exc)
+            return RepoResult(shown, skip, f"its record cannot be written ({why}); left as it is")
+    if os.path.islink(place):
+        return RepoResult(
+            shown,
+            LEFT,
+            f"is a link to {os.readlink(place)}; sync does not update a repo through a link",
+        )
     try:
         done = update.update_repo(place, repo, layer, state.repos.get(repo.key), env, lock, write)
     except OSError as exc:
