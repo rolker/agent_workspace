@@ -378,3 +378,21 @@ def test_a_failed_fast_forward_of_a_repo_with_no_record_leaves_no_moving_line(
     assert "src/a: left alone: `git merge` exited 1; left as it was" in done.stdout
     record = state_of(system, "jazzy")["a"]
     assert "moving" not in record and record["commit"] == was
+
+
+def test_resolved_files_that_cannot_be_written_are_reported_for_that_distro(two, capsys):
+    system, _, remote = two
+    jazzy = system / ".repos-manifest/resolved/jazzy"
+    shutil.rmtree(jazzy)
+    jazzy.write_text("a file where the directory goes\n")
+    new = push_commit(remote, "one", "1\n")
+    capsys.readouterr()
+    assert run(system, "sync") == 1
+    out = capsys.readouterr().out
+    assert (
+        f"ERROR: the resolved files' directory {jazzy}: exists and is not a directory" in out
+    ), out
+    assert "None of this distro's repos was touched" in out
+    assert "distro jazzy:\n  reported above; nothing of it was changed" in out
+    assert head(system / "rolling/core/src/a") == new
+    assert head(system / "jazzy/core/src/a") != new

@@ -631,8 +631,10 @@ is not resolved, and none of its repos is touched.
   where every distro reads the one location given, that is the resolver's error and nothing
   is created.
 
-A distro whose manifest does not resolve is reported in the same way, and a repo that cannot
-be fetched is reported for that repo; the other distros go on. `sync` exits with 1 when a distro
+A distro whose manifest does not resolve is reported in the same way, and so is one whose
+resolved files cannot be put on the disk (an error writing them, or something that is not
+the tool's in their place), whose repos are then not touched; a repo that cannot be fetched is
+reported for that repo; the other distros go on. `sync` exits with 1 when a distro
 was reported or a repo was an error (below), and with 0 otherwise; a repo that is there and
 left as it is does not change it. A stop signal at any point of `init` or `sync` ends it with
 that signal and one line, which says when nothing was changed yet.

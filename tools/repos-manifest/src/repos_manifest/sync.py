@@ -441,13 +441,19 @@ def _sync_distro(
     distro = resolved.distro
     state = read_state(system, distro)
     resolved_dir = system.joinpath(*resolved_parts(config.layout, distro))
-    write_output(
-        resolved_dir,
-        files,
-        label=f"the resolved files' directory {resolved_dir}",
-        again="sync",
-        elsewhere=f"run `sync` from the system directory or from below it, outside {SYSTEM_DIR}/",
-    )
+    try:
+        write_output(
+            resolved_dir,
+            files,
+            label=f"the resolved files' directory {resolved_dir}",
+            again="sync",
+            elsewhere=(
+                f"run `sync` from the system directory or from below it, outside {SYSTEM_DIR}/"
+            ),
+        )
+    except ManifestError as exc:
+        # Reported for this distro, whose repos are not touched; the other distros go on.
+        raise Refusal(str(exc), "None of this distro's repos was touched") from None
     result = DistroResult(distro)
     for layer in resolved.layers:
         src = layer_src_parts(config.layout, distro, layer.name)
