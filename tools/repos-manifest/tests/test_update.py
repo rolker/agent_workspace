@@ -458,6 +458,24 @@ def test_a_moving_line_is_removed_when_the_repo_is_found_on_the_version(system, 
     assert "moving" not in state_of(sys_dir)["a"]
 
 
+@pytest.mark.parametrize("mode", ["--cone", "--no-cone"])
+def test_a_sparse_checkout_is_left_alone_and_said_to_be_one(system, capsys, mode):
+    sys_dir, _, remote, clone = system
+    commit_file(remote, "keep/k", "k\n", "keep")
+    commit_file(remote, "out/o", "o\n", "out")
+    _sync(sys_dir, capsys)
+    git("sparse-checkout", "set", mode, "keep", cwd=clone)
+    push_commit(remote, "keep/new", "n\n")
+    out = _left_alone(
+        sys_dir,
+        clone,
+        capsys,
+        "src/a: left alone: is a sparse checkout; sync does not update one (its skip-worktree"
+        " files are not changes): update it by hand",
+    )
+    assert "uncommitted" not in out
+
+
 def test_no_single_origin_is_left_alone(system, capsys):
     sys_dir, _, _, clone = system
     git("remote", "rename", "origin", "upstream", cwd=clone)

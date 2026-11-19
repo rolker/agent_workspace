@@ -711,7 +711,9 @@ and `FETCH_HEAD`. No local branch, `HEAD`, index or work-tree file changes befor
 3. A repo that is not a git repo of its own (its top level is not the place itself, or there
    is none), or whose type is not `git`, is left as it is.
 4. A rebase, merge, cherry-pick, revert or bisect in progress, or an `index.lock` in the git
-   directory, leaves the repo as it is.
+   directory, leaves the repo as it is. So does a sparse checkout (`core.sparseCheckout`): the
+   report says it is one and that `sync` does not update one, rather than counting its
+   skip-worktree files as changes.
 5. A repo without exactly one `origin` url is left as it is.
 6. The url rule (below), then the tracked changes: a file changed, staged or removed, a file
    flagged assume-unchanged or skip-worktree, or a submodule with changes to its own tracked

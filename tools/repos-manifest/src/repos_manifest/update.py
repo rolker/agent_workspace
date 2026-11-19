@@ -590,6 +590,13 @@ def update_repo(
             return Done(LEFT, f"{what} is in progress{also}")
     if os.path.lexists(git_dir / "index.lock"):
         return Done(LEFT, f"index.lock exists; another git may be running here{also}")
+    status, printed, _ = git.run("config", "--type=bool", "--get", "core.sparseCheckout")
+    if status == 0 and printed.strip() == "true":
+        return Done(
+            LEFT,
+            "is a sparse checkout; sync does not update one (its skip-worktree files are not"
+            " changes): update it by hand",
+        )
 
     status, printed, _ = git.run("config", "--get-all", "remote.origin.url")
     urls = printed.splitlines() if status == 0 else []
