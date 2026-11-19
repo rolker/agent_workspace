@@ -476,8 +476,8 @@ Status: `decided`
   then checks every distro); its `setup` and
   `sync` run the tool's `sync`, `build` and `test` are the colcon loop over its layers, and `validate`
   checks the last resolve and refuses a `role=`, `distro=` or manifest source recorded beside the
-  tool's. A `.repos-manifest/` the adapter cannot use is an error naming the tool's own command to run
-  in the root, never another route. The other two (#436) are chosen by one fact, the settings file setting
+  tool's. A `.repos-manifest/` the adapter cannot use is an error naming the way out with the tool's own
+  commands, never another route. The other two (#436) are chosen by one fact, the settings file setting
   `source`. The bootstrap route is the `bootstrap.yaml` flow. On the manifest route the manifest, in the
   new format, is named by `source` (an absolute path, or a git repository with `source_ref` and,
   if the file is not `manifest.yaml`, `source_path`) and is resolved for the registry line's `role=` and `distro=` (both required) by the

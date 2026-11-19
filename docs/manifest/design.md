@@ -130,18 +130,31 @@ The root need not be a git repository. The registry line holds its name, type an
   read `config.yaml` or `state.yaml`. A layer is built in `<root>/<distro>/<layer>`, the
   unnamed layer in `<root>/<distro>`, its repos in `src/` below it. A repo's pin, and so the
   base of a package worktree's branch, is the `version` of its entry in `<layer>.repos`.
-- **The distro.** The directory the call comes from decides (the owner, 2026-11-18): inside
-  `<root>/<distro>/`, that distro; otherwise, when one distro is resolved, that one;
-  otherwise `validate` checks every distro, one after another, and fails naming each that
-  fails, and every other call is refused and the distros listed. The rule, and which
-  distros a call covers, is stated once, in the header of `adapter.sh`; the dispatcher
-  passes the calling directory, `--from` or the current directory, as
-  `ACTIVE_PROJECT_FROM`. On a root with several distros, then: registration passes from the
+- **The distro.** The directory the call comes from decides (the owner, 2026-11-18). A call
+  from inside `<root>/<x>/`, where `<x>` is a top-level directory of the root other than
+  `worktrees` and names starting with a dot, is for distro `<x>`, and only `<x>`: if the
+  tool's last resolve for `<x>` cannot be used (no `resolved/<x>/layers.txt`, or it lists no
+  layer), the call is refused, naming the tool's own `cd <root> && repos-manifest sync
+  --distro <x>`; it never moves on to another distro. `setup` and `sync` from there run that
+  sync without needing the resolve. The adapter does not read the tool's settings, so it
+  cannot tell a distro's directory from another directory there: a directory under the root
+  that is not a distro is taken as one and refused, since a wrong distro chosen without a word
+  is worse than a refusal. A call from anywhere else (the root itself, `<root>/worktrees/...`,
+  outside the root) is for the one distro under `resolved/` when there is exactly one;
+  otherwise `validate` checks every one, one after another, and fails naming each that fails
+  (a `resolved/<d>/` with no usable `layers.txt` included, so a half-written resolve is not
+  passed over), and every other call is refused and the distros listed. A call reads
+  `layers.txt` once per distro, and every layer loop of the call goes over that read, so a
+  `sync` that replaces `resolved/<distro>/` meanwhile (in two renames) cannot leave a loop with
+  no layer. The rule, and which distros a call covers, is stated once, in the header of
+  `adapter.sh`; the dispatcher passes the calling directory, `--from` or the current
+  directory, as `ACTIVE_PROJECT_FROM`. On a root with several distros, then: registration passes from the
   workspace or a session at the root, since its gate runs `validate`; a package worktree is
   made with `worktree_create.sh --project <name>` called from inside `<root>/<distro>/`
   (every adapter call it makes comes from that directory, so all read that distro), and
   from the root it is refused before anything is made; any other verb is run from inside
-  `<root>/<distro>/` or with `--from <root>/<distro>`. A session is still started at the
+  `<root>/<distro>/` (a call to the adapter itself may give its own `--from <root>/<distro>`
+  instead). A session is still started at the
   root; a session started inside a distro's directory is a later part (ADR-0020 refuses a
   subdirectory of a root in no git repository).
 - **`setup` and `sync`** run `repos-manifest sync --distro <distro>` in the root, or `sync`
@@ -152,8 +165,7 @@ The root need not be a git repository. The registry line holds its name, type an
   package worktrees made before keep their old environment script.
 - **`build` and `test`** are the colcon loops of the other routes, over the resolved layers,
   with `--base-paths src`. `build` is interim until the tool's own `build`, and stops at the
-  first failing layer; a loop that finds no layer (the tool's `sync` replaces
-  `resolved/<distro>/` in two renames, so a run during one can) is an error; a tree that does not build yet is built by hand, a layer at a time, with
+  first failing layer; a tree that does not build yet is built by hand, a layer at a time, with
   `colcon build --symlink-install --base-paths src --continue-on-error` in
   `<root>/<distro>/<layer>`. The tool's `<root>/<distro>/setup.bash` is its stub until its
   `build` lands and returns an error, so the instance's environment is `adapter env`.
@@ -171,11 +183,18 @@ The root need not be a git repository. The registry line holds its name, type an
   the tool set up never reaches the bootstrap route's fetch. One message says what is wrong as
   far as the adapter can tell (it is not a directory, or a link to nothing; it cannot be read;
   nothing is resolved yet; the layout is flat, set up without `--distro-dirs`) and names the
-  tool's own command to run in the root, by the workspace's installed path: its `sync`, or
-  for a flat layout its `init --distro-dirs` in an empty directory. It names the tool, not an
-  adapter verb, because registration refuses such a root and rolls the project back.
+  way out: the tool's `sync` in the root when nothing is resolved; otherwise fixing or
+  removing that path and setting up again with the tool's `init --distro-dirs` in an empty
+  directory (the tool's `sync` would refuse such a path too).
+- **Every next step that is the tool's `sync`**, on this route, is written by one helper as
+  `cd <root> && <tool> sync`, with `--distro <d>` when the distro is known, the tool by the
+  workspace's installed path: never an adapter verb, because registration refuses such a root
+  and rolls the project back before one could run, and from the root of a system with several
+  distros the adapter's `sync` refuses.
 - **A repo key line the adapter's reader cannot read** in a resolved `.repos` file is refused
-  by name, so none is passed over without a word. A key with a directory in it, such as
+  by name, so none is passed over without a word. It reads a key of letters, digits, `.`, `_`
+  and `-`, bare or in the single quotes the tool writes around a key YAML would read as a
+  number or a boolean (`'123'`, `'on'`). A key with a directory in it, such as
   `grp/repo`, which the tool allows, is one case: the adapter and `worktree_create.sh` do not
   read it yet (a later part reads it).
 

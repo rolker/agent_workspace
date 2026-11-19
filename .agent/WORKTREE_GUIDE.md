@@ -307,7 +307,10 @@ package repos, and issue are all explicit:
   from inside `<root>/<distro>/`: every adapter call it makes comes from that
   directory, so the pin, the layers and `env.sh` are that distro's; from the
   root it is refused before anything is made, listing the distros. A session
-  is still started at the root. See `docs/manifest/design.md`, "The tool
+  is still started at the root, so on a root with several distros
+  `/run-issue` and `/start-task`, run from that session, cannot make a
+  package worktree yet: run `worktree_create.sh` from inside
+  `<root>/<distro>/`. See `docs/manifest/design.md`, "The tool
   route". Its environment is `adapter env`, not the tool's
   `<root>/<distro>/setup.bash`, which is a stub until the tool builds. A lower
   layer not built yet is named in a note when the worktree is made. After a
