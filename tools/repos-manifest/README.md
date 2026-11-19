@@ -113,9 +113,12 @@ stops at the first layer that fails (`--keep-going` tries the later ones), and w
 layers below it are the ones it was built on. It sees only the `colcon` arguments given after
 `--`, not package selection set in a file of `colcon` defaults or a mixin; it names each
 defaults file `colcon` will read, and no mixin. A run with package selection or
-`--cmake-target` after `--` only rebuilds layers that are built. A second `build` of the same
-distro while one (or the `colcon` it started) runs is refused, and so is a build of a layer
-with a repo missing from disk that is not optional; [docs/design.md](docs/design.md#build) says what it builds, what it
+`--cmake-target` after `--` only rebuilds layers that are built (not `--packages-skip` or
+`--packages-ignore`, which build a whole layer but the packages they name: each layer's record
+keeps the skip and ignore options given to its `colcon` when it was last built, whether or not
+the layer has such packages). A
+second `build` of the same distro while one (or the `colcon` it started) runs is refused, and
+so is a build of a layer with a repo missing from disk that is not optional; [docs/design.md](docs/design.md#build) says what it builds, what it
 refuses and what `setup.bash` sources. It needs `bash`, and `colcon` on `PATH` (empty and
 relative entries are not searched) or installed in the same virtual environment as
 repos-manifest.

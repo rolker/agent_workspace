@@ -543,6 +543,17 @@ class LayerRecord:
     time: str
     repos: List[str]
     below: List[str]
+    # The skip and ignore options (`LEFT_OUT`) given after `--` to the layer's colcon when it
+    # was last built, each in full with its values as colcon read them (a regex as text),
+    # whether or not the layer has packages they name; empty when none was given.
+    without: Dict[str, List[str]] = field(default_factory=dict)
+
+
+# The options of `colcon build` that leave the packages their values name out of a whole
+# layer: the only keys of a record's `without`.
+LEFT_OUT = (
+    "--packages-skip", "--packages-skip-regex", "--packages-ignore", "--packages-ignore-regex",
+)  # fmt: skip
 
 
 # The keys of a layer's record in an unreleased draft that held only the layer sourced when it
@@ -582,7 +593,7 @@ def read_built(system: Path, distro: Optional[str]) -> Dict[str, LayerRecord]:
             raise bad(f"layer {layer!r} is not a layer name")
         if isinstance(record, dict) and set(record) == set(_SINGLE_BASE_KEYS):
             continue  # the single-base form of an unreleased draft: read as not built
-        _check_keys(record, at, ("time", "repos", "below"), (), bad)
+        _check_keys(record, at, ("time", "repos", "below"), ("without",), bad)
         if not isinstance(record["time"], str):
             raise bad(f"`{at}.time` is {_kind(record['time'])}, not a string")
         for key in ("repos", "below"):
@@ -591,24 +602,49 @@ def read_built(system: Path, distro: Optional[str]) -> Dict[str, LayerRecord]:
             ):
                 what = "repo keys" if key == "repos" else "layer names"
                 raise bad(f"`{at}.{key}` is not a list of {what}")
+        without = _read_without(record, at, bad)
         texts = [record["time"], *record["repos"], *record["below"]]
+        texts += [text for option, values in without.items() for text in (option, *values)]
         if any(_CONTROL.search(text) for text in texts):
             raise bad(f"`{at}` holds a control character")
         records[str(layer)] = LayerRecord(
-            record["time"], list(record["repos"]), list(record["below"])
+            record["time"], list(record["repos"]), list(record["below"]), without
         )
     return records
 
 
+def _read_without(record: dict, at: str, bad) -> Dict[str, List[str]]:
+    """A record's optional `without`, checked to the shape `put_built_layers` writes: absent
+    (no skip or ignore option given), or a mapping of some of `LEFT_OUT` to non-empty lists of
+    strings."""
+    if "without" not in record:
+        return {}
+    without = record["without"]
+    where = f"{at}.without"
+    if not isinstance(without, dict):
+        raise bad(f"`{where}` is {_kind(without)}, not a mapping")
+    if not without:
+        raise bad(f"`{where}` is empty; a record with no skip or ignore option has no `without`")
+    for option, values in without.items():
+        if option not in LEFT_OUT:
+            raise bad(f"`{where}` has {option!r}, which is not one of {', '.join(LEFT_OUT)}")
+        if (
+            not isinstance(values, list)
+            or not values
+            or not all(isinstance(each, str) for each in values)
+        ):
+            raise bad(f"`{where}.{option}` is not a list of one or more strings")
+    return {option: list(values) for option, values in without.items()}
+
+
 def put_built_layers(system: Path, distro: Optional[str], layers: Dict[str, LayerRecord]) -> None:
     """Write one distro's record whole, by one rename."""
-    data = {
-        "format": BUILT_FORMAT,
-        "layers": {
-            layer: {"time": record.time, "repos": list(record.repos), "below": list(record.below)}
-            for layer, record in layers.items()
-        },
-    }
+    data = {"format": BUILT_FORMAT, "layers": {}}
+    for layer, record in layers.items():
+        entry = {"time": record.time, "repos": list(record.repos), "below": list(record.below)}
+        if record.without:  # only when a run left packages out: an older version refuses it
+            entry["without"] = {option: list(values) for option, values in record.without.items()}
+        data["layers"][layer] = entry
     text = yaml.safe_dump(data, default_flow_style=False, sort_keys=False, width=4096)
     replace_file(system, built_file(system, distro), text)
 
