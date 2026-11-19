@@ -148,3 +148,23 @@ Suites, each run on its own with `bash`:
 - `test_design_anchors.sh`: `test_design_anchors: 82 passed, 0 failed` (the `docs/design.md` anchor hook also passed on commit)
 
 The full pre-commit pass was left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 14:46 -05:00
+**By**: Claude Code (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-522 at `27d01ee3`
+**Base**: origin/main
+**Depth**: Standard (reason: governance file `.claude/skills/run-issue/SKILL.md` changed)
+**Must-fix**: 0 | **Suggestions**: 4
+**Round**: 1 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Verified: test_skill_paths.sh 164/0 and test_merge_pr.sh 175/0 pass; the new pin fails (1 failure) against origin/main's SKILL.md; the new test fails (exit 0, a merge logged) with merge_pr.sh's conflict `exit 2` removed; shellcheck clean on both test files. Every step-11 form (workspace, single-repository project, package with `--project`, sibling) checked against merge_pr.sh 173-188, 227-235, 327-349, 427-456, 590-680; session_root.sh prints an empty `project=` for the workspace. No other host-followed text gives `--type` on a package merge. Cross-model: gemini completed (its `SKILL.md 45-58` off-by-one claim is false: line 58 ends the sentence), codex completed.
+
+### Findings
+- [ ] (suggestion) Unintended edit drops the space in an unrelated address-findings label ("finding;a dispatched"); restore it — `.agent/scripts/tests/test_skill_paths.sh:776`
+- [ ] (suggestion) New test's title/comment imply the refusal is package-specific; with a qualified `--pr`, PJ_REMOTE is never set so `--type project` is refused for any repo (merge_pr.sh 444-445 is dead under `--repo`; a follow-up issue for the script, out of scope here) — `.agent/scripts/tests/test_merge_pr.sh:664`
+- [ ] (suggestion) "finds the package worktree" is unqualified: a `--project` whose resolved instance differs from the manifest header filters every manifest out and the merge proceeds silently with no cleanup (pre-existing script behaviour) — `.claude/skills/run-issue/SKILL.md:1035`
+- [ ] (suggestion) The row merges two entry points: `agent start-task` forwards `--type` only to worktree creation; dispatch, PR targeting and merge are run-issue's — `docs/design.md:529`
