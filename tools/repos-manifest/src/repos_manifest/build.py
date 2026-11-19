@@ -688,6 +688,26 @@ def _shown(value: str) -> str:
     return "'" + "".join(out) + "'"
 
 
+def _newly_given(was: Dict[str, List[str]], now: Dict[str, List[str]]) -> bool:
+    """`now` names a package or a pattern `was` did not: only then can a package an earlier
+    build installed be left out now and stay in `install/`. A skipped and an ignored package
+    are both not built, so a name counts once whichever of the two names it; a pattern is
+    compared as text."""
+
+    def kinds(without):
+        names = {value for option in NAME_LISTS for value in without.get(option, [])}
+        patterns = {
+            value
+            for option, values in without.items()
+            if option not in NAME_LISTS
+            for value in values
+        }
+        return names, patterns
+
+    (was_names, was_patterns), (now_names, now_patterns) = kinds(was), kinds(now)
+    return bool(now_names - was_names or now_patterns - was_patterns)
+
+
 def refused_values(colcon_args: Sequence[str]) -> None:
     """Refuse, before anything runs, a skip or ignore value the record cannot hold as one line
     of plain text: one that holds a control or invisible character (the rule names and values
@@ -1249,7 +1269,7 @@ def report(progress: Progress, run: Optional[Run]) -> None:
                 f"  skip and ignore options given to colcon changed: {name} (was"
                 f" {without_text(was)}, now {without_text(now)})"
             )
-            if now:
+            if _newly_given(was, now):
                 line += (
                     "; what an earlier build installed of a package they skip or ignore now"
                     " stays in"

@@ -883,8 +883,10 @@ skip or ignore options given to their `colcon`, with the options ("built with <o
 colcon:", whether or not a layer has packages they name, and worded apart from the "built
 without sourcing" line below), a layer built under `--keep-going` and not used included; a layer
 whose skip and ignore options differ from its record's, with both ("skip and ignore options given
-to colcon changed:", `none` for no options), adding when it now has options that what an earlier
-build installed of a package they skip or ignore stays in its `install/`; the skip and ignore
+to colcon changed:", `none` for no options), adding, when the options now name a package or a
+pattern the old ones did not (a name counts once whether skipped or ignored; a pattern is
+compared as text), that what an earlier build installed of a package they skip or ignore stays
+in its `install/`; the skip and ignore
 options given with package selection, as not recorded, when the run built a layer; a layer built on a shorter
 chain than before, because a layer below it left the manifest or has no repos now, with that layer's
 `install/` when it is still there, since the build may have used what is left in it as the

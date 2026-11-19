@@ -1199,6 +1199,27 @@ def test_a_layer_built_leaving_out_under_keep_going_and_not_used_is_named(system
     assert "  built without sourcing mid (failed), so not used: top" in out
 
 
+@pytest.mark.parametrize(
+    "was, now, note",
+    [
+        (["--packages-skip", "x", "y"], ["--packages-skip", "x"], False),  # only shrank
+        (["--packages-skip", "x"], ["--packages-ignore", "x"], False),  # not built either way
+        (["--packages-skip-regex", "^x"], ["--packages-skip-regex", "^x", "^y"], True),
+        (["--packages-skip", "x"], ["--packages-skip", "x", "y"], True),
+        (["--packages-skip", "x"], ["--packages-skip-regex", "^x$"], True),  # text, not names
+    ],
+)
+def test_the_stale_install_note_comes_only_when_the_options_name_something_new(
+    system, stub, capsys, was, now, note
+):
+    assert run(system, "build", "--", *was) == 0
+    capsys.readouterr()
+    assert run(system, "build", "mid", "--", *now) == 0
+    out = capsys.readouterr().out
+    assert "  skip and ignore options given to colcon changed: mid (was" in out
+    assert ("an earlier build installed" in out) == note
+
+
 def test_a_package_name_with_leading_whitespace_is_the_same_name_to_colcon(system, stub, capsys):
     assert run(system, "build", "--", "--packages-skip", "x") == 0
     capsys.readouterr()
