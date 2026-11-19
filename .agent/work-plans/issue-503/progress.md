@@ -892,3 +892,12 @@ Part 1B, round-5 convergence check on the round-4 findings and the fix diff sinc
 ### Findings
 - [ ] (suggestion) The design paragraph says "the physical root" but not that the calling directory is taken as a physical path too, so a reader cannot tell that a call from a link <root>/aaa -> rolling is for rolling (the header says it); one phrase, and reflow the 24- and 131-character lines; not a false sentence (lead, adversarial) — `docs/manifest/design.md:133`
 - [ ] (suggestion) Not worth doing: a root that can be entered but not listed makes the glob empty, so step 1 is skipped and a call from a non-distro directory on a one-distro root goes to that distro; the tool never makes such a root (adversarial, from the code) — `.agent/project_types/ros2_colcon/adapter.sh:902`
+
+## Checkpoint
+**When**: 2026-11-18 22:14 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the round-5 pre-push review approved with 0 must-fix; the full pre-commit pass over the branch's files passed)
+**After**: publish
+**Decision**: publish
+
+Publish part 1B as its own pull request ("Part of #503"). Carried into the first round on the pull request: the round-5 suggestion that the design's distro paragraph also say the calling directory is taken as a physical path.
