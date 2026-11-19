@@ -1296,6 +1296,23 @@ else
     fail "silent push failure: rc=$RC out=${OUT:0:1200}"
 fi
 
+# PR 526 review: a remote hook that prints terminal escape sequences and
+# a carriage return; the warning keeps the text without the control
+# characters.
+SB17="$SANDBOX/ws17"
+make_ws_repo "$SB17"
+make_refusing_origin "$SB17" "$SANDBOX/origin17.git"
+printf '#!/bin/sh\nprintf "\\033[31mred\\033[0m alert\\r\\n" >&2\nexit 1\n' > "$SANDBOX/origin17.git/hooks/pre-receive"
+OUT="$(cd "$SB17" && PATH="$SB17/stubbin:$PATH" "$SB17/.agent/scripts/worktree_create.sh" \
+    --issue 78 --type workspace --plan-file "$PLAN11" 2>&1)"
+RC=$?
+WARN17="$(awk '/Push failed/{f=1} /Once the cause is fixed/{f=0} f' <<< "$OUT")"
+if [[ "$RC" -eq 0 && "$WARN17" == *"remote: [31mred[0m alert"* && "$WARN17" != *$'\e'* && "$WARN17" != *$'\r'* ]]; then
+    pass "remote hook output with control characters: shown without them"
+else
+    fail "remote hook output with control characters: rc=$RC warning=[$(cat -v <<< "$WARN17")]"
+fi
+
 # Integrated review, PR 526: a relative --plan-file given from a directory
 # other than the workspace root is relative to that directory (a project
 # session passes the path as typed): it is found, the PR is titled [PLAN],

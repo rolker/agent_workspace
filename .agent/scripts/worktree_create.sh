@@ -1297,7 +1297,10 @@ elif [ -n "$PLAN_FILE" ]; then
             # hand, quoted with printf %q.
             if [ -n "$push_err" ]; then
                 echo "  ⚠️  Push failed — skipping draft PR (non-fatal). git push -u origin $BRANCH_NAME said:"
-                printf '%s\n' "$push_err" | sed 's/[[:space:]]*$//; s/^/       /'
+                # Control characters other than tab and newline (a remote
+                # hook's escape sequences, carriage returns) are dropped.
+                printf '%s\n' "$push_err" | tr -d '\000-\010\013-\037\177' \
+                    | sed 's/[[:space:]]*$//; s/^/       /'
             else
                 echo "  ⚠️  Push failed — skipping draft PR (non-fatal)."
             fi
