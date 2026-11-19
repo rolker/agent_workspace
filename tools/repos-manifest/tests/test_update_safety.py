@@ -4,6 +4,7 @@ that an incoming file would replace, and a repo left alone is the same, byte for
 the run. The whole repo is compared with `snapshot_repo`."""
 
 import ast
+import re
 import os
 from pathlib import Path
 
@@ -27,14 +28,32 @@ from repos_manifest import update
 UPDATE = Path(update.__file__)
 
 
+GIT_CALLS = ("run", "out", "ok", "count", "ask_origin")
+# The names a git call may spread with `*`: each is a function's own parameter (`args`,
+# `patterns`, whose callers the scan reads as git calls too), a
+# step taken from a list literal (`step`, `back`), or a list literal or `GIT_OPTIONS` bound in
+# the module, all of which the scan reads.
+SPREAD = {"args", "patterns", "step", "back", "fetch_args", "GIT_OPTIONS"}
+
+
+def _called(call: ast.Call) -> str:
+    return getattr(call.func, "attr", getattr(call.func, "id", ""))
+
+
 def git_argument_texts(source: str):
     """The git arguments a module's source can run, each list as one text: the constant
-    arguments of every `run`, `out` and `ok` call, every list literal (a step's arguments) and
-    `GIT_OPTIONS`. Tuples elsewhere are names and messages, not arguments."""
+    arguments of every `run`, `out`, `ok`, `count` and `ask_origin` call (the last two pass
+    theirs to git), every list literal (a step's arguments) and `GIT_OPTIONS`. Tuples elsewhere
+    are names and messages, not arguments.
+
+    What it cannot see: an argument held in a variable that is not a list literal (a tuple,
+    a string built at run time). `update.py` is written so that this does not matter: every
+    git argument is a constant in a call or in a list literal, and the only names a git call
+    spreads are those of `SPREAD`, which the test below holds it to."""
     tree = ast.parse(source)
     found = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and getattr(node.func, "attr", "") in ("run", "out", "ok"):
+        if isinstance(node, ast.Call) and _called(node) in GIT_CALLS:
             found.append([a.value for a in node.args if isinstance(a, ast.Constant)])
         elif isinstance(node, ast.List):
             found.append([e.value for e in node.elts if isinstance(e, ast.Constant)])
@@ -69,6 +88,60 @@ def test_pruning_flags_are_forbidden_and_no_prune_is_not(source, hit):
     found = [w for w in ("--prune", "-p") for t in texts if f" {w} " in f" {t} "]
     assert {"--prune", "-p"} <= set(update.NEVER)
     assert bool(found) == hit, (texts, found)
+
+
+BUNDLED = re.compile(r"-[A-Za-z]{2,}")
+
+
+def bundled_with(texts, letters="pPf"):
+    """Short flags bundled into one word (`-pt`, `-fq`) that hold a forbidden letter."""
+    return [
+        word
+        for text in texts
+        for word in text.split()
+        if BUNDLED.fullmatch(word) and any(letter in word for letter in letters)
+    ]
+
+
+def test_no_bundled_short_flag_holds_p_or_f():
+    assert bundled_with(git_argument_texts(UPDATE.read_text())) == []
+
+
+@pytest.mark.parametrize(
+    "source, hit",
+    [
+        ('git.run("fetch", "-P", "origin")\n', True),
+        ('git.run("fetch", "--prune", "--prune-tags", "origin")\n', True),
+        ('steps = [["switch", "-f", "dev"]]\n', True),
+        ('steps = [["switch", "--discard-changes", "dev"]]\n', True),
+        ('git.run("branch", "-f", "dev", "x")\n', True),
+        ('git.run("fetch", "-pt", "origin")\n', True),
+        ('git.run("switch", "-fq", "dev")\n', True),
+        ('git.run("fetch", "--no-prune", "--no-prune-tags", "-q", "origin")\n', False),
+        ('count(git, "HEAD", "--not", "--remotes=origin")\n', False),
+    ],
+)
+def test_the_scan_catches_each_way_of_forcing_or_pruning(source, hit):
+    texts = git_argument_texts(source)
+    words = [w for w in update.NEVER for t in texts if f" {w} " in f" {t} "]
+    assert bool(words or bundled_with(texts)) == hit, (texts, words)
+
+
+def test_a_git_call_spreads_only_names_the_scan_reads():
+    tree = ast.parse(UPDATE.read_text())
+    spread = {
+        arg.value.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and _called(node) in GIT_CALLS
+        for arg in node.args
+        if isinstance(arg, ast.Starred) and isinstance(arg.value, ast.Name)
+    }
+    assert spread <= SPREAD, spread - SPREAD
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and any(
+            getattr(t, "id", "") == "fetch_args" for t in node.targets
+        ):
+            assert isinstance(node.value, ast.List)
 
 
 def test_the_scan_finds_a_forbidden_command():

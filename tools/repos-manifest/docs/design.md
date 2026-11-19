@@ -828,7 +828,10 @@ for a run that was stopped. The record keeps the version it had: if such a move 
 on the new branch and the manifest is then changed back, the next `sync` reports the repo as
 moved by a person, since the record cannot tell sync's own unfinished move from a person's. `sync` never runs `reset`, `checkout -f`,
 `clean`, `stash`, `rebase`, `pull`, `push`, `gc` or `prune`, never deletes a branch, and passes
-no `--force`, `--no-verify`, `--prune` or `-p` (a test reads `update.py` for each of these). Each `git` runs with automatic `gc` and `maintenance` off and
+no `--force`, `--no-verify`, `--prune`, `-p`, `-P`, `--prune-tags` or `--discard-changes`, no
+`switch -f` or `branch -f`, and no bundled short flag holding `p`, `P` or `f` (a test reads
+`update.py` for each of these, in every git call and every list of arguments; the test also
+holds the code to spreading only argument lists it reads). Each `git` runs with automatic `gc` and `maintenance` off and
 with `submodule.recurse` off.
 
 A clone with submodules is followed like any other, and its submodules are not updated: the

@@ -68,6 +68,11 @@ NEVER = (
     "prune",
     "--prune",  # sync removes no ref; --no-prune, which it passes, is another word
     "-p",  # fetch's short form of --prune
+    "-P",  # fetch's short form of --prune-tags
+    "--prune-tags",  # removes local tags in a pruning fetch; --no-prune-tags is another word
+    "--discard-changes",  # switch's way of throwing away local changes
+    "switch -f",
+    "branch -f",
     "push",
     "--force",
     "rebase",
