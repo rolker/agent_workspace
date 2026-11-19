@@ -408,3 +408,36 @@ Round 1's five must-fix were re-run and are gone: a signal at the end of either 
 - [x] (suggestion) A failed `settle()` before colcon starts does not stop the run, and a later successful one clears the problem, so the run can exit 0 after `setup.bash` kept sourcing a layer during its rebuild (codex) — `tools/repos-manifest/src/repos_manifest/build.py:595`
 - [x] (suggestion) A record's `time` is put into `setup.bash`'s comment as read; a newline in it would put a command line into `setup.bash`. Only by hand-editing, but rejecting control characters in `read_built` is cheap (codex, gemini) — `tools/repos-manifest/src/repos_manifest/system.py` `read_built`, `build.py:194`
 - [x] (suggestion) A stop signal between the lock's checks and `holder.append` (the prefix warnings) leaves the lock descriptor open for an in-process caller (codex, gemini) — `tools/repos-manifest/src/repos_manifest/build.py:762-767`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 11:34 -05:00
+**By**: claude-code (claude-opus-5-5)
+**Dispatch**: resumed (agent a87bbb2d0d4e6df83, resume 1 of 3)
+
+**Branch**: feature/issue-501 at `3d17c807`
+**Addressed**: Local Review (Pre-Push) at `f5775bda` (2026-11-19 11:07 -05:00)
+**Commits**: 3d17c807
+
+### Actions
+- [x] (must-fix) Lock outlives the tool: colcon inherits the lock descriptor (`pass_fds`); the lock file names the tool's and colcon's pids, and the refusal names the live one, else says `fuser -v <lock>` finds the holder. Checked with /usr/bin/colcon: after SIGKILL of the tool only colcon holds the lock and a second build is refused; once colcon's group ends the lock is free; colcon's make/sh/sleep jobs do not hold it (colcon closes fds), so a daemon a job leaves does not either (design.md says so) — `build.py` `run_child`, `system.py` `hold_build_lock`, `note_lock_holders`
+- [x] (must-fix) `--base-paths` now goes after the forwarded arguments; a plain first argument and a second `--` are refused before anything is touched; checked by hand with real colcon that `--packages-select good2 good` and `--cmake-args -DFOO=1` at the end neither swallow nor are swallowed by `--base-paths` — `build.py` `colcon_argv`, `refused_arguments`
+- [x] (must-fix) Missing required repos: `build` reads `optional.txt`; a repo listed for a layer this run would build that is not on disk and not optional is refused before anything runs, naming each with its layer and saying to run `sync`; a layer is empty only when all its repos are optional and absent; design.md says exactly this — `build.py` `read_layers`, `missing_repos`
+- [x] (must-fix) Package selection: with real colcon, `--packages-up-to`, `-up-to-regex`, `-above`, `-above-and-dependencies`, `-above-depth`, `-start`, `-end` exit 1 on a name the layer lacks; select, skip, ignore, their regex forms, `-by-dep`, `-skip-up-to` and the failed/finished ones only warn. The failing kind (and abbreviations of it) is refused when the run would build more than one layer; any `--packages-` option makes the run a selection run, in which a layer gets its record back only if it counted as built before the run, else the report says the selected packages were built and `build <layer>` without selection records it, later layers are not tried and the exit status is 1; design.md rewritten — `build.py` `package_selection`, `build_layers`, `report`
+- [x] (suggestion) `_end_the_rest` reaps its own children in colcon's group (`waitpid(-pgid, WNOHANG)`) while it waits, and warns, with `pgrep -g`, about members still there after 10 s — `build.py`
+- [x] (suggestion) design.md says colcon's session has no terminal, so credential prompts fail, and to use ssh-agent, a git credential helper, or fetch with `sync` first — `docs/design.md` (doc only, no test)
+- [x] (suggestion) `stop_exit` guards its print, so a closed terminal or pipe still ends by the signal — `signals.py`
+- [x] (suggestion) An abbreviation is named as colcon would take it: "colcon reads it as X", or "colcon would reject it as ambiguous, and it could be X" — `build.py` `refused_arguments`
+- [x] (suggestion) Every failed rewrite of setup.bash in a run is kept, named in the report and the stop line, and makes the exit status 1, even when a later rewrite works — `build.py` `settle`, `_setup_failed`
+- [x] (suggestion) A record with a control character in a layer name, time, repo key or base is unreadable (the existing "repair or remove it" error) — `system.py` `read_built`
+- [x] (suggestion) The progress (and its lock) is in `holder` from the moment the lock is taken; a stop before the checks end says "nothing was changed" and releases the lock — `build.py` `_build`, `run_build`
+
+### Tests
+Each fix has a test; each was checked to fail with its fix reverted in a scratch copy (14 mutants, all caught). The S2 doc change has none.
+- Tool suite: `REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest` — `1099 passed in 194.39s` (real colcon, none skipped)
+- Signal, stop and lock tests (`-k "signal or stop or lock or escalate or ctrl_z or session or reaps or terminal_gone or outlive or second_build"`, real-colcon ones included), five runs: `20 passed, 61 deselected` each time; no stray process afterwards
+- No workspace script or adapter changed this round, so no `.agent/scripts/tests` suite applies; pre-commit (SKIP=validate-script-tests) on the changed files clean; the full pass was left to the host.
+
+### Notes
+- Departure: a resolving selection option is refused only when the run would build more than one layer, so a run that builds none (every named layer empty) passes it instead of being refused; nothing can fail there.
+- One commit for the round: the fixes all touch the same argument checks, run loop and report in build.py.
