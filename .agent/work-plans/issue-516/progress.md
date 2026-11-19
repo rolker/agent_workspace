@@ -61,3 +61,13 @@ Claim checked against the script on this branch (`.agent/scripts/worktree_create
 - [ ] Make the warning actionable: say the branch is not on origin and how to open the PR later, e.g. `git push -u origin <branch>` then `gh pr create --draft`, since "skipping draft PR" alone leaves the user to guess.
 - [ ] Test in `.agent/scripts/tests/test_worktree_create.sh` with `--plan-file` and an origin whose push is rejected (a `pre-receive` hook that exits 1 in a bare origin); assert exit 0, worktree directory exists, the "Push failed" warning, and "To enter this worktree" present.
 - [ ] Single short plan is enough; no sub-issues.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 12:49 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the four open actions are inputs to the plan; none changes the issue's scope)
+**After**: issue-actions
+**Decision**: proceed
+
+The Issue Review confirmed the claim against the script and found the push failure to be the only "non-fatal" path that is fatal. Its four actions go to the plan as written: return 0 inside create_draft_pr on a failed push; the warning says how to open the pull request later; a test in test_worktree_create.sh with an origin that refuses the push; a check of start-task and the documents for text that tells callers to retry on a non-zero exit.
