@@ -773,7 +773,7 @@ has "$RI" "run-issue: a package issue's merge passes --pr <owner/repo#M> and --p
     'For a package issue run `$WS_ROOT/.agent/scripts/merge_pr.sh --pr <owner/repo#M>`, with `--project <project>` when the session'"'"'s `project=` is not empty, and never `--type`' \
     'A package issue'"'"'s `merge_pr.sh` passes no `--type` (step 11)' \
     'a package issue'"'"'s merge passes `--pr <owner/repo#M>` and `--project` (when `project=` is not empty) and no `--type`'
-has "$AF" "address-findings: a quoted host full-pass failure is an open finding;a dispatched pass skips the suites on every commit and runs only its own" \
+has "$AF" "address-findings: a quoted host full-pass failure is an open finding; a dispatched pass skips the suites on every commit and runs only its own" \
     'quotes a failure of the host'"'"'s full pre-commit pass' \
     'set `SKIP=validate-script-tests` on every commit, the step 5 entry'"'"'s commit included' \
     'runs no full pre-commit pass over the branch' \
