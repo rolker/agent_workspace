@@ -1142,3 +1142,13 @@ The revision resolves every finding as the checkpoint decided and follows the ow
 - [ ] Name and write the url tests; normalise trailing `/` and `.git` (note 4)
 - [ ] Take the lock in `init` too, or give the true reason (note 5)
 - [ ] `--no-prune-tags`, `-c submodule.recurse=false` (note 6); notes 7 to 11 in wording and design
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 14:58 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (second review of part 2: ready, eleven notes for the implementer, none needs-work; the plan is unchanged since that review and part 2 is not delivered)
+**After**: plan
+**Decision**: proceed
+
+The eleven notes of the Plan Review go to the implementer in the handoff and are to be built as the review states them, each with its test: (1) a directory replaced by a file is in the way only when it holds a file not tracked in HEAD; (2) the paths check uses lstat, so a symlink is never taken for a directory; (3) a row for a rewritten upstream where HEAD is on origin but not an ancestor of origin/V: left alone, reported; (4) the url rule's tests are named, the no-recorded-url case and url.*.insteadOf included, and urls are compared after stripping a trailing slash and .git; (5) init takes the lock for its first sync too, and the false reason is not written into the design; (6) fetch passes --no-prune-tags and git runs with submodule.recurse=false; (7) the design says a shallow clone grows when tags are fetched; (8) the unpushed-commits report prints git -C <path> pull --rebase origin <version>; (9) a hand-set origin that lacks the version gets a message saying origin was set by hand, with the set-url command; (10) a tag counts as on origin only when origin has it; (11) the moving line's wording at the uncommitted-changes row.
