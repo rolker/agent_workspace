@@ -104,3 +104,55 @@ The Issue Review confirmed the claim and tried each skip-like option with the re
 **Plan**: `.agent/work-plans/issue-531/plan.md` at `e9c7c366`
 
 The four skip and ignore options stop counting as selection (only unambiguous spellings); the record gains an optional `without` mapping (option to values, last occurrence of a repeat wins as in colcon); the report says "built without" and names a changed list, which keeps the layers above. Documents and tests (stub and real colcon) change in the same PR.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-19 15:02 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #531 — repos-manifest build: --packages-skip on a layer's first build is refused
+**Plan**: `.agent/work-plans/issue-531/plan.md` at `e9c7c366`
+**Branch**: `feature/issue-531`
+
+Checked with the real `/usr/bin/colcon` (colcon-core 0.21.3, colcon-package-selection 0.2.10, Python 3.14.4) on a scratch system of CMake packages a; b needs a (`find_package`); c needs b; d alone. `colcon list` for the spellings, `colcon build` for what is installed.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One PR, four files plus tests, inside `tools/repos-manifest/`. |
+| Issue alignment | Needs work | Every issue line and every Issue Review action is covered, except the empty value list (finding 1). Serves: "Trust, control and information" and "Easy to use" (workspace goals in `README.md`), under `tools/repos-manifest/docs/design.md#build`; both goals and the `### build` heading exist. |
+| File targeting | Good | `build.py`, `system.py`, both test files, design.md, README. `sync.py` and `state.yaml` are untouched; issue 500's part 2 only calls `read_built`, which still reads every record it read before. |
+| Consequences | Good, one gap | The colcon-defaults bullet, the `colcon_defaults.yaml` bullet and `_defaults_note` speak of "package selection" set in a defaults file; a skip set there is not in `without` (note 1). |
+| Principle alignment | Good | Verified claims, tests with each rule, design.md in the same change. |
+| ADR compliance | Good | ADR-0022 (inside the part), ADR-0017 (design in the same change), ADR-0013 (entries). |
+| ROS conventions | N/A | Workspace tool; no ROS interfaces change. |
+
+What real colcon does, against the plan:
+- Exact, `=value`, abbreviation: `--packages-skip b`, `--packages-skip-r ^b$`, `--packages-skip-re=^b$` and `--packages-ignore- ^b$` each leave b out; `--packages-ig`, `--packages-s` and `--packages-skip-` exit 2 as ambiguous. Agrees with the plan's classification through `_could_be`.
+- Repeats: `--packages-skip a --packages-skip d` built and installed a, b, c, leaving out only d; `--packages-skip a b --packages-skip c` listed a, b, d. Last occurrence wins, confirmed; distinct dests (skip, skip-regex, ignore, ignore-regex) combine, and an abbreviation and the full name share one dest (`--packages-skip-regex ^d$ --packages-skip-r ^a$` left out only a), so writing names in full before taking the last is right.
+- `--packages-skip=a b`: colcon exits 2 ("unrecognized arguments: b"); the layer fails, nothing is recorded. Fine.
+- Beside `--packages-select`, and beside `--packages-skip-build-finished` (also as `--packages-skip-bu`): both act; the plan's handling matches.
+- Dependents: `--packages-skip b` and `--packages-ignore b` on a fresh layer: c fails in `find_package(b)`, exit 1, not built. On a layer whose `install/` already held b: exit 0, c built against the old b, and `install/` still held a, b, c, d. The plan's words (the list is what the last run left out, not what `install/` holds; no claim of checking dependents) are true.
+
+### Findings
+
+1. **[Issue alignment / record]** (needs-work) — The four options take zero or more values (`nargs='*'`): `--packages-skip` alone skips nothing, and `--packages-skip b --packages-skip` skips nothing either (real `colcon build` installed a, b, c, d). The plan reads values "up to the next argument starting with `-`" and keeps the last occurrence, which gives `{--packages-skip: []}`; step 3 writes `without:` whenever the mapping is not empty, and `read_built` then refuses a list that is empty, so the next `build` of the distro stops with "repair or remove it", and removing the file loses every layer's record. If instead empty occurrences are dropped before the last is taken, the record says `[b]` when colcon left out nothing. Resolution: say in step 2 that the last occurrence is taken first and an option whose last occurrence has no values is not in the list (nothing left out), and add stub tests for `--packages-skip` alone (recorded built with no `without`) and `--packages-skip b --packages-skip` (no `without`).
+
+### Notes for the implementer
+
+1. A skip set in a colcon defaults file or a mixin is not seen and not in `without`. design.md's paragraph on the field says it holds the left-out options given after `--`; the defaults bullet, the `colcon_defaults.yaml` bullet and `_defaults_note` ("package selection ... is recorded built as a whole") are reworded so they still cover a skip set there.
+2. The report already has "built without sourcing <layer> (failed), so not used: ..."; a new line beginning "built without: ..." reads close to it. A distinct wording ("built leaving out:") avoids a reader, or a test matching a prefix, confusing the two.
+3. `-1` as a regex value: argparse takes it as a value (colcon has no negative-number options), while the plan's "starts with `-`" rule ends the list before it. Harmless with finding 1 fixed (the option drops out of the record); worth one sentence or leaving the regex rule as colcon's.
+4. Say whether "built without:" is printed for a layer built with `--keep-going` but not used; it should be, since its record holds the list.
+5. design.md is also being edited for issue 500 in other sections ("sync", "the system directory"); expect a textual merge, not a conflict in substance.
+6. The older-tool refusal is acceptable for an unreleased command, and design.md stating it is enough; `format` 1 is right since the new tool still reads every record it read before.
+
+### Summary
+
+The classification, the record field, the changed-list rule and the document changes are right and match real colcon. One gap would write a record the tool then refuses (or a false list): an option given with no values. One sentence in step 2 and two stub tests close it.
+
+### Recommended Actions
+
+- [ ] State in step 2 that the last occurrence is taken first and an option whose last occurrence has no values is left out of `without`; add stub tests for `--packages-skip` alone and `--packages-skip b --packages-skip`.
