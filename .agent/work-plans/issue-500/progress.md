@@ -1315,3 +1315,61 @@ Every finding was reproduced first: the reviewer's `probe2.py` (moved tag, local
 - A repo the manifest moves to another layer is not moved: the `mv` command is printed (exit 1, optional skipped); once moved by hand, the record names the new layer whatever happens next. Per distro: a distro that does not resolve, whose resolved files cannot be written, or whose lock a build holds, is reported and the others go on.
 - Left for part 3: the manifest's own clone and `local_manifest` (step 1), arguments after `--`. Part 4: the rebase of unpushed commits, with its three findings as the test list.
 - Open on purpose: a repo left alone while the manifest names another version exits 0 (`status`, issue 502); the hand-set-origin line prints every run; a submodule left behind by `sync` stops the next pointer move until a person updates it; a shallow clone grows by the history of fetched tags; when origin's default branch changes, a manifest with no version keeps the old branch until `git remote set-head origin --auto`, after which the repo reads as moved by a person; urls in vcs clone output are masked by the same report path, but urls in manifest errors (`show`, `resolve`, refusals) are not this part's.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 16:39 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a52816d3cdcc13103, resume 1 of 3)
+
+**Branch**: feature/issue-500 at `36c5febb`
+**Base**: origin/main
+**Depth**: Deep (reason: whole branch diff, about 4,600 lines over 23 files; safety-critical git operations on a person's clones)
+**Must-fix**: 3 | **Suggestions**: 9
+**Round**: 2 | **Ship**: continue — round 2: 3 must-fix is high; another independent read warranted
+
+All six round-1 must-fix are fixed. I re-ran each reproduction at 36c5febb, and each is now safe:
+- **Submodule replaced by a file:** left alone, and `mine.txt` and the commit are kept. The subagent also covered a link and a directory, by fast-forward and by switch, with `.git` as a directory and as a file.
+- **Moved tag:** after `tag -d`, it is followed, then up to date.
+- **Local tag `dev`:** the branch pin is followed.
+- **Failing hook on the two-step move:** counted, exit 0.
+- **Layer record after a hand move:** recorded (subagent).
+- **Local-only commit pin:** left alone.
+
+Checks:
+- **Whole suite at 36c5febb:** 1331 passed in 345s.
+- **Submodule rule turned off in a copy:** 21 of 28 tests in `test_update_submodules.py` fail.
+- **Forbidden-commands scan:** passes in the suite.
+- **The three part-1 tests changed in 238134d9:** they still check the error text and the per-distro "reported above" line.
+
+The submodule rule held in every direction tried: removed, replaced by a file, a link or a directory, nested, never initialised, deinitialised, absorbed, a file or directory turned into a submodule, a pointer move with the submodule's HEAD on and off the recorded commit, and switches adding or dropping one. The deep snapshots also compared the objects reachable in each nested repo and in `.git/modules`; nothing was lost.
+
+Other cases that held:
+- The moved-tag follow never moves a clone the person moved elsewhere. A detached HEAD at the recorded commit cannot be told apart from where sync put it, and it carries no work.
+- `--no-overwrite-ignore` held on both steps and on the undo.
+- A commit only on a pull-request ref, only on a local tag, or only local is left alone.
+- With `fetch.recurseSubmodules=true`, the url probe did not fetch into a submodule (codex point 3, not reproduced).
+
+### Findings
+- [ ] (must-fix) A move to a branch the clone's `remote.origin.fetch` does not map is left half-switched. This is a `git clone --single-branch` or `--depth` clone with the pin changed main→dev. `git switch -c dev --track refs/remotes/origin/dev` writes dev's tree into the index and work tree, then dies with "cannot set up tracking information", and HEAD stays on main. The undo is not tried because it was the first step.
+  - Reproduced (`mine/probe5.py`, and the subagent's `adv2/c3b_detail.py`). Run 1: exit 1, "left the repo changed: HEAD was X (main), is X (main)". Afterwards main has `D .gitignore`, `A BRANCH` staged, so a `git commit -a` would commit dev's tree onto main. Run 2: exit 0, "has uncommitted changes (2 files); a sync was stopped while moving this repo", although nothing was stopped.
+  - Fix: use `--no-track` and set `branch.<n>.remote`/`merge` explicitly; or check the mapping first and leave the repo alone. Also put a failed first step back, and stop calling a failure a stop in the wording. — `update.py:786-794`, `update.py:842-877`
+- [ ] (must-fix) sync's fetch prunes a person's remote-tracking refs that are not branches. With an extra `+refs/pull/*/head:refs/remotes/origin/pr/*` refspec, `--prune` with sync's own refspec removed `refs/remotes/origin/pr/1`, which origin still has.
+  - Reproduced: `for-each-ref refs/remotes/origin/pr` held one ref before and was empty after. The subagent saw 3 objects become unreachable and a branch made from the PR now counted as not on origin.
+  - The design's sentence "removes those of branches origin no longer has" is false.
+  - Fix: prune only what sync's refspec brings, for example by listing `origin`'s heads and deleting `refs/remotes/origin/<b>` for each one gone; or drop `--prune`; or state the behaviour. — `update.py:668-678`, `docs/design.md` (sync, the fetch paragraph)
+- [ ] (must-fix) A password holding `'`, `"` or a space is printed in full. The `USERINFO` class stops at quotes and spaces, so `https://alice:s3cr'x@host/...` is shown whole (`mask_urls` checked directly, and the subagent saw it in the by-hand and repoint lines). The design's "A url's user name and password are never printed" is false for these urls. Fix: let the user info run to the last `@` before `/`, `?`, `#` or the end of the token, quotes included. — `update.py:152-161`
+- [ ] (suggestion) A person's own local tag that origin later also creates fails every fetch (exit 1) even when the manifest does not name it. The message says "was moved on origin" (false), and the advised `git tag -d` can orphan the person's commit when the tag is its only ref. Word it as "origin has a tag of the same name", and warn when the local tag is the only ref holding its commit. — `update.py:679-688`
+- [ ] (suggestion, usability) After the first fast-forward that moves a submodule's pointer, which sync never updates, every later move of that pointer is blocked until a person updates the submodule. A repo with submodules stops following at its second pointer move.
+  - The blocked message, "submodule sm is on X, not on Y, the commit recorded here, and the move changes that commit; not updated (a submodule has to be dealt with by hand, then sync again)", gives no command.
+  - For a submodule cloned by the person and not registered in `.git/config`, the earlier `git submodule update` hint does nothing.
+  - The design says the blocking (line 809). The README says only "one a person has moved", which does not cover a submodule sync left behind.
+  - Put `git -C <place> submodule update --init -- <path>` in the message, say "the commit the superproject's HEAD records", and add the case to the README. — `update.py:300-305`, `README.md:111-112`
+- [ ] (suggestion) A successful first step is not checked with `_arrived` before the second. A `post-checkout` hook that changes tracked files and exits 0 lets the fast-forward run on a dirty tree. It ends as an error, nothing is lost (codex). — `update.py:842-849`
+- [ ] (suggestion) The fetches run without the lock descriptor. A `sync` killed during a fetch frees the lock while git still writes refs (codex); the design's kill table covers the result. — `update.py:668-678`, `update.py:906`
+- [ ] (suggestion) A detached HEAD at the recorded commit of a recorded branch is treated as sync's own and moved on a pin change. Nothing is lost; the design states it (rule 11). Codex says to record attached or detached. — `update.py:765-766`
+- [ ] (suggestion) A commit pin beyond a shallow clone's history is reported as "version X is not on origin" (exit 1). That is true by design rule 8, but the message could name the shallow history. — `update.py:496-500`
+- [ ] (suggestion) The url-rule notes and the `left alone` lines are masked through `sync.py`. Messages raised as `ManifestError` from `present_repo` (the "may have been changed" path) and per-distro `Refusal`s are not. Not reached by a url in testing; worth one pass. — `sync.py:404-416`
+- [ ] (suggestion) A person switching branches between sync's HEAD read and the merge could have another branch fast-forwarded (codex). This is speculative, and the result is still a fast-forward of commits on origin. — `update.py:842`
+- [ ] (suggestion, repeated from round 1) The README conflict with `feature/issue-531` is still deferred to the host at merge. — `README.md:124-127`
