@@ -945,3 +945,12 @@ Open before the merge decision: no findings. Only Lint at the record-only head `
 
 ### False positives
 None (no hosted comments).
+
+## Checkpoint
+**When**: 2026-11-18 20:12 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner chose "Merge and carry on (Recommended)" in a dialog (2026-11-18) for pull request 512 (part 1: init and a first sync that clones what is missing): merge it, reinstall the tool on main, then start part 1B of the adapter (issue 503). The issue stays open: part 2 (sync against clones that exist) remains, with three questions held for the owner at its plan checkpoint, and three wording suggestions from the last review noted for it.
