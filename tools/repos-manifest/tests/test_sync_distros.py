@@ -132,8 +132,9 @@ def test_a_sync_whose_process_ended_while_its_git_runs_names_fuser(two, capsys):
     # A killed sync's git may still hold the lock; the file names only the sync, never a git.
     system, _, _ = two
     fd = hold_build_lock(system, "jazzy", holder="sync")
+    dead = dead_pid()
     try:
-        os.pwrite(fd, f"sync {dead_pid()}\n".encode(), 0)
+        os.pwrite(fd, f"sync {dead}\n".encode(), 0)
         capsys.readouterr()
         assert run(system, "sync", "--distro", "jazzy") == 1
     finally:
@@ -141,9 +142,13 @@ def test_a_sync_whose_process_ended_while_its_git_runs_names_fuser(two, capsys):
     out = capsys.readouterr().out
     lock = build_lock_file(system, "jazzy")
     assert (
-        f"a sync of distro jazzy is still running in this system; `fuser -v {lock}` names the"
-        " process that holds its lock; nothing was changed for it"
-    ) in out
+        f"ERROR: a sync of distro jazzy has ended (process {dead}), and a git it started, such"
+        " as a fetch, may still hold its lock: a fetch goes on after the sync that started it"
+        f" is killed; `fuser -v {lock}` names it; nothing was changed for it. The fetch ends on"
+        " its own, or, when it waits at a password prompt, only when it is killed (`kill <pid>`"
+        " with the pid `fuser` names); then run this again"
+    ) in out, out
+    assert "still running" not in out
 
 
 def test_init_takes_the_lock_for_its_first_sync(vcs, tmp_path, monkeypatch):
@@ -275,7 +280,7 @@ def test_a_kill_before_the_fetch_changes_nothing_and_the_next_sync_follows(two, 
     assert done.returncode == -signal.SIGKILL, done.stderr
     # The fetch the killed sync started (here the stub, which goes on for 5 s) holds the
     # distro's lock until it ends, as a git that changes the tree does.
-    with pytest.raises(Refusal, match="a sync of distro jazzy is still running"):
+    with pytest.raises(Refusal, match="a sync of distro jazzy has ended .* may still hold"):
         os.close(hold_build_lock(system, "jazzy", holder="sync"))
     assert snapshot_repo(clone) == before
     assert state_of(system, "jazzy") == recorded

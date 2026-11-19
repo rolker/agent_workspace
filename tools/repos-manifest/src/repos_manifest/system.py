@@ -506,6 +506,18 @@ def hold_build_lock(system: Path, distro: Optional[str], holder: str = "build") 
         else:
             who = f"; `fuser -v {path}` names the process that holds its lock"
         then = "nothing was run" if holder == "build" else "nothing was changed for it"
+        if held_by == "sync" and not tool_holds:
+            # The sync itself is gone, or cannot be checked: a git it started, a fetch that
+            # outlived a killed sync, holds the lock.
+            ended = "has ended" if tool_holds is False else "may have ended"
+            named = f" (process {tool})" if tool is not None else ""
+            raise Refusal(
+                f"a sync {of}{ended}{named}, and a git it started, such as a fetch, may still"
+                f" hold its lock: a fetch goes on after the sync that started it is killed;"
+                f" `fuser -v {path}` names it; {then}",
+                "The fetch ends on its own, or, when it waits at a password prompt, only when"
+                " it is killed (`kill <pid>` with the pid `fuser` names); then run this again",
+            ) from None
         raise Refusal(
             f"a {held_by} {of}is still running in this system{who}; {then}",
             f"It holds the lock on {path}. Wait for it to end, or stop it, then run this again",
