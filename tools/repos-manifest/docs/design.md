@@ -832,7 +832,9 @@ one trailing `/` and one trailing `.git` are taken off.
   never repointed.
 
 In the first and last case `U` is recorded when the repo's record is next written, which, for
-a repo that is recorded, is in the same run unless the fetch or the version lookup fails.
+a repo that is recorded, is in the same run unless the fetch or the version lookup fails. After
+a repoint `U` is recorded at once, before the fetch, so a fetch or a lookup that fails next does
+not leave the new url read as one a person set.
 
 A person who fetches over https and pushes over ssh sets `remote.origin.pushurl`, or
 `url.<base>.pushInsteadOf`, and keeps `origin`'s url the manifest's.

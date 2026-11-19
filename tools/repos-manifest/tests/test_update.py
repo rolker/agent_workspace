@@ -702,6 +702,22 @@ def test_a_url_changed_in_the_manifest_repoints_origin(system, capsys):
     assert "repointed" not in _sync(sys_dir, capsys)
 
 
+def test_a_repointed_url_is_recorded_when_the_version_then_fails(system, capsys):
+    sys_dir, manifest, remote, clone = system
+    copy = _bare_copy(remote, "a-copy.git")
+    _url(manifest, str(copy))
+    _pin(manifest, "nosuch")
+    out = _sync(sys_dir, capsys, 1)
+    assert f"src/a: origin repointed from {remote} to {copy}" in out
+    assert "ERROR: src/a: version nosuch is not on origin" in out
+    assert git("remote", "get-url", "origin", cwd=clone) == str(copy)
+    assert state_of(sys_dir)["a"]["url"] == str(copy)
+    _pin(manifest, "main")
+    copy2 = _bare_copy(remote, "a-copy2.git")
+    _url(manifest, str(copy2))
+    assert f"src/a: origin repointed from {copy} to {copy2}" in _sync(sys_dir, capsys)
+
+
 def test_a_url_changed_with_local_commits_not_on_it_leaves_origin(system, capsys):
     sys_dir, manifest, remote, clone = system
     moved = _bare_copy(remote, "a-moved.git")

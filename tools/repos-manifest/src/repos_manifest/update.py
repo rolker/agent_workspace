@@ -608,6 +608,10 @@ def update_repo(
         done = _repoint(git, origin, url)
         if done is not None:
             return done
+        # Recorded at once, so a fetch or version lookup that fails next does not leave the
+        # new url read as one a person set.
+        record = replace(record, url=url)
+        write(record)
         notes.append(f"origin repointed from {origin} to {url}")
     else:
         by_hand = (
