@@ -566,3 +566,25 @@ Each code fix has a test that fails with the fix reverted (2 reverted copies, bo
 - Tool suite: `REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest` — `1107 passed in 202.70s` (real colcon, none skipped)
 - After the suite: no `log/`, `build/` or `install/` directory in the worktree; `git status --porcelain` empty after the commits
 - No workspace script or adapter changed, so no `.agent/scripts/tests` suite applies; pre-commit (SKIP=validate-script-tests) on the changed files clean; the full pass was left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 12:10 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-501 at `6ce07fb1`
+**Base**: main
+**Depth**: Deep (reason: round 5 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 4
+**Round**: 5 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Scope: round 4's findings and the fix diff `7d8e5261..6ce07fb1` (e3c53245, 153db946). Cross-model: skipped (round-5 convergence check, per handoff). Run: tool suite `1107 passed in 219.22s` (`REPOS_MANIFEST_REQUIRE_COLCON=1`, real colcon); pre-commit (black, flake8, the rest) on build.py, test_build.py and design.md clean; a fresh Claude adversarial specialist held to the same scope (no must-fix); by hand with `/usr/bin/colcon` in a scratch system (base layer with x and y, y needing x; top with t needing y). Worktree clean after the suite.
+
+Round 4's six, re-checked: (1) gone: `git ls-files tools/repos-manifest/log` is empty and `git diff --stat origin/main...HEAD` lists only source, tests, the stub fixture, docs, the work plan, the CI workflow and the adapter. (2) true: after x's CMakeLists changed, `build _unnamed -- --packages-skip-build-finished` built nothing ("0 packages finished"), exit 0, and the layer was recorded built; after x failed and was fixed, the same option rebuilt x and skipped its dependent y. (3) true: after `-- --packages-sel t` (colcon exit 2), top lost its record; `-- --packages-select t` was refused as not built; a plain `build top` restored it. (4) true: `build -- --packages-select y` reports "rebuilt with selection: _unnamed, top", and the records are unchanged; test asserts it and that "  built:" is absent. (5) true: by hand the not-built kind is named "not built: top (recorded built, but .../install/setup.bash is missing)"; the test covers the changed kind alone and both kinds together. (6) the "new since" clause is gone; the sentence now there (the time says when the whole layer was last built without selection) holds, since a selection run gives back the record unchanged (seen by hand). The adversarial specialist confirmed each new assertion would fail with the fix reverted.
+
+### Findings
+- [ ] (suggestion) With both kinds in the selection refusal, the two steps name the higher layer first (`build top`, then `build mid`); followed in that order, top is built on mid's old output. One step naming all affected layers in manifest order would avoid it — `tools/repos-manifest/src/repos_manifest/build.py:500-517`
+- [ ] (suggestion) "built, but its repos differ from its record" reads wrongly when it names two or more layers — `tools/repos-manifest/src/repos_manifest/build.py:510`
+- [ ] (suggestion) The stop-signal line ("layers built in this run") and the line used when the record cannot be read still say "built" in a selection run — `tools/repos-manifest/src/repos_manifest/build.py:856,964`
+- [ ] (suggestion) The record's time "still says when the whole layer was last built without selection" is loose after a `--packages-skip-build-finished` run, which the next bullet says does not make the layer up to date; "last recorded built" would be exact — `tools/repos-manifest/docs/design.md:910-911`
