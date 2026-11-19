@@ -109,7 +109,10 @@ there yet. Both need `git`, and `vcs` from vcs2l or vcstool, on `PATH`.
 `build` builds one distro's layers in order with `colcon`, each on top of the ones below it,
 stops at the first layer that fails (`--keep-going` tries the later ones), and writes the one
 `setup.bash` to source. It keeps a record of what it built, one file per distro in
-`.repos-manifest/`, and trusts nothing else; a second `build` of the same distro while one
+`.repos-manifest/`, and trusts nothing else: a layer counts as built only while the built
+layers below it are the ones it was built on. It sees only the `colcon` arguments given after
+`--`, not package selection set in a file of `colcon` defaults or a mixin, and names such a
+file when one is there. A second `build` of the same distro while one
 (or the `colcon` it started) runs is refused, and so is a build of a layer with a repo
 missing from disk that is not optional; [docs/design.md](docs/design.md#build) says what it builds, what it
 refuses and what `setup.bash` sources. It needs `bash`, and `colcon` on `PATH` (empty and
