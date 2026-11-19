@@ -80,7 +80,9 @@ newest_branch() {  # <repo> <ref pattern>
 # fetch's last argument (its refspec); STUB_FETCH=fail fails every fetch
 # fast, STUB_FETCH=noop exits 0 having fetched nothing; STUB_LS_HANG,
 # STUB_LS_OK and STUB_LS_FAIL make `ls-remote` for that ref hang, say
-# found, or fail fast. STUB_RACE_BRANCH plays a second run for the same
+# found, or fail fast. STUB_PUSH=silent-fail makes every push fail with
+# nothing on stderr; STUB_FD_LOG records the file descriptors a push
+# starts with (from /proc, Linux). STUB_RACE_BRANCH plays a second run for the same
 # issue: at the first fetch or ls-remote (the origin lookup) it creates
 # that branch in STUB_RACE_REPO from main, with a worktree on it at
 # STUB_RACE_DEST.
@@ -104,6 +106,10 @@ if [ "\$sub" = fetch ]; then
         fail) echo "fatal: stub fetch failed" >&2; exit 128 ;;
         noop) exit 0 ;;
     esac
+elif [ "\$sub" = push ] && [ "\${STUB_PUSH:-}" = silent-fail ]; then
+    exit 1
+elif [ "\$sub" = push ] && [ -n "\${STUB_FD_LOG:-}" ]; then
+    ls /proc/\$\$/fd > "\$STUB_FD_LOG" 2>/dev/null
 elif [ "\$sub" = ls-remote ]; then
     [ "\$last" = "\${STUB_LS_HANG:-}" ] && exec sleep 30
     [ "\$last" = "\${STUB_LS_OK:-}" ] && exit 0
@@ -1110,6 +1116,355 @@ if [[ "$RC" -eq 0 && -d "$W10/a" && -d "$W10/b" ]] \
     pass "multi-repository root outside git, bare --issue: exit 0, the worktree made on feature/issue-62"
 else
     fail "multi-repository root outside git, bare --issue: rc=$RC, worktree [$(ls -A "$W10" 2>/dev/null | tr '\n' ' ')] out=${OUT:0:600}"
+fi
+
+# A gh stub that records each call in <log> and fails `issue view` (so
+# the title is the generic "Issue #<N>"). `pr list` finds no PR, `pr
+# create` prints a URL and saves its --body-file to <log>.body, and `pr
+# comment` records whether its --body-file can be read from where it runs.
+make_recording_gh() {  # <stubbin> <log>
+    cat > "$1/gh" <<GHREC_EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$2"
+case "\$1 \$2" in
+    "pr list") exit 0 ;;
+    "pr create")
+        while [ \$# -gt 0 ]; do
+            [ "\$1" = --body-file ] && cp "\$2" "$2.body"
+            shift
+        done
+        echo "https://github.com/o/r/pull/1"; exit 0 ;;
+    "pr comment")
+        while [ \$# -gt 0 ]; do
+            if [ "\$1" = --body-file ]; then
+                if [ -r "\$2" ]; then echo "comment-file readable" >> "$2"; else echo "comment-file missing: \$2" >> "$2"; fi
+            fi
+            shift
+        done
+        exit 0 ;;
+esac
+exit 1
+GHREC_EOF
+    chmod +x "$1/gh"
+}
+
+# Issue 516: with --plan-file, a refused push skips the draft PR and is
+# non-fatal: the script exits 0, the worktree exists, and the warning
+# prints lines to push and open the PR by hand. The origin's pre-receive
+# hook is written only after the set-up push (it would refuse that too)
+# and made executable (git skips a hook that is not). The worktree's
+# directory name takes the repository slug detected from the origin's
+# name (origin11 -> issue-origin11-71).
+make_refusing_origin() {  # <repo> <bare> [<branch> pushed before the hook]
+    local repo="$1" bare="$2"
+    gitq init -q --bare -b main "$bare"
+    gitq -C "$repo" remote add origin "$bare"
+    gitq -C "$repo" push -q origin main ${3:+"$3"}
+    gitq -C "$repo" remote set-head origin main
+    printf '#!/bin/sh\necho refused-by-test >&2\nexit 1\n' > "$bare/hooks/pre-receive"
+    chmod +x "$bare/hooks/pre-receive"
+}
+SB11="$SANDBOX/ws11"
+make_ws_repo "$SB11"
+make_refusing_origin "$SB11" "$SANDBOX/origin11.git"
+PLAN11="$SANDBOX/plan11.md"
+printf '# Plan\n' > "$PLAN11"
+GH_LOG11="$SANDBOX/gh11.log"
+make_recording_gh "$SB11/stubbin" "$GH_LOG11"
+OUT="$(cd "$SB11" && PATH="$SB11/stubbin:$PATH" "$SB11/.agent/scripts/worktree_create.sh" \
+    --issue 71 --type workspace --plan-file "$PLAN11" 2>&1)"
+RC=$?
+W11="$SB11/worktrees/workspace/issue-origin11-71"
+if [[ "$RC" -eq 0 && -d "$W11" \
+      && "$(git -C "$W11" branch --show-current 2>/dev/null)" == feature/issue-71 ]]; then
+    pass "refused push with --plan-file: exit 0, the worktree made on feature/issue-71"
+else
+    fail "refused push with --plan-file: rc=$RC, branch [$(git -C "$W11" branch --show-current 2>/dev/null)] out=${OUT:0:800}"
+fi
+# The hint's --body is the draft PR's body, built once (review suggestion
+# 6): the Summary heading and the title, then Closes.
+BODY11="$(printf '%q' $'## Summary\n\nIssue #71\n\nCloses #71')"
+if [[ "$OUT" == *"Push failed"* \
+      && "$OUT" == *"cd $(printf '%q' "$W11")"* \
+      && "$OUT" == *"git push -u origin feature/issue-71"* \
+      && "$OUT" == *"$SB11/.agent/scripts/gh_create_pr.sh --draft --title "*" --body $BODY11"* \
+      && "$OUT" == *"set_git_identity_env.sh"* \
+      && "$OUT" == *"The plan was not posted"* \
+      && "$OUT" == *"gh pr comment feature/issue-71 --body-file $(printf '%q' "$PLAN11")"* \
+      && "$OUT" == *"To enter this worktree"* ]]; then
+    pass "refused push with --plan-file: the warning prints the cd, push, gh_create_pr.sh and plan lines, then the next steps"
+else
+    fail "refused push with --plan-file: hint lines missing: out=${OUT:0:1500}"
+fi
+# Review suggestion 1: the warning shows git's own error, indented (the
+# remote's lines without git's trailing padding), and
+# does not claim the branch is absent from origin (a rejection can come
+# from a branch origin already has).
+if [[ "$OUT" == *"git push -u origin feature/issue-71 said:"* \
+      && "$OUT" == *$'\n'"       "*"pre-receive hook declined"* \
+      && "$OUT" == *$'\n'"       remote: refused-by-test"$'\n'* \
+      && "$OUT" != *"is not on origin"* ]]; then
+    pass "refused push: the warning shows git's error, indented, and no claim about origin"
+else
+    fail "refused push: git's error not shown, or the origin claim is there: out=${OUT:0:1500}"
+fi
+# Review suggestion 5: a PR the branch already has (a re-run) makes the
+# create line fail, so the hint says when to skip it.
+if [[ "$OUT" == *"Skip the gh_create_pr.sh line if \`gh pr list --head feature/issue-71\` already shows a pull request."* ]]; then
+    pass "refused push: the hint says to skip the create line when gh pr list shows a PR"
+else
+    fail "refused push: no skip line for an existing PR: out=${OUT:0:1500}"
+fi
+# Review suggestion 3: the title carries the [PLAN] prefix, and after the
+# refused push no PR is created and no plan is posted.
+if [[ "$OUT" == *"gh_create_pr.sh --draft --title $(printf '%q' '[PLAN] Issue #71') --body"* ]] \
+   && [[ -s "$GH_LOG11" ]] && ! grep -qE '^pr (create|comment|list)' "$GH_LOG11"; then
+    pass "refused push: the hint's title is [PLAN] Issue #71, and gh ran no pr create, list or comment"
+else
+    fail "refused push: title or gh calls wrong: gh calls=[$(tr '\n' ';' < "$GH_LOG11" 2>/dev/null)] out=${OUT:0:1500}"
+fi
+# The same refused push through --print-path-only (the start-task call):
+# stdout is the worktree path alone, the exit status is 0, and the warning
+# and the hint went to stderr.
+SB12="$SANDBOX/ws12"
+make_ws_repo "$SB12"
+make_refusing_origin "$SB12" "$SANDBOX/origin12.git"
+ERR12="$SANDBOX/stderr12"
+STDOUT12="$(cd "$SB12" && PATH="$SB12/stubbin:$PATH" "$SB12/.agent/scripts/worktree_create.sh" \
+    --issue 72 --type workspace --plan-file "$PLAN11" --print-path-only 2>"$ERR12")"
+RC=$?
+STDERR12="$(cat "$ERR12" 2>/dev/null)"
+if [[ "$RC" -eq 0 && "$STDOUT12" == "$SB12/worktrees/workspace/issue-origin12-72" \
+      && "$STDERR12" == *"Push failed — skipping draft PR (non-fatal)"* \
+      && "$STDERR12" == *"git push -u origin feature/issue-72"* \
+      && "$STDERR12" == *"gh_create_pr.sh --draft"* ]]; then
+    pass "refused push with --plan-file --print-path-only: exit 0, stdout is the worktree path, the warning on stderr"
+else
+    fail "refused push with --plan-file --print-path-only: rc=$RC stdout=[$STDOUT12] stderr=[${STDERR12:0:1200}]"
+fi
+
+# Issue 516 (review suggestion 2): a relative --plan-file is relative to
+# the directory the script is run from (here the workspace root); on the
+# success path the plan comment runs after a cd into the worktree, so the
+# path must have been made absolute by then.
+SB13="$SANDBOX/ws13"
+make_ws_repo "$SB13"
+gitq init -q --bare -b main "$SANDBOX/origin13.git"
+gitq -C "$SB13" remote add origin "$SANDBOX/origin13.git"
+gitq -C "$SB13" push -q origin main
+gitq -C "$SB13" remote set-head origin main
+GH_LOG13="$SANDBOX/gh13.log"
+make_recording_gh "$SB13/stubbin" "$GH_LOG13"
+mkdir -p "$SB13/notes"
+printf '# Plan 73\n' > "$SB13/notes/plan 73.md"
+OUT="$(cd "$SB13" && PATH="$SB13/stubbin:$PATH" "$SB13/.agent/scripts/worktree_create.sh" \
+    --issue 73 --type workspace --plan-file "notes/plan 73.md" 2>&1)"
+RC=$?
+if [[ "$RC" -eq 0 && "$OUT" == *"Draft PR created"* && "$OUT" == *"Plan posted as PR comment"* ]] \
+   && grep -qx 'comment-file readable' "$GH_LOG13" 2>/dev/null \
+   && grep -qxF "pr comment https://github.com/o/r/pull/1 --body-file $SB13/notes/plan 73.md" "$GH_LOG13"; then
+    pass "relative --plan-file, push succeeds: the plan comment reads the plan by its absolute path"
+else
+    fail "relative --plan-file, push succeeds: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG13" 2>/dev/null)] out=${OUT:0:1200}"
+fi
+# Git's own stdout on a successful push is shown, as it was before issue
+# 516 (the push's stderr is kept only for the failure warning).
+if [[ "$OUT" == *"branch 'feature/issue-73' set up to track 'origin/feature/issue-73'."* ]]; then
+    pass "push succeeds: git's set-up-to-track line is shown"
+else
+    fail "push succeeds: git's set-up-to-track line is missing: out=${OUT:0:1200}"
+fi
+# The body file the draft PR got is that same body plus the signature.
+if [[ "$(cat "$GH_LOG13.body" 2>/dev/null)" == $'## Summary\n\nIssue #73\n\nCloses #73\n\n---\n**Authored-By**: `'*$'`\n**Model**: `'*'`' ]]; then
+    pass "push succeeds: the draft PR's body file is the Summary, the title, Closes and the signature"
+else
+    fail "push succeeds: the draft PR's body file is wrong: [$(cat "$GH_LOG13.body" 2>/dev/null || echo 'not saved')]"
+fi
+
+# Integrated review, PR 526: a push that fails with nothing on stderr
+# gets a warning without a dangling "said:".
+SB16="$SANDBOX/ws16"
+make_ws_repo "$SB16"
+gitq init -q --bare -b main "$SANDBOX/origin16.git"
+gitq -C "$SB16" remote add origin "$SANDBOX/origin16.git"
+gitq -C "$SB16" push -q origin main
+gitq -C "$SB16" remote set-head origin main
+OUT="$(cd "$SB16" && env PATH="$GITSTUB:$SB16/stubbin:$PATH" STUB_PUSH=silent-fail "$SB16/.agent/scripts/worktree_create.sh" \
+    --issue 76 --type workspace --plan-file "$PLAN11" 2>&1)"
+RC=$?
+if [[ "$RC" -eq 0 && "$OUT" == *"  ⚠️  Push failed — skipping draft PR (non-fatal)."$'\n'"     Once the cause is fixed"* \
+      && "$OUT" != *"said:"* ]]; then
+    pass "silent push failure: the warning says the push failed, with no dangling said:"
+else
+    fail "silent push failure: rc=$RC out=${OUT:0:1200}"
+fi
+
+# PR 526 review: a successful push under --print-path-only (the
+# start-task call): stdout is exactly the worktree path and git's tracking
+# line went to stderr. The push does not inherit fd 3 (the caller's
+# stdout, which --print-path-only keeps for the path), so an ssh it starts
+# and leaves running cannot hold a caller's $(...) open.
+ERR13="$SANDBOX/stderr13"
+FDLOG13="$SANDBOX/fds13"
+STDOUT13="$(cd "$SB13" && env PATH="$GITSTUB:$SB13/stubbin:$PATH" STUB_FD_LOG="$FDLOG13" \
+    "$SB13/.agent/scripts/worktree_create.sh" --issue 75 --type workspace --plan-file "$PLAN11" \
+    --print-path-only 2>"$ERR13")"
+RC=$?
+if [[ "$RC" -eq 0 && "$STDOUT13" == "$SB13/worktrees/workspace/issue-origin13-75" ]] \
+   && grep -qxF "branch 'feature/issue-75' set up to track 'origin/feature/issue-75'." "$ERR13"; then
+    pass "push succeeds under --print-path-only: stdout is the worktree path, git's tracking line on stderr"
+else
+    fail "push succeeds under --print-path-only: rc=$RC stdout=[$STDOUT13] stderr=[$(head -c 1200 "$ERR13")]"
+fi
+if [[ ! -d /proc/self/fd ]]; then
+    echo "  SKIP: push file descriptors (no /proc)"
+elif [[ -s "$FDLOG13" ]] && ! grep -qx 3 "$FDLOG13"; then
+    pass "push under --print-path-only: fd 3 is not passed to git push"
+else
+    fail "push under --print-path-only: git push started with fds [$(tr '\n' ' ' < "$FDLOG13" 2>/dev/null)]"
+fi
+
+# PR 526 review: a remote hook that prints terminal escape sequences and
+# a carriage return; the warning keeps the text without the control
+# characters, and colour sequences are removed whole (no "[31m" left).
+SB17="$SANDBOX/ws17"
+make_ws_repo "$SB17"
+make_refusing_origin "$SB17" "$SANDBOX/origin17.git"
+printf '#!/bin/sh\nprintf "\\033[31mred\\033[0m alert\\r\\n" >&2\nexit 1\n' > "$SANDBOX/origin17.git/hooks/pre-receive"
+OUT="$(cd "$SB17" && PATH="$SB17/stubbin:$PATH" "$SB17/.agent/scripts/worktree_create.sh" \
+    --issue 78 --type workspace --plan-file "$PLAN11" 2>&1)"
+RC=$?
+WARN17="$(awk '/Push failed/{f=1} /Once the cause is fixed/{f=0} f' <<< "$OUT")"
+if [[ "$RC" -eq 0 && "$WARN17" == *$'\n'"       remote: red alert"$'\n'* && "$WARN17" != *"[31m"* && "$WARN17" != *"[0m"* \
+      && "$WARN17" != *$'\e'* && "$WARN17" != *$'\r'* ]]; then
+    pass "remote hook output with control characters: shown without them, colour codes removed whole"
+else
+    fail "remote hook output with control characters: rc=$RC warning=[$(cat -v <<< "$WARN17")]"
+fi
+
+# PR 526 review: a remote hook that prints an invalid UTF-8 byte. GNU sed
+# passes it, so a sed double plays BSD sed on the warning's last filter
+# (the indent): STUB_SED=locale fails on the byte unless LC_ALL=C, as BSD
+# sed does under a UTF-8 locale; STUB_SED=always fails on it in any
+# locale. Either way the script reaches the hint and exits 0.
+REAL_SED="$(command -v sed)"
+SEDSTUB="$SANDBOX/sedstub"
+mkdir -p "$SEDSTUB"
+cat > "$SEDSTUB/sed" <<SED_EOF
+#!/usr/bin/env bash
+if [[ "\$*" == *'s/^/       /'* ]]; then
+    input="\$(cat; echo x)"; input="\${input%x}"
+    if printf '%s' "\$input" | LC_ALL=C grep -q \$'\\377' \
+       && { [ "\${STUB_SED:-}" = always ] || [ "\${LC_ALL:-}" != C ]; }; then
+        echo "sed: RE error: illegal byte sequence" >&2; exit 1
+    fi
+    printf '%s' "\$input" | exec "$REAL_SED" "\$@"
+fi
+exec "$REAL_SED" "\$@"
+SED_EOF
+chmod +x "$SEDSTUB/sed"
+SB18="$SANDBOX/ws18"
+make_ws_repo "$SB18"
+make_refusing_origin "$SB18" "$SANDBOX/origin18.git"
+printf '#!/bin/sh\nprintf "bad \\377 byte\\n" >&2\nexit 1\n' > "$SANDBOX/origin18.git/hooks/pre-receive"
+n=0
+for mode in locale always; do
+    n=$((n + 1))
+    OUT="$(cd "$SB18" && env PATH="$SEDSTUB:$SB18/stubbin:$PATH" STUB_SED="$mode" LANG=C.UTF-8 \
+        "$SB18/.agent/scripts/worktree_create.sh" --issue "8$n" --type workspace --plan-file "$PLAN11" 2>&1)"
+    RC=$?
+    if [[ "$RC" -eq 0 && "$OUT" == *"Push failed"* && "$OUT" == *"gh_create_pr.sh --draft"* \
+          && "$OUT" == *"To enter this worktree"* ]] \
+       && { [[ "$mode" = always ]] || [[ "$OUT" == *"remote: bad "$'\377'" byte"* ]]; }; then
+        pass "invalid UTF-8 byte from the remote, sed failing ($mode): the warning and hint print, exit 0"
+    else
+        fail "invalid UTF-8 byte from the remote, sed failing ($mode): rc=$RC out=$(cat -v <<< "${OUT:0:1200}")"
+    fi
+done
+
+# Integrated review, PR 526: a relative --plan-file given from a directory
+# other than the workspace root is relative to that directory (a project
+# session passes the path as typed): it is found, the PR is titled [PLAN],
+# and the plan comment gets the absolute path.
+CALLER13="$SB13/drafts"  # in the workspace: the user-tier guard refuses a folder outside it
+mkdir -p "$CALLER13/sub"
+printf '# Plan 74\n' > "$CALLER13/sub/plan 74.md"
+: > "$GH_LOG13"
+OUT="$(cd "$CALLER13" && PATH="$SB13/stubbin:$PATH" "$SB13/.agent/scripts/worktree_create.sh" \
+    --issue 74 --type workspace --plan-file "sub/plan 74.md" 2>&1)"
+RC=$?
+if [[ "$RC" -eq 0 && "$OUT" != *"Plan file not found"* && "$OUT" == *"Plan posted as PR comment"* ]] \
+   && grep -q '^pr create --draft --title \[PLAN\] Issue #74 --body-file ' "$GH_LOG13" \
+   && grep -qxF "pr comment https://github.com/o/r/pull/1 --body-file $CALLER13/sub/plan 74.md" "$GH_LOG13" \
+   && grep -qx 'comment-file readable' "$GH_LOG13"; then
+    pass "relative --plan-file from another directory: found there, PR titled [PLAN], comment given the absolute path"
+else
+    fail "relative --plan-file from another directory: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG13" 2>/dev/null)] out=${OUT:0:1200}"
+fi
+
+# Review suggestion 3: the hint's other branches. A sub-issue (its parent
+# branch on origin, pushed before the hook) with a relative plan path gets
+# --base and Part of, and the plan's absolute path; a skill worktree gets
+# the skill body.
+SB14="$SANDBOX/ws14"
+make_ws_repo "$SB14"
+gitq -C "$SB14" branch feature/issue-80 main
+make_refusing_origin "$SB14" "$SANDBOX/origin14.git" feature/issue-80
+GH_LOG14="$SANDBOX/gh14.log"
+make_recording_gh "$SB14/stubbin" "$GH_LOG14"
+mkdir -p "$SB14/notes"
+printf '# Plan 81\n' > "$SB14/notes/plan 81.md"
+OUT="$(cd "$SB14" && PATH="$SB14/stubbin:$PATH" "$SB14/.agent/scripts/worktree_create.sh" \
+    --issue 81 --type workspace --parent-issue 80 --plan-file "notes/plan 81.md" 2>&1)"
+RC=$?
+BODY14="$(printf '%q' $'## Summary\n\nIssue #81\n\nCloses #81\nPart of #80')"
+if [[ "$RC" -eq 0 \
+      && "$OUT" == *"gh_create_pr.sh --draft --base feature/issue-80 --title $(printf '%q' '[PLAN] Issue #81') --body $BODY14"* \
+      && "$OUT" == *"gh pr comment feature/issue-81 --body-file $(printf '%q' "$SB14/notes/plan 81.md")"* ]] \
+   && ! grep -qE '^pr (create|comment)' "$GH_LOG14"; then
+    pass "refused push, --parent-issue and relative plan: --base, Part of and the plan's absolute path"
+else
+    fail "refused push, --parent-issue and relative plan: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG14" 2>/dev/null)] out=${OUT:0:1500}"
+fi
+: > "$GH_LOG14"
+OUT="$(cd "$SB14" && PATH="$SB14/stubbin:$PATH" "$SB14/.agent/scripts/worktree_create.sh" \
+    --skill research --type workspace --plan-file "$PLAN11" 2>&1)"
+RC=$?
+BODY14S="$(printf '%q' $'## Summary\n\nSkill update: research\n\nAutomated update from the `research` skill.')"
+if [[ "$RC" -eq 0 \
+      && "$OUT" == *"git push -u origin skill/research-"* \
+      && "$OUT" == *"gh_create_pr.sh --draft --title $(printf '%q' '[PLAN] Skill update: research') --body $BODY14S"* \
+      && "$OUT" == *"gh pr comment skill/research-"*" --body-file $(printf '%q' "$PLAN11")"* ]] \
+   && ! grep -qE '^pr (create|comment)' "$GH_LOG14"; then
+    pass "refused push, --skill research: the skill title and body"
+else
+    fail "refused push, --skill research: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG14" 2>/dev/null)] out=${OUT:0:1500}"
+fi
+
+# Review suggestion 3: a single-repository project worktree gets -R on the
+# create, list and comment lines. The project's origin is a local bare repo
+# whose path holds github.com/acme/demo15.git, so the slug reads acme/demo15.
+SB15="$SANDBOX/ws15"
+make_ws_repo "$SB15"
+GH_LOG15="$SANDBOX/gh15.log"
+make_recording_gh "$SB15/stubbin" "$GH_LOG15"
+P15="$SANDBOX/proj15"
+gitq init -q -b main "$P15"
+gitq -C "$P15" commit -q --allow-empty -m "project init"
+mkdir -p "$SANDBOX/github.com/acme"
+make_refusing_origin "$P15" "$SANDBOX/github.com/acme/demo15.git"
+printf 'demo15 single_project %s\n' "$P15" >> "$SB15/.agent/projects.local"
+OUT="$(cd "$SB15" && PATH="$SB15/stubbin:$PATH" "$SB15/.agent/scripts/worktree_create.sh" \
+    --issue 91 --type project --project demo15 --plan-file "$PLAN11" 2>&1)"
+RC=$?
+if [[ "$RC" -eq 0 \
+      && "$OUT" == *"gh_create_pr.sh --draft -R acme/demo15 --title $(printf '%q' '[PLAN] Issue #91') --body "* \
+      && "$OUT" == *"\`gh pr list --head feature/issue-91 -R acme/demo15\`"* \
+      && "$OUT" == *"gh pr comment feature/issue-91 -R acme/demo15 --body-file $(printf '%q' "$PLAN11")"* ]] \
+   && ! grep -qE '^pr (create|comment)' "$GH_LOG15"; then
+    pass "refused push, single-repository project: -R on the create, list and comment lines"
+else
+    fail "refused push, single-repository project: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG15" 2>/dev/null)] out=${OUT:0:1500}"
 fi
 
 echo
