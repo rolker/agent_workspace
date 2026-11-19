@@ -466,6 +466,35 @@ def find_version(git: Git, version: Optional[str]) -> Tuple[Optional[Version], O
     return None, f"version {version} is not on origin", False
 
 
+def commit_on_origin(git: Git, commit: str) -> Tuple[Optional[bool], str]:
+    """Whether `commit` is reachable, in the history the clone has, from a remote-tracking
+    branch of origin or from a tag that origin has (the same object); with git's message when
+    that cannot be told."""
+    status, printed, error = git.run(
+        "for-each-ref", "--contains", commit, "--format=%(refname) %(objectname)",
+        "refs/remotes/origin/", "refs/tags/",
+    )  # fmt: skip
+    if status != 0:
+        return None, f"`git for-each-ref --contains` exited {status}:\n{error.rstrip()}"
+    tags = {}
+    for line in printed.splitlines():
+        ref, _, oid = line.partition(" ")
+        if ref.startswith("refs/remotes/origin/") and ref != "refs/remotes/origin/HEAD":
+            return True, ""
+        if ref.startswith("refs/tags/"):
+            tags[ref] = oid
+    if not tags:
+        return False, ""
+    status, printed, error = git.run("ls-remote", "--tags", "origin", prompt=True)
+    if status != 0:
+        return None, f"`git ls-remote origin` exited {status}:\n{error.rstrip()}"
+    for line in printed.splitlines():
+        oid, _, ref = line.partition("\t")
+        if tags.get(ref) == oid:
+            return True, ""
+    return False, ""
+
+
 def ancestor(git: Git, older: str, newer: str) -> bool:
     return git.ok("merge-base", "--is-ancestor", older, newer)
 
@@ -610,6 +639,15 @@ def update_repo(
             problem += f"; origin was set by hand: {by_hand}"
         return Done(FAILED, problem, notes, fetch=fetch)
     wanted = repo.version if repo.version is not None else f"origin's default branch {found.name}"
+    if found.kind == COMMIT:
+        on_origin, said_by_git = commit_on_origin(git, found.target)
+        if on_origin is None:
+            return Done(FAILED, said_by_git, notes, fetch=True)
+        if not on_origin:
+            return turn.left(
+                f"version {repo.version} is a commit here that no branch of origin, and no tag"
+                " origin has, holds; not followed"
+            )
 
     symbolic = git.out("symbolic-ref", "-q", "HEAD")
     branch = None

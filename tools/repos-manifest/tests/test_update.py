@@ -167,6 +167,39 @@ def test_changed_pin_to_a_commit_detaches_at_it(system, capsys):
     assert state_of(sys_dir)["a"]["version"] == commit[:10]
 
 
+@pytest.mark.parametrize("where", ["a local branch", "a local tag", "a detached HEAD"])
+def test_a_pin_to_a_commit_origin_does_not_hold_is_not_followed(system, capsys, where):
+    sys_dir, manifest, _, clone = system
+    git("switch", "-q", "-c", "mine", cwd=clone)
+    commit = commit_file(clone, "mine.txt", "mine\n", "a person's commit")
+    git("switch", "-q", "main", cwd=clone)
+    if where == "a local tag":
+        git("tag", "mine-tag", "mine", cwd=clone)
+        git("update-ref", "-d", "refs/heads/mine", cwd=clone)
+    elif where == "a detached HEAD":
+        git("update-ref", "-d", "refs/heads/mine", cwd=clone)
+    _pin(manifest, commit)
+    _left_alone(
+        sys_dir,
+        clone,
+        capsys,
+        f"src/a: left alone: version {commit} is a commit here that no branch of origin, and no"
+        " tag origin has, holds; not followed",
+    )
+
+
+def test_a_pin_to_a_commit_held_only_by_a_tag_of_origin_is_followed(system, capsys):
+    sys_dir, manifest, remote, clone = system
+    git("switch", "-q", "-c", "release", cwd=remote)
+    commit = commit_file(remote, "rel.txt", "r\n", "release only")
+    git("tag", "r1", cwd=remote)
+    git("switch", "-q", "main", cwd=remote)
+    git("update-ref", "-d", "refs/heads/release", cwd=remote)
+    _pin(manifest, commit)
+    assert f"moved from main to {commit}" in _sync(sys_dir, capsys)
+    assert head(clone) == commit and branch(clone) == "HEAD"
+
+
 def test_a_branch_left_behind_by_a_move_keeps_its_commits(system, capsys):
     sys_dir, manifest, _, clone = system
     main = head(clone)

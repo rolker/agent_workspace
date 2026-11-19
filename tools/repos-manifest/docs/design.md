@@ -729,8 +729,12 @@ and `FETCH_HEAD`. No local branch, `HEAD`, index or work-tree file changes befor
    `origin` has (a local tag of the same name that `origin` lacks does not count, and nor does
    a local branch, whatever the version), or a commit
    named by 7 to 40 hex digits that is there; with no version, `origin`'s default branch. A
-   version that is none of these, or both a branch and a tag on `origin`, is an error that
-   another sync will not change; when `origin` was set by hand the message says so and gives the command
+   commit counts only when it is reachable, in the history the clone has, from a branch of
+   `origin` or from a tag `origin` has; one that is in the clone and nowhere on `origin` (a
+   person's own commit) is not followed, and the repo is left as it is and reported. In a
+   shallow clone a commit beyond the shallow history is not there, and so is not on `origin`
+   here. A version that is none of these, or both a branch and a tag on `origin`, is an error
+   that another sync will not change; when `origin` was set by hand the message says so and gives the command
    that sets it to the manifest's url.
 9. On a branch with commits not on `origin`: left as it is (above). The count is of the
    commits reachable from `HEAD` and from no remote-tracking ref of `origin`. After an upstream
