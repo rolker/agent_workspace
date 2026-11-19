@@ -1041,10 +1041,12 @@ the manifest. It stays with `colcon`:
   the message shows it with such characters escaped. The list says what the
   last run gave `colcon`, not what `install/` holds: `colcon` does not clean `install/`, so a package
   an earlier build installed stays there when a later run leaves it out (`--packages-skip b`,
-  then `--packages-skip d`, left a, b, c and d installed). A rebuild with another list is a
-  rebuild in place on the same chain, so the layers above stay in the built run: a package newly
-  left out stays installed from the earlier build, and one no longer left out was missing when
-  they were built, so they did not use it; the report names the change. `build` does not check
+  then `--packages-skip d`, left a, b, c and d installed). The layers above stay in the built
+  run when a layer is rebuilt with another list, because that is an ordinary rebuild of the layer
+  in place on the same chain. A package now left out may still be in the layer's `install/` from
+  an earlier build, and one no longer left out was not built by the run that skipped it but may
+  also have been there from before; so the layers above may or may not have used it, and `build`
+  does not check. The report names the change. `build` does not check
   what depends on a package left out: `colcon` builds a dependent anyway, and it fails only in
   its own build step where it needs the package (a CMake `find_package`, say), so the layer is
   then not built, as without a list. With `--packages-skip-build-finished` beside the list the
