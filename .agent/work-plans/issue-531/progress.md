@@ -174,3 +174,55 @@ The host takes the Plan Review's finding and six notes as written. An option's l
 **Plan**: `.agent/work-plans/issue-531/plan.md` at `831c2a10`
 
 Revision after the plan review: the last occurrence of an option is taken first and one with no values is not recorded; the report line reads "built leaving out:" (also for a layer built under --keep-going but not used); design.md and the defaults-file texts say the field holds the options given after `--`; stub tests for the no-value shapes and a write-then-read round trip.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-19 15:04 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #531 — repos-manifest build: --packages-skip on a layer's first build is refused
+**Plan**: `.agent/work-plans/issue-531/plan.md` at `831c2a10`
+**Branch**: `feature/issue-531`
+
+Second review, of the revision after the Plan Review at `e9c7c366` and the Checkpoint that followed it. Read: the diff `e9c7c366..831c2a10` of the plan, then the revised plan once whole.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged: one PR; `_defaults_note` added to the `build.py` row. |
+| Issue alignment | Good | The earlier finding is resolved (below). Serves: "Trust, control and information" and "Easy to use" (workspace goals in `README.md`), under `tools/repos-manifest/docs/design.md#build`. |
+| File targeting | Good | Same files; `sync.py`, `state.yaml` and issue 500's parts stay out. |
+| Consequences | Good | The defaults-file and mixin texts are now in step 7. |
+| Principle alignment | Good | Each rule has a test; the round trip covers the write and read sides together. |
+| ADR compliance | Good | ADR-0022, ADR-0017, ADR-0013 as before. |
+| ROS conventions | N/A | Workspace tool. |
+
+Earlier finding and notes, checked against `831c2a10`:
+- Finding 1 (empty value list): resolved. Step 2 takes the last occurrence of each option first and leaves out an option whose last occurrence has no values; step 3 says `left_out` never returns an option with no values, so a written `without` always passes `read_built`, with a write-read-build test. Step 6 has stub tests for `--packages-skip` alone and `--packages-skip b --packages-skip` (recorded built, no `without`, no line).
+- Note 1 (defaults file, mixin): resolved. Step 7 says the field holds the options given after `--`, and the colcon-defaults bullet, the `colcon_defaults.yaml` bullet and `_defaults_note` are reworded to say a skip set there is not seen nor recorded.
+- Note 2 (wording): resolved. Every quotation of the line reads "built leaving out:" (steps 5, 6 and 7); "built without" now appears only where the plan names the existing "built without sourcing" line.
+- Note 3 (`-1` as a value): addressed in step 2 (see note 1 below).
+- Note 4 (`--keep-going`): resolved in step 5, with a test in step 6.
+- Note 5 (merge with issue 500): unchanged, nothing to do in the plan.
+- Note 6 (older tool, `format`): resolved; step 7 has design.md say an older tool refuses a record with the field, and `format` stays 1.
+
+No inconsistency introduced: a list dropped by a trailing empty occurrence on a layer that had one is reported "skip list changed: ... now none", as step 5 already says for a dropped list; a selection run still writes `had` unchanged.
+
+### Findings
+
+None blocking.
+
+### Notes for the implementer
+
+1. Step 2's aside "colcon then rejects or reads it its own way" is loose: argparse takes a value like `-1` (it looks like a negative number) and keeps reading, so `--packages-skip-regex -1 x` leaves out what `x` matches while the plan's rule records nothing for that option. A regex starting with `-1` cannot match a package name, which starts with a letter, so only that contrived order loses a value. Either stop at an argument starting with `-` that is not a negative number, as argparse does, or keep the rule and say this case in the design.md bullet; one sentence either way.
+2. Step 6's `test_system.py` line "an empty list is not written" now overlaps the round-trip test in step 3; one test of each is enough.
+
+### Summary
+
+The revision closes the one gap and the six notes as the Checkpoint decided, without making anything else inconsistent. Ready for implementation.
+
+### Recommended Actions
+
+- [ ] None before implementation; the notes are for the implementer.
