@@ -623,8 +623,17 @@ def update_repo(
     if changes:
         return turn.left(f"has uncommitted changes ({changes} files){also}")
 
+    # The refspec is sync's own, and --refmap= keeps git from also applying the person's
+    # remote.origin.fetch: nothing but origin's remote-tracking refs and new tags is written.
     status, printed, error = git.run(
-        "fetch", "--prune", "--no-prune-tags", "--tags", "origin", prompt=True
+        "fetch",
+        "--prune",
+        "--no-prune-tags",
+        "--tags",
+        "--refmap=",
+        "origin",
+        "+refs/heads/*:refs/remotes/origin/*",
+        prompt=True,
     )
     if status != 0:
         detail = f"`git fetch origin` exited {status}:\n{(printed + error).rstrip()}"

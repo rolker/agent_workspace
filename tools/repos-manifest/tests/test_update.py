@@ -584,6 +584,24 @@ def test_a_repo_moved_off_the_tag_by_a_person_is_not_taken_for_a_moved_tag(syste
     _left_alone(sys_dir, clone, capsys, "moved by a person: it is on a detached HEAD at")
 
 
+def test_the_fetch_never_writes_local_branches_whatever_remote_origin_fetch_says(system, capsys):
+    sys_dir, manifest, remote, clone = system
+    _pin(manifest, "v1")
+    _sync(sys_dir, capsys)
+    git("branch", "-q", "dev", "origin/dev", cwd=clone)
+    git("worktree", "add", "-q", "--detach", str(clone.parent / "wt-dev"), "dev", cwd=clone)
+    mine = commit_file(clone.parent / "wt-dev", "mine.txt", "mine\n", "a person's commit")
+    git("worktree", "remove", str(clone.parent / "wt-dev"), cwd=clone)
+    git("branch", "-q", "-f", "dev", mine, cwd=clone)
+    git("config", "remote.origin.fetch", "+refs/heads/*:refs/heads/*", cwd=clone)
+    push_commit(remote, "theirs", "t\n", "dev")
+    before = snapshot_repo(clone, fetched=True)
+    out = _sync(sys_dir, capsys)
+    assert "up to date (1)" in out, out
+    assert snapshot_repo(clone, fetched=True) == before
+    assert git("rev-parse", "dev", cwd=clone) == mine
+
+
 def test_a_local_only_tag_is_kept_by_the_fetch(system, capsys):
     sys_dir, _, remote, clone = system
     git("config", "fetch.pruneTags", "true", cwd=clone)
