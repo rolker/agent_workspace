@@ -1286,8 +1286,10 @@ elif [ -n "$PLAN_FILE" ]; then
             [ -n "$PARENT_ISSUE_NUM" ] && pr_body+=$'\n'"Part of #${PARENT_ISSUE_NUM}"
         fi
 
+        # git's stdout (the "set up to track" line) goes out as before this
+        # change; its stderr is kept, to be shown only if the push fails.
         local push_err
-        if ! push_err="$(git push -u origin "$BRANCH_NAME" 2>&1 >/dev/null)"; then
+        if ! { push_err="$(git push -u origin "$BRANCH_NAME" 2>&1 >&4 4>&-)"; } 4>&1; then
             # Non-fatal: the worktree exists, so the script goes on to its
             # next steps (issue #516). Show git's own error, indented (a
             # rejection may come from a branch origin already has), then

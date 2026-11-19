@@ -1264,6 +1264,13 @@ if [[ "$RC" -eq 0 && "$OUT" == *"Draft PR created"* && "$OUT" == *"Plan posted a
 else
     fail "relative --plan-file, push succeeds: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG13" 2>/dev/null)] out=${OUT:0:1200}"
 fi
+# Git's own stdout on a successful push is shown, as it was before issue
+# 516 (the push's stderr is kept only for the failure warning).
+if [[ "$OUT" == *"branch 'feature/issue-73' set up to track 'origin/feature/issue-73'."* ]]; then
+    pass "push succeeds: git's set-up-to-track line is shown"
+else
+    fail "push succeeds: git's set-up-to-track line is missing: out=${OUT:0:1200}"
+fi
 # The body file the draft PR got is that same body plus the signature.
 if [[ "$(cat "$GH_LOG13.body" 2>/dev/null)" == $'## Summary\n\nIssue #73\n\nCloses #73\n\n---\n**Authored-By**: `'*$'`\n**Model**: `'*'`' ]]; then
     pass "push succeeds: the draft PR's body file is the Summary, the title, Closes and the signature"
