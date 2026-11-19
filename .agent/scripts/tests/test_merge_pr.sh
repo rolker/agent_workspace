@@ -661,6 +661,27 @@ test_repo_conflicting_type_rejected() {
     assert_eq "nothing merged" "false" "$(grep -q 'pr merge' "$sb/gh_calls.log" 2>/dev/null && echo true || echo false)"
 }
 
+# With a repo-qualified --pr the script derives the kind from the repository
+# and refuses any --type that differs; the case run here is --type project,
+# the form run-issue once produced for a package issue (issue #522).
+test_qualified_pr_differing_type_project_rejected() {
+    echo "TEST: --type project with a repo-qualified --pr differs from the derived kind and is rejected before merging, --project registered (issue #522)"
+    local sb out rc=0 origin_a wt
+    sb="$(make_merge_sandbox)"
+    origin_a="$(make_origin_repo "$sb" pkg_a owner)"
+    # Registers 'demo', so --project resolves and the refusal is the
+    # --type/--repo conflict, not an unregistered name (exit 1).
+    wt="$(make_package_worktree "$sb" "demo/worktrees/issue-demo-owner-pkg_a-561" \
+        demo "owner/pkg_a#561" l1 "$origin_a|l1_ws/src/pkg_a|feature/issue-561")"
+    write_pr_view_fixture "$sb" "owner/pkg_a" 561 "feature/issue-561"
+    out="$(run_merge_pr "$sb" --pr owner/pkg_a#561 --type project --project demo --no-wait --no-roadmap-update 2>&1)" || rc=$?
+    assert_eq "exit 2" "2" "$rc"
+    assert_contains "names the conflict" "--type project conflicts with --repo owner/pkg_a" "$out"
+    assert_contains "says to drop --type" "Drop --type; it is derived from --repo." "$out"
+    assert_eq "nothing merged" "false" "$(grep -q 'pr merge' "$sb/gh_calls.log" 2>/dev/null && echo true || echo false)"
+    assert_eq "worktree intact" "true" "$([ -d "$wt" ] && echo true || echo false)"
+}
+
 test_same_repo_under_two_instances_requires_project() {
     echo "TEST: the same repo+branch worktreed under two instances is rejected without --project, selected with it"
     local sb out rc=0 origin_a origin_a2 wt1 wt2
@@ -999,6 +1020,7 @@ test_own_repo_failed_fetch_marks_cleanup_incomplete
 test_package_pr_base_cross_check
 test_package_repo_without_worktree_never_uses_legacy_cleanup
 test_repo_conflicting_type_rejected
+test_qualified_pr_differing_type_project_rejected
 test_same_repo_under_two_instances_requires_project
 test_project_parent_alias_selects_instance_manifest
 test_remote_branch_already_gone_is_not_a_failure
