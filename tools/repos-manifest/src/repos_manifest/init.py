@@ -129,15 +129,19 @@ def ask(question: str) -> bool:
 def sweep_asides(system: Path) -> None:
     """Remove what an ended `init` left in the person's directory: a directory of the aside's
     name, not a link, whose process has ended, that is empty or holds only `config.yaml`.
-    Anything else of that name is left, and named in a warning."""
+    Any other entry of that name, a link among them, is left, and named in a warning. Called
+    before this run makes its own aside."""
     for entry in system.iterdir():
         match = TEMP_NAME.fullmatch(entry.name)
-        if match is None or entry.is_symlink():
-            continue
-        if not process_has_ended(int(match.group("pid"))):
+        if match is None:
             continue
         config = entry / CONFIG_FILE
-        ours = entry.is_dir() and all(child == config for child in entry.iterdir())
+        ours = (
+            not entry.is_symlink()
+            and process_has_ended(int(match.group("pid")))
+            and entry.is_dir()
+            and all(child == config for child in entry.iterdir())
+        )
         if not ours or config.is_symlink() or (os.path.lexists(config) and not config.is_file()):
             warn(
                 f"{entry}: named like a temporary of repos-manifest, but not what init leaves;"

@@ -183,9 +183,9 @@ none when the manifest has no `distros:`; with it, one or more. It refuses as li
 
 `init` makes `.repos-manifest/` with its `config.yaml` in one step, written aside and moved
 into place, so the folder and its record appear together. The aside is a directory
-`.repos-manifest-tmp-<pid>-<random>` in the directory being set up; a later `init` removes one
-whose process has ended when it is empty or holds only `config.yaml`, and names anything else
-of that name and leaves it. Before that step nothing of the system exists, and `init` can be
+`.repos-manifest-tmp-<pid>-<random>` in the directory being set up. A later `init` removes such
+a directory, not a link, whose process has ended when it is empty or holds only `config.yaml`;
+any other entry of that name, a link among them, it leaves and names in a warning. Before that step nothing of the system exists, and `init` can be
 run again. If the first sync after it fails or is interrupted, `sync` finishes it. Every
 command finds `.repos-manifest/` by walking up from the current directory, and one without a
 readable `config.yaml` is an error that names the file. `init` gives that error too, not the

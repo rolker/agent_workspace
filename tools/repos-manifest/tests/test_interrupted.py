@@ -181,11 +181,16 @@ def test_a_killed_run_loses_at_most_the_repo_in_progress(manifest, tmp_path):
     assert set(state["distros"]["jazzy"]["repos"]) == {"a", "b", "c"}
 
 
-@pytest.mark.parametrize("what", ["another file", "a subdirectory", "a file of that name"])
+@pytest.mark.parametrize(
+    "what", ["another file", "a subdirectory", "a file of that name", "a link of that name"]
+)
 def test_inits_sweep_leaves_what_it_did_not_make_and_says_so(manifest, tmp_path, capsys, what):
     system = _system(tmp_path)
     leftover = system / f".repos-manifest-tmp-{dead_pid()}-abcd_123"
-    if what == "a file of that name":
+    if what == "a link of that name":
+        (tmp_path / "linked").mkdir()
+        leftover.symlink_to(tmp_path / "linked")
+    elif what == "a file of that name":
         leftover.write_text("a person's file\n")
     else:
         leftover.mkdir()
@@ -199,6 +204,7 @@ def test_inits_sweep_leaves_what_it_did_not_make_and_says_so(manifest, tmp_path,
     assert (snapshot(leftover) if leftover.is_dir() else leftover.read_text()) == before
     err = capsys.readouterr().err
     assert f"WARNING: {leftover}: named like a temporary of repos-manifest, but" in err, err
+    assert leftover.is_symlink() == (what == "a link of that name")
 
 
 def test_inits_sweep_removes_an_empty_aside(manifest, tmp_path):
