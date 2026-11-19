@@ -81,7 +81,8 @@ newest_branch() {  # <repo> <ref pattern>
 # fast, STUB_FETCH=noop exits 0 having fetched nothing; STUB_LS_HANG,
 # STUB_LS_OK and STUB_LS_FAIL make `ls-remote` for that ref hang, say
 # found, or fail fast. STUB_PUSH=silent-fail makes every push fail with
-# nothing on stderr. STUB_RACE_BRANCH plays a second run for the same
+# nothing on stderr; STUB_FD_LOG records the file descriptors a push
+# starts with (from /proc, Linux). STUB_RACE_BRANCH plays a second run for the same
 # issue: at the first fetch or ls-remote (the origin lookup) it creates
 # that branch in STUB_RACE_REPO from main, with a worktree on it at
 # STUB_RACE_DEST.
@@ -107,6 +108,8 @@ if [ "\$sub" = fetch ]; then
     esac
 elif [ "\$sub" = push ] && [ "\${STUB_PUSH:-}" = silent-fail ]; then
     exit 1
+elif [ "\$sub" = push ] && [ -n "\${STUB_FD_LOG:-}" ]; then
+    ls /proc/\$\$/fd > "\$STUB_FD_LOG" 2>/dev/null
 elif [ "\$sub" = ls-remote ]; then
     [ "\$last" = "\${STUB_LS_HANG:-}" ] && exec sleep 30
     [ "\$last" = "\${STUB_LS_OK:-}" ] && exit 0
@@ -1294,6 +1297,31 @@ if [[ "$RC" -eq 0 && "$OUT" == *"  ⚠️  Push failed — skipping draft PR (no
     pass "silent push failure: the warning says the push failed, with no dangling said:"
 else
     fail "silent push failure: rc=$RC out=${OUT:0:1200}"
+fi
+
+# PR 526 review: a successful push under --print-path-only (the
+# start-task call): stdout is exactly the worktree path and git's tracking
+# line went to stderr. The push does not inherit fd 3 (the caller's
+# stdout, which --print-path-only keeps for the path), so an ssh it starts
+# and leaves running cannot hold a caller's $(...) open.
+ERR13="$SANDBOX/stderr13"
+FDLOG13="$SANDBOX/fds13"
+STDOUT13="$(cd "$SB13" && env PATH="$GITSTUB:$SB13/stubbin:$PATH" STUB_FD_LOG="$FDLOG13" \
+    "$SB13/.agent/scripts/worktree_create.sh" --issue 75 --type workspace --plan-file "$PLAN11" \
+    --print-path-only 2>"$ERR13")"
+RC=$?
+if [[ "$RC" -eq 0 && "$STDOUT13" == "$SB13/worktrees/workspace/issue-origin13-75" ]] \
+   && grep -qxF "branch 'feature/issue-75' set up to track 'origin/feature/issue-75'." "$ERR13"; then
+    pass "push succeeds under --print-path-only: stdout is the worktree path, git's tracking line on stderr"
+else
+    fail "push succeeds under --print-path-only: rc=$RC stdout=[$STDOUT13] stderr=[$(head -c 1200 "$ERR13")]"
+fi
+if [[ ! -d /proc/self/fd ]]; then
+    echo "  SKIP: push file descriptors (no /proc)"
+elif [[ -s "$FDLOG13" ]] && ! grep -qx 3 "$FDLOG13"; then
+    pass "push under --print-path-only: fd 3 is not passed to git push"
+else
+    fail "push under --print-path-only: git push started with fds [$(tr '\n' ' ' < "$FDLOG13" 2>/dev/null)]"
 fi
 
 # PR 526 review: a remote hook that prints terminal escape sequences and

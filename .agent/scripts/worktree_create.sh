@@ -1288,8 +1288,11 @@ elif [ -n "$PLAN_FILE" ]; then
 
         # git's stdout (the "set up to track" line) goes out as before this
         # change; its stderr is kept, to be shown only if the push fails.
+        # fd 3 is closed for the push: --print-path-only keeps the caller's
+        # stdout there (exec 3>&1 above), and an ssh the push starts and
+        # leaves running would otherwise hold the caller's $(...) open.
         local push_err
-        if ! { push_err="$(git push -u origin "$BRANCH_NAME" 2>&1 >&4 4>&-)"; } 4>&1; then
+        if ! { push_err="$(git push -u origin "$BRANCH_NAME" 2>&1 >&4 4>&- 3>&-)"; } 4>&1; then
             # Non-fatal: the worktree exists, so the script goes on to its
             # next steps (issue #516). Show git's own error, indented (a
             # rejection may come from a branch origin already has), then
