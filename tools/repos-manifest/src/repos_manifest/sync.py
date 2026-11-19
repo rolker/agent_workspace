@@ -422,6 +422,16 @@ def closing(results: Sequence[DistroResult]) -> int:
     return 1 if failed or any(result.setup_failure for result in results) else 0
 
 
+def recorded_manifest(system: Path) -> str:
+    """Said after a message that names the manifest by its recorded path, so that a relative
+    path, taken from the system directory, is not read as taken from the current directory."""
+    recorded = system / SYSTEM_DIR / CONFIG_FILE
+    return (
+        f"(the manifest's path is `manifest` in {recorded}, taken from the system directory"
+        f" {system})"
+    )
+
+
 def resolve_all(system: Path, config: Config, distros: Sequence[Optional[str]]) -> List[Planned]:
     """Phase one: read the manifest, resolve each distro and build its resolved files, in
     memory. A failure here changes nothing."""
@@ -429,11 +439,7 @@ def resolve_all(system: Path, config: Config, distros: Sequence[Optional[str]]) 
     try:
         manifest = read_manifest(config.manifest, system)
     except ManifestError as exc:
-        recorded = system / SYSTEM_DIR / CONFIG_FILE
-        raise ManifestError(
-            f"{failed}: {exc} (the manifest's path is `manifest` in {recorded}, taken from the"
-            f" system directory {system})"
-        ) from None
+        raise ManifestError(f"{failed}: {exc} {recorded_manifest(system)}") from None
     if config.distros is None and manifest.distros is not None:
         # A flat system set up from a manifest with no distros: it cannot gain one.
         raise ManifestError(
@@ -441,13 +447,14 @@ def resolve_all(system: Path, config: Config, distros: Sequence[Optional[str]]) 
             " and this system directory was set up without one; nothing in it has been moved or"
             " changed. A system with distros is set up in a new directory with"
             " `repos-manifest init`, with `--distro-dirs` to hold more than one distro."
+            f" {recorded_manifest(system)}"
         )
     try:
         resolved = [
             selection.resolve(manifest, config.role, distro, config.groups) for distro in distros
         ]
     except ManifestError as exc:
-        raise ManifestError(f"{failed}: {exc}") from None
+        raise ManifestError(f"{failed}: {exc} {recorded_manifest(system)}") from None
     try:
         return plan_distros(resolved)
     except ManifestError as exc:

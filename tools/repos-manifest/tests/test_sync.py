@@ -174,7 +174,13 @@ def test_a_manifest_that_does_not_resolve_changes_nothing(two_distros, capsys, c
     before = snapshot(system)
     assert run(system, "sync") == 1
     assert snapshot(system) == before
-    assert "ERROR: the manifest is what failed; nothing was changed: " in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert err.startswith("ERROR: the manifest is what failed; nothing was changed: "), err
+    # The path it names is the recorded one, taken from the system directory.
+    assert err.endswith(
+        f" (the manifest's path is `manifest` in {system / '.repos-manifest/config.yaml'}, taken"
+        f" from the system directory {system})\n"
+    ), err
 
 
 def test_a_repo_with_local_work_is_not_touched(two_distros):
@@ -394,7 +400,8 @@ def test_a_flat_system_whose_manifest_gains_distros_says_to_set_one_up_anew(vcs,
         "ERROR: ../m.manifest.yaml: the manifest now has distros (jazzy, rolling), and this"
         " system directory was set up without one; nothing in it has been moved or changed."
         " A system with distros is set up in a new directory with `repos-manifest init`, with"
-        " `--distro-dirs` to hold more than one distro.\n"
+        " `--distro-dirs` to hold more than one distro. (the manifest's path is `manifest` in"
+        f" {system / '.repos-manifest/config.yaml'}, taken from the system directory {system})\n"
     )
     # No option it names is refused: sync takes no --distro-dirs, and --distro is not named.
     assert "--distro " not in captured.err and "sync --" not in captured.err

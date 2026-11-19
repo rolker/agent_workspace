@@ -1056,7 +1056,9 @@ terminal.
 `sync` reads and resolves every distro it acts on, and builds the text of each distro's resolved
 files, before it changes anything, so a distro whose manifest does not resolve, or whose resolved
 files cannot be written out, ends the run with nothing changed for any distro, rather than being
-reported while the others go on. A repo that is there is
+reported while the others go on. When the manifest cannot be read, does not resolve, or
+now has distros on a flat system, the error ends by saying that the manifest's path is the one
+recorded in `config.yaml`, taken from the system directory. A repo that is there is
 not touched, and `sync` says that updating it is not built yet. Two names that a disk which
 ignores case treats as one are not checked yet on the real destination.
 
