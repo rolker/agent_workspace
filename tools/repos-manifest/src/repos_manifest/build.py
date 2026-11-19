@@ -901,8 +901,10 @@ def colcon_defaults_files(layer: Optional[Layer] = None) -> List[str]:
     if path and not os.path.isabs(path) and (layer.directory / path).is_file():
         found.append(str(layer.directory / path))
     workspace = layer.directory / "colcon_defaults.yaml"
-    if workspace.is_file():
-        found.append(str(workspace))
+    if workspace.is_file() and not any(
+        os.path.realpath(each) == os.path.realpath(workspace) for each in found
+    ):
+        found.append(str(workspace))  # each file once, though colcon may read it twice
     return found
 
 

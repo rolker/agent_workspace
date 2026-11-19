@@ -1658,6 +1658,17 @@ def test_an_ambiguous_abbreviation_of_cmake_target_is_refused_as_ambiguous(
     assert runs(stub) == []
 
 
+@pytest.mark.parametrize("given", ["colcon_defaults.yaml", "./colcon_defaults.yaml"])
+def test_a_relative_defaults_file_that_is_the_layers_own_is_named_once(
+    system, stub, monkeypatch, capsys, given
+):
+    monkeypatch.setenv("COLCON_DEFAULTS_FILE", given)
+    (system / "mid/colcon_defaults.yaml").write_text("{}\n")
+    capsys.readouterr()
+    assert run(system, "build") == 0
+    assert capsys.readouterr().out.count("NOTE: colcon reads default arguments") == 1
+
+
 # --- With the real colcon -------------------------------------------------------------------
 
 
