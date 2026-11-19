@@ -131,16 +131,16 @@ The root need not be a git repository. The registry line holds its name, type an
   unnamed layer in `<root>/<distro>`, its repos in `src/` below it. A repo's pin, and so the
   base of a package worktree's branch, is the `version` of its entry in `<layer>.repos`.
 - **The distro.** The directory the call comes from decides (the owner, 2026-11-18). A call
-  from inside `<root>/<x>/`, where `<x>` is a top-level directory of the root other than
-  `worktrees` and names starting with a dot, is for distro `<x>`, and only `<x>`: if the
+  from inside `<root>/<x>/`, where `<x>` is a real directory (not a link) directly under the
+  physical root, other than `worktrees` and names starting with a dot, is for distro `<x>`,
+  and only `<x>`: if the
   tool's last resolve for `<x>` cannot be used (no `resolved/<x>/layers.txt`, or it lists no
   layer), the call is refused, naming the tool's own `cd <root> && repos-manifest sync
   --distro <x>`; it never moves on to another distro. `setup` and `sync` from there run that
   sync without needing the resolve. The adapter does not read the tool's settings, so it
   cannot tell a distro's directory from another directory there: a directory under the root
   that is not a distro is taken as one and refused (as not a distro the tool resolved), since
-  a wrong distro chosen without a word is worse than a refusal; a link there to a distro's
-  directory is that distro. A call from anywhere else (the root itself, `<root>/worktrees/...`,
+  a wrong distro chosen without a word is worse than a refusal. A call from anywhere else (the root itself, `<root>/worktrees/...`,
   outside the root) is for the one distro under `resolved/` when there is exactly one, a
   resolve the tool has set aside while replacing it (`.<d>.old-*`, `.<d>.new-*`) counting as
   `<d>` with no usable resolve;

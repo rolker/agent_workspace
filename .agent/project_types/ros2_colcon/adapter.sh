@@ -56,16 +56,13 @@
 # The distro on the tool route (owner, 2026-11-18: "the directory the
 # session is started in decides"), chosen by _rc_tool_distro_select alone:
 #   1. the directory the call comes from (ACTIVE_PROJECT_FROM: --from, else
-#      the cwd, physical) is <root>/<x> or below it, where <x> is a
-#      top-level directory of the root other than worktrees and names
-#      starting with a dot: x, and only x. The adapter does not read the
-#      tool's settings, so a directory there that is not a distro is taken
-#      as one and refused below: a wrong distro chosen silently is worse
-#      than a refusal (one with nothing under resolved/ is refused as not a
-#      distro the tool resolved). Both sides are physical, so a registered
-#      path through a link matches; where two names lead to the calling
-#      directory (a link <root>/current -> <d>), a distro under resolved/
-#      wins, so the link is its target.
+#      the cwd, physical) is <root>/<x> or below it, where <x> is a real
+#      directory (not a link) directly under the physical root, other than
+#      worktrees and names starting with a dot: x, and only x. The adapter
+#      does not read the tool's settings, so a directory there that is not
+#      a distro is taken as one and refused below: a wrong distro chosen
+#      silently is worse than a refusal (one with nothing under resolved/
+#      is refused as not a distro the tool resolved).
 #   2. otherwise (the root itself, <root>/worktrees/..., outside the root):
 #      the one distro under resolved/ (a directory resolved/<d>/, or one
 #      the tool set aside while replacing it, .<d>.new-* or .<d>.old-*,
@@ -899,24 +896,17 @@ _rc_tool_distro_select() {
         _rc_tool_unusable "has a flat layout (it was set up without --distro-dirs: $resolved/layers.txt); the adapter reads a system with a directory per distro only" init
         return 1
     fi
-    # 1. The calling directory, both sides physical: inside <root>/<x>/,
-    # x and only x. Where two names lead there (a link <root>/current ->
-    # <d>), a distro under resolved/ is taken first, so a link is its
-    # target.
+    # 1. The calling directory, both sides physical, inside a real
+    # directory <root>/<x>/ (not a link): x and only x.
     from="${ACTIVE_PROJECT_FROM:-}"
-    if [ -n "$from" ]; then
-        list="$(_rc_tool_distros)"
-        for x in "$root"/*/; do
+    real="$(cd "$root" 2>/dev/null && pwd -P)" || real=""
+    if [ -n "$from" ] && [ -n "$real" ]; then
+        for x in "$real"/*/; do
             x="${x%/}"
-            x="${x##*/}"
-            [ "$x" = worktrees ] && continue
-            real="$(cd "$root/$x" 2>/dev/null && pwd -P)" || continue
-            if [ "$from" = "$real" ] || [[ "$from" == "$real"/* ]]; then
-                [ -z "$_RC_TOOL_DISTRO" ] && _RC_TOOL_DISTRO="$x"
-                if grep -qxF "$x" <<< "$list"; then
-                    _RC_TOOL_DISTRO="$x"
-                    break
-                fi
+            [ "${x##*/}" = worktrees ] || [ -L "$x" ] && continue
+            if [ "$from" = "$x" ] || [[ "$from" == "$x"/* ]]; then
+                _RC_TOOL_DISTRO="${x##*/}"
+                break
             fi
         done
     fi
@@ -995,8 +985,9 @@ _rc_tool_refuse_unread_keys() {
 # output and exit status passed through (0; 1 when a repo that is not
 # optional failed, or on a refusal; 128+n on a signal). Nothing else: no
 # pull, fetch or vcs of the adapter's own. The distro is the rule's (its
-# --sync: no resolve needed); with nothing resolved and the call from no
-# distro's directory (an init cut short), sync runs with no --distro and
+# --sync: no resolve needed); with nothing resolved (a resolve the tool set
+# aside counts as resolved) and the call from no distro's directory (an
+# init cut short), sync runs with no --distro and
 # the tool syncs every distro it recorded.
 _rc_tool_sync() {
     local root bin before="" after="" rc=0

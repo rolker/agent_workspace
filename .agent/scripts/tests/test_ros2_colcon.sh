@@ -4767,6 +4767,50 @@ test_tool_not_a_distro_directory() {
     assert_contains "from <root>/fakefox2/core: fakefox2's underlay" "rosroot/fakefox2/setup.bash" "$out"
 }
 
+# Round 4: step 1 takes only real directories directly under the physical
+# root; a link there is never a candidate, so a call through a link is for
+# the directory it points to, whatever is under resolved/.
+test_tool_links_are_not_candidates() {
+    echo "TEST: tool route: a link under the root is never the distro; a call through it is for its target"
+    local sb root out rc res d
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb" fakefox fakefox2)"
+    res="$root/.repos-manifest/resolved"
+    ln -s fakefox2 "$root/current"
+    for d in current fakefox2; do
+        rc=0; out="$(run_tool "$sb" "$root/$d" env 2>&1)" || rc=$?
+        assert_eq "resolved, from <root>/$d: env exit 0" "0" "$rc"
+        assert_contains "resolved, from <root>/$d: fakefox2's underlay" "rosroot/fakefox2/setup.bash" "$out"
+    done
+    cp -a "$res/fakefox2" "$sb/fakefox2.resolved"
+    mv "$res/fakefox2" "$res/.fakefox2.old-4242-abcd1234"
+    for d in current fakefox2; do
+        rc=0; out="$(run_tool "$sb" "$root/$d" env 2>&1)" || rc=$?
+        assert_eq "set aside, from <root>/$d: env refused" "1" "$rc"
+        assert_contains "set aside, from <root>/$d: fakefox2 named" "last resolve for distro fakefox2 cannot be used" "$out"
+        assert_not_contains "set aside, from <root>/$d: never the link's name" "current" "$out"
+    done
+    rm -r "$res/.fakefox2.old-4242-abcd1234"
+    for d in current fakefox2; do
+        rc=0; out="$(run_tool "$sb" "$root/$d" env 2>&1)" || rc=$?
+        assert_eq "gone, from <root>/$d: env refused" "1" "$rc"
+        assert_contains "gone, from <root>/$d: fakefox2 named" "fakefox2 is not a distro the manifest tool has resolved" "$out"
+        assert_not_contains "gone, from <root>/$d: never the link's name" "current" "$out"
+    done
+    mv "$sb/fakefox2.resolved" "$res/fakefox2"
+    # A link whose own name has a directory under resolved/.
+    rm "$root/current"
+    ln -s fakefox2 "$root/abc_x"
+    cp -a "$res/fakefox" "$res/abc_x"
+    for d in fakefox2 abc_x; do
+        rc=0; out="$(run_tool "$sb" "$root/$d" env 2>&1)" || rc=$?
+        assert_eq "abc_x -> fakefox2 resolved too, from <root>/$d: env exit 0" "0" "$rc"
+        assert_contains "abc_x -> fakefox2, from <root>/$d: fakefox2's underlay" "rosroot/fakefox2/setup.bash" "$out"
+        assert_not_contains "abc_x -> fakefox2, from <root>/$d: not for abc_x" "rosroot/abc_x" "$out"
+    done
+}
+
 # Must-fix 2 of the second round: every next step on the tool route that
 # is the tool's sync is a command that works when run literally, from
 # anywhere, in the situation the message arises in.
@@ -5099,6 +5143,7 @@ mr_test test_tool_layers_read_once_per_call
 mr_test test_tool_distro_rule_never_moves_on
 mr_test test_tool_set_aside_resolve_is_a_distro
 mr_test test_tool_not_a_distro_directory
+mr_test test_tool_links_are_not_candidates
 mr_test test_tool_sync_steps_run_literally
 mr_test test_tool_quoted_keys_from_the_tool
 mr_test test_tool_package_worktree_two_distros
