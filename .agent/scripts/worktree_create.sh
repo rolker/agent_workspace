@@ -1304,6 +1304,10 @@ elif [ -n "$PLAN_FILE" ]; then
             echo "       cd $(printf '%q' "$git_dir")"
             echo "       git push -u origin $(printf '%q' "$BRANCH_NAME")"
             echo "       $hint_pr"
+            local hint_list
+            hint_list="gh pr list --head $(printf '%q' "$BRANCH_NAME")"
+            [ -n "$repo_flag" ] && hint_list+=" -R $(printf '%q' "$repo_flag")"
+            echo "     Skip the gh_create_pr.sh line if \`$hint_list\` already shows a pull request."
             if [ "$HAS_PLAN" = true ]; then
                 local hint_comment
                 hint_comment="gh pr comment $(printf '%q' "$BRANCH_NAME")"

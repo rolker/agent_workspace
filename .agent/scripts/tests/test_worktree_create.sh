@@ -1168,6 +1168,13 @@ if [[ "$OUT" == *"git push -u origin feature/issue-71 said:"* \
 else
     fail "refused push: git's error not shown, or the origin claim is there: out=${OUT:0:1500}"
 fi
+# Review suggestion 5: a PR the branch already has (a re-run) makes the
+# create line fail, so the hint says when to skip it.
+if [[ "$OUT" == *"Skip the gh_create_pr.sh line if \`gh pr list --head feature/issue-71\` already shows a pull request."* ]]; then
+    pass "refused push: the hint says to skip the create line when gh pr list shows a PR"
+else
+    fail "refused push: no skip line for an existing PR: out=${OUT:0:1500}"
+fi
 # The same refused push through --print-path-only (the start-task call):
 # stdout is the worktree path alone, and the exit status is 0.
 SB12="$SANDBOX/ws12"
