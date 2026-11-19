@@ -61,3 +61,25 @@ def test_a_version_that_does_not_exist_exits_non_zero(vcs, tmp_path):
     target = tmp_path / "t"
     target.mkdir()
     assert _import(target, "a", remote, "no-such-branch") != 0
+
+
+# What `vcs import` does to a repo that is there, which is why `sync` uses `git` for those.
+
+
+def test_a_clean_repo_on_another_branch_is_switched_by_vcs_import(vcs, tmp_path):
+    remote = make_remote(tmp_path / "remotes", "a", branches=["dev"])
+    target = tmp_path / "t"
+    target.mkdir()
+    assert _import(target, "a", remote, "main") == 0
+    assert _import(target, "a", remote, "dev") == 0
+    assert branch(target / "a") == "dev"
+
+
+def test_a_repo_whose_url_changed_is_refused_by_vcs_import(vcs, tmp_path):
+    remote = make_remote(tmp_path / "remotes", "a")
+    other = make_remote(tmp_path / "remotes", "b")
+    target = tmp_path / "t"
+    target.mkdir()
+    assert _import(target, "a", remote) == 0
+    assert _import(target, "a", other) != 0
+    assert git("remote", "get-url", "origin", cwd=target / "a") == str(remote)

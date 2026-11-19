@@ -200,8 +200,17 @@ REC = "{layer: core, version: v, commit: abc}"
             "`distros.jazzy.repos.a` has no `commit`",
         ),
         (
-            F + "distros: {jazzy: {repos: {a: {layer: core, version: v, commit: c, url: u}}}}\n",
-            "`distros.jazzy.repos.a.url` is not read by this version",
+            F + "distros: {jazzy: {repos: {a: {layer: core, version: v, commit: c, url: 3}}}}\n",
+            "`distros.jazzy.repos.a.url` is an int, not a string",
+        ),
+        (
+            F + "distros: {jazzy: {repos: {a: {layer: core, version: v, commit: c, mine: u}}}}\n",
+            "`distros.jazzy.repos.a.mine` is not read by this version",
+        ),
+        (
+            F + "distros: {jazzy: {repos: {a: {layer: core, version: v, commit: c,"
+            " moving: {from: x}}}}}\n",
+            "`distros.jazzy.repos.a.moving` has no `to`",
         ),
         (
             F + "distros: {jazzy: {repos: {a: {layer: [x], version: v, commit: c}}}}\n",

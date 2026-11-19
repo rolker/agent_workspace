@@ -1,5 +1,6 @@
-"""`sync` in part 1: it clones what is missing, touches nothing that is there, and a manifest
-that does not resolve changes nothing."""
+"""`sync` across distros: it clones what is missing, leaves a repo that is in line as it is, and
+a distro whose manifest does not resolve is reported, with nothing of it changed, while the
+others go on. The rules for a repo that is there are tested in `test_update*.py`."""
 
 import os
 import shutil
@@ -8,7 +9,17 @@ import signal
 import pytest
 import yaml
 
-from helpers import branch, git, head, make_remote, repo, run, snapshot, write_manifest
+from helpers import (
+    branch,
+    git,
+    head,
+    make_remote,
+    repo,
+    run,
+    settled,
+    snapshot,
+    write_manifest,
+)
 from repos_manifest import sync
 from repos_manifest.cli import main
 from repos_manifest.signals import Stopped
@@ -52,15 +63,13 @@ def _state(system):
 
 def test_sync_after_init_changes_nothing(two_distros, capsys):
     system, _, _ = two_distros
-    before = snapshot(system)
+    before = settled(snapshot(system))
     capsys.readouterr()
     assert run(system, "sync") == 0
-    assert snapshot(system) == before
+    assert settled(snapshot(system)) == before
     out = capsys.readouterr().out
     assert "cloning" not in out
-    assert (
-        out.count("present, not touched (2); updating a repo that is there is not built yet") == 2
-    )
+    assert out == "distro jazzy:\n  up to date (2)\ndistro rolling:\n  up to date (2)\n"
 
 
 def test_a_repo_added_to_the_manifest_is_cloned_and_recorded(two_distros, tmp_path):
@@ -154,13 +163,15 @@ def test_a_manifest_whose_resolved_files_cannot_be_written_out_changes_nothing(
     capsys.readouterr()
     assert run(system, "sync") == 1
     assert snapshot(system) == before
-    captured = capsys.readouterr()
-    assert captured.out == ""
-    assert captured.err == (
-        "ERROR: the manifest's output is what failed; nothing was changed: refusing to write the"
-        " head comment: the manifest's location or a name holds a control or invisible"
-        " character\n"
-    )
+    out = capsys.readouterr().out
+    for distro in ("jazzy", "rolling"):
+        assert (
+            f"ERROR: distro {distro}: the manifest's output is what failed; nothing of it was"
+            " changed: refusing to write the head comment: the manifest's location or a name"
+            " holds a control or invisible character (the manifest's path is `manifest` in"
+            f" {system / '.repos-manifest/config.yaml'}, taken from the system directory"
+            f" {system})\ndistro {distro}:\n  reported above; nothing of it was changed\n"
+        ) in out
 
 
 @pytest.mark.parametrize("change", ["a role it lacks", "not YAML"])
@@ -174,8 +185,16 @@ def test_a_manifest_that_does_not_resolve_changes_nothing(two_distros, capsys, c
     before = snapshot(system)
     assert run(system, "sync") == 1
     assert snapshot(system) == before
-    err = capsys.readouterr().err
-    assert err.startswith("ERROR: the manifest is what failed; nothing was changed: "), err
+    captured = capsys.readouterr()
+    if change == "a role it lacks":
+        # Each distro is reported for itself; the others would go on.
+        out = captured.out
+        assert out.count("the manifest does not resolve for it; nothing of it has been moved") == 2
+        assert out.startswith("ERROR: distro jazzy: the manifest does not resolve"), out
+        err = out[: out.index("\ndistro jazzy:") + 1]
+    else:
+        err = captured.err
+        assert err.startswith("ERROR: the manifest is what failed; nothing was changed: "), err
     # The path it names is the recorded one, taken from the system directory.
     assert err.endswith(
         f" (the manifest's path is `manifest` in {system / '.repos-manifest/config.yaml'}, taken"
@@ -395,16 +414,16 @@ def test_a_flat_system_whose_manifest_gains_distros_says_to_set_one_up_anew(vcs,
     assert run(system, "sync") == 1
     assert snapshot(system) == before
     captured = capsys.readouterr()
-    assert captured.out == ""
-    assert captured.err == (
+    assert captured.out == (
         "ERROR: ../m.manifest.yaml: the manifest now has distros (jazzy, rolling), and this"
         " system directory was set up without one; nothing in it has been moved or changed."
         " A system with distros is set up in a new directory with `repos-manifest init`, with"
         " `--distro-dirs` to hold more than one distro. (the manifest's path is `manifest` in"
         f" {system / '.repos-manifest/config.yaml'}, taken from the system directory {system})\n"
+        "distro (no distro):\n  reported above; nothing of it was changed\n"
     )
     # No option it names is refused: sync takes no --distro-dirs, and --distro is not named.
-    assert "--distro " not in captured.err and "sync --" not in captured.err
+    assert "--distro " not in captured.out and "sync --" not in captured.out
 
 
 @pytest.mark.parametrize("what", ["a directory", "a dangling link", "a link to a file", "a file"])
@@ -423,10 +442,10 @@ def test_what_is_at_setup_bash_is_left_and_named_unless_it_is_a_file(
         setup.symlink_to(tmp_path / "mine.bash")
     else:
         setup.write_text("# mine\n")
-    before = snapshot(system)
+    before = settled(snapshot(system))
     capsys.readouterr()
     assert run(system, "sync") == 0
-    assert snapshot(system) == before
+    assert settled(snapshot(system)) == before
     out = capsys.readouterr().out
     note = f"WARNING: {setup}: is there and is not a file; left as it is\n"
     if what in ("a directory", "a dangling link"):

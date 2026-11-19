@@ -346,6 +346,8 @@ class RepoRecord:
     layer: str
     version: Optional[str]
     commit: str
+    url: Optional[str] = None  # the manifest's url when the repo was recorded
+    moving: Optional[Tuple[str, str]] = None  # (from, to) while `sync` moves it
 
 
 @dataclass
@@ -383,32 +385,56 @@ def _read_state_data(system: Path) -> dict:
         _check_keys(entry["repos"], f"{where}.repos", (), None, bad)
         for key, record in entry["repos"].items():
             at = f"{where}.repos.{key}"
-            _check_keys(record, at, ("layer", "version", "commit"), (), bad)
-            for name in ("layer", "version", "commit"):
-                value = record[name]
+            _check_keys(record, at, ("layer", "version", "commit"), ("url", "moving"), bad)
+            for name in ("layer", "version", "commit", "url"):
+                value = record.get(name)
+                if name == "url" and name not in record:
+                    continue
                 if not isinstance(value, str) and not (name == "version" and value is None):
                     what = "a string or empty" if name == "version" else "a string"
                     raise bad(f"`{at}.{name}` is {_kind(value)}, not {what}")
+            if "moving" in record:
+                moving = record["moving"]
+                _check_keys(moving, f"{at}.moving", ("from", "to"), (), bad)
+                for name in ("from", "to"):
+                    if not isinstance(moving[name], str):
+                        raise bad(f"`{at}.moving.{name}` is {_kind(moving[name])}, not a string")
     return data
 
 
 def read_state(system: Path, distro: Optional[str]) -> DistroState:
     entry = _read_state_data(system)["distros"].get(state_key(distro)) or {}
-    repos = {
-        key: RepoRecord(record.get("layer"), record.get("version"), record.get("commit"))
-        for key, record in (entry.get("repos") or {}).items()
-    }
+    repos = {}
+    for key, record in (entry.get("repos") or {}).items():
+        moving = record.get("moving")
+        repos[key] = RepoRecord(
+            record.get("layer"),
+            record.get("version"),
+            record.get("commit"),
+            record.get("url"),
+            (moving["from"], moving["to"]) if moving is not None else None,
+        )
     return DistroState(repos)
+
+
+def _record_data(record: RepoRecord) -> dict:
+    data: Dict[str, object] = {
+        "layer": record.layer,
+        "version": record.version,
+        "commit": record.commit,
+    }
+    if record.url is not None:
+        data["url"] = record.url
+    if record.moving is not None:
+        data["moving"] = {"from": record.moving[0], "to": record.moving[1]}
+    return data
 
 
 def put_distro_state(system: Path, distro: Optional[str], state: DistroState) -> None:
     """Replace one distro's entry; every other distro's is written back as it was read."""
     data = _read_state_data(system)
     data["distros"][state_key(distro)] = {
-        "repos": {
-            key: {"layer": record.layer, "version": record.version, "commit": record.commit}
-            for key, record in state.repos.items()
-        }
+        "repos": {key: _record_data(record) for key, record in state.repos.items()}
     }
     text = yaml.safe_dump(data, default_flow_style=False, sort_keys=False, width=4096)
     replace_file(system, system / SYSTEM_DIR / STATE_FILE, text)
@@ -427,11 +453,13 @@ def build_lock_file(system: Path, distro: Optional[str]) -> Path:
     return system / SYSTEM_DIR / f"{BUILD_LOCK_PREFIX}{state_key(distro)}.lock"
 
 
-def hold_build_lock(system: Path, distro: Optional[str]) -> int:
+def hold_build_lock(system: Path, distro: Optional[str], holder: str = "build") -> int:
     """Take the lock of one distro's `build` (`flock`): held while the returned descriptor is
-    open in this process or in a colcon it was passed to, and gone when they have all ended,
-    however they end. A second `build` of the same distro is refused; one of another distro
-    takes another lock and reads and writes another record."""
+    open in this process or in a colcon or git it was passed to, and gone when they have all
+    ended, however they end. A second `build` of the same distro is refused; one of another
+    distro takes another lock and reads and writes another record. `sync` takes the same lock
+    for a distro (`holder` "sync"), so a build and a sync of one distro never run at once; the
+    refusal names which of the two holds it, from the lock file."""
     path = build_lock_file(system, distro)
     flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
@@ -447,12 +475,15 @@ def hold_build_lock(system: Path, distro: Optional[str]) -> int:
             holders = []
         os.close(fd)
         of = f"of distro {distro} " if distro is not None else ""
+        held_by = holders[0] if holders and holders[0] in ("build", "sync") else "build"
         pids = [int(each) for each in holders if each.isdigit()]
         tool, colcon = (pids + [None, None])[:2]
         tool_holds = _holds(tool, path)
         colcon_holds = _holds(colcon, path)
         if tool_holds:
             who = f" (process {tool})"
+        elif held_by != "build":  # a sync notes no second process
+            who = f"; `fuser -v {path}` names the process that holds its lock"
         elif colcon_holds and tool_holds is None:
             who = f": its colcon (process {colcon}) still runs"
         elif colcon_holds:
@@ -474,21 +505,26 @@ def hold_build_lock(system: Path, distro: Optional[str]) -> int:
             )
         else:
             who = f"; `fuser -v {path}` names the process that holds its lock"
+        then = "nothing was run" if holder == "build" else "nothing was changed for it"
         raise Refusal(
-            f"a build {of}is still running in this system{who}; nothing was run",
+            f"a {held_by} {of}is still running in this system{who}; {then}",
             f"It holds the lock on {path}. Wait for it to end, or stop it, then run this again",
         ) from None
     except OSError as exc:
         os.close(fd)
         raise ManifestError(f"{path}: cannot be locked: {exc.strerror or type(exc).__name__}")
-    note_lock_holders(fd, [os.getpid()])
+    note_lock_holders(fd, [os.getpid()], holder)
     return fd
 
 
-def note_lock_holders(fd: int, pids: Sequence[int]) -> None:
+def note_lock_holders(fd: int, pids: Sequence[int], holder: str = "build") -> None:
     """Write the pids of the processes that hold a build lock into its file: the tool's, and
-    colcon's while one runs. Only the refusal of a second `build` reads them."""
-    text = (" ".join(str(pid) for pid in pids) + "\n").encode("ascii")
+    colcon's while one runs. A `sync` writes its name first and only its own pid, never a
+    git's. Only the refusal of a second `build` or `sync` reads them."""
+    words = [str(pid) for pid in pids]
+    if holder != "build":
+        words.insert(0, holder)
+    text = (" ".join(words) + "\n").encode("ascii")
     try:  # written first, then cut to length: a reader never finds the file empty
         os.pwrite(fd, text, 0)
         os.ftruncate(fd, len(text))

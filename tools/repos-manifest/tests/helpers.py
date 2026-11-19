@@ -146,3 +146,113 @@ def make_package_remote(
         git("add", "slow.sh", cwd=path)
     git("commit", "-q", "-m", "package", cwd=path)
     return path
+
+
+def settled(found: Dict[str, Tuple]) -> Dict[str, Tuple]:
+    """A `snapshot` without what every `sync` of a system writes though it changes no repo:
+    each clone's `.git/FETCH_HEAD` (its fetch) and the distros' lock files."""
+    return {
+        path: entry
+        for path, entry in found.items()
+        if not path.endswith(".git/FETCH_HEAD")
+        and not (".repos-manifest/build-" in f"/{path}" and path.endswith(".lock"))
+    }
+
+
+def snapshot_repo(path: Path, fetched: bool = False) -> Dict[str, object]:
+    """The whole of a repo, to compare before and after: `HEAD` and the branch it is on, every
+    ref (less the remote-tracking refs and tags when `fetched`: a fetch may change those),
+    the configuration's text, the index, the full status with untracked and ignored files, the
+    content hash and mode of every entry outside `.git` (ignored files included), the
+    operations in progress, and the work trees."""
+
+    def out(*args):
+        done = subprocess.run(
+            ["git", "-C", str(path), "--no-optional-locks", *args],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return done.returncode, done.stdout
+
+    git_dir = Path(out("rev-parse", "--absolute-git-dir")[1].strip())
+    common = Path(out("rev-parse", "--path-format=absolute", "--git-common-dir")[1].strip())
+    refs = out("for-each-ref", "--format=%(refname) %(objectname)")[1].splitlines()
+    if fetched:
+        refs = [r for r in refs if not r.startswith(("refs/remotes/", "refs/tags/"))]
+    files: Dict[str, Tuple] = {}
+    for directory, dirs, names in os.walk(path):
+        if Path(directory) == path and ".git" in dirs:
+            dirs.remove(".git")
+        if Path(directory) == path and ".git" in names:
+            names.remove(".git")
+        for name in sorted(dirs + names):
+            entry = Path(directory) / name
+            info = os.lstat(entry)
+            relative = str(entry.relative_to(path))
+            if stat.S_ISLNK(info.st_mode):
+                files[relative] = ("link", os.readlink(entry))
+            elif stat.S_ISDIR(info.st_mode):
+                files[relative] = ("dir", stat.S_IMODE(info.st_mode))
+            else:
+                digest = hashlib.sha256(entry.read_bytes()).hexdigest()
+                files[relative] = ("file", digest, stat.S_IMODE(info.st_mode))
+    states = (
+        "rebase-merge rebase-apply MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD BISECT_LOG"
+        " sequencer index.lock"
+    ).split()
+    return {
+        "head": out("rev-parse", "HEAD")[1].strip(),
+        "symbolic": out("symbolic-ref", "-q", "HEAD")[1].strip(),
+        "refs": refs,
+        "config": (common / "config").read_text(),
+        "index": out("ls-files", "-s")[1],
+        "status": out("status", "--porcelain=v2", "--untracked-files=all", "--ignored")[1],
+        "files": files,
+        "in progress": [name for name in states if os.path.lexists(git_dir / name)],
+        "worktrees": out("worktree", "list", "--porcelain")[1],
+    }
+
+
+def commit_file(work: Path, name: str, text: str, message: str = "change") -> str:
+    """Write `name` in the work tree `work`, commit it, and return the commit."""
+    target = work / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(text)
+    git("add", "-f", name, cwd=work)
+    git("commit", "-q", "-m", message, cwd=work)
+    return git("rev-parse", "HEAD", cwd=work)
+
+
+def push_commit(remote: Path, name: str, text: str, branch: str = "main") -> str:
+    """A new commit on `branch` of the (non-bare) remote `remote`, adding or changing `name`;
+    the branch checked out in it afterwards is the one it had."""
+    was = git("rev-parse", "--abbrev-ref", "HEAD", cwd=remote)
+    git("checkout", "-q", branch, cwd=remote)
+    commit = commit_file(remote, name, text, f"{name} on {branch}")
+    git("checkout", "-q", was, cwd=remote)
+    return commit
+
+
+def make_system(root: Path, repositories: dict, name: str = "sys", **top) -> Tuple[Path, Path]:
+    """A flat system made by `init` at `root/name` from a manifest of `repositories`; returns
+    the system and the manifest's path. `top` adds top-level manifest keys (`layers`)."""
+    data = {"format": 1, **top, "repositories": repositories}
+    manifest = write_manifest(root / f"{name}.manifest.yaml", data)
+    system = root / name
+    system.mkdir()
+    assert run(system, "init", f"../{manifest.name}", "--yes") == 0
+    return system, manifest
+
+
+def rewrite_manifest(manifest: Path, change) -> None:
+    """Read the manifest at `manifest`, let `change` alter its data, and write it back."""
+    data = yaml.safe_load(manifest.read_text())
+    change(data)
+    write_manifest(manifest, data)
+
+
+def state_of(system: Path, distro: str = "_unnamed") -> dict:
+    """The repos' records of one distro in `state.yaml`."""
+    text = (system / ".repos-manifest/state.yaml").read_text()
+    return yaml.safe_load(text)["distros"][distro]["repos"]
