@@ -1833,3 +1833,42 @@ Changed from the round 4 entry's text: the masking item and one open-on-purpose 
   - An untracked file a hook wrote during a move that was undone is not reported.
   - Masking is a guard, not a guarantee. The source scan cannot see a url under another name (`getattr`, tuple, annotated or walrus assignment, a `for` target, a parameter named otherwise), one passed to a helper, joined or formatted inside a list or mapping, `prefix + url` with no constant side, `+=`, keyword arguments, logging or `sys.stderr.write`, or an exception formatted whole; such a message is masked only by the print filter, which covers `sync`'s lines and `ERROR:` lines, and only a url with no white space in its user information when the tool did not read it. Warnings are not filtered. The earlier format's other value-printing messages (`docs/prototype.md` lists them) and an earlier-format `extends` path in its "escapes"/"not found" messages are not masked at the source.
 - **Tests:** 1712 pass with `REPOS_MANIFEST_REQUIRE_COLCON=1`.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 19:36 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a586f9fcf3beb71f1, resume 1 of 3)
+
+**Branch**: feature/issue-500 at `7593acc6`
+**Base**: origin/main
+**Depth**: Deep (reason: round 6 convergence check per handoff)
+**Must-fix**: 2 | **Suggestions**: 6
+**Round**: 6 | **Ship**: recommended — round 6: 2 mechanical must-fix (prev 3), not rising — fix and ship rather than another full round
+
+Scope: the round 5 findings, the round 5 suggestions and `git diff bd108b2b..7593acc6 -- tools/`. Cross-model: skipped (round-6 convergence check, per handoff). The Claude adversarial specialist ran fresh with the same scope and must-fix rule. Whole suite at 7593acc6: `1712 passed in 524.35s` (REPOS_MANIFEST_REQUIRE_COLCON=1).
+
+Round 5 must-fix:
+- M1 (url not a string): fixed. `lead5/m1.yaml` now gives `must be a string, got a list; …`.
+- M2 (`base:` url): fixed. `lead5/b1.yaml` now gives `base: 'https://***@127.0.0.1:9/base.git' is a URL, not a path`.
+- M3 (`file://` user:password with a `/`): fixed. `adv5/drive.py` gives `cases 56 leaks 0`.
+
+Round 5 suggestions:
+- S1 (the scan's gaps): fixed. The docstring names them, and the safe-call test holds.
+- S2 (`--prune-tags`): fixed. It has a test that fails without it, and the scan reads every word after the command; a flag after `--` is flagged, which errs on the safe side.
+- S3 (unknown key): fixed. The key is named through `quoted_url`.
+
+Other checks:
+- Test isolation: no other test file depends on urls registered earlier. The test files pass alone and in both orders.
+- `update.py`, `sync.py` and `build.py` are unchanged in this range.
+
+### Findings
+- [ ] (must-fix) The design's "the `ERROR:` line of any command are masked again", and the README's "the error a command stops with", are false. Only a `ManifestError` (`cli.py:331`) and sync's lines are masked; `cli.py:128`, `:136`, `:159`, `signals.py:52` and `sync.py:612` print raw. Repro: `resolve --manifest p4.yaml --role 'https://alice:s3cret@h/x' --distro jazzy --out o4` prints `ERROR: unknown role 'https://alice:s3cret@h/x' (known: ['dev'])`. The value is typed by the user. Narrow both sentences, or mask those prints. — `docs/design.md` (masking, "As lines are printed"), `README.md:117-118`
+- [ ] (must-fix) The design gives the `file://` fallback as "for a password holding a `/`", but `_file_userinfo` applies it to any `file://host/...` url whose text before the last `@` holds a `:`. A url with no credential then has its host and path masked: `mask_url("file://localhost/srv/a:b/w@x")` gives `file://***@x`. With a real repo at such a path, `init` shows `file://***@x`, and sync's hand-set-origin line shows `origin is file://***@x, the manifest says file://***@x` with a `set-url` command that fails if copied. State the real condition and this consequence, or tighten the rule. — `docs/design.md` (`file://` rule), `masking.py` `_file_userinfo`
+- [ ] (suggestion) The docstring of `tests/test_url_messages.py` says the third test holds `manifest.py` and `schema.py` "to echo a value only through `quoted_url`". It checks only `!r` and `repr(`. `schema.py` still echoes `'{layer}'` (`:265`, `:275`) and whole lists (`:255`, `:262`, `:267`, `:276`). A repo key that is a url with a space in its password is printed by `validate`, earlier format (`adv6/p1-p3.yaml`). The design's limits cover those messages. — `tests/test_url_messages.py`
+- [ ] (suggestion) The top docstring of `tests/test_masking.py` still says a url's credentials are "never printed". — `tests/test_masking.py:1-3`
+- [ ] (suggestion, leak route, covered by the limits) The scp-like `aliceQ:pwzQ@127.0.0.1:x.git` passes `validate` and is printed whole in the `init` plan. Covered by "nothing that does not follow `://` is masked". — `masking.py`
+- [ ] (suggestion, leak route, not in the limits) `!r` echoes outside the manifest readers: `system.py:379`, `:643` (format of `state.yaml` and the built file), and `selection.py:61-86` and `init.py:62-92` (command-line role and distro). None takes a manifest url. — `system.py`, `selection.py`, `init.py`
+- [ ] (suggestion) Warnings are not filtered (`system.warn`). The progress entry says so; the design's limits do not. — `docs/design.md`
+- [ ] (suggestion) `test_pruning_flags_are_forbidden_and_no_prune_is_not` still lists `["fetch","--prune-tags"]` as `False`, which reads as if it were allowed. The never-run list also misses `+refs/...` forced refspecs, `reset --merge`/`--keep`, `checkout -B` and `update-ref -d`; these gaps predate this diff. — `tests/test_update_safety.py`
