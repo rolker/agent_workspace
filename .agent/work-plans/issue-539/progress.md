@@ -60,3 +60,13 @@ Other stale strings: none. The two other occurrences, lines 4193 and 4424, are t
 - [ ] Part 1 (own pull request, to main first): change the expected text at line 5065 to `up to date (2)`, nothing else; run the suite here with `vcs` present and confirm the real-tool case runs and passes.
 - [ ] Part 2: install `vcs` in the `validate.yml` job that runs this suite, and add `TOOL_SKIPPED` to the count in the final `Results` line (`MR_SKIPPED + TOOL_SKIPPED`), with the test run once with `vcs` off PATH to show the skip in the summary.
 - [ ] Part 2 should also decide whether a missing `vcs` in CI should fail rather than skip (as line 2317 does for the resolver "where it is meant to run"); this is a mechanism choice, to be listed in the plan, not a question for the owner.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 12:16 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review confirms all three items against the code and raises no scope question; its actions are points for the plan)
+**After**: issue-actions
+**Decision**: proceed
+
+Read: the Issue Review at 2665c097. Its actions go into the plan: part 1 is the one expected string at test line 5065; part 2 is the CI install of vcs and the skip count, and the plan says whether a missing vcs in CI fails the job and whether anything parses the summary line. The CI workflow change in part 2 is on the Ask First list; the owner approved the issue's three items on 2026-11-20 ("Issue + fix main first (Recommended)"), and the part 2 pull request names the workflow change for his merge decision.
