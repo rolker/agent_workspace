@@ -490,33 +490,6 @@ def _partial_clone(case):
     git("remote", "set-url", "origin", str(case.remote), cwd=case.clone)
 
 
-@pytest.mark.parametrize(
-    "version, partial, state",
-    [
-        ((2, 44), True, "unusable"),
-        (None, True, "unusable"),
-        ((2, 44), False, "expected"),
-        ((2, 45), True, "expected"),
-    ],
-)
-def test_a_partial_clone_is_not_read_with_a_git_that_may_fetch_for_it(
-    vcs, tmp_path, capsys, monkeypatch, version, partial, state
-):
-    """A git older than 2.45 does not know `GIT_NO_LAZY_FETCH`: there `status` does not read a
-    partial clone, and says why; a clone that is not partial is read as usual."""
-    case = make_case(tmp_path)
-    if partial:
-        _partial_clone(case)
-    monkeypatch.setattr("repos_manifest.sync.git_version", lambda git: version)
-    code, doc, _ = status(case.system, capsys)
-    found = repo_a(doc)
-    assert found["state"] == state, found
-    assert code == (1 if state == "unusable" else 0)
-    assert found["fetched_from"] == str(case.remote)
-    if state == "unusable":
-        assert "is a partial clone, and the git on PATH is older than 2.45" in found["detail"]
-
-
 def test_find_version_looks_up_ask_origin_when_it_is_called(vcs, tmp_path, monkeypatch):
     """`ask` is resolved at the call, so a test that replaces `ask_origin` reaches it."""
     case = make_case(tmp_path)

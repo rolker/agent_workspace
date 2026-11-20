@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
@@ -81,14 +80,10 @@ BEFORE_THE_URL = (update.OPERATION, update.INDEX_LOCK, update.SPARSE)
 # Two helpers a clone's own configuration could have `status`'s git start, turned off because
 # neither can change the answer (``docs/design.md``, "status"): an fsmonitor hook only tells
 # git which files it need not look at, and with none git looks at every file; and a partial
-# clone does not fetch a missing object (git 2.45 and later know the variable), where every
-# object `status`'s git reads (the commits and tags of the refs, `HEAD`'s trees and blobs) is
-# already in the clone. The clone's clean filters do run, as they run for `git status` and for
-# `sync`'s git, so the three count the same files as changed.
+# clone does not fetch a missing object (git 2.45 and later know the variable). The clone's
+# clean filters do run, as they run for `git status` and for `sync`'s git, so the three count
+# the same files as changed.
 NO_LAZY_FETCH = {"GIT_NO_LAZY_FETCH": "1"}
-# The first git that knows `GIT_NO_LAZY_FETCH`. With an older one, or one whose version cannot
-# be read, `status` does not read a partial clone at all: it is unusable, and said so.
-LAZY_FETCH_KNOWN = (2, 45)
 NO_FSMONITOR = ("-c", "core.fsmonitor=false")
 
 # `sync` fetches only when nothing stops it first (uncommitted changes, a remote of the probe's
@@ -145,10 +140,8 @@ def run_status(named_distros: Sequence[str], as_json: bool) -> int:
         config = read_config(system)
         distros = distros_for(system, config, named_distros, cwd)
         env = {**sync.require_git(), **NO_LAZY_FETCH}  # `status` runs git, never `vcs`
-        version = sync.git_version(shutil.which("git") or "git")
-        lazy_off = version is not None and version >= LAZY_FETCH_KNOWN
         plan = _plan(system, config, distros)
-        results = [distro_status(system, config, each, env, lazy_off) for each in plan]
+        results = [distro_status(system, config, each, env) for each in plan]
     ok = all(result.ok for result in results)
     if as_json:
         print(json.dumps(_document(system, config, results, ok), indent=2))
@@ -166,10 +159,8 @@ def _plan(system: Path, config: Config, distros: Sequence[Optional[str]]):
         return [sync.Reported(distro, str(exc)) for distro in distros]
 
 
-def distro_status(
-    system: Path, config: Config, planned, env: Dict[str, str], lazy_off: bool = True
-) -> DistroStatus:
-    """One distro's repos. `lazy_off` when the git on PATH knows `GIT_NO_LAZY_FETCH`."""
+def distro_status(system: Path, config: Config, planned, env: Dict[str, str]) -> DistroStatus:
+    """One distro's repos."""
     if isinstance(planned, sync.Reported):
         return DistroStatus(planned.distro, ok=False, problem=mask_urls(planned.problem))
     resolved = planned.resolved
@@ -196,9 +187,7 @@ def distro_status(
                 version=repo.version,
                 url=mask_url(repo.url),
             )
-            _place(
-                system, config, distro, repo, layer.name, parts, state.repos, env, lazy_off, found
-            )
+            _place(system, config, distro, repo, layer.name, parts, state.repos, env, found)
             found.detail = mask_urls(found.detail)
             result.repos.append(found)
     keys = {repo.key for layer in resolved.layers for repo in layer.repos}
@@ -221,7 +210,6 @@ def _place(
     parts,
     records: Dict[str, RepoRecord],
     env: Dict[str, str],
-    lazy_off: bool,
     found: RepoStatus,
 ) -> None:
     """The checks on the repo's place, in `sync`'s order: the layer the record gives, then the
@@ -250,7 +238,7 @@ def _place(
             f"is a link to {os.readlink(place)}; sync does not update a repo through a link"
         )
         return
-    _repo(place, repo, had, env, lazy_off, found)
+    _repo(place, repo, had, env, found)
 
 
 def _repo(
@@ -258,7 +246,6 @@ def _repo(
     repo: Selected,
     record: Optional[RepoRecord],
     env: Dict[str, str],
-    lazy_off: bool,
     found: RepoStatus,
 ) -> None:
     git = _reading_git(place, env)
@@ -284,13 +271,6 @@ def _repo(
         # `sync` takes the empty value for one url, and its fetch fails: there is no url whose
         # refs `status` could answer from.
         found.state, found.detail = UNUSABLE, "has no origin url (it is set to an empty value)"
-    elif not lazy_off and _partial(git):
-        found.fetched_from = mask_url(origin)
-        found.state, found.detail = UNUSABLE, (
-            f"is a partial clone, and the git on PATH is older than {_shown(LAZY_FETCH_KNOWN)}"
-            " (or its version cannot be read), so its `git status` could fetch a missing object;"
-            f" status reads a partial clone only with git {_shown(LAZY_FETCH_KNOWN)} or later"
-        )
     else:
         found.state, found.detail = _version(git, place, repo, record, head, origin, found)
     if stopped is not None:
@@ -302,10 +282,6 @@ def _reading_git(place: Path, env: Dict[str, str]) -> update.Git:
     the configuration git reads from files and from the environment, so it wins), and the
     clone's filter drivers as they are, as `git status` and `sync` run them."""
     return update.Git(place, env, None, options=NO_FSMONITOR)
-
-
-def _shown(version) -> str:
-    return ".".join(str(n) for n in version)
 
 
 def _partial(git: update.Git) -> bool:
