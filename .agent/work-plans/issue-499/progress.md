@@ -355,3 +355,13 @@ All six round-1 findings are fixed, checked by hand on scratch manifests: a chai
 - [ ] (suggestion) An unsafe character U+0080–U+00FF and the undecodable byte of the same value print alike (`a\x85b` for U+0085 and for byte 0x85), so two different paths can look the same; give bytes and characters different forms (e.g. `\u0085` for the character) — `tools/repos-manifest/src/repos_manifest/show.py:34`
 - [ ] (suggestion) In a system directory `show` opens the realpath of the recorded manifest, not the recorded path `sync` opens: a recorded `missing/../pub/m.yaml` reads in `show` and is "not found" in `sync`. Open the recorded path and print the canonical one; use `system.is_url` instead of the bare `"://"` test — `tools/repos-manifest/src/repos_manifest/cli.py:210`
 - [ ] (suggestion) The new no-system refusal prints `cwd` unescaped, so a directory name with a newline splits the message; pass it through `shown_path` (the tool's general `ERROR:` path, unchanged from main, has the same gap) — `tools/repos-manifest/src/repos_manifest/cli.py:194`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 12:32 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review approved with five suggestions; four are real defects with small fixes, two of them sentences in the design that are false, and the quality standard says to fix them while they are in reach)
+**After**: publish
+**Decision**: address
+
+Read the Local Review (Pre-Push) at c6fb2f5f (round 2, approved, no must-fix, five suggestions, each reproduced by the reviewer). All five are addressed before publishing: a manifest that repeats a repo's url unchanged must not move its source (keep the source when the value is equal, and test it); a character above U+FFFF is written so it cannot be read as another path, and the design's sentence corrected; an unsafe character and a raw byte of the same value print differently; inside a system directory `show` opens the recorded manifest path as `sync` does and prints the canonical one, using `system.is_url`; and the no-system refusal prints the current directory escaped. No full pass was run: the publish checkpoint was answered `address`, so the full pass runs when publish is raised again.
