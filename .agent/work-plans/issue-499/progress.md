@@ -429,3 +429,13 @@ Read the Local Review (Pre-Push) at e54b043b (round 3, approved, ship recommende
 - [ ] (suggestion, Local Review (Pre-Push) @ `f310d62`) Verified against the code: "a refusal names the path as recorded" holds only when the recorded path does not exist. `_show_in_system` (`cli.py:212`) passes `os.path.realpath(recorded)` as the label whenever `os.path.exists(recorded)`, so a recorded path that exists but is a directory, unreadable, not UTF-8 or fails to parse is named canonical by `show` (`_read_text`/`parse_part` use that label), while `sync` (`sync.py:714`, no `shown`) names it as recorded. Narrow the design sentence and the comment to "a path that does not exist", or pass the recorded path as the label on every refusal so both commands agree — `tools/repos-manifest/docs/design.md`, `tools/repos-manifest/src/repos_manifest/cli.py`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 12:59 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (one open suggestion, valid against the code, with a small fix; the table lets the host answer address)
+**After**: findings
+**Decision**: address
+
+Read the Integrated Review at 2b073c88 (one open finding, no outside review arrived, CI pending). The finding: the design's "show" section and the comment in `cli.py` say a refusal names the manifest path as recorded, which is true only when the recorded path does not exist. Host decision, listed for the owner's veto: fix the code rather than narrow the sentence, so that every refusal by `show` inside a system directory names the path as recorded, as `sync` does, and the canonical path is printed only when the manifest was read. Undoing it is one label and its tests.
