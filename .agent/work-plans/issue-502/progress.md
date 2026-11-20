@@ -236,3 +236,11 @@ Asked after the second Plan Review at 564013ce (verdict needs-work, eight new fi
 The option he chose, as worded in the dialog: exit 1 when the repo is missing, not at its place, not a git repo of its own, has no commit checked out, or its version cannot be found. A repo that is there with work in progress (a rebase, merge or bisect in progress, an `index.lock`) or a lasting setup `sync` leaves alone (a sparse checkout, a link at its place) is reported with its own state and exits 0. The design's `validate` row is reworded to match. This replaces the host's exit rule in the previous checkpoint. The other choices offered were to keep everything `status` cannot tell as exit 1, or to fail only a missing or misplaced repo.
 
 The eight findings of the review go back to plan-task with this.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-20 11:45 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-502/plan.md` at `bed304e4`
+
+Third version, after the second plan review (needs-work, eight findings, all checked against the code and held) and the owner's answer "Only unusable repos (Recommended)". The old unknown state is split into unusable (exit 1) and left-alone (exit 0); a stopped move is a fact beside the state; the validate row and line 313 of docs/manifest/design.md are reworded in the same change.
