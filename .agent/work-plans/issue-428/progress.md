@@ -877,3 +877,33 @@ Summary: no must-fix open; all three open suggestions of the approved local revi
 **Decision**: address
 
 Read: the Integrated Review at 98c47a8c: no must-fix, three open findings, all classified valid: the refusal in worktree_remove.sh that advises a chmod which would follow a symbolic link to a folder outside the worktree (lines 436 and 452); the header and script_reference.md wording that says a mount of another filesystem is never walked or changed, without the exception for an entry that is itself on one; and the run-issue step 9 sentence "so no review is merged past unread", which does not hold for a review edited after triage. CI was pending at triage, with no failure. The quality standard is that a misleading message or an overclaiming text is fixed, not deferred.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 13:57 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a9bb1c9dbbf534a0a, resume 1 of 3)
+
+**PR**: #542 at `3575bbee`
+**Addressed**: Integrated Review at `d2adb33a` (2026-11-20 13:49 -05:00)
+**Commits**: 97e48c95, f7959ef4, 3575bbee
+
+### Actions
+- [x] (suggestion) A folder on an entry's path that is a symbolic link out of the worktree now gets the "leads outside this worktree ... through the symbolic link <link>" refusal from `_entry_reach` (resolved with `readlink -f`), before any search-permission check, so no `chmod` is advised on a link; this also covers the line-452 case (an entry that cannot be entered under a searchable outside link). A link whose target cannot be resolved is refused the same way. A link out of the worktree whose target is not a reachable folder is still taken as gone, as before (`rm -rf` removes only the link). A link that stays inside is walked through as before; decided: when its target cannot be entered, the advice names that target (a folder inside the worktree) instead of the link, so the advised chmod is on the real folder. Tests: two new cases (outside target cannot be entered; entry under a searchable outside link cannot be entered) failed 4 checks before (the link message and no-chmod-advice checks, each case) and pass after; an inside-link dirty entry is refused for its change before and after; the inside-link no-search naming check failed before and passes after. — `.agent/scripts/worktree_remove.sh:436`
+- [x] (suggestion) Header and `script_reference.md` row now name the exception: a package worktree's entry that is itself on another filesystem is walked from its own top folder. Wording only. — `.agent/scripts/worktree_remove.sh:33`, `.agent/knowledge/script_reference.md:21`
+- [x] (suggestion) Run-issue step 9's sentence now states the limit: a review whose text is edited after triage keeps its `review_id` and is not read again (GitHub gives no edit time). No body hash. — `.claude/skills/run-issue/SKILL.md:1019`
+
+### Suites run (each on its own, the full pass left to the host)
+- test_worktree_remove.sh: 92 passed, 0 failed
+- test_merge_pr_root_resolution.sh: 6 passed, 0 failed
+- test_merge_pr.sh: 175 passed, 0 failed
+- test_merge_pr_skill.sh: 132 passed, 0 failed
+- test_project_registry.sh: 425 passed, 0 failed
+- test_merge_pr_gate.sh: 213 passed, 0 failed
+- test_script_tests_hook_scope.sh: 347 passed, 0 failed
+- test_validate_workspace_stale.sh: 126 passed, 0 failed
+- test_ros2_colcon.sh: 1375 passed, 0 failed, 0 skipped
+- test_user_tier_guard.sh: 64 passed, 0 failed
+- test_skill_paths.sh: 164 passed, 0 failed
+
+shellcheck at warning severity is clean on `worktree_remove.sh` and its test. No part 2 file and not `plan.md` touched.
