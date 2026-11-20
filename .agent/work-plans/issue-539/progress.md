@@ -197,3 +197,13 @@ None open.
 
 ### False positives
 None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 12:52 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner's answer in the dialog, to "Merge pull request 540?": "Merge (Recommended)". The dialog showed: the one changed line; the suite at 1375 passed, 0 failed, 0 skipped with the real-tool case run; the host's full pass before the push; the approved pre-push review and the Integrated Review at 66966fb8 with no open findings; CI all-pass, with the note that CI still skips the changed case until part 2; no hosted review in 900 s, Gemini and Codex skipped at Light depth. The host fetched the pull request again before asking: no reviews, no comments, no failed check. Part 1 of two: the issue stays open for part 2.
