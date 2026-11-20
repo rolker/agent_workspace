@@ -955,3 +955,39 @@ Reviewers:
 ### Findings
 - [x] (must-fix) A link that stays inside the worktree, but whose target sits under a folder with no search permission, is taken as gone. `[ -d ]` follows the link and is false on EACCES, at line 432 (a folder on the path) and at line 427 (the entry's own name), and both run before the `[ -L ]` check. The entry gets no owner and no dirty check. `_make_dirs_writable` then opens the folder, and `rm -rf` deletes the checkout with its uncommitted work, without `--force`. Main fails safe here. Fix: when `[ -d ]` is false on a component that is a link, resolve it (`readlink -m`). If the target is inside the worktree, refuse (return 2, naming the folder that cannot be entered). Keep "gone" only for a target outside the worktree. Add a test for an intermediate link and one for a link at the entry's own name, each with a dirty entry under a mode 600 folder. Found by the lead (reproduced), Codex, Gemini and the Claude adversarial reviewer. — `.agent/scripts/worktree_remove.sh:432`
 - [x] (suggestion) An entry that is itself a link to a folder inside the worktree that cannot be entered gets the "leads outside this worktree ... through a symbolic link" message at line 495, because `_real` is empty and `[ -L ]` is true at line 487. The refusal is safe; only the message is wrong. Found by the Claude adversarial reviewer and Gemini. — `.agent/scripts/worktree_remove.sh:487`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 14:15 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a9bb1c9dbbf534a0a, resume 2 of 3)
+
+**PR**: #542 at `b3dce4d6`
+**Addressed**: Local Review at `0c3c7b47` (2026-11-20 14:04 -05:00)
+**Commits**: b3dce4d6
+
+Per host direction, the entry decision is turned round to "refuse unless proven": `_entry_state` in `worktree_remove.sh` replaces `_entry_reach` and the separate link and cannot-enter checks, and one `case` acts on its three results. The walk looks a name up only in a folder it has entered, follows links one level at a time (`readlink`) under the same rules, and uses no `[ -d ]` or `[ -e ]` on a path it has not reached. Deliberate change from the last pass: a dangling link, a link to a file, and a link outside the worktree (including one to an outside folder that cannot be reached) are now refused, not taken as gone; the header and `script_reference.md` say to remove such a link by hand. A present entry is carried on as its physical path, asserted inside the worktree.
+
+### Actions
+- [x] (must-fix) An inside link whose target sits under a folder with no search permission was taken as gone and deleted. Reproduction (manifest `alias/pkg_a`, `alias -> layer_ws/src/sub`, `layer_ws/src` mode 600, uncommitted change), plain and `--force`, link on the path and link as the entry itself: before, all 16 checks of the 4 cases failed (exit 0, change deleted, mode opened); after, all pass (exit 1, "cannot enter <layer_ws/src>", mode 600 kept, change kept). — `.agent/scripts/worktree_remove.sh:432`
+- [x] (suggestion) An entry that is a link to an inside folder that cannot be entered got the "leads outside" message. Now refused as "cannot enter <inside folder>" with the chmod advice on that real folder; test failed 2 checks before, passes after. — `.agent/scripts/worktree_remove.sh:487`
+
+### The three states and the tests that pin them
+- PRESENT (reached, then owner and dirty checks): read-only install tree, plain and `--force`; dirty tracked file refused; aggregate with read-only leftovers; read-only container between entries; clean entry through an inside link removed (new); dirty entry under an inside link refused for its change; unreadable folder refused without `--force`, removed with it.
+- PROVEN ABSENT: "an entry that is genuinely absent is skipped, the rest removed" (missing `layer_ws/src/pkg_b`, and `gone_ws` missing above `pkg_c`).
+- REFUSED, with or without `--force`: the reproduction (path link and entry link, plain and `--force`, new); entry link to an inside folder that cannot be entered (new); a link that does not reach a folder inside (dangling, to a file, outside and unreachable, a name missing behind a link; each new, each `--force`, each with "remove the link by hand" and no chmod advice); entry under a 600 folder (plain and `--force`); entry itself with no search permission; inside link to a folder that cannot be entered; outside link on the path (target or entry cannot be entered); entry that is itself an outside link (plain and `--force`).
+
+### Suites run (each on its own with `timeout 600`, the full pass left to the host)
+- test_worktree_remove.sh: 135 passed, 0 failed (before the fix: 105 passed, 30 failed)
+- test_merge_pr_root_resolution.sh: 6 passed, 0 failed
+- test_merge_pr.sh: 175 passed, 0 failed
+- test_merge_pr_skill.sh: 132 passed, 0 failed
+- test_project_registry.sh: 425 passed, 0 failed
+- test_merge_pr_gate.sh: 213 passed, 0 failed
+- test_script_tests_hook_scope.sh: 347 passed, 0 failed
+- test_validate_workspace_stale.sh: 126 passed, 0 failed
+- test_ros2_colcon.sh: 1375 passed, 0 failed, 0 skipped
+- test_user_tier_guard.sh: 64 passed, 0 failed
+- test_skill_paths.sh: 164 passed, 0 failed
+
+shellcheck at warning severity is clean on `worktree_remove.sh` and its test. No part 2 file and not `plan.md` touched. A link written as an absolute path to the worktree by a path other than its physical one is refused as outside; that errs toward refusing.
