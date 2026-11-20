@@ -5062,7 +5062,7 @@ EOF
     make_underlay "$sb" fakefox
     rc=0; out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" "$sb/.agent/scripts/adapter" --project toolsys sync 2>&1)" || rc=$?
     assert_eq "adapter sync: the tool's exit 0" "0" "$rc"
-    assert_contains "adapter sync: the tool's own report" "present, not touched (2)" "$out"
+    assert_contains "adapter sync: the tool's own report" "up to date (2)" "$out"
     rc=0; out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" "$sb/.agent/scripts/adapter" --project toolsys validate 2>&1)" || rc=$?
     assert_eq "adapter validate: exit 0" "0" "$rc"
     assert_contains "adapter validate: against the last resolve for fakefox" "matches the tool's last resolve for distro fakefox" "$out"

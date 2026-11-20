@@ -30,7 +30,7 @@ are relative to the tool's own directory.
 | The resolver reads the format in the spec: a superset of a `.repos` file, keys merged under `base`, layers appended, groups named on the repo | |
 | The resolver no longer has the package dependency section, roles defined by starting packages, or the cache of parents kept between runs | |
 | `base` and the manifest itself can be given as a path, a URL, or a file in a git repo | |
-| `show` prints what a manifest comes to for a machine, with what is left out and why | |
+| `show` prints what a manifest comes to for a machine, with what is left out and why | `file-exists src/repos_manifest/show.py` |
 | `init` and `sync` set up and update a system directory, and `sync` leaves local work alone | `file-exists src/repos_manifest/update.py` |
 | `build` builds the layers in order and writes one setup file | `file-exists src/repos_manifest/build.py` |
 | `status` shows what differs from the manifest | `file-exists src/repos_manifest/status.py` |

@@ -276,6 +276,133 @@ def test_what_a_changes_in_c_stays_changed_unless_b_changes_it_again(tmp_path):
     assert m.repositories["viz"].version == "from_b"
 
 
+# --- Where each repo came from ----------------------------------------------------------------
+
+
+def _sources(resolved):
+    return {r.key: r.source for layer in resolved.layers for r in layer.repos}
+
+
+def test_each_repo_names_the_manifest_where_its_key_first_appears(tmp_path):
+    leaf = _chain(
+        tmp_path,
+        PUBLISHED,
+        """\
+        repositories:
+          nav:
+            version: from_leaf
+          new:
+            type: git
+            url: https://example.org/new.git
+        """,
+    )
+    m = load_manifest(leaf)
+    first = os.path.realpath(tmp_path / "m0.yaml")
+    # nav is re-versioned by the leaf, and still came from the base: the base gave its url.
+    assert m.repositories["nav"].source == first
+    assert m.repositories["nav"].version == "from_leaf"
+    assert m.repositories["viz"].source == first
+    assert m.repositories["new"].source == str(leaf)
+    resolved = resolve(m, "dev", "jazzy")
+    assert _sources(resolved) == {"nav": first, "site": first, "viz": first, "new": str(leaf)}
+    assert resolved.chain == [first, str(leaf)]
+
+
+def test_a_repo_whose_url_a_later_manifest_changes_names_that_manifest(tmp_path):
+    # m1 points nav at a fork; m2 only re-versions it, and changes viz's type to the same value.
+    leaf = _chain(
+        tmp_path,
+        PUBLISHED,
+        "repositories:\n  nav:\n    url: https://example.org/fork/nav.git\n",
+        "repositories:\n  nav:\n    version: from_leaf\n  viz:\n    type: git\n",
+    )
+    m = load_manifest(leaf)
+    first, fork = (os.path.realpath(tmp_path / f"m{i}.yaml") for i in (0, 1))
+    nav = m.repositories["nav"]
+    assert (nav.url, nav.version, nav.source) == (
+        "https://example.org/fork/nav.git",
+        "from_leaf",
+        fork,
+    )
+    # A later manifest that gives `type` without changing the url leaves the source.
+    assert m.repositories["viz"].source == first
+    resolved = resolve(m, "dev", "jazzy")
+    assert _sources(resolved) == {"nav": fork, "site": first, "viz": first}
+
+
+def test_a_later_manifest_that_repeats_the_url_unchanged_does_not_move_the_source(tmp_path):
+    # m1 repeats nav's url as the base gives it; m2 repeats it again with a new version.
+    same = "repositories:\n  nav:\n    url: https://example.org/nav.git\n"
+    leaf = _chain(tmp_path, PUBLISHED, same, same + "    version: from_leaf\n")
+    m = load_manifest(leaf)
+    first = os.path.realpath(tmp_path / "m0.yaml")
+    nav = m.repositories["nav"]
+    assert (nav.url, nav.version, nav.source) == ("https://example.org/nav.git", "from_leaf", first)
+    assert _sources(resolve(m, "dev", "jazzy"))["nav"] == first
+
+
+def test_a_url_changed_then_changed_back_names_the_manifest_that_changed_it_back(tmp_path):
+    leaf = _chain(
+        tmp_path,
+        PUBLISHED,
+        "repositories:\n  nav:\n    url: https://example.org/fork/nav.git\n",
+        "repositories:\n  nav:\n    url: https://example.org/nav.git\n",
+    )
+    m = load_manifest(leaf)
+    assert m.repositories["nav"].source == str(leaf)
+
+
+def test_in_a_diamond_the_last_manifest_read_that_changed_the_url_is_named(tmp_path):
+    (tmp_path / "c.yaml").write_text(PUBLISHED)
+    (tmp_path / "a.yaml").write_text(
+        "base: c.yaml\nrepositories:\n  nav:\n    url: https://example.org/a/nav.git\n"
+        "  viz:\n    url: https://example.org/a/viz.git\n"
+    )
+    (tmp_path / "b.yaml").write_text(
+        "base: c.yaml\nrepositories:\n  viz:\n    url: https://example.org/b/viz.git\n"
+        "  site:\n    version: from_b\n"
+    )
+    leaf = tmp_path / "m.yaml"
+    leaf.write_text("base: [a.yaml, b.yaml]\n")
+    m = load_manifest(leaf)
+    c, a, b = (os.path.realpath(tmp_path / name) for name in ("c.yaml", "a.yaml", "b.yaml"))
+    # A's url for nav stays, since B does not change it; B, read after A, gives viz's url.
+    assert (m.repositories["nav"].url, m.repositories["nav"].source) == (
+        "https://example.org/a/nav.git",
+        a,
+    )
+    assert (m.repositories["viz"].url, m.repositories["viz"].source) == (
+        "https://example.org/b/viz.git",
+        b,
+    )
+    # B changes only site's version: the url, and so the source, is still C's.
+    assert m.repositories["site"].source == c
+
+
+def test_the_chain_is_the_bases_in_reading_order_then_the_manifest(tmp_path):
+    (tmp_path / "c.yaml").write_text(PUBLISHED)
+    (tmp_path / "a.yaml").write_text("base: c.yaml\n")
+    (tmp_path / "b.yaml").write_text("base: c.yaml\n")
+    leaf = tmp_path / "m.yaml"
+    leaf.write_text("base: [a.yaml, b.yaml]\n")
+    resolved = resolve(load_manifest(leaf), "robot", "jazzy")
+    real = [os.path.realpath(tmp_path / name) for name in ("c.yaml", "a.yaml", "b.yaml")]
+    assert resolved.chain == real + [str(leaf)]
+
+
+def test_a_repo_a_later_manifest_leaves_out_on_a_distro_is_listed_as_left_out(tmp_path):
+    leaf = _chain(
+        tmp_path,
+        PUBLISHED,
+        "repositories:\n  viz:\n    distros:\n      jazzy:\n        absent: true\n",
+    )
+    resolved = resolve(load_manifest(leaf), "robot", "jazzy")
+    assert [(o.key, o.reason, o.distro) for o in resolved.left_out] == [
+        ("nav", "group_off", None),
+        ("viz", "not_on_distro", "jazzy"),
+    ]
+
+
 # --- The checks on the combination -----------------------------------------------------------
 
 

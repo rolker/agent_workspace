@@ -337,6 +337,19 @@ def test_11_the_question_answered_no(tmp, capsys, monkeypatch, reply):
     assert out.endswith("Nothing was created.\n")
 
 
+def test_the_question_escapes_a_control_character_in_the_systems_path(tmp, capsys, monkeypatch):
+    # A system directory named with a newline: the question names it on one line, the newline
+    # escaped, so it cannot print a line of its own. (A manifest's path with such a character is
+    # refused before anything is printed, since the resolved files' head comment names it.)
+    manifest(tmp)
+    system = _system(tmp, "sys\nERROR: fake")
+    monkeypatch.setattr("sys.stdin", _Terminal("n\n"))
+    assert run(system, "init", "../m.manifest.yaml", "--distro", "jazzy") == 1
+    out = capsys.readouterr().out
+    assert f"Set up this system in {tmp}/sys\\x0aERROR: fake? [y/N] " in out
+    assert "\nERROR: fake" not in out
+
+
 def test_the_question_answered_yes_sets_up(tmp, capsys, monkeypatch):
     manifest(tmp)
     system = _system(tmp)

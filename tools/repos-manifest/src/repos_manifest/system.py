@@ -724,16 +724,17 @@ def put_built_layers(system: Path, distro: Optional[str], layers: Dict[str, Laye
 # --- The manifest ---------------------------------------------------------------------------
 
 
-def read_manifest(location: str, base: Path) -> Manifest:
+def read_manifest(location: str, base: Path, shown: Optional[str] = None) -> Manifest:
     """Read the manifest at `location`, a path taken from `base` when relative, and the
     manifests it builds on through its own `base` key (``base.py``); the one place a command
-    reads a manifest. Its warnings go to stderr."""
+    reads a manifest. It is named `shown` in messages and output, `location` by default. Its
+    warnings go to stderr."""
     path = base / location
     if "://" in location and not os.path.lexists(path):
         raise ManifestError(
             f"{location}: only a manifest given as a file path is read in this version"
         )
-    loaded = load_manifest(path, source=location)
+    loaded = load_manifest(path, source=location if shown is None else shown)
     for warning in loaded.warnings:
         warn(warning)
     return loaded

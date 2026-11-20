@@ -101,6 +101,12 @@ We looked at tools that do compose manifests before writing this one (survey of 
 as paths on the local disk; a `base` at a URL or in a git repo is not read yet.
 [docs/design.md](docs/design.md#resolve) says what `resolve` writes.
 
+`show` prints what a manifest given as a path on the local disk comes to for a role and
+distro: each layer with its repos, their versions and URLs, the manifest an entry came from
+when it is not the first in the chain, and the repos left out with the reason. Run with no
+manifest inside a system directory, it uses what the system records. It writes nothing, and
+`init` prints the same before it asks. [docs/design.md](docs/design.md#show) shows the output.
+
 `init` sets up a system directory from a manifest given as a path on the local disk and clones
 its repos; `sync` clones the ones that are missing and updates the ones that are there, with
 `git`. A clean clone on the manifest's branch is fast-forwarded, and one `sync` left on the
@@ -121,7 +127,7 @@ branch is unaffected. A version written `heads/<name>` or `tags/<name>` is the b
 tag of that name only, and a pin changed from the branch to the tag of the same name (or back)
 moves the repo like any other pin change; when that branch and tag are both at the commit
 `sync` recorded, which one it followed cannot be told, and the repo is left as it is and
-reported. Where `sync`, `init`, `resolve` and `validate` put a url into a message, a
+reported. Where `sync`, `init`, `show`, `resolve` and `validate` put a url into a message, a
 `scheme://` url's user name and password are masked as `***`, and a value of the wrong type is
 described, not shown; the lines `sync` prints for a repo's outcome, and the error of a manifest
 that cannot be read or is refused, are masked again as they are printed. Other lines are printed
@@ -171,6 +177,7 @@ repos-manifest.
 ```bash
 repos-manifest resolve --manifest project11.manifest.yaml --role robot --distro jazzy --out ./out
 repos-manifest validate --manifest project11.manifest.yaml
+repos-manifest show project11.manifest.yaml --role robot --distro jazzy
 repos-manifest init ../project11.manifest.yaml --role developer --distro rolling --distro-dirs
 repos-manifest sync
 repos-manifest build -- --symlink-install

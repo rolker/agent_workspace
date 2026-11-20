@@ -103,3 +103,90 @@ def test_cli_resolve_out_that_cannot_be_created_is_one_line(fixtures_dir, tmp_pa
     rc = main(argv + ["--out", str(out), "--cache-dir", str(tmp_path / "cache")])
     assert rc == 1
     assert capsys.readouterr().err == f"ERROR: --out {out}: cannot be written (Not a directory)\n"
+
+
+# --- show ------------------------------------------------------------------------------------
+
+SHOWN = """\
+distros: [jazzy, rolling]
+groups: [sim]
+roles:
+  robot: []
+repositories:
+  a:
+    type: git
+    url: https://example.org/a.git
+    version: main
+  s:
+    type: git
+    url: https://example.org/s.git
+    groups: [sim]
+"""
+
+
+def _listing(directory):
+    return sorted(str(p.relative_to(directory)) for p in directory.rglob("*"))
+
+
+def test_cli_show_prints_and_writes_nothing(tmp_path, capsys, monkeypatch):
+    (tmp_path / "m.yaml").write_text(SHOWN)
+    monkeypatch.chdir(tmp_path)
+    before = _listing(tmp_path)
+    assert main(["show", "m.yaml", "--role", "robot", "--distro", "jazzy"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith(
+        "manifest  m.yaml\nrole      robot    groups on: (none)    distro: jazzy\n"
+    )
+    assert "  a   main   https://example.org/a.git\n" in out
+    assert out.endswith("left out\n  s   group sim is off\n")
+    assert _listing(tmp_path) == before
+
+
+def test_cli_show_with_turns_a_group_on(tmp_path, capsys, monkeypatch):
+    (tmp_path / "m.yaml").write_text(SHOWN)
+    monkeypatch.chdir(tmp_path)
+    assert main(["show", "m.yaml", "--role", "robot", "--with", "sim", "--distro", "rolling"]) == 0
+    out = capsys.readouterr().out
+    assert "groups on: sim    distro: rolling" in out
+    assert "left out" not in out
+
+
+@pytest.mark.parametrize(
+    "argv,error",
+    [
+        (["--distro", "jazzy"], "has roles; give one of ['robot']"),
+        (["--role", "robot"], "has distros; give one of ['jazzy', 'rolling']"),
+        (["--role", "robot", "--distro", "humble"], "does not cover distro 'humble'"),
+        (["--role", "x", "--distro", "jazzy"], "has no role 'x'"),
+    ],
+)
+def test_cli_show_refuses_what_the_manifest_does_not_allow(argv, error, tmp_path, capsys):
+    (tmp_path / "m.yaml").write_text(SHOWN)
+    assert main(["show", str(tmp_path / "m.yaml"), *argv]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.startswith("ERROR: ") and error in captured.err
+
+
+def test_cli_show_a_manifest_that_does_not_read_is_one_error(tmp_path, capsys):
+    assert main(["show", str(tmp_path / "missing.yaml")]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.startswith("ERROR: ") and "missing.yaml" in captured.err
+
+
+def test_cli_show_distro_may_be_given_once(tmp_path, capsys):
+    with pytest.raises(SystemExit):
+        main(["show", "m.yaml", "--distro", "jazzy", "--distro", "rolling"])
+    assert "--distro may be given only once" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("before", [["m.yaml"], []])
+def test_cli_show_refuses_an_empty_distro_name(before, tmp_path, capsys, monkeypatch):
+    # With a manifest or without one, before any file or system directory is read.
+    (tmp_path / "m.yaml").write_text(SHOWN)
+    monkeypatch.chdir(tmp_path)
+    assert main(["show", *before, "--role", "robot", "--distro", ""]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "--distro is given an empty name; name the distro to show" in captured.err

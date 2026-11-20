@@ -5,7 +5,7 @@ import textwrap
 import pytest
 
 from repos_manifest.base import parse_manifest
-from repos_manifest.selection import resolve
+from repos_manifest.selection import ABSENT_NO_DISTRO, GROUP_OFF, NOT_ON_DISTRO, resolve
 from repos_manifest.yamlload import ManifestError
 
 TOP = """\
@@ -201,3 +201,83 @@ def test_a_plain_repos_file_resolves_to_itself_in_one_layer():
     resolved = resolve(parse_manifest(text, "plain.repos"))
     assert _keys(resolved) == {"_unnamed": ["a", "b/c"]}
     assert [r.version for r in resolved.layers[0].repos] == ["main", None]
+
+
+# --- What is left out, and why ----------------------------------------------------------------
+
+
+def _left_out(resolved):
+    return [(o.key, o.layer, o.reason, o.groups, o.distro) for o in resolved.left_out]
+
+
+def test_a_repo_whose_one_group_is_off_is_left_out_with_that_group():
+    m = _manifest(_repo("a"), _repo("s", "    groups: [sim]\n    layer: core\n"))
+    resolved = resolve(m, "robot", "jazzy")
+    assert _left_out(resolved) == [("s", "core", GROUP_OFF, ["sim"], None)]
+    assert resolved.groups_on == []
+
+
+def test_a_repo_whose_groups_are_all_off_lists_them_all():
+    m = _manifest(_repo("s", "    groups: [sim, hw]\n"))
+    assert _left_out(resolve(m, "robot", "jazzy")) == [
+        ("s", "_unnamed", GROUP_OFF, ["sim", "hw"], None)
+    ]
+
+
+def test_a_repo_left_out_by_its_distro_entry_names_the_distro():
+    m = _manifest(_repo("a", "    distros:\n      rolling:\n        absent: true\n"))
+    assert _left_out(resolve(m, "robot", "jazzy")) == []
+    assert _left_out(resolve(m, "robot", "rolling")) == [
+        ("a", "_unnamed", NOT_ON_DISTRO, [], "rolling")
+    ]
+
+
+def test_a_repo_left_out_by_its_own_absent_on_a_distro_with_no_entry_names_the_distro():
+    m = _manifest(_repo("a", "    absent: true\n    distros:\n      jazzy: {}\n"))
+    assert _left_out(resolve(m, "robot", "jazzy")) == []
+    assert _left_out(resolve(m, "robot", "rolling")) == [
+        ("a", "_unnamed", NOT_ON_DISTRO, [], "rolling")
+    ]
+
+
+def test_absent_with_no_distros_in_the_manifest_has_its_own_reason():
+    top = "groups: []\n"
+    m = _manifest(_repo("a"), _repo("b", "    absent: true\n"), top=top)
+    resolved = resolve(m)
+    assert _keys(resolved) == {"_unnamed": ["a"]}
+    assert _left_out(resolved) == [("b", "_unnamed", ABSENT_NO_DISTRO, [], None)]
+
+
+def test_a_repo_left_out_by_a_group_and_a_distro_gives_the_group():
+    extra = "    groups: [sim]\n    distros:\n      rolling:\n        absent: true\n"
+    m = _manifest(_repo("a", extra))
+    assert _left_out(resolve(m, "robot", "rolling")) == [
+        ("a", "_unnamed", GROUP_OFF, ["sim"], None)
+    ]
+    assert _left_out(resolve(m, "dev", "rolling")) == [
+        ("a", "_unnamed", NOT_ON_DISTRO, [], "rolling")
+    ]
+
+
+def test_a_selected_repo_is_not_left_out_and_left_out_keeps_manifest_order():
+    m = _manifest(
+        _repo("z", "    groups: [hw]\n"),
+        _repo("a"),
+        _repo("m", "    groups: [sim]\n"),
+    )
+    resolved = resolve(m, "dev", "jazzy", ["ui"])
+    assert [o.key for o in resolved.left_out] == ["z"]
+    resolved = resolve(m, "robot", "jazzy")
+    assert [o.key for o in resolved.left_out] == ["z", "m"]
+
+
+def test_the_groups_on_are_the_roles_then_the_extra_ones():
+    m = _manifest(_repo("a"))
+    assert resolve(m, "dev", "jazzy", ["hw", "sim"]).groups_on == ["sim", "ui", "hw"]
+
+
+def test_a_manifest_on_its_own_is_its_whole_chain_and_the_source_of_every_repo():
+    m = _manifest(_repo("a"), _repo("b", "    layer: core\n"))
+    resolved = resolve(m, "robot", "jazzy")
+    assert resolved.chain == ["m.yaml"]
+    assert [r.source for layer in resolved.layers for r in layer.repos] == ["m.yaml", "m.yaml"]
