@@ -637,3 +637,13 @@ The one defect left is a case the rule never ends (below), present since 5509c1a
 ### Findings
 - [ ] (must-fix) A review in state `PENDING` (a draft its author has started and not submitted) has no `submitted_at`. GitHub's list-reviews endpoint returns the authenticated user's own draft, and `fetch_pr_reviews.sh` keeps every review with no state filter (lines 101-111), so a draft by the account the loop runs as comes out with `submitted_at: null`. Step 9 counts that as "empty or cannot be read", sends it to triage-reviews, and on the next re-fetch it is still null, so it is never read and the merge checkpoint is never reached. Fix: skip a review whose `state` is `PENDING` (not submitted, nobody's review yet); an empty time on any other review still counts as not read. — `.claude/skills/run-issue/SKILL.md:1015-1018`
 - [ ] (suggestion) The margin between `**Fetched**` and the real fetch is only the part of the minute already gone, 0 to 59 s. A local clock running ahead of GitHub's, or a review GitHub stamps just before a minute boundary but lists a moment later, can fall before the `**Fetched**` minute without having been read. Comparing against one minute before `**Fetched**` closes both at the cost of an occasional second triage, which the rule already accepts. — `.claude/skills/run-issue/SKILL.md:1015-1016`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 12:14 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+The owner's answer in the dialog, to "Fix F1 and F2 once more before publishing?": "Fix once more (Recommended)". F1 is the round 5 must-fix (Local Review (Pre-Push) at 8e35a651): run-issue step 9's rule can loop forever on a review in state PENDING, which has no submitted_at; skip a review whose state is PENDING. F2 is that review's suggestion: compare against one minute before Fetched. The question reached him because the host had answered address twice in a row at this checkpoint. In the same dialog he answered a second question, about a stale check in test_ros2_colcon.sh that comes from main and not from this branch: "Issue + fix main first (Recommended)", so part 1 is published only after that fix is on main and merged into this branch.
