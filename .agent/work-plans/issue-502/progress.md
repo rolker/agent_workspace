@@ -220,3 +220,19 @@ The revision answers all twelve first-review findings, and the characterisation 
 - [ ] `docs/manifest/design.md` line 313 reworded in the same change.
 - [ ] Safety scan: allowlist of `update` functions `status.py` may call.
 - [ ] Owner: with those cases in view, should a sparse checkout and a link at the place (lasting setups `sync` leaves with exit 0) fail `validate` as `unknown`, or be states that exit 0?
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 11:42 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+"Only unusable repos (Recommended)"
+
+Asked after the second Plan Review at 564013ce (verdict needs-work, eight new findings). The dialog quoted the workspace design's `validate` row ("says a repo the manifest calls for is missing, or cannot say"), said the host had the plan follow it, and gave what that means day to day: `validate` failing while a rebase, merge or bisect is in progress or an `index.lock` is there; failing for as long as a required repo is a sparse checkout or a link sits at its place, both of which `sync` leaves alone with exit 0; and `validate` running at registration and in the sit-rep's roadmap checks. The question was which states of a required repo make `status` exit 1.
+
+The option he chose, as worded in the dialog: exit 1 when the repo is missing, not at its place, not a git repo of its own, has no commit checked out, or its version cannot be found. A repo that is there with work in progress (a rebase, merge or bisect in progress, an `index.lock`) or a lasting setup `sync` leaves alone (a sparse checkout, a link at its place) is reported with its own state and exits 0. The design's `validate` row is reworded to match. This replaces the host's exit rule in the previous checkpoint. The other choices offered were to keep everything `status` cannot tell as exit 1, or to fail only a missing or misplaced repo.
+
+The eight findings of the review go back to plan-task with this.
