@@ -1872,3 +1872,13 @@ Other checks:
 - [ ] (suggestion, leak route, not in the limits) `!r` echoes outside the manifest readers: `system.py:379`, `:643` (format of `state.yaml` and the built file), and `selection.py:61-86` and `init.py:62-92` (command-line role and distro). None takes a manifest url. — `system.py`, `selection.py`, `init.py`
 - [ ] (suggestion) Warnings are not filtered (`system.warn`). The progress entry says so; the design's limits do not. — `docs/design.md`
 - [ ] (suggestion) `test_pruning_flags_are_forbidden_and_no_prune_is_not` still lists `["fetch","--prune-tags"]` as `False`, which reads as if it were allowed. The never-run list also misses `+refs/...` forced refspecs, `reset --merge`/`--keep`, `checkout -B` and `update-ref -d`; these gaps predate this diff. — `tests/test_update_safety.py`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 20:08 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+The owner was shown round 6's two must-fix verbatim (the changed sentences about error lines claim more than the code masks; the design states the wrong condition for the file:// fallback rule, and a file url with no credential whose path holds both a colon and an at sign gets its host and path masked), that the update rules have held since round 3, and four options: fix both then publish, publish now, drop the masking from this pull request, or stop. His answer: "Fix both, then publish (Recommended)" (one short pass: narrow the two sentences to what is true, and tighten the file:// rule so a path is never masked; then a narrow check of only that, the full local pass, and the pull request).
