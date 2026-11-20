@@ -485,3 +485,13 @@ Scope: commit 3b21957f (show names the recorded manifest as recorded on every re
 - [ ] (suggestion, Local Review @ `d02ab66`) Verified against the code: the design ("show", `design.md:523`) now promises that every refusal and warning names the recorded manifest as recorded, but the new parametrised test covers only two refusals from reading (a directory, YAML that does not parse). Warnings take another path: `read_manifest` passes them to `system.warn` on a successful read, labelled by `Manifest.source`, and the resolve refusals come from `selection.resolve`; neither is tested under a recorded path whose canonical form differs. The code is right by construction (read and resolve both use the recorded name in `_show_in_system`), so this is test coverage for a promise in the design. Add to the test, using `sub/../m.yaml`: (a) a top manifest with an unknown top-level key, where show succeeds and its stderr warning names `sub/../m.yaml`, never the canonical path, the same as sync's; (b) a recorded role not in the manifest, where show and sync refuse it naming `sub/../m.yaml` — `tools/repos-manifest/tests/test_show_system.py:203`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 13:06 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (one open suggestion, two missing test cases for behaviour the design now promises; a small fix the table lets the host answer)
+**After**: findings
+**Decision**: address
+
+Read the Integrated Review at 1a41a6be (one open finding, no outside review, CI pending). The design promises that every refusal and warning names the manifest by its path as recorded, and the test covers two refusals only. Add the two cases the review names, with a recorded `sub/../m.yaml`: a top manifest with an unknown top-level key, where the warning from `show` and from `sync` names the recorded path; and a recorded role that is not in the manifest, refused by both under the recorded name. Tests only; no code change is expected.
