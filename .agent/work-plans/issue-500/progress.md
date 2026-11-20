@@ -2219,3 +2219,31 @@ Changed from the round 7 entry's text: the corrected sentences the review faults
   - The never-run scan does not look for forced refspecs or `update-ref -d`; `update.py` uses them only on remote-tracking refs and its own probe refs. It also does not look for `reset --merge`/`--keep` or `checkout -B`, which `update.py` does not run.
   - Masking is a guard, not a guarantee. Not masked: a `file://` url whose password holds a `/`; the scp-like `user:password@host:path`; values the earlier format's reader still prints as they are (`docs/prototype.md` lists them); every `WARNING:` line; the earlier format's "unknown role" error, a signal's stop line and sync's setup-file line; messages outside the manifest readers that echo a value typed on the command line or read from the tool's record files, unless the filter covers their line; and a url reaching a message by a way the source scan cannot see, on a line the filter does not cover, or one the tool did not read with white space in its user information.
 - **Tests:** 1734 pass with `REPOS_MANIFEST_REQUIRE_COLCON=1`.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-19 21:29 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aae2dec0f27df04d4, resume 1 of 3)
+**Verdict**: changes-requested
+
+**PR**: #535 at `f7a1d443`
+**Depth**: Deep (reason: whole-diff classification, 7000+ lines over 31 files; fix-round re-review)
+**Must-fix**: 4 | **Suggestions**: 9
+
+The owner's case, rerun on real systems (record without urls): clone switched to rolling by hand prints "already on rolling; record updated (was jazzy)", exit 0, clone unchanged, record rolling with url; clean on jazzy: moved to rolling; on rolling with one local commit: left alone with the quoted `git push` hint; on jazzy with an edit: left alone, "(1 file)". Second sync quiet each time. The three first-review reproductions are fixed (other work tree's branch not fast-forwarded; heads/jazzy syncs; branch topic kept). heads/rolling to rolling is no move and quiet. Stale-ref error names both refs. Printed push command quotes a branch with ; and $(). Git 2.23 minimum agrees with git's release notes for switch (2.23) and tag non-clobbering (2.20); switch's --no-overwrite-ignore is undocumented in git help switch but works on 2.53. Suite: 1734 passed (private --basetemp; a first run collided with a concurrent pytest's shared basetemp and errored, not the code). Codex: 7 findings, 1 reproduced (must-fix 2), 3 repeat ruled points (state race, run-time switch, half-move reading as a person's). Gemini failed twice (headless tool denial, empty response).
+
+### Findings
+- [ ] (must-fix) A branch under rebase in another work tree (`git worktree add -f`, then `rebase -i` stopped) is listed as detached, so sync fast-forwards it; `rebase --continue` then fails "cannot lock ref refs/heads/jazzy" and the person's commit is left on a detached HEAD; design and README say such a branch is not moved; read each work tree's rebase-merge/rebase-apply head-name and BISECT_START — `tools/repos-manifest/src/repos_manifest/update.py:670`
+- [ ] (must-fix) A branch pin `release` changed to `tags/release` (origin gains a tag of that name) is not followed and is reported "moved by a person: it is on release" (false); `same_version` takes an unprefixed version as equal to either kind, against design's "`tags/<name>` the tag only ... everywhere: ... the comparison with the record" — `tools/repos-manifest/src/repos_manifest/update.py:476`
+- [ ] (must-fix) Design says "Every command a report prints quotes paths, branch names and refs for the shell", but the lock refusals print `fuser -v {path}` unquoted (a system path with a space breaks it) — `tools/repos-manifest/src/repos_manifest/system.py:486`
+- [ ] (must-fix) PR body: "The reviewer in round 2 broke six safety rules" — the six mutations are in round 1's review (progress.md:1233) — PR #535 body
+- [ ] (suggestion) A work tree on an unborn branch (`worktree add --orphan`) lists HEAD 000..0, which makes every url repoint "its commits cannot be counted" with no hint; drop the null id — `tools/repos-manifest/src/repos_manifest/update.py:1234`
+- [ ] (suggestion) The url probe fetch lacks `--no-recurse-submodules`/`--no-prune`, unlike rule 7's fetch (codex) — `tools/repos-manifest/src/repos_manifest/update.py:1210`
+- [ ] (suggestion) The printed `update-ref -d refs/remotes/origin/<old>` may drop the only ref to commits origin deleted; say so or give a check first — `tools/repos-manifest/src/repos_manifest/update.py:1283`
+- [ ] (suggestion) A prunable work tree (directory deleted) holding the branch blocks the fast-forward naming a path that no longer exists; add `git worktree prune` to the line — `tools/repos-manifest/src/repos_manifest/update.py:693`
+- [ ] (suggestion) `worktree list --porcelain` without `-z` misreads a path holding a newline (`-z` needs 2.36) — `tools/repos-manifest/src/repos_manifest/update.py:673`
+- [ ] (suggestion) `same_url` strips `.git`, so local `/srv/robot` and `/srv/robot.git` read as one repo and the probe is skipped (codex) — `tools/repos-manifest/src/repos_manifest/update.py:192`
+- [ ] (suggestion) `build` reads the resolved plan before taking the lock it shares with sync (codex; build.py is outside this diff: a follow-up) — `tools/repos-manifest/src/repos_manifest/build.py:1453`
+- [ ] (suggestion) A tracked edit made between the checks and the merge is reported as a half-change "made during the move" — `tools/repos-manifest/src/repos_manifest/update.py:1029`
+- [ ] (suggestion) PR body "sync removes no remote-tracking ref" sits beside its own probe-ref deletion (refs under refs/remotes/); say "of origin" — PR #535 body
