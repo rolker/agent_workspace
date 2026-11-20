@@ -119,7 +119,7 @@ def run_status(named_distros: Sequence[str], as_json: bool) -> int:
             )
         config = read_config(system)
         distros = distros_for(system, config, named_distros, cwd)
-        env = sync.require_tools()
+        env = sync.require_git()  # `status` runs git, never `vcs`
         plan = _plan(system, config, distros)
         results = [distro_status(system, config, each, env) for each in plan]
     ok = all(result.ok for result in results)

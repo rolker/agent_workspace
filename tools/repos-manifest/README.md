@@ -144,7 +144,8 @@ behind `origin`'s branch, and where it was fetched from; and the repos `sync` re
 no longer in the manifest. It changes nothing on disk and makes no network call: it answers
 from what each clone had when it was last fetched. `status --json` prints the same as one
 document a script can read, and the exit status is 1 when a repo that is not optional is
-missing, not at its place or unusable. [docs/design.md](docs/design.md#status) gives the states
+missing, not at its place or unusable. It needs `git` 2.23 or later on `PATH`, and not `vcs`.
+[docs/design.md](docs/design.md#status) gives the states
 and the few cases where `status` and the next `sync` read a repo differently.
 
 `build` builds one distro's layers in order with `colcon`, each on top of the ones below it,

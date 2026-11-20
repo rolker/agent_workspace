@@ -322,6 +322,21 @@ def test_status_runs_no_ls_remote_and_no_fetch(vcs, tmp_path, capsys, monkeypatc
     assert repo_a(status(case.system, capsys, expect=0)[1])["state"] == "expected"
 
 
+def test_status_needs_git_and_not_vcs(vcs, tmp_path, capsys, monkeypatch):
+    """`status` runs git and never `vcs`, so it answers with no `vcs` on PATH."""
+    case = make_case(tmp_path)
+    only_git = tmp_path / "only-git"
+    only_git.mkdir()
+    (only_git / "git").symlink_to(shutil.which("git"))
+    monkeypatch.setenv("PATH", str(only_git))
+    assert shutil.which("vcs") is None
+    found = repo_a(status(case.system, capsys, expect=0)[1])
+    assert found["state"] == "expected"
+    capsys.readouterr()
+    assert run(case.system, "sync") == 1  # `sync` still needs it
+    assert "`vcs` is not found on PATH" in capsys.readouterr().err
+
+
 def test_find_version_looks_up_ask_origin_when_it_is_called(vcs, tmp_path, monkeypatch):
     """`ask` is resolved at the call, so a test that replaces `ask_origin` reaches it."""
     case = make_case(tmp_path)

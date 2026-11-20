@@ -1906,7 +1906,8 @@ Not every command needs all of these:
 | Command | Needs |
 |---|---|
 | `show`, `resolve`, `validate` | Python with PyYAML; `git` when a manifest is read from a git repo, or when `fetch_from` has a fallback |
-| `init`, `sync`, `status`, `freeze` | `vcs` and `git` as well |
+| `status` | `git` as well, 2.23 or later; not `vcs`, which it never runs |
+| `init`, `sync`, `freeze` | `vcs` and `git` as well |
 | `build` | `colcon` as well |
 
 `colcon` is the one build tool `build` supports. It was chosen because it builds a directory
