@@ -92,9 +92,11 @@ def behind_with_changes(case):
 
 
 def url_changed(case):
-    """The manifest names a copy of the remote; origin is still the url recorded."""
+    """The manifest names a copy of the remote that has moved ahead; origin is still the url
+    recorded, so `status` answers from the old url's refs, where the clone is not behind."""
     copy = case.tmp / "remotes" / "a-copy"
     shutil.copytree(case.remote, copy)
+    commit_file(copy, "ahead", "a\n", "ahead")
 
     def change(data):
         data["repositories"]["a"]["url"] = str(copy)

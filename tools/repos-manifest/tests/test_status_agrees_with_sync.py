@@ -48,6 +48,9 @@ DIFFER = {
     "a local tag origin lacks": "failed",
     # The version is on origin but was not fetched here yet: `sync` fetches it and moves there.
     "a version not fetched": "updated",
+    # `status` answers from the old url's refs, where the branch is not behind; `sync` repoints
+    # origin to the new url, fetches from it and fast-forwards to the commit it has ahead.
+    "a url changed": "updated",
 }
 
 # Cases whose text is not checked against `sync`, and why: the ones `status` cannot know
