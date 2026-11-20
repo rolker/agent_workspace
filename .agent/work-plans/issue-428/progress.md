@@ -1083,3 +1083,45 @@ Kept as small as the owner asked (2026-11-20): "it's ok if scripts don't handle 
 - test_skill_paths.sh: 164 passed, 0 failed
 
 shellcheck at warning severity is clean on `worktree_remove.sh` and its test. No part 2 file, not `plan.md`, and no change to `_entry_state`.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-20 14:45 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #542 at `8ce42584`
+**Depth**: Deep (reason: whole-diff classification for a fix round; no convergence-check words in the handoff, so cross-model ran)
+**Must-fix**: 0 | **Suggestions**: 3
+
+Re-review after ca7e4b94, 2ccc87cc and 8314ad24 (Implementation entry 8ce42584), by a fresh reviewer.
+
+The bar, the owner's words (2026-11-20): "it's ok if scripts don't handle everything and come back saying they can't do it. If it's occasinal and an agent can deal with, that's fine. If it happens too often, than we can look at root causes and such. Let's not waist too much time going for perfect when we can have agents handle the edge cases."
+
+Applied as the host reads it: a must-fix is only silent harm (losing uncommitted work or anything outside the worktree, false success, telling the host to skip something that may hold a finding, or failing an ordinary case). A clear refusal, wording and polish are suggestions at most.
+
+Earlier must-fix items (Local Review 711f12bd):
+- The `..` manifest path: fixed. Reproduced against the head, plain and `--force`, for `gone/../layer_ws/src/sub/pkg_a`, `layer_ws/src/sub/pkg_a/..`, `../issue-workspace-7/layer_ws/src/sub/pkg_a` and `layer_ws/./src/gone/../sub/pkg_a`, each with an uncommitted change: all 8 exit 1 with "a manifest path may not contain ..", the change kept, the worktree kept. The check sits in the decision loop, before the dirty check, the chmod and any removal, so "Nothing was removed" is true. No false positive on `.`, an absolute path, `a..b`, `..x` or `x..` (checked by the adversarial reviewer).
+- The merge-answer re-fetch: fixed. The sentence comes first in step 11, before step 10's push and unpushed check, the `cd` to the root and `merge_pr.sh`, and applies step 9's own check unchanged. It also covers a resume: a recorded `merge` answer makes `next` return `action=merge`, which reaches step 11. The triage it sends to writes an `## Integrated Review`, which becomes the newest entry, and it is not a start entry for `pr_start.py`, so no false pull-request boundary.
+
+Verified:
+- shellcheck at warning severity is clean on `worktree_remove.sh` and its test.
+- `test_worktree_remove.sh`: 138 passed, 0 failed.
+- `fetch_pr_reviews.sh --pr 542` at `8ce42584`: no hosted review and no `copilot-pull-request-reviewer` check-run.
+
+Reviewers:
+- Gemini ran, EXIT 0. It found suggestion 1, as a must-fix. Dropped:
+  - The wait ends on any review on the head, or on an earlier finished check-run: a review that lands later is caught by the re-fetch before the checkpoint and at the merge answer.
+  - Plan drift (`notice_only`): recorded in the pull request text.
+  - The unchecked `$2` prefix, the `git status` error matching and the contracts of `fetch_pr_reviews.sh` and `progress_read.py`: settled in earlier rounds.
+- Codex ran, EXIT 0. Dropped:
+  - The same-filesystem bind mount: already deferred by the host under the owner's direction.
+  - New inline comments on an already-read review: on GitHub a reply is posted as its own review, with a new `review_id` (documented behaviour, not reproduced).
+  - Plan drift: as above.
+- Copilot: the CLI reviewer was dropped by owner decision (#344); no hosted Copilot review is on the pull request yet, and `triage-reviews` reads one if it lands.
+- The Claude adversarial reviewer ran, with a fresh agent. No must-fix.
+
+### Findings
+- [ ] (suggestion) Step 11 says to "present the merge checkpoint again" after the late review's triage; when that triage leaves open boxes, `next` raises `checkpoint:findings`. Say "call `next` again" instead. Both checkpoints offer merge and address, and the dialog carries the triage, so nothing is hidden. Found by the lead and Gemini. — `.claude/skills/run-issue/SKILL.md:1110`
+- [ ] (suggestion) The script header's list of refused cases and the `script_reference.md` row do not mention the `..` refusal. The error message itself is clear. — `.agent/scripts/worktree_remove.sh:27`
+- [ ] (suggestion) The pull request's Decision summary is out of date: item 5 says `triage-reviews` records a fetch time in `**Fetched**`, which is now `**Reviews-read**` with review ids; item 3 does not say that links which do not reach a folder inside, and `..` paths, are refused, to be removed or corrected by hand. Refresh it before the merge gate reads it. — pull request 542 body
