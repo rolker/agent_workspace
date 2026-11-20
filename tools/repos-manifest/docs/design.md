@@ -28,7 +28,7 @@ my_system/
     state.yaml       the version and commit sync last put each repo on
     resolved/        the .repos files from the last resolve, and the layer order
     built-<distro>.yaml  the layers build built for the distro, and each one's chain
-    build-<distro>.lock  held by a build of the distro while it runs
+    build-<distro>.lock  held by a build or a sync of the distro while it runs
   underlay/
     src/             the repos of the layer
     build/ install/ log/
@@ -296,13 +296,21 @@ distros:
         layer: core     # _unnamed for the unnamed layer
         version: rolling  # the manifest's version; null when it names none
         commit: 3f2a9c...
+        url: https://github.com/CCOMJHC/project11.git  # the manifest's url, when recorded
+        moving: {from: 3f2a9c..., to: 81bd04...}  # only while sync moves the repo
 ```
 
-It is made at the first clone and written whole, by one rename, after each repo is cloned. A
-write that fails ends the run with a message that the clone is in place but not recorded,
-naming the file and the reason. One without exactly this shape (`format: 1`, each repo with `layer`, `version` and `commit`, and
-no other key) is an error that names it and says what is wrong. Nothing stops two runs at
-once, and two runs can each lose the other's update to it.
+It is made at the first clone and written whole, by one rename, after each repo is cloned,
+followed or moved, and when the url of a repo left as it is is recorded. A write that fails ends
+the run with a message that the clone is in place, or that the repo may have been changed, and
+is not recorded, naming the file and the reason. `url` and `moving` are optional: a record
+without `url` (one written before urls were recorded) reads as no url recorded. One without
+exactly this shape (`format: 1`, each repo with `layer`, `version` and `commit`, optionally
+`url` and `moving` with `from` and `to`, and no other key) is an error that names it and says
+what is wrong. A `sync` holds the distro's lock (the one `build` holds, see "build") while it
+writes the distro's resolved files and updates and records its repos, so two runs on the same
+distro do not meet; two runs on different distros can still each lose the other's update to
+`state.yaml`.
 
 #### Which distro a command uses
 
@@ -623,8 +631,10 @@ is not resolved, and none of its repos is touched.
   where every distro reads the one location given, that is the resolver's error and nothing
   is created.
 
-A distro whose manifest does not resolve is reported in the same way, and a repo that cannot
-be fetched is reported for that repo; the other distros go on. `sync` exits with 1 when a distro
+A distro whose manifest does not resolve is reported in the same way, and so is one whose
+resolved files cannot be put on the disk (an error writing them, or something that is not
+the tool's in their place), whose repos are then not touched; a repo that cannot be fetched is
+reported for that repo; the other distros go on. `sync` exits with 1 when a distro
 was reported or a repo was an error (below), and with 0 otherwise; a repo that is there and
 left as it is does not change it. A stop signal at any point of `init` or `sync` ends it with
 that signal and one line, which says when nothing was changed yet.
@@ -654,8 +664,8 @@ it says that another sync will not change that.
 
 Missing repos are cloned with `vcs import`. Repos that are already there are handled one at
 a time with `git`, because `vcs import` does not do what is wanted for them. Tested with
-vcs2l 1.1.7: it switches a clean repo that is on another branch to the manifest's branch,
-and it refuses a repo whose URL has changed.
+vcs2l 1.1.7 and vcstool 0.3.0: it switches a clean repo that is on another branch to the
+manifest's branch, and it refuses a repo whose URL has changed.
 
 Parents are read from where their locations say, each time. A parent at a relative path
 comes from the same place as the manifest that names it; when that is the local copy, step 1
@@ -678,9 +688,399 @@ person has moved if it is not.
   built without a person deciding. While it stays on the manifest's branch it is still
   updated: what was fetched comes first and the local commits are put back on top of it, as
   `git pull --rebase` does. If they do not go on cleanly, the repo is put back as it was and
-  reported.
+  reported. This rule is not built yet: until it is, such a repo is left as it is, and
+  the report gives the next step: when `origin`'s branch has commits the clone lacks, the
+  `git pull --rebase` command for a person to run; when it has none, a line saying the
+  commits are only here, with the `git push` command that publishes them (`sync` itself
+  never pushes).
 - A repo that is no longer in the manifest is left on disk and reported; `sync` does not
   delete it.
+
+The rules for a repo that is there are checked in this order, and the first that applies ends
+the repo's turn. Before a fast-forward or a switch, the only changes in the repo are what the
+fetch brings, and, under the url rule, `origin`'s url (its probe refs are removed again). The
+fetch brings `origin`'s
+remote-tracking refs for its branches, objects, the local tags that `origin` has and the clone
+lacks (`--tags`; a local tag is never replaced or removed), and `FETCH_HEAD`. It removes no
+ref: `sync` prunes nothing, so a remote-tracking ref a person fetched with a refspec of their
+own (pull request heads) stays, and so does one left from a branch `origin` has deleted. No
+local branch, `HEAD`, index or work-tree file changes before then.
+
+1. The manifest gives the repo another layer than its record, and the old place is there:
+   it is not moved, and nothing is cloned at the new place. The repo is reported with the
+   commands that move it (`mkdir -p <new parent> && mv <old> <new>`), and, since it is not in
+   its place and `build` refuses that layer, that is an error (exit status 1) for a repo that
+   is not optional. Once the old place is gone, the repo is cloned at the new one, or, moved
+   there by hand, it is handled there and its record names the new layer.
+2. The check on the real destination fails, or the place is not a directory: an error, as for
+   a missing repo. A place that is a link to a directory is left as it is: `sync` does not
+   update a repo through a link.
+3. A repo that is not a git repo of its own (its top level is not the place itself, or there
+   is none), or whose type is not `git`, is left as it is.
+4. A rebase, merge, cherry-pick, revert or bisect in progress, or an `index.lock` in the git
+   directory, leaves the repo as it is. So does a sparse checkout (`core.sparseCheckout`): the
+   report says it is one and that `sync` does not update one, rather than counting its
+   skip-worktree files as changes.
+5. A repo without exactly one `origin` url is left as it is.
+6. The url rule (below), then the tracked changes: a file changed, staged or removed, a file
+   flagged assume-unchanged or skip-worktree, or a submodule with changes to its own tracked
+   files, leave the repo as it is. Untracked and ignored files are not local work and do not
+   stop an update. A submodule whose checked-out commit differs from the one recorded, which
+   is what a fast-forward that moves its pointer leaves, is not counted.
+7. `git fetch --tags --no-prune --no-prune-tags --no-recurse-submodules --refmap= origin
+   +refs/heads/*:refs/remotes/origin/*`: the refspec is `sync`'s own, and `--refmap=` keeps
+   git from applying the person's `remote.origin.fetch` too, so a refspec there that writes
+   into `refs/heads/` never moves a local branch; `--no-prune` and `--no-prune-tags` win over
+   `fetch.prune`, `remote.origin.prune` and `fetch.pruneTags`; a submodule is never fetched
+   into, whatever `fetch.recurseSubmodules` says. The fetch is given the distro's lock, as a
+   call that changes the tree is, so a `sync` killed while git writes refs does not free the
+   lock before git ends; its stop signals are not held, so a Ctrl-C still stops a fetch that
+   hangs or asks for a password. A fetch that fails skips an optional repo and is an error
+   for any other. A remote-tracking ref left from a branch `origin` no longer has that is in
+   the way of a branch `origin` has now (`origin/release` here against `origin`'s
+   `release/next`) makes git refuse the fetch without naming either: the error names both,
+   says another sync will not change it, and gives the `git update-ref -d` command that
+   removes the old ref by hand; before it, it says that ref may be the only one here to
+   commits `origin` has since deleted, and gives the `git branch <a new name> <ref>` command
+   that keeps them on a local branch. A tag here and `origin`'s tag of the same name that name other objects make
+   git refuse that tag and exit 1, though it fetches the branches; `sync` then fetches the
+   branches again without tags and goes on when that exits 0. A clash on a tag the manifest
+   does not name is a note. For the manifest's own tag it is an error (rule 8) that gives both
+   commits: when the record shows `sync` followed that tag at the commit it holds here, the
+   message says `origin` moved it and that `git tag -d` and another sync take `origin`'s, and
+   the next `sync` then follows it when the repo is still detached at the recorded commit (rule
+   11); otherwise the tag is taken for a person's, and which to keep is left to a person, with
+   no advice to delete it. `sync` never replaces a tag.
+8. The manifest's version is looked up on `origin` itself (`git ls-remote origin` for the
+   branch and the tag of that name, since a remote-tracking ref may be left from a branch
+   `origin` deleted): a branch (`origin/<version>`, which must be at the commit `origin` lists), a tag that
+   `origin` has (a local tag of the same name that `origin` lacks does not count, and nor does
+   a local branch, whatever the version), or a commit
+   named by 7 to 40 hex digits that is there; with no version, `origin`'s default branch. A
+   version written `heads/<name>` is the branch `<name>` only, and `tags/<name>` the tag
+   `<name>` only, as vcstool reads them (`version_ref` in `manifest.py`, which the reader's
+   check uses too), everywhere in these rules: the lookup, "on the manifest's version", the
+   move, and the comparison with the record. The record keeps the version as written, so
+   what a version written without a prefix named when it was recorded is read from where
+   the repo is: on the branch of that name, the branch; detached at the recorded commit, the
+   tag when the tag of that name here is at that commit and the local branch is not, the
+   branch when it is the other way round, and a commit for hex digits that commit starts
+   with. A recorded branch `release` and a pin `tags/release` are then two versions, and a
+   clean repo on the branch is moved to the tag (the report says "moved from branch release
+   to tag release"); so is the other way round. When both the branch and the tag of that
+   name are at the recorded commit (or, on the branch, the tag is), which one `sync` followed
+   cannot be told: the repo is left as it is and the report says so. When neither is (a tag
+   `origin` moved since), the record is read as the manifest's version when the names are
+   the same, as before. A plain name that is both a branch and a tag on `origin` stays the
+   error below; `heads/<name>` and `tags/<name>` are never refused for it. A tag that
+   names a tree or a blob, not a commit, is an error. A
+   commit counts only when it is reachable, in the history the clone has, from a branch of
+   `origin` or from a tag `origin` has, as `origin` lists them now (a remote-tracking ref left
+   from a deleted branch does not count); one that is in the clone and nowhere on `origin` (a
+   person's own commit) is not followed, and the repo is left as it is and reported. In a
+   shallow clone a commit beyond the shallow history is not there: the error says so and that
+   `sync` never deepens a clone. A branch `origin` has deleted is an error that says so and
+   names the remote-tracking ref left here. A version that is none of these, or both a branch and a tag on `origin`, is an error
+   that another sync will not change; when `origin` was set by hand the message says so and gives the command
+   that sets it to the manifest's url.
+9. On a branch with commits not on `origin`: left as it is (above). The count is of the commits
+   reachable from `HEAD` and from no remote-tracking ref of `origin`. After an upstream
+   force-push the old upstream commits count, so such a repo is left as it is too. A
+   remote-tracking ref left from a branch `origin` deleted, or one a person fetched with a
+   refspec of their own, still counts as `origin`'s here: a commit only it holds reads as on
+   `origin`. That is safe: it can only let a repo be moved, and a move never loses a commit (a
+   fast-forward keeps them all, and a switch leaves the branch it leaves as it was). On the
+   manifest's branch, the report gives the next step: when `origin`'s branch has commits the
+   clone lacks, the `git pull --rebase` command for a person to run; when it has none, a line
+   saying the commits are only here, with the `git push` command that publishes them (`sync`
+   itself never pushes).
+10. On the manifest's version (`HEAD` on the branch of that name; for a tag or a commit,
+    detached at its commit): followed. A branch whose `HEAD` is behind `origin/<version>` is
+    fast-forwarded (`git merge --ff-only`), whatever the branch's own upstream is; one that
+    `origin/<version>` no longer contains, because the branch was rewritten upstream, is left as
+    it is. A branch another work tree of the repo holds is not fast-forwarded: the repo is
+    left as it is and the report names that work tree and why (below, "held"), since a
+    fast-forward would move the branch under that work tree's files, and git would show the
+    new commits there as staged changes, or under a rebase that sets the branch when it
+    ends. A tag or a commit has
+    nothing to follow: `sync` leaves it where it is. When the repo is already there and only
+    its record is behind (the manifest changed to the version a person had already put it on,
+    or a person fast-forwarded it), the record is brought up to date and one line names the
+    repo and says so (`core/src/a: already on rolling; record updated (was jazzy)`); a record
+    that gains only the manifest's url says nothing.
+11. On the recorded version, which the manifest has changed (on the recorded branch, or
+    detached at the recorded commit): moved to the new version. A branch not yet local is
+    made with `git switch -c <version> --no-track <origin's commit>`, which does all of it or
+    nothing, and its upstream (`origin/<version>`) is set after the switch, as a step of its
+    own: when git refuses it, as it does in a `--single-branch` or `--depth` clone whose fetch
+    settings do not cover that branch, the move stands and the report says the branch has no
+    upstream, why, and the two `git config` commands that set one. A tag or a commit is checked
+    out detached. A local branch of that name is used when `origin/<version>` contains it: it
+    is switched to and then fast-forwarded. If another work tree holds that branch, or it has
+    commits not on `origin`, the repo is left as it is. The branch left behind
+    keeps every commit it had. A repo pinned to a tag the manifest still names, detached at the
+    commit recorded for it, is moved the same way when origin's tag now names another commit.
+12. Anything else (another branch, a detached `HEAD` elsewhere, or no record and not on the
+    version) is a repo a person has moved: left as it is and reported.
+
+A repo left as it is does not change the exit status, apart from the layer rule above; its
+record is unchanged, except that the manifest's url is recorded when it is not yet, and a repo
+moved by hand to the layer the manifest now gives it has that layer recorded, by whichever rule
+its turn ends, and a `moving` line that no longer describes it is removed (below). `status`
+is the check a script reads.
+
+Before every fast-forward or switch, `sync` lists the paths the move adds and looks at each in
+the work tree. Git refuses to overwrite an untracked file, but overwrites an ignored one
+without a word (git 2.53.0), so `sync` makes the check itself: a path that is there and is not
+tracked in `HEAD`, a directory on the way to it that is there and is not a directory (a link is
+never taken for one), or a directory the move replaces with a file that holds anything not
+tracked in `HEAD`, leaves the repo as it is, and the report names up to ten of the paths and
+says which are ignored. Git's own refusal stays behind that check: every `git merge` and
+`git switch` of `sync`, the undo included, is given `--no-overwrite-ignore` (both commands
+accept it in git 2.53.0), so an ignored file written where an incoming file goes between the
+check and the call (a build writing a log) makes git refuse, and the repo is left as it was.
+Right before the first call, `HEAD`, its branch and the tracked files are read again: a
+person who committed, switched branches or edited a tracked file while the checks ran keeps
+that, and the repo is left as it is and reported.
+
+Every `git` that changes a repo's tree is one call (a switch, or a fast-forward) that does
+all of what it is for or nothing, except the switch to a local branch followed by its
+fast-forward, whose first step is undone (a switch back) if the second does not get there and
+the tree is clean, so a tracked change git or a hook made is never carried back onto the
+branch the repo was on. An untracked or ignored file a hook wrote on the way stays in the work
+tree, as git leaves such a file on a switch, and is not reported: the comparison that finds
+the repo "left as it was" covers `HEAD`, the branch, the configuration, the index and the
+tracked status, not untracked files. After each call,
+whatever its exit status, `sync` reads the repo's state: success is `HEAD` where that call was
+to put it (for the switch of a two-step move, the local branch) with no tracked changes (a
+`post-checkout` hook that fails makes `git switch` exit non-zero after it has switched; that
+is reported, and the step counts, so a two-step move goes on to its fast-forward; a hook that
+exits 0 but changes tracked files stops the move there). A call that did not get there and
+left the repo as it was (`HEAD`, the branch, the configuration, the index and the tracked
+status compared) is reported and the repo left. One that left it otherwise is an error that
+says what ran, in order (each call with its exit status and where it took `HEAD`, a
+fast-forward naming the branch and both commits, and the switch back when it ran), where
+`HEAD` is now, and the files that now differ from it, staged or not, which were made after the
+check just before the first call found none, by git, a hook it ran, or a person (when there are
+none, it says so instead);
+`sync` does not put them back, and nothing after those calls runs in that repo. What git
+printed follows on lines of its own; when it printed nothing, the line ends there. A branch such a move made is left without an upstream,
+and the same report says so, with the two `git config` commands that set one. Its record loses
+the `moving` line, so the next `sync` reports the uncommitted changes and does not take them
+for a run that was stopped. The record keeps the version it had: if such a move left the repo
+on the new branch and the manifest is then changed back, the next `sync` reports the repo as
+moved by a person, since the record cannot tell sync's own unfinished move from a person's. `sync` never runs `reset`, `checkout -f`,
+`clean`, `stash`, `rebase`, `pull`, `push`, `gc` or `prune`, never deletes a branch or a tag (the
+one ref it deletes is its own probe refs, below, with `update-ref --no-deref -d`, which removes a
+symbolic ref there and never what it points to), and passes
+no `--force`, `--no-verify`, `--prune`, `-p`, `-P`, `--prune-tags` or `--discard-changes`, no
+`switch -f` or `branch -f`, and no bundled short flag holding `p`, `P` or `f` (a test reads
+`update.py` for each of these, in every git call and every list of arguments; the test also
+holds the code to spreading only argument lists it reads). Each `git` runs with automatic `gc` and `maintenance` off and
+with `submodule.recurse` off. A `git` whose output `sync` reads runs with `LC_ALL=C`, so git's
+words are the ones the code looks for; a call whose output is only shown (a switch, a
+fast-forward, setting an upstream or a url) keeps the person's language. `sync` and `init` read
+`git --version` once per run and stop, with nothing changed, when it names a git older than
+2.23, the release that brought `git switch`; the other commands and options they use are
+older (a fetch that does not replace a tag without `--force` came in 2.20). Every command a
+report or a refusal of `sync` prints, the lock refusals' `fuser -v` included, quotes paths,
+branch names and refs for the shell (`shlex.quote`); the commands `build` prints name only
+layers, whose names hold letters, digits, `_` and `-`, and process numbers.
+
+A clone with submodules is followed like any other, and its submodules are not updated: the
+report gives the `git submodule update` command. Before every fast-forward or switch, `sync`
+compares each submodule of `HEAD` with the same path in the target, and leaves the repo as it
+is, naming the submodule and saying it has to be dealt with by hand, when the move removes a
+submodule whose directory holds anything (a `.git`, a file or a directory), or puts something
+else in its place (a file, a link, a directory of the superproject's); and when the move
+changes the commit a submodule points to while the submodule's own `HEAD` is not the commit
+`HEAD` records, or its directory holds files and is not a repository of its own. `sync` never
+judges whether a submodule's content could be lost. A submodule that is not checked out (an
+empty directory) is no obstacle, and nor are untracked files in a submodule whose pointer a move
+changes, since with `submodule.recurse` off git does not touch its work tree; a path the move
+turns from a file or directory into a submodule goes through the paths check above. A
+submodule left on its old commit by an earlier `sync` stops the next move of its pointer until
+a person updates it. A shallow clone is followed on the history it
+has and is never deepened or made whole; the fetch brings the history of every tag, so a
+shallow clone of a repo with tags grows at its first `sync`. A linked work tree of a clone (the
+workspace this tool is used from makes them, on feature branches) on another branch is
+unaffected: `sync` moves only the branch of the clone's own work tree, and never touches
+another work tree's files. A branch is held by another work tree when that work tree has it
+checked out (`git worktree add -f` allows that), or is in the middle of an operation that
+names it, as git itself counts it (`git branch -f` refuses such a branch): a rebase whose
+`rebase-merge/head-name` or `rebase-apply/head-name` is that branch, which it sets when it
+ends (git lists that work tree as detached meanwhile); a rebase with `--update-refs` whose
+`update-refs` list names it; a bisect whose `BISECT_START` names it, where `bisect reset`
+returns. When an operation is there and what it returns to cannot be read (a rebase with no
+`head-name`, a file that cannot be read), every branch is held. A rebase of a detached `HEAD`
+(`head-name` is `detached HEAD`), a bisect started detached (`BISECT_START` holds a commit),
+and a `git am`, merge, cherry-pick or revert, which work on `HEAD` as it is, hold no branch
+beyond the one checked out there. When another work tree holds the clone's branch, or the
+branch a move would switch to (before the switch, so also before the fast-forward of an
+existing local branch), the repo is left as it is and reported, naming that work tree and why.
+When that work tree's directory no longer exists, the line says so and gives `git worktree
+prune`, to run when the directory is gone for good (not on a drive that is not mounted). When
+the work trees cannot be listed or their git directories read, the repo is left as it is too.
+The url rule counts the `HEAD` of every work tree, a detached one included; one on a branch
+with no commit yet (`git worktree add --orphan`) has none to count.
+
+For a manifest that names no version, the branch followed is `origin`'s default branch as the
+clone records it (`refs/remotes/origin/HEAD`, set when it was cloned); `sync`'s fetch does not
+change that record. When `origin`'s default branch changes, the clone stays on the old branch
+and is followed on it while `origin` still has it. Once a person runs `git remote set-head
+origin --auto`, the clone, still on the old branch, is a repo a person has moved: left as it
+is and reported, never switched. When `origin` deletes the old branch, the record names a
+branch that is gone, and the repo is an error whose message gives that `set-head` command.
+
+The url rule. `W` is the clone's `origin` url as written in its configuration (before any
+`insteadOf` rewrite), `U` the manifest's url, and `R` the one recorded; urls are compared after
+one trailing `/` and one trailing `.git` are taken off, as git hosting reads `x` and `x.git` as
+one repository; so local paths `/srv/robot` and `/srv/robot.git` are read as one too.
+
+- `W` is `U`: nothing to do.
+- `W` is `R` and the manifest now names another `U`: the manifest moved the repo. `sync` fetches
+  `U`, with `--no-tags --no-prune --no-recurse-submodules`, into refs of its own
+  (`refs/remotes/repos-manifest-probe/`, removed afterwards, and at
+  every later check if a run was killed) and repoints `origin` to `U` only when every local
+  branch and the `HEAD` of every work tree of the repo, detached ones included, are on it.
+  Otherwise `origin` stays, and the repo is left as it is with the number of commits and the
+  branches and detached work trees that hold them. When the clone has a remote named
+  `repos-manifest-probe`, the name `sync` keeps for this check, there is no check: `origin`
+  stays, the repo is left as it is and reported with the command that renames that remote,
+  and that remote's refs are never removed. The old url is not kept as another
+  remote; the report prints it.
+- Anything else, `R` missing included, is an `origin` a person set (ssh for pushing, a fork):
+  it is left as set, the repo is updated from it, `U` is recorded, and a line on every run says
+  so, with the command that sets the manifest's url. An `origin` a person set is never
+  repointed. A record with no url yet (a system made before the record held urls) is given the
+  manifest's url at the next sync when `W` is `U`; a later change of the url in the manifest
+  then repoints a clone whose `origin` still has the url recorded.
+
+In the first and last case `U` is recorded when the repo's record is next written, which, for
+a repo that is recorded, is in the same run unless the fetch or the version lookup fails. After
+a repoint `U` is recorded at once, before the fetch, so a fetch or a lookup that fails next does
+not leave the new url read as one a person set.
+
+The tool masks a url's user name and password in what it prints. This is a guard against
+accidents, not a guarantee: a user name and password belong in a credential helper or an ssh
+key, not in a manifest url, and the specification does not look for one there ("a credential
+in a `url` is not looked for: the manifest is as trusted as the code it names",
+[spec.md](spec.md#reading-a-manifest-before-using-it)).
+
+The user information of a `scheme://user:password@host` url is shown as `***` (an ssh url's
+user name alone is kept; any other user name is masked, since an https one is often a token).
+Each url the tool reads (the manifest's, the clone's `origin`, the recorded one) is parsed
+whole: its user information (a `file://` url's aside, below) is everything between `://` and
+the last `@` in it, whatever
+characters it holds (quotes, spaces, `@`, `:`, `/`, `%` escapes, any letter); an https url
+whose path holds an `@` has more masked, never less. In a `file://` url, user information is
+only in the authority, the text between `file://` and the first `/` after it: it is the text
+before the last `@` there, when that text holds a `:` (`file://user:password@host/srv/w@x` is
+shown as `file://***@host/srv/w@x`). A `file://` url's path is never masked
+(`file:///srv/w@x/...` and `file://localhost/srv/a:b/w@x` are printed as they are). Nothing
+that does not follow `://` is masked: a local path holding `@`, `git@github.com:...` and `origin/main@{upstream}` are printed as they are, so a password that
+is a common word (`git`, `main`, `a`) cannot change a printed command.
+
+It is masked at two places:
+- Where a url is put into a message. A message that formats a value named as a url (the
+  scan below holds the source to it), and every message of the manifest reader
+  (`manifest.py`) that quotes a value from a manifest (a `base:` path, a version, a name, a
+  repo key, an unknown key), does it through `mask_url` or `quoted_url`, which masks a url and
+  then quotes it as `repr` would, so no quoting or escaping (a quote or a backslash) can hide
+  the user information. A value of the wrong type (a list or a mapping given as a `url`, a
+  `base`, a version or a name) is described by its kind (`must be a string, got a list`),
+  never shown. The earlier format's reader (`schema.py`) refuses a url with a password without
+  printing it, and shows a name that fails its rule, two names that differ only in case and
+  an unknown top-level key the same way; its other messages that print a value from a
+  manifest ([prototype.md](prototype.md) lists them) are masked only as they are printed.
+- As some lines are printed. These lines pass through a filter: each line `sync` prints for a
+  repo's outcome (what it says and what git says, `ERROR:`, `skipped`, `left alone` and the
+  updated line, and a repo's notes), `sync`'s `ERROR:` line for a distro whose plan or run
+  failed, and the `ERROR:` line any command ends with when it stops on the tool's own kind of
+  error (a manifest that cannot be read or is refused, a system or a record in the wrong state;
+  the handler in `cli.py`). The filter masks each url the tool read where it follows `://`, its
+  `%`-decoded form too, and a url it did not read itself (git's message after an `insteadOf`
+  rewrite, a value typed on the command line) by its shape, up to the first `@` that a host
+  follows within one run of characters that are not white space. Two other lines `sync` prints
+  for a repo are not filtered, `cloning <path>` and "<path>: holds the manifest, …": they show
+  only the repo's path in the system directory, which is the distro's and the layer's
+  directories where the system has them, then `src`, then the repo's key. That path cannot hold
+  a `scheme://` url: a distro or layer name has only letters, digits, `_` and `-`, and a repo
+  key has no `//`.
+  Other lines are printed as given, among them: the "unknown role" error of `resolve` and
+  `validate` on an earlier-format manifest, which echoes the role typed on the command line, the
+  `ERROR:` line of a run stopped by a signal, `sync`'s line for a setup file it could not write,
+  and every `WARNING:` line.
+
+What is not masked, so a user name and password in a url can be printed:
+- A `file://` url whose password holds a `/`: the password reaches past the authority and
+  cannot be told from a path. git's file transport ignores user information.
+- The scp-like form `user:password@host:path`, which does not follow `://`.
+- A value the earlier format's reader (`schema.py`) prints from a manifest other than those
+  named above (a layer name in `optional_layers` or `repos`, a list of layers or of unknown
+  keys); [prototype.md](prototype.md) lists them. Such a line is masked only if the filter
+  above covers it.
+- A warning (`WARNING:`), including a manifest's warnings: the filter does not cover them,
+  though `manifest.py` quotes the key in them through `quoted_url`.
+- A message outside the manifest readers that echoes a value typed on the command line (a
+  role or a distro) or read from the tool's own record files (`state.yaml`, the built file),
+  unless it is one of the lines the filter covers.
+- A url that reaches a message by a way the source scan below cannot see, on a line the filter
+  does not cover, or with white space in its user information when the tool did not read it.
+
+Tests check it. One walks the tool's source for values formatted into text whose names say
+they are urls (holding "url", or `origin`) and fails on one that does not go through the
+masking functions; another holds `manifest.py` and `schema.py` to quote no value with `!r` or
+`repr`. The walk cannot see a url held under another name, passed to a helper, joined, or
+formatted inside a list or a mapping, nor keyword arguments, `+=`, logging, or an exception
+formatted whole; `tests/test_url_messages.py` lists what it misses. A message reached that way
+is masked only on the lines the filter above covers. End to end, `resolve`, `validate`, `init` and `sync` are run over repo urls whose passwords hold
+quotes, a backslash, a space, `%` escapes and letters beyond ASCII, in every url form the
+tests name (a list and a mapping among them); `resolve`, `validate` and `init` over a `base:`
+url, mapping and list; and `validate` over keys, names and values that hold a url. Their
+output is searched for the user name and the password.
+
+A `set-url` command whose url is masked says so, and that the url to give it is the repo's url
+as the manifest gives it. The urls are written in full where they are kept: the resolved
+files, `state.yaml` and the clone's configuration.
+
+A person who fetches over https and pushes over ssh sets `remote.origin.pushurl`, or
+`url.<base>.pushInsteadOf`, and keeps `origin`'s url the manifest's.
+
+A distro's lock: `sync`, and `init` for its first sync, hold the distro's lock (the file `build`
+holds, "build") from before the distro's resolved files are written to the end of its repos;
+until a lock for every command is designed, this is that lock reused. A distro whose lock a
+`build` or another `sync` holds is reported and the others go on. Every `git` that changes a
+repo, its fetches included, is given the lock, so a `sync` killed while one runs does not
+release it early. A fetch goes on after the `sync` that started it is killed, and holds the
+lock until it ends: one waiting at a password prompt holds it until it is killed. A `sync` or
+`build` refused meanwhile says that the `sync` has ended and that a git it started, such as a
+fetch, may still hold the lock, gives the `fuser -v` command that names it, and says that it
+ends on its own or, at a prompt, when it is killed. When the process the lock file names runs
+but its open files cannot be read (no `/proc`, or a process of another user), the refusal
+says it cannot tell whether that is the sync, names the process and the `ps` and `fuser`
+commands that show what it is, and advises no kill; the lock
+file names only the `sync`. A `sync` writes no build record; after a distro's repos, for each
+layer `build` has built and some of whose repos this run cloned or moved, it says that the
+layer is behind and that `build` brings it up to date. When the manifest's own file is in a
+repo this run moved, the run has already read it; the report says the next sync reads its new
+text.
+
+A stop signal is held while a `git` that changes a repo runs (and `git` inherits it held), so
+the call ends whole, and the run then ends. Before such a call `sync` records a `moving` line
+in the repo's record and removes it with the record that follows; a run killed outright may
+leave it. While `HEAD` is the line's `from` or `to` commit, the line is added to the reason a
+repo is left as it is (uncommitted changes, an operation in progress, an `index.lock`), never
+put in its place; a later `sync` that finds `HEAD` elsewhere removes the line, whatever then
+happens to the repo. It only changes wording: no rule reads it to decide what to do.
+
+| Where a run ends | What it leaves | The next `sync` |
+|---|---|---|
+| A stop signal or a kill during a fetch | At most remote-tracking refs, and a lock file git did not remove; the distro's lock stays held until the fetch ends | Fetches again; a lock file git left is named in git's message, and `sync` never removes one |
+| A stop signal while a fast-forward or a switch runs | The call ends whole first | Records it |
+| A kill during a fast-forward or a switch | Possibly a half-changed tree, an `index.lock`, and the `moving` line | A changed tree or an `index.lock` leaves the repo as it is, the report saying a sync was stopped while moving it and that `git status` shows what it left; a repo git had not changed yet is moved again |
+| A kill after the call, before the record | The repo on the new version, the `moving` line | Records it |
+| A kill during the url check | The probe refs | Removes them |
 
 Arguments after `--` are passed to `vcs import`, for example `--recursive` for repos with
 submodules. `init` and `add-distro` pass theirs to the `vcs import` of their first sync.
@@ -792,7 +1192,9 @@ the tool has ended and its `colcon`, which has it open, runs on, it names that `
 otherwise it says `fuser -v` on the lock file names what holds it, adding, where the open
 files of a process the lock file names cannot be read, that the file names it and the tool
 cannot check it. Builds of two distros at once take two locks and read and write two records, so
-neither touches the other's.
+neither touches the other's. A `sync` of the distro takes the same lock (see "sync"), and the
+lock file then names it: a build refused by a running `sync` says so, and a `sync` refused by a
+running build is reported for that distro.
 
 A layer counts as built when its record is there, its `install/setup.bash` is there (a person
 may have deleted `install/`), and the chain it was built on, which its record holds, is the
@@ -1191,6 +1593,11 @@ When the place a repo comes from changes for a repo that is already cloned, beca
 appeared or `fetch_from` was edited, `sync` changes the clone's remotes to match. It does
 not clone again, and the working files and local branches stay as they are.
 
+When the manifest itself gives a cloned repo another url, the url rule under "sync" applies:
+`origin` is repointed only when it still has the url `sync` recorded and every local branch is
+on the new one, and an `origin` a person set is left as set. To push over ssh while fetching
+from the url the manifest names, set `remote.origin.pushurl`, or `url.<base>.pushInsteadOf`.
+
 With `fallback: true`, the fork is where the repo is fetched from, so its branches have to
 be kept up to date by their owner. That suits a fork that carries a developer's own line of
 work. For a fork that exists only to send a change back, an extra remote is the better fit:
@@ -1223,7 +1630,10 @@ manifest names, and pushed to the private server. The tools have to fit that:
 - `sync` keeps local commits. On a repo that is on the manifest's branch, it fetches, and
   puts commits that have not been pushed yet back on top of what it fetched. So a machine
   with a fix it has not pushed still gets the other machines' fixes. If the two do not fit
-  together cleanly, the repo is put back as it was, reported, and left for a person.
+  together cleanly, the repo is put back as it was, reported, and left for a person. This is
+  not built yet: `sync` now leaves a repo with commits not on `origin` as it is and prints the
+  next step: the `git pull --rebase` command when `origin`'s branch has commits the clone
+  lacks, and otherwise the `git push` command that publishes the clone's commits.
 - `status` shows repos with commits that are not on the remote yet, so nothing made in the
   field is forgotten there.
 - A manifest that names exact commits or tags leaves each repo without a local branch. That
@@ -1362,8 +1772,8 @@ Their robot uses the role `robot` with the extra group `my-robot-hardware`.
 - `vcs`, from vcs2l or vcstool, found on `PATH`, to clone repos. The package's test extra
   installs vcs2l for the tests.
 - `colcon`, to build a layer.
-- `git`, to update repos that are already cloned, to read their state, to check whether a
-  repo exists at another place and to add remotes.
+- `git` 2.23 or later, to update repos that are already cloned, to read their state, to check
+  whether a repo exists at another place and to add remotes.
 - Python with PyYAML.
 
 The tools call `vcs` and `colcon` as commands. They do not import them as libraries. Every
@@ -1430,29 +1840,28 @@ repo it never lets git or ssh ask for a password, where the design lets them ask
 terminal.
 
 `init` and `sync` are built for a manifest given as a path on the local disk, flat or with
-`--distro-dirs`, as far as setting a system up and cloning the repos that are missing.
-`sync` reads and resolves every distro it acts on, and builds the text of each distro's resolved
-files, before it changes anything, so a distro whose manifest does not resolve, or whose resolved
-files cannot be written out, ends the run with nothing changed for any distro, rather than being
-reported while the others go on. When the manifest cannot be read, does not resolve, or
-now has distros on a flat system, the error ends by saying that the manifest's path is the one
-recorded in `config.yaml`, taken from the system directory. A repo that is there is
-not touched, and `sync` says that updating it is not built yet. Two names that a disk which
-ignores case treats as one are not checked yet on the real destination.
+`--distro-dirs`: setting a system up, cloning the repos that are missing, and updating the
+ones that are there by the rules under "sync", except the rebase of commits not on `origin`
+(such a repo is left as it is). `sync` reads the manifest and resolves every distro it acts on,
+and builds the text of each distro's resolved files, before it changes anything. A manifest
+that cannot be read ends the run with nothing changed, since every distro reads the one
+recorded location; a distro whose manifest does not resolve, whose resolved files cannot be
+written out, or, on a flat system, whose manifest now has distros, is reported, and the others
+go on. Each of those errors ends by saying that the manifest's path is the one recorded in
+`config.yaml`, taken from the system directory. Two names that a disk which ignores case
+treats as one are not checked yet on the real destination.
 
 `build` is built as "build" describes, for one distro at a time, stopping at the first layer
 that fails unless `--keep-going` is given. It reads the resolved files `sync` wrote and needs `colcon` on `PATH` or beside the
 Python running it.
 
-Not built yet: updating repos that are there (step 1 of "sync" and its rules),
-`local_manifest`, the git and URL forms of a manifest's location with `--manifest-ref` and
+Not built yet: step 1 of "sync" (the manifest's own clone), the rebase of a repo with commits
+not on `origin`, `local_manifest`, the git and URL forms of a manifest's location with `--manifest-ref` and
 `--manifest-path`, arguments after `--` for `init` and `sync`, `add-distro`, `show`, `status`,
 `freeze`, fetching from another place and extra remotes.
 
 ## Open questions
 
-- What `sync` does when a repo that is already cloned is given a different layer. Its
-  directory has to move. `sync` could move it, or say what to move.
 - With `fallback: true`, how often to ask whether a repo exists at the other place. Asking
   for every repo on every sync costs a network call per repo.
 - With a directory per distro, whether a distro needs more settings of its own than a

@@ -1,5 +1,5 @@
-"""`sync`, part 1: resolve every selected distro, then clone each repo that is missing. A repo
-that is already there is not touched.
+"""`sync`: resolve every selected distro, then, for each distro, clone each repo that is missing
+and bring each one that is there in line with the manifest by the rules of ``update.py``.
 
 A missing repo is cloned by one `vcs import` of a one-repo `.repos` text into a temporary
 directory in `.repos-manifest/`; on exit status 0 the clone is renamed into its place. So a
@@ -11,16 +11,19 @@ from __future__ import annotations
 
 import errno
 import os
+import re
+import shlex
 import shutil
 import subprocess
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import yaml
 
-from . import selection
+from . import selection, update
+from .masking import mask_urls
 from .output import make_writable, output_files, process_has_ended, signals_held, write_output
 from .selection import Resolved, Selected
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
@@ -28,6 +31,7 @@ from .yamlload import ManifestError
 from .system import (
     current_directory,
     CONFIG_FILE,
+    DistroState,
     SETUP_TEXT,
     STATE_FILE,
     SYSTEM_DIR,
@@ -39,10 +43,12 @@ from .system import (
     RepoRecord,
     distros_for,
     find_system,
+    hold_build_lock,
     place_problem,
     layer_src_parts,
     oserror_message,
     put_distro_state,
+    read_built,
     read_config,
     read_manifest,
     read_state,
@@ -103,8 +109,45 @@ def require_tools() -> Env:
         done = None
     if done is None or done.returncode != 0:
         raise Refusal(f"`{git} rev-parse --local-env-vars` does not run", "Repair or reinstall git")
+    require_git_version(git)
     local = set(done.stdout.split()) - CONFIGURATION_VARIABLES | {"GIT_NAMESPACE"}
     return {name: value for name, value in os.environ.items() if name not in local}
+
+
+# The oldest git that has every command `sync` runs: `git switch` (with `--no-overwrite-ignore`
+# and `--detach`) came in 2.23. The others are older: a fetch that does not replace a tag
+# without `--force` (2.20), `config --type` (2.18), `fetch --no-prune-tags` (2.17), `rev-parse
+# --is-shallow-repository` (2.15), `status --porcelain=v2` (2.11), `worktree list --porcelain`
+# and `for-each-ref --contains` (2.7), `fetch --refmap` (2.1).
+GIT_MINIMUM = (2, 23)
+_GIT_VERSION = re.compile(r"git version (\d+)\.(\d+)")
+
+
+def require_git_version(git: str) -> None:
+    """Stop with a plain message when `git --version` names a version older than
+    `GIT_MINIMUM`. A version it does not print in the usual form is not judged."""
+    try:
+        printed = subprocess.run(
+            [git, "--version"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            check=False,
+            env={**os.environ, "LC_ALL": "C"},
+        ).stdout
+    except OSError:
+        raise Refusal(f"`{git} --version` does not run", "Repair or reinstall git") from None
+    match = _GIT_VERSION.match(printed.strip())
+    if match is None:
+        return
+    found = (int(match.group(1)), int(match.group(2)))
+    if found < GIT_MINIMUM:
+        need = ".".join(str(n) for n in GIT_MINIMUM)
+        raise Refusal(
+            f"git {found[0]}.{found[1]} is on PATH, and this tool needs git {need} or later"
+            " (for `git switch`); nothing was changed",
+            f"Install git {need} or later",
+        )
 
 
 def sweep_temporaries(directory: Path) -> None:
@@ -137,13 +180,16 @@ def _remove_temporary(path: Path) -> None:
 @dataclass
 class RepoResult:
     path: str  # below the system directory
-    outcome: str  # cloned, present, skipped (optional), failed
+    outcome: str  # cloned, present, updated, up to date, left alone, skipped (optional), failed
     detail: str = ""
     commit: Optional[str] = None
     fetch: bool = False  # it failed to fetch or had no HEAD, which a later sync may get past
+    layer: Optional[str] = None
+    place: Optional[Path] = None
 
 
 CLONED, PRESENT, SKIPPED, FAILED = "cloned", "present", "skipped", "failed"
+UPDATED, CURRENT, LEFT = update.UPDATED, update.CURRENT, update.LEFT
 
 
 def one_repo_text(layer_text: str, key: str) -> str:
@@ -285,6 +331,14 @@ class Planned:
     files: Dict[str, str]
 
 
+@dataclass
+class Reported:
+    """A distro phase one could not plan: it is reported, and nothing of it is changed."""
+
+    distro: Optional[str]
+    problem: str
+
+
 def plan_distros(resolved: Sequence[Resolved]) -> List[Planned]:
     """Build every distro's resolved files; a manifest whose files cannot be written out (a
     head comment that would hold a control or invisible character) fails here."""
@@ -297,44 +351,235 @@ class DistroResult:
     repos: List[RepoResult] = field(default_factory=list)
     setup_failure: Optional[str] = None  # why the distro's setup.bash could not be created
     setup_note: Optional[str] = None  # what is at setup.bash's place when it is not a file
+    reported: Optional[str] = None  # why nothing of the distro was changed
+    gone: List[str] = field(default_factory=list)  # recorded, left the manifest, on disk
 
     def of(self, outcome: str) -> List[RepoResult]:
         return [r for r in self.repos if r.outcome == outcome]
 
 
+def _say(done: RepoResult) -> None:
+    """The line for a repo as it is handled; an up-to-date or present repo has none. What
+    `sync` or git says is passed through the masking filter (`mask_urls`), which masks a url's
+    user name and password within the limits the design lists (``docs/design.md``, "sync")."""
+    detail = mask_urls(done.detail)
+    if done.outcome == FAILED:
+        print(f"ERROR: {done.path}: {detail}", flush=True)
+    elif done.outcome == SKIPPED:
+        print(f"skipped {done.path} (optional): {detail}", flush=True)
+    elif done.outcome == UPDATED:
+        print(f"{done.path}: {detail}", flush=True)
+    elif done.outcome == LEFT:
+        print(f"{done.path}: left alone: {detail}", flush=True)
+
+
+def layer_moved(
+    system: Path, config: Config, distro: Optional[str], repo: Selected, layer: str, old: str
+) -> Optional[RepoResult]:
+    """The rule for a repo the manifest has given another layer: when its old place is there,
+    it is not moved and nothing is cloned at the new place; the result says what to run. None
+    when the old place is gone, and the repo is handled at its new place."""
+    key_parts = tuple(repo.key.split("/"))
+    old_parts = layer_src_parts(config.layout, distro, old) + key_parts
+    new_parts = layer_src_parts(config.layout, distro, layer) + key_parts
+    old_place, new_place = system.joinpath(*old_parts), system.joinpath(*new_parts)
+    if not os.path.lexists(old_place):
+        return None
+    shown = "/".join(new_parts)
+    if os.path.lexists(new_place):
+        detail = (
+            f"the manifest now has it in layer {layer}, and {'/'.join(old_parts)}, where it"
+            " was, is there too; both are left as they are"
+        )
+    else:
+        detail = (
+            f"the manifest now has it in layer {layer}; it is in {old_place}. To move it:"
+            f" mkdir -p {shlex.quote(str(new_place.parent))} &&"
+            f" mv {shlex.quote(str(old_place))} {shlex.quote(str(new_place))}"
+        )
+    outcome = SKIPPED if repo.optional else FAILED
+    return RepoResult(shown, outcome, detail, layer=layer)
+
+
+def present_repo(
+    system: Path,
+    parts: Parts,
+    repo: Selected,
+    layer: str,
+    state: DistroState,
+    distro: Optional[str],
+    env: Env,
+    lock: Optional[int],
+) -> RepoResult:
+    """A repo whose place is there: the checks on the place, then the rules of `update.py`."""
+    place = system.joinpath(*parts)
+    shown = "/".join(parts)
+    skip = SKIPPED if repo.optional else FAILED
+    problem = place_problem(system, parts)
+    if problem is not None:
+        return RepoResult(shown, skip, f"{problem}; left alone")
+    if not place.is_dir():
+        return RepoResult(shown, skip, "is there and is not a directory; left as it is")
+    state_file = system / SYSTEM_DIR / STATE_FILE
+
+    def write(record: RepoRecord) -> None:
+        state.repos[repo.key] = record
+        with signals_held():
+            put_distro_state(system, distro, state)
+
+    had = state.repos.get(repo.key)
+    if had is not None and had.layer != layer:
+        # Moved by hand to the layer the manifest gives it: the record names where it is now,
+        # whatever the rules below then do with it.
+        try:
+            write(replace(had, layer=layer))
+        except (OSError, ManifestError) as exc:
+            why = exc.strerror if isinstance(exc, OSError) else str(exc)
+            return RepoResult(shown, skip, f"its record cannot be written ({why}); left as it is")
+    if os.path.islink(place):
+        return RepoResult(
+            shown,
+            LEFT,
+            f"is a link to {os.readlink(place)}; sync does not update a repo through a link",
+        )
+    try:
+        done = update.update_repo(place, repo, layer, state.repos.get(repo.key), env, lock, write)
+    except OSError as exc:
+        why = exc.strerror or type(exc).__name__
+        raise ManifestError(
+            f"{place}: the repo may have been changed and was not recorded in {state_file}: {why}"
+        ) from None
+    except ManifestError as exc:
+        raise ManifestError(
+            f"{place}: the repo may have been changed and was not recorded: {exc}"
+        ) from None
+    for note in done.notes:
+        print(f"{shown}: {mask_urls(note)}", flush=True)
+    outcome = done.outcome
+    if outcome == FAILED and repo.optional:
+        outcome = SKIPPED
+    return RepoResult(shown, outcome, done.detail, done.commit, done.fetch, layer, place)
+
+
 def sync_distro(system: Path, config: Config, planned: Planned, env: Env) -> DistroResult:
-    """Bring one distro in line with what it resolved to: write the resolved files built for
-    it, clone what is missing, record what was cloned. A repo that is there is not touched."""
+    """Bring one distro in line with what it resolved to, holding its lock throughout: write
+    the resolved files built for it, clone what is missing, update what is there, record each
+    repo. A lock held by a build or another sync of the distro is a `Refusal`, raised before
+    anything is changed."""
+    distro = planned.resolved.distro
+    lock = hold_build_lock(system, distro, holder="sync")
+    try:
+        return _sync_distro(system, config, planned, env, lock)
+    finally:
+        os.close(lock)
+
+
+def _sync_distro(
+    system: Path, config: Config, planned: Planned, env: Env, lock: int
+) -> DistroResult:
     resolved, files = planned.resolved, planned.files
     distro = resolved.distro
     state = read_state(system, distro)
     resolved_dir = system.joinpath(*resolved_parts(config.layout, distro))
-    write_output(
-        resolved_dir,
-        files,
-        label=f"the resolved files' directory {resolved_dir}",
-        again="sync",
-        elsewhere=f"run `sync` from the system directory or from below it, outside {SYSTEM_DIR}/",
-    )
+    try:
+        write_output(
+            resolved_dir,
+            files,
+            label=f"the resolved files' directory {resolved_dir}",
+            again="sync",
+            elsewhere=(
+                f"run `sync` from the system directory or from below it, outside {SYSTEM_DIR}/"
+            ),
+        )
+    except ManifestError as exc:
+        # Reported for this distro, whose repos are not touched; the other distros go on.
+        raise Refusal(str(exc), "None of this distro's repos was touched") from None
     result = DistroResult(distro)
     for layer in resolved.layers:
         src = layer_src_parts(config.layout, distro, layer.name)
         for repo in layer.repos:
 
             def record(commit, layer=layer.name, repo=repo):
-                state.repos[repo.key] = RepoRecord(layer, repo.version, commit)
+                state.repos[repo.key] = RepoRecord(layer, repo.version, commit, repo.url)
                 put_distro_state(system, distro, state)
 
-            text = one_repo_text(files[f"{layer.name}.repos"], repo.key)
-            done = clone_repo(system, src, repo, text, env, record)
+            had = state.repos.get(repo.key)
+            done = None
+            if had is not None and had.layer != layer.name:
+                done = layer_moved(system, config, distro, repo, layer.name, had.layer)
+            parts = src + tuple(repo.key.split("/"))
+            if done is None and os.path.lexists(system.joinpath(*parts)):
+                done = present_repo(system, parts, repo, layer.name, state, distro, env, lock)
+            if done is None:
+                text = one_repo_text(files[f"{layer.name}.repos"], repo.key)
+                done = clone_repo(system, src, repo, text, env, record)
+                done.layer = layer.name
             result.repos.append(done)
-            if done.outcome == FAILED:
-                print(f"ERROR: {done.path}: {done.detail}", flush=True)
-            elif done.outcome == SKIPPED:
-                print(f"skipped {done.path} (optional): {done.detail}", flush=True)
+            _say(done)
+    left_the_manifest(system, config, resolved, state, result)
+    built_note(system, config, distro, resolved, result)
     result.setup_failure = create_setup(system, setup_parts(config.layout, distro))
     result.setup_note = setup_note(system.joinpath(*setup_parts(config.layout, distro)))
     return result
+
+
+def left_the_manifest(
+    system: Path, config: Config, resolved: Resolved, state: DistroState, result: DistroResult
+) -> None:
+    """A repo recorded and no longer in the manifest: its directory is left on disk and listed;
+    the record of one whose directory is gone is dropped. Nothing is deleted."""
+    distro = resolved.distro
+    keys = {repo.key for layer in resolved.layers for repo in layer.repos}
+    dropped = False
+    for key, record in list(state.repos.items()):
+        if key in keys:
+            continue
+        parts = layer_src_parts(config.layout, distro, record.layer) + tuple(key.split("/"))
+        if os.path.lexists(system.joinpath(*parts)):
+            result.gone.append("/".join(parts))
+        else:
+            del state.repos[key]
+            dropped = True
+    if dropped:
+        with signals_held():
+            put_distro_state(system, distro, state)
+
+
+def built_note(
+    system: Path, config: Config, distro: Optional[str], resolved: Resolved, result: DistroResult
+) -> None:
+    """For each layer `build` has built whose repos this sync cloned or moved: a line that
+    says the build is behind. Only read; `build` alone writes its record. Also a line when the
+    manifest's own file is in a repo this sync moved: this run read it before."""
+    changed: Dict[str, int] = {}
+    for done in result.repos:
+        if done.outcome in (CLONED, UPDATED) and done.layer is not None:
+            changed[done.layer] = changed.get(done.layer, 0) + 1
+    manifest = os.path.realpath(system / config.manifest)
+    for done in result.of(UPDATED):
+        if done.place is not None:
+            inside = os.path.realpath(done.place) + os.sep
+            if manifest.startswith(inside):
+                print(
+                    f"{done.path}: holds the manifest, which this sync read before it was"
+                    " moved; the next sync reads its new text",
+                    flush=True,
+                )
+    if not changed:
+        return
+    try:
+        built = read_built(system, distro)
+    except ManifestError as exc:
+        warn(f"{exc}; whether a built layer is behind is not said")
+        return
+    for layer in resolved.layers:
+        if layer.name in changed and layer.name in built:
+            print(
+                f"layer {layer.name} was built before and {changed[layer.name]} of its repos"
+                " changed since; `repos-manifest build` brings it, and the layers above it, up"
+                " to date",
+                flush=True,
+            )
 
 
 def setup_note(path: Path) -> Optional[str]:
@@ -381,13 +626,27 @@ def create_setup(system: Path, parts: Parts) -> Optional[str]:
 def report(result: DistroResult) -> None:
     name = result.distro if result.distro is not None else "(no distro)"
     print(f"distro {name}:")
-    for outcome, label in ((CLONED, "cloned"), (FAILED, "failed"), (SKIPPED, "optional, skipped")):
+    if result.reported is not None:
+        print("  reported above; nothing of it was changed")
+        return
+    for outcome, label in (
+        (CLONED, "cloned"),
+        (UPDATED, "updated"),
+        (LEFT, "left alone"),
+        (FAILED, "failed"),
+        (SKIPPED, "optional, skipped"),
+    ):
         repos = result.of(outcome)
         if repos:
             print(f"  {label} ({len(repos)}): {', '.join(r.path for r in repos)}")
-    present = len(result.of(PRESENT))
-    if present:
-        print(f"  present, not touched ({present}); updating a repo that is there is not built yet")
+    current = len(result.of(CURRENT))
+    if current:
+        print(f"  up to date ({current})")
+    if result.gone:
+        print(
+            f"  no longer in the manifest, left on disk ({len(result.gone)}):"
+            f" {', '.join(result.gone)}"
+        )
     if result.setup_failure is not None:
         print(f"ERROR: {result.setup_failure}", flush=True)
     if result.setup_note is not None:
@@ -395,31 +654,43 @@ def report(result: DistroResult) -> None:
 
 
 def sync_distros(
-    system: Path, config: Config, plan: Sequence[Planned], env: Env
+    system: Path, config: Config, plan: Sequence[Union[Planned, Reported]], env: Env
 ) -> List[DistroResult]:
     """Phase two of `init` and `sync`: one sweep of `.repos-manifest/`, then each distro, which
-    writes only what phase one built."""
+    writes only what phase one built. A distro phase one reported, or whose lock is held, is
+    reported and the others go on."""
     sweep_temporaries(system / SYSTEM_DIR)
     results = []
     for planned in plan:
-        result = sync_distro(system, config, planned, env)
+        if isinstance(planned, Reported):
+            result = DistroResult(planned.distro, reported=planned.problem)
+            print(f"ERROR: {mask_urls(planned.problem)}", flush=True)
+        else:
+            try:
+                result = sync_distro(system, config, planned, env)
+            except Refusal as exc:
+                distro = planned.resolved.distro
+                result = DistroResult(distro, reported=str(exc))
+                print(f"ERROR: {mask_urls(str(exc))}", flush=True)
         report(result)
         results.append(result)
     return results
 
 
 def closing(results: Sequence[DistroResult]) -> int:
-    """Print what to do about the repos that failed; returns the exit status, 1 when a repo
-    that is not optional failed. Running sync again is advised only for what a sync can fix."""
+    """Print what to do about the repos that failed; returns the exit status, 1 when a distro
+    was reported or a repo that is not optional failed. Running sync again is advised only for
+    what a sync can fix."""
     failed = [repo for result in results for repo in result.of(FAILED)]
     if any(repo.fetch for repo in failed):
         print(f"Some repos failed; {FINISH} once they can be fetched.")
     if any(not repo.fetch for repo in failed):
         print(
-            "Some repos could not be put in place, and another sync will not change that: the"
-            " ERROR lines above say what is in the way."
+            "Some repos could not be put in place or updated, and another sync will not change"
+            " that: the ERROR lines above say what is in the way."
         )
-    return 1 if failed or any(result.setup_failure for result in results) else 0
+    reported = any(result.reported is not None for result in results)
+    return 1 if failed or reported or any(result.setup_failure for result in results) else 0
 
 
 def recorded_manifest(system: Path) -> str:
@@ -432,35 +703,56 @@ def recorded_manifest(system: Path) -> str:
     )
 
 
-def resolve_all(system: Path, config: Config, distros: Sequence[Optional[str]]) -> List[Planned]:
-    """Phase one: read the manifest, resolve each distro and build its resolved files, in
-    memory. A failure here changes nothing."""
-    failed = "the manifest is what failed; nothing was changed"
+def resolve_all(
+    system: Path, config: Config, distros: Sequence[Optional[str]]
+) -> List[Union[Planned, Reported]]:
+    """Phase one: read the manifest, then resolve each distro and build its resolved files, in
+    memory. A manifest that cannot be read ends the run with nothing changed; a distro that
+    does not resolve, or whose files cannot be written out, is reported, and nothing of it is
+    changed, while the others go on."""
     try:
         manifest = read_manifest(config.manifest, system)
     except ManifestError as exc:
-        raise ManifestError(f"{failed}: {exc} {recorded_manifest(system)}") from None
+        raise ManifestError(
+            f"the manifest is what failed; nothing was changed: {exc} {recorded_manifest(system)}"
+        ) from None
     if config.distros is None and manifest.distros is not None:
         # A flat system set up from a manifest with no distros: it cannot gain one.
-        raise ManifestError(
-            f"{config.manifest}: the manifest now has distros ({', '.join(manifest.distros)}),"
-            " and this system directory was set up without one; nothing in it has been moved or"
-            " changed. A system with distros is set up in a new directory with"
-            " `repos-manifest init`, with `--distro-dirs` to hold more than one distro."
-            f" {recorded_manifest(system)}"
-        )
-    try:
-        resolved = [
-            selection.resolve(manifest, config.role, distro, config.groups) for distro in distros
+        return [
+            Reported(
+                None,
+                f"{config.manifest}: the manifest now has distros"
+                f" ({', '.join(manifest.distros)}), and this system directory was set up"
+                " without one; nothing in it has been moved or changed. A system with distros"
+                " is set up in a new directory with `repos-manifest init`, with `--distro-dirs`"
+                f" to hold more than one distro. {recorded_manifest(system)}",
+            )
         ]
-    except ManifestError as exc:
-        raise ManifestError(f"{failed}: {exc} {recorded_manifest(system)}") from None
-    try:
-        return plan_distros(resolved)
-    except ManifestError as exc:
-        raise ManifestError(
-            f"the manifest's output is what failed; nothing was changed: {exc}"
-        ) from None
+    plan: List[Union[Planned, Reported]] = []
+    for distro in distros:
+        named = f"distro {distro}" if distro is not None else "the system"
+        try:
+            resolved = selection.resolve(manifest, config.role, distro, config.groups)
+        except ManifestError as exc:
+            plan.append(
+                Reported(
+                    distro,
+                    f"{named}: the manifest does not resolve for it; nothing of it has been"
+                    f" moved or removed: {exc} {recorded_manifest(system)}",
+                )
+            )
+            continue
+        try:
+            plan.extend(plan_distros([resolved]))
+        except ManifestError as exc:
+            plan.append(
+                Reported(
+                    distro,
+                    f"{named}: the manifest's output is what failed; nothing of it was changed:"
+                    f" {exc} {recorded_manifest(system)}",
+                )
+            )
+    return plan
 
 
 def run_sync(named_distros: Sequence[str]) -> int:

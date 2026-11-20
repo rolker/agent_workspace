@@ -954,3 +954,1490 @@ None (no hosted comments).
 **Decision**: merge
 
 The owner chose "Merge and carry on (Recommended)" in a dialog (2026-11-18) for pull request 512 (part 1: init and a first sync that clones what is missing): merge it, reinstall the tool on main, then start part 1B of the adapter (issue 503). The issue stays open: part 2 (sync against clones that exist) remains, with three questions held for the owner at its plan checkpoint, and three wording suggestions from the last review noted for it.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 14:34 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan checkpoint after a merge: plan.md has changed since its last review (9afc4552 reviewed, 237f4412 now) and part 2 is only an outline, so proceed is not open; revise)
+**After**: plan
+**Decision**: revise
+
+Part 1 merged as pull request 512; the issue is open because part 2 (sync against clones that exist) is not delivered. The plan for part 2 is to be written out in full and reviewed. The owner answered the three questions the outline held for him, in a dialog on 2026-11-19, each with the options and what they change shown. His answers, verbatim: untracked files: "Update it (Recommended)" (untracked files do not count as local work; the clone is fast-forwarded as if clean; if an incoming commit would overwrite one of those files git itself refuses, and the clone is then left as it was and reported). A changed url in the manifest for a cloned repo: "Repoint origin (Recommended)" (sync sets the clone's origin to the new URL, keeps every local branch and file, then applies the ordinary rules; a clone with commits not on the new origin is left alone and reported). A repo given another layer: "Report, do not move (Recommended)" (sync leaves the clone where it is, reports it with the exact mv command, and clones nothing at the new place while the old one exists). New input since the outline: first real use (comment on the issue, 2026-11-19) showed that a changed version for a cloned repo is not followed, state.yaml keeps the old version, and the adapter's validate still passes; pull request 518 added build, its per-distro record and a per-distro build lock, and changed system.py.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-19 14:41 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-500/plan.md` at `5562540e`
+
+Part 2 written out in full: a 15-rung ladder for a repo that is there (the owner's three answers quoted and followed), the exact git commands and put-back checks, per-distro reports, the existing per-distro build lock taken by sync for a distro's phase two, a sync-written note for built layers whose repos moved, and the stop/kill table. Step 1, local_manifest, --local-manifest and the -- pass-through go to a part 3 (reason in the plan). Git behaviours relied on were run on git 2.53.0 (untracked clash refuses ff, rebase abort restores, tag clobber exit 1, url probe, insteadOf).
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-19 14:45 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #500 — repos-manifest: `init` and `sync` set up and update a system directory
+**Plan**: `.agent/work-plans/issue-500/plan.md` at `5562540e`
+**Branch**: `feature/issue-500`
+
+Scope of this review: part 2 ("Part 2: `sync` against clones that exist") and the plan's marking of part 1. The doubtful git behaviours were tried with git 2.53.0 on local repositories in the session scratchpad (scripts `t1.sh`, `t2.sh`; results quoted in the findings).
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One pull request is reasonable (about 500 lines of code, 900 of tests, 120 of docs); the split to part 3 holds (finding 12) |
+| Issue alignment | Needs work | Follows the owner's three answers in form, but answer 1's premise ("git itself refuses") is false for ignored files (finding 1), and the url rule undoes a person's own `origin` (finding 2). The issue comment's acceptance case is covered (rung 12 tests) |
+| File targeting | Good | `update.py`, `sync.py`, `system.py`, tests, docs; `build.py` unchanged is right |
+| Consequences | Concern | The lock's holder text in `system.py`/`build.py` (finding 8); `state.yaml` shape if the url is recorded (finding 2) |
+| Principle alignment | Needs work | "Never discard work": findings 1, 3; "Verify before claiming": the ladder's safety checks do not cover ignored files, and the after-abort check would pass the loss |
+| ADR compliance | Good | ADR-0017 (design in the same change), ADR-0022 (Serves cites the part's design), ADR-0013 |
+| ROS conventions | N/A | Workspace tool |
+
+**Serves** (as checked): Goal "one system directory set up and kept in line from one manifest", under `tools/repos-manifest/docs/design.md#sync` (and `#the-system-directory`, `#setting-up-with-init`, `#refusals`), root `docs/manifest/design.md`. The `#sync` section exists on this branch; the work serves it and breaks no stated rule once findings 1 to 3 are fixed.
+
+### Findings
+
+1. **[Principle: never discard work] (needs-work)** — `git merge --ff-only`, `git switch` and `git rebase` silently overwrite an ignored file that an incoming commit adds as tracked; git refuses only for untracked files that are not ignored. Tried: an ignored `local.yaml` holding `PRECIOUS`, upstream commits a tracked `local.yaml`, `merge --ff-only` exits 0 and the file now holds the upstream text. Worse on the rebase path: the rebase overwrote the ignored file, hit a conflict, `rebase --abort` restored `HEAD` and the branch and then deleted `local.yaml` (it is not in `B`); the plan's after-abort check (`HEAD`, branch ref, `status --untracked-files=no`, no `rebase-*`) passes and reports "put back as it was". The owner's answer 1 promises that "if an incoming commit would overwrite one of those files, git itself refuses, and the clone is then left as it was"; that is true only for untracked, not-ignored files. Fix: before every tree-changing call, list the paths the move adds (`git diff --name-only --diff-filter=A H T`, for a rebase `H`'s merge-base with `O` against `O`) and, for each and each of its parent directories, `os.path.lexists` in the work tree; any hit that is not tracked in `H` leaves the repo alone, reported with the paths. Add an ignored-file test to each of the ff, switch, rebase and rebase-abort rows; `snapshot_repo` already hashes every file outside `.git`.
+2. **[Issue alignment, url rule] (needs-work)** — Repointing whenever the manifest's url differs from the clone's raw `remote.origin.url` undoes a person's deliberate `origin` (ssh for pushing, a fork) as soon as everything committed is on the manifest's url, which for an ssh/https pair of the same repo is always. The owner does this today by hand in some clones, so the first part 2 `sync` on his real system would switch those clones back to https. The owner's answer is about the manifest giving a repo a new url, and the tool's rule is that what a person changed is left alone. Recommendation below.
+3. **[Principle: never discard work] (needs-work)** — The rebase is run with the person's configuration, and some of it changes more than the one branch. Tried: with `rebase.updateRefs=true`, rebasing `main` also rewrote another local branch (`stacked`) that pointed into the rebased range. Pass `--no-update-refs` (and keep `--no-autosquash` explicit, though git 2.53.0 did not autosquash a non-interactive rebase with `rebase.autoSquash=true`). Separately, `--no-verify` skips the person's `pre-rebase` hook, whose usual purpose is to refuse rebasing published commits: drop `--no-verify` so a refusing hook means "left alone", which is the safe answer.
+4. **[Principle: never discard work] (needs-work)** — "Commits not on origin" is measured against `origin/V` only, so after an upstream force-push the old upstream commits count as local work and are rebased onto the new branch. Tried: upstream rewrote `B` to `C`; `rev-list --count HEAD --not origin/main` is 1 and the rebase put the old upstream `B` on top of `C`, exit 0, reported as "rebased 1 local commits". The record holds the commit `sync` last put there: commits reachable from it are not a person's. Count local commits as `HEAD --not O --not <recorded commit>` (with no record, fall back to `--fork-point`), and when that differs from the plain count, leave the repo alone and report that origin was rewritten. Same count for rungs 12 and 13.
+5. **[Consequences, submodules] (needs-work)** — A clone with an initialised submodule is made "dirty" by `sync`'s own fast-forward: after the superproject moves the submodule's pointer, `status --porcelain=v2 --untracked-files=no` shows `1 .M SC..` for it (tried), so every later `sync` leaves the repo alone with "has uncommitted changes". Part 3 holds `--recursive` for new clones, but existing clones may already have submodules. The plan must state what part 2 does (for example: count a submodule line as local work only when the submodule has its own changes or commits, `S.M.`/`S..U`, not when only its checked-out commit differs, `SC..`; and report "submodules not updated"), and test it. Shallow clones: say in the design that the ancestry checks work on the fetched history and test one existing shallow clone through the follow row.
+6. **[Worktrees] (needs-work)** — A branch checked out in a linked worktree cannot be switched to: tried, `git switch rolling` exits 128 ("already used by worktree at ..."). The move table defines failure of the second step only; the failure of `git switch V` itself has no row. Add it: left alone, reported with git's message, repo checked unchanged. Also say in the design what rebasing `V` in the main clone means for package worktrees branched from `V` (their base commits are rewritten under them; nothing is lost, but they diverge), and note that the url rule's `--branches` count is what keeps a worktree's unpushed branch safe.
+7. **[Exit status] (needs-work, design consistency)** — The pending layer move (rung 0) should exit 1. The design's own rule is "whatever stops a repo from being put in place ... for any other repo it is an error, and the exit status is 1"; after rung 0 the repo is not at its place and `build` refuses that layer. Exit 0 is only for "a repo that is there and left as it is", which rung 0's repo is not at its new place. The other question (a repo left alone while the manifest names another version, rungs 13 and 14) is mechanism and the design's rule stands: exit 0, reported, `status` is the script-readable check.
+8. **[Consequences, the lock] (needs-work, small)** — Taking the per-distro build lock for a distro's phase two is right, and passing it to `git` calls that change the tree is right (the same reason `build` passes it to colcon). Three gaps: (a) `note_lock_holders` writes "tool colcon" by position and `hold_build_lock`'s refusal reads the second pid as "its colcon (process N) still runs"; a `git` holding it for `sync` would be named colcon. Either do not note `git` children (the refusal then falls to the `fuser` text) or make the second slot's name follow the holder. (b) `git fetch`, `merge` and `rebase` may start `gc --auto`/`maintenance --auto` in the background, which inherits the descriptor and keeps the lock after `sync` ends, and runs a `gc`/`prune` the plan says is never run: run every call with `-c gc.auto=0 -c maintenance.auto=false`. (c) Say whether `init`'s first sync takes the lock (it calls `sync_distro`). Issue 510 asks for the general lock to land before part 2; the plan's reasoning for not waiting is sound, and the design should say this lock is the build lock reused, until 510.
+9. **[Kill table] (note)** — A `SIGKILL` mid-`switch` or mid-`merge --ff-only` leaves incoming files in the tree that the next `sync` reports as "has uncommitted changes (n files)"; a person may commit them as their own. A `SIGKILL` mid-rebase reports "a rebase is in progress" without saying `sync` started it. Neither is repaired, which is right; record an intent line in `state.yaml` before each tree-changing call (repo, from-sha, to-sha) and, when the next run finds it, word the left-alone report as "a sync was stopped while moving this repo from <from> to <to>; `git status` shows what it left". Also the probe's refs are deleted "at the start of the next probe", which never comes once the url matches: delete them at every rung 7 instead.
+10. **[Tags] (note)** — `git fetch --prune --tags origin` did not prune a local-only tag (tried), so no loss there. A tag moved on the remote fails the whole fetch, so a repo on a branch is reported as failed (exit 1) on every run until a person deletes the tag; say so in the report's next step.
+11. **[Hooks] (note)** — `post-checkout` and `post-merge` hooks (git-lfs installs both) run on `switch` and `merge`; a failing `post-checkout` hook becomes `switch`'s exit status after the switch happened. Decide on the state checked afterwards (`HEAD`), not on the exit status alone, and test with a failing hook. A branch whose upstream is not `origin`: the plan follows `origin/V` regardless; say so in the design.
+12. **[Split] (good)** — Nothing in part 3 is needed for part 2's rules to be correct or safe, given finding 5 (part 2 states its own behaviour for existing shallow and submodule clones rather than leaving it to part 3). One interaction to state: when the recorded manifest file is inside a clone that `sync` updates, phase one has already read the old text; the next `sync` reads the new one.
+13. **[Part 1 marking] (note)** — "Its text below is the record of what was planned and built" is not exact: for example part 1's plan puts the clone's temporary directory in the layer's `src/`, while the merged `sync.py` (line 236) and the design put it in `.repos-manifest/`. Say "planned", and point to the design and pull request 512 for what was built.
+14. **[Tests] (note)** — The tests use local remotes and need no network; `snapshot_repo` comparing every ref, the config, the index, the full status and every file is the right proof. Add ignored files and a linked worktree to the fixtures `snapshot_repo` runs on, so findings 1 and 6 are covered by the same comparison.
+
+### Recommendation on the url rule (finding 2)
+
+Record the url. `state.yaml` gains `url` per repo (`format` stays 1; a missing `url` is read as "not recorded"), written whenever the repo is recorded. Then, with `U` the manifest's url, `Ur` the recorded one and `W` the clone's raw `remote.origin.url`:
+
+- `W == U`: nothing to do.
+- `W == Ur != U`: the manifest changed the url, so the owner's answer applies: probe, repoint or leave alone exactly as the plan says.
+- `W != U` and `W != Ur` (or no `Ur`): a person set `origin`. Leave it as it is, do not count the repo as left alone for that reason, go on with the ladder fetching from the person's `origin`, and report one line: `origin is <W>, the manifest says <U>; left as set (git -C <P> remote set-url origin <U> to use the manifest's)`. Record `url: U`, so a later change of the manifest's url is still told apart from the person's choice.
+- Systems made before the record had the url (only the owner's, from part 1): no `Ur` is the third case, so `sync` never repoints a clone whose url it cannot account for; a clone whose `origin` equals the manifest's simply gets `url` recorded.
+
+The design should also name `remote.origin.pushurl` (or `url.<base>.pushInsteadOf`) as the way to push over ssh while fetching from the manifest's url. If the plan keeps repointing without a record, that undoes a person's change and is a must-fix against the tool's principle.
+
+### Summary
+
+The ladder is careful and the owner's three answers are followed in form, and the per-repo record, put-back checks and whole-repo snapshot tests are the right shape. Five things can still lose or silently rewrite a person's work: ignored files overwritten (and deleted by the abort), the url rule undoing a person's `origin`, the rebase acting on other branches through the person's config, an upstream force-push replayed as local work, and the submodule state `sync` itself makes dirty; with the worktree row, the layer-move exit status and the lock's holder text, it needs one more revision before implementation.
+
+### Recommended Actions
+
+- [ ] Add the ignored/untracked path precheck before every tree-changing call; tests with an ignored file on the ff, switch, rebase and abort rows (finding 1); restate the owner's answer 1 mechanism in the design accordingly
+- [ ] Record `url` in `state.yaml` and repoint only when the manifest's url changed since the record; a person's `origin` is left and the ladder goes on (finding 2)
+- [ ] Rebase with `--no-update-refs`, `--no-autosquash`, without `--no-verify` (finding 3)
+- [ ] Count local commits excluding the recorded commit's history; report a rewritten origin (finding 4)
+- [ ] State and test part 2's behaviour for existing clones with submodules and shallow clones (finding 5)
+- [ ] Add the row for a switch refused because the branch is in a linked worktree; say what a rebase of `V` means for worktrees (finding 6)
+- [ ] Make the pending layer move exit 1; keep exit 0 for left-alone version mismatches (finding 7)
+- [ ] Fix the lock holder's second-slot wording, disable auto gc/maintenance for `sync`'s git calls, say whether `init` takes the lock (finding 8)
+- [ ] Notes 9 to 14 for the implementer: intent record for killed moves, probe-ref cleanup at every rung 7, the moved-tag next step, hooks judged by state, the manifest-in-a-clone ordering, the part 1 marking wording, fixtures with ignored files and a linked worktree
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 14:48 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review's verdict is needs-work; the one point that changes scope was put to the owner and his answer is quoted below; the rest is mechanism)
+**After**: plan
+**Decision**: revise
+
+Owner, 2026-11-19, asked whether the rebase of unpushed commits belongs in this pull request, with the reviewer's three findings on it shown (an ignored file overwritten and then deleted by the abort; the rebase running under the person's git settings; a force-pushed upstream replayed as local commits). His answer: "Later, its own part (Recommended)" (this pull request leaves a clone with unpushed commits alone and reports it, with the git pull --rebase command to run by hand; the rebase rule gets its own pull request with these three findings as its test list; the design keeps the rule and says it is not built yet).
+
+Host decisions on the Plan Review's other findings. (1) No tree-changing call may overwrite a file git does not track, ignored files included: before a fast-forward or a switch, the paths the move adds are checked against the work tree, and a clone where one is in the way is left as it was and reported; the owner's first answer (untracked files do not count as local work) stands, and this is how "git itself refuses" is made true for ignored files too. (2) The url rule follows the reviewer's recommendation: state.yaml records each repo's url; origin is repointed only when the clone's origin equals the recorded url and the manifest now names another; an origin that differs from both, or a repo with no recorded url, was set by a person and is left as it is, the update goes on from it, one line gives the set-url command, and the manifest's url is recorded. So a system made before the record held urls is never repointed. The design names pushurl / pushInsteadOf as the way to push over ssh. (5) Existing clones with submodules and existing shallow clones get a stated, tested behaviour in this part. (6) A branch checked out in a linked worktree gets its own row: left alone and reported. (7) A pending layer move makes sync exit 1 for a non-optional repo, as the design's rule for a repo that cannot be put in place; a repo left alone while the manifest names another version stays exit 0. (8) The lock: the holder message does not call git "its colcon"; git runs with gc.auto=0 and maintenance.auto=false; the plan says whether init's first sync takes the lock; the design says this is the build lock reused until issue 510. Notes 9 to 14 go to the plan as written (an intent line in state.yaml for a kill mid-switch; probe refs deleted at every url check; success judged by the resulting state, not a hook's exit status; a moved remote tag reported as needing a person; the part 1 marking says "planned" and points to pull request 512). With the rebase rule out, findings 3 and 4 move to the later part with it and are listed there.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-19 14:52 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-500/plan.md` at `6059fcd0`
+
+Part 2 revised per the plan review and checkpoint: no rebase (later part 4, with its three findings as the test list); a paths check before every fast-forward and switch makes "git itself refuses" true for ignored files; the url is recorded and a person's origin is never repointed; stated and tested behaviour for submodules and shallow clones; a linked-worktree row; a pending layer move exits 1; the lock's holder wording, gc/maintenance off, init does not take the lock; notes 9 to 14 applied (a moving intent line, probe refs deleted at every url check, success judged by state, moved-tag next step).
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-19 14:57 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #500 — repos-manifest: `init` and `sync` set up and update a system directory
+**Plan**: `.agent/work-plans/issue-500/plan.md` at `6059fcd0`
+**Branch**: `feature/issue-500`
+
+Scope of this review: part 2 as revised ("Part 2: `sync` against clones that exist"), second review. Each finding and note of the first part-2 review was checked against the checkpoint's decisions, then part 2 was read whole and the doubtful rules were tried with git 2.53.0 on local repositories in the session scratchpad (script `t1.sh`, seven cases; results quoted below).
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One pull request (about 490 lines of code, 900 of tests, 120 of docs); dropping the rebase made it smaller and simpler; parts 3 and 4 are named with their reasons |
+| Issue alignment | Good | The owner's four answers are quoted and followed: untracked files do not block (rung 8), the paths check makes "git itself refuses" true for ignored files, the url rule repoints only a manifest change, a layer move is reported with the `mv` command, unpushed commits are left alone with the `git pull --rebase` command. The issue comment's acceptance case is rung 13's tests |
+| File targeting | Good | `update.py` new, `sync.py`, `system.py`, `init.py`, tests, docs; `build.py` unchanged is right |
+| Consequences | Good | `state.yaml` keys `url` and `moving` with `format: 1` kept; lock wording; build hint; part 1 tests that change are found by grep and named |
+| Principle alignment | Good | "Never discard work": every rung that changes the tree has a check before and a state check after, and the whole-repo snapshot comparison is the proof; two precision notes on the paths check (1, 2 below) |
+| ADR compliance | Good | ADR-0017 (design in the same change), ADR-0022 (Serves cites the part's design), ADR-0013 |
+| ROS conventions | N/A | Workspace tool |
+
+**Serves** (as checked): Goal "one system directory set up and kept in line from one manifest", under `tools/repos-manifest/docs/design.md#the-system-directory`, `#setting-up-with-init`, `#refusals` and `#sync`, and root `docs/manifest/design.md`. All four anchors exist in the tool's design on this branch; the work serves them and breaks no stated rule.
+
+### The first review's findings, as the checkpoint decided
+
+| # | Decision | In the revised plan |
+|---|---|---|
+| 1 Ignored files | Paths check before every fast-forward and switch | Done ("The paths check"), with ignored and untracked tests on each tree-changing row; see notes 1 and 2 for two cases its wording leaves open |
+| 2 Url rule | Record the url; repoint only a manifest change | Done, as recommended, with the owner's real system (no recorded url) never repointed |
+| 3, 4 Rebase config, force-push | Moved to part 4 with the rebase | Listed as part 4's test list; the force-pushed case is left alone here (rung 11) |
+| 5 Submodules, shallow | Stated and tested | Done; tried again: `SC..` after a pointer move, shallow follow |
+| 6 Linked worktree | Its own row | Done, before `git switch` is called |
+| 7 Layer move | Exit 1 for a non-optional repo | Done; left-alone version mismatches stay exit 0 |
+| 8 Lock | Wording, gc/maintenance off, init said | Done; see note 5 on the reason given for `init` |
+| Notes 9 to 14 | To the plan | All applied (moving line, probe refs at every rung 7, state-judged success, moved-tag next step, manifest-in-a-clone ordering, part 1 marking, fixtures) |
+
+### What was run with real git (git 2.53.0, local bare remotes, no network)
+
+- T1: a tracked directory `foo/` with an ignored `foo/keep.log`; upstream replaces the directory with a file `foo`. `merge --ff-only` exits 0 and `keep.log` is gone. `git diff --diff-filter=A H O` lists `foo`; `git ls-files` lists `foo/a`, not `foo`.
+- T1b: the same with an untracked, not ignored file: git refuses ("would lose untracked files"), file kept.
+- T2: an ignored symlink `lnk -> ../elsewhere` where upstream adds `lnk/new`: `os.path.isdir('lnk')` is True; `merge --ff-only` exits 0 and replaces the link with a directory (the target is untouched).
+- T3: `submodule.recurse=true`, a person's commit on the submodule's detached `HEAD`, superproject fast-forward moving the pointer: exit 0, the submodule stays on the person's commit (no loss).
+- T4: `fetch.pruneTags=true` in config: `git fetch --prune --tags origin` deletes a local-only tag; with `--no-prune-tags` it is kept.
+- T5: a `--depth 1` clone, `fetch --prune --tags origin` with a tag on old history: the tag and the whole history behind it are fetched; `.git/shallow` keeps one line.
+- T6: `HEAD` on origin through another branch (`origin/keep`) while `origin/main` was force-pushed to another line: the count of commits not on origin is 0, `HEAD` is not an ancestor of `O`; `merge --ff-only` exits 128 and changes nothing.
+- T7: `-c gc.auto=0 -c maintenance.auto=false` reach git's children through `GIT_CONFIG_PARAMETERS`.
+
+### Findings
+
+None at needs-work. Notes for the implementer:
+
+1. **[Paths check, directory replaced by a file] (note, implement and test exactly)** — For an added path that is a directory in the work tree (T1), the plan's words "a hit that is not a tracked path of `H`" read literally refuse every such move, even a directory holding only tracked files, forever and with a wrong message ("not tracked"). The obvious repair, treating a directory with tracked files as tracked, loses ignored files inside it (T1: `merge --ff-only` exit 0, `keep.log` deleted). The rule to build: an added path that is a directory in the work tree is in the way when it holds any file not tracked in `H` (untracked or ignored; `git ls-files -z --others -- <dir>` together with `--others --ignored --exclude-standard`, or a walk compared with `ls-files`), and not otherwise. Add the T1 case, with an ignored file and with only tracked files, to the ignored-file tests; the listed "parent directory is a file" test is the reverse case.
+2. **[Paths check, symlinks] (note)** — "for a parent, is not a directory" must be judged with `lstat` (`stat.S_ISDIR(os.lstat(p).st_mode)`), not `os.path.isdir`, which follows links: an ignored symlink where an incoming directory goes is otherwise replaced silently (T2). One test.
+3. **[Rung 12, missing row] (note)** — `HEAD` on origin (count 0) but not an ancestor of `O` happens when origin's `V` was rewound or rewritten and `HEAD` survives on another origin branch (T6). The plan's table has no row and says ahead and diverged "end at rung 11", which is not so here. `merge --ff-only` refuses and changes nothing, so it is safe through the backstop, but give it a row: left alone, `origin's <V> no longer contains this commit (rewritten upstream); left alone`, without calling `merge`.
+4. **[Url rule, tests and comparison] (note)** — Rung 7's test column says "the url tests below" and none are listed. Name them: the three cases with a recorded url; no recorded url and `origin` differing (the owner's system: never repointed); `url.*.insteadOf` in config (raw value compared, probe fetched through the rewrite); a probe that finds unpushed local branches; a probe fetch failure; probe refs left by a kill removed at the next run. A trailing `.git` or `/` difference reads as "differs": safe (left as set), but printed every run for a clone that is in fact on the manifest's repo; compare after stripping one trailing `/` and `.git`, which can only move a case to "nothing to do" or to a probe-guarded repoint.
+5. **[Lock, `init`] (note, keep the design true)** — The plan's reason for `init` not taking the lock, "`init` refuses when a system exists, so no `build` of that distro can", is false: `make_system_dir` renames `.repos-manifest/` in and only then calls `sync_distros` (`init.py:268-270`), so a `build` or a `sync` started meanwhile sees a system. No person's work is at risk (the system is empty, part 1's rename handles the clone race), but the reason must not go into the design. Simplest: `init` takes the lock too (it is never held there), which removes the `lock` argument; otherwise write the true reason.
+6. **[Fetch under the person's config] (note)** — With `fetch.pruneTags=true` (or a tag refspec on `origin`), `sync`'s `fetch --prune --tags` deletes local-only tags (T4). The person asked for that on every fetch, so it is not a loss `sync` adds, but `--no-prune-tags` keeps `sync` from deleting anything; and pass `-c submodule.recurse=false` so the report's "submodules not updated" stays true whatever the person's config (T3 showed no loss, but a clean submodule would be moved).
+7. **[Shallow clones] (note, design wording)** — "never deepens or un-shallows" is true of the shallow boundary, but `fetch --tags` brings every tag's history (T5), so a shallow clone of a repo with release tags grows to near its full size at the first `sync`. Say so in the design; whether to fetch tags at all for a shallow clone can be part 3's.
+8. **[Rung 11 advice] (note)** — `git -C <P> pull --rebase` uses the branch's own upstream, which may be another remote or none. Print `git -C <P> pull --rebase origin <V>`.
+9. **[Rung 10 with a person's origin] (note)** — When a person set `origin` (url case 3) to a fork that lacks `V`, rung 10 fails every run saying "another sync will not change that"; the message should add that `origin` is set by hand and give the `set-url` command. A fork whose `V` descends from `HEAD` is fast-forwarded from the fork, which the per-run url line makes visible; the design should say that the update follows the person's `origin`.
+10. **[Tag lookup] (note)** — Rung 10 accepts `refs/tags/V` as "on origin", but a local tag made by a person, absent from origin, also satisfies it, and `sync` would switch to the person's tag. Check the tag on origin (`ls-remote --tags` from the fetch, or fetch tags into a reserved namespace) or say in the design that a local tag of the same name is used.
+11. **[`moving` line] (note)** — The line is cleared only when a later `sync` finds the repo on `V`. If a person moves the repo by hand after a kill (rung 14), the line stays and a later dirty state is worded "a sync was stopped while moving" when it was not; clear it, or word from it only when `HEAD` is the line's `from` or `to`. It never makes `sync` change a repo (it changes wording only), which was the safety question; rung 8's row should name the wording as rung 5's does.
+
+The design-document list keeps the field-machine paragraph and says the rebase rule is not built (design `docs/design.md` lines 676-681 are the paragraph that changes); the test plan's whole-repo snapshot comparison would fail without each tree-guarding rule, given notes 1 and 4.
+
+### Summary
+
+The revision resolves every finding as the checkpoint decided and follows the owner's four answers. Nothing in the ladder as written loses or silently changes a person's work; the two places the paths check's wording could be built unsafely (a directory replaced by a file, an ignored symlink) are notes 1 and 2, each with the exact rule and a test. Ready for implementation.
+
+### Recommended Actions
+
+- [ ] Build the paths check's directory and symlink cases as notes 1 and 2 say, with tests
+- [ ] Add rung 12's row for a rewritten origin branch (note 3)
+- [ ] Name and write the url tests; normalise trailing `/` and `.git` (note 4)
+- [ ] Take the lock in `init` too, or give the true reason (note 5)
+- [ ] `--no-prune-tags`, `-c submodule.recurse=false` (note 6); notes 7 to 11 in wording and design
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 14:58 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (second review of part 2: ready, eleven notes for the implementer, none needs-work; the plan is unchanged since that review and part 2 is not delivered)
+**After**: plan
+**Decision**: proceed
+
+The eleven notes of the Plan Review go to the implementer in the handoff and are to be built as the review states them, each with its test: (1) a directory replaced by a file is in the way only when it holds a file not tracked in HEAD; (2) the paths check uses lstat, so a symlink is never taken for a directory; (3) a row for a rewritten upstream where HEAD is on origin but not an ancestor of origin/V: left alone, reported; (4) the url rule's tests are named, the no-recorded-url case and url.*.insteadOf included, and urls are compared after stripping a trailing slash and .git; (5) init takes the lock for its first sync too, and the false reason is not written into the design; (6) fetch passes --no-prune-tags and git runs with submodule.recurse=false; (7) the design says a shallow clone grows when tags are fetched; (8) the unpushed-commits report prints git -C <path> pull --rebase origin <version>; (9) a hand-set origin that lacks the version gets a message saying origin was set by hand, with the set-url command; (10) a tag counts as on origin only when origin has it; (11) the moving line's wording at the uncommitted-changes row.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 15:35 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-500 at `5f8130f0`
+**Commits**: 62113648, 0823eea3, 9bfd59d0, 5f8130f0
+
+Part 2 of the plan: `repos-manifest sync` updates clones that are there. All of (a) to (i) are done: (a) `snapshot_repo` and the fixtures (an ignored file, a linked work tree); (b) the read-only rules; (c) fetch and fast-forward with the paths check; (d) the move to another version; (e) the url record and rule; (f) the layer, no-record, not-in-manifest, not-a-repo and work-tree rows; (g) per-distro reports, exit status, the lock, the built-layer note; (h) the `moving` line and the kill table; (i) the documents.
+
+### What was built
+- `src/repos_manifest/update.py` (new): `update_repo`, the rules in order (type, a repository of its own, an operation in progress or `index.lock`, one `origin`, the url rule, tracked changes, fetch, the version on origin, commits not on origin, on the version, on the recorded version, moved by a person); `in_the_way`, the paths check; `_change`, every call that changes the tree, with the `moving` line before it, the state read after it, and the undo of a failed second step; `_repoint`, the url probe. Every `git` runs with `--no-optional-locks -c gc.auto=0 -c maintenance.auto=false -c advice.detachedHead=false -c submodule.recurse=false`; a call that changes the tree or the config runs with the stop signals held (checked: the child inherits them held) and the lock passed (`pass_fds`). `NEVER` lists the forbidden words, and `test_update_safety.py` scans the module's argument lists for them.
+- `sync.py`: phase one per distro (`Reported`); the distro's build lock held for its phase two (`hold_build_lock(..., holder="sync")`), a held lock reports that distro and the others go on; present repos go to `update_repo` after the place checks; the layer rule with the `mv` command; repos that left the manifest listed and kept (record dropped when the directory is gone); the built-layer note and the manifest-in-a-moved-clone note; the per-distro report (cloned, updated, left alone, failed, optional skipped, up to date, no longer in the manifest).
+- `system.py` (issue 531 is in this file too; the functions touched are only these): `RepoRecord` gains `url` and `moving`; `_read_state_data` allows and checks them; `read_state`; `_record_data` (new); `put_distro_state`; `hold_build_lock` takes `holder` and names the holder it reads from the lock file; `note_lock_holders` writes `sync <pid>` for a sync (a build's file is unchanged: pids only). `build.py`, `read_built` and `put_built_layers` are untouched.
+- `init.py`: the three suggestions of 512's last review (the "still running" warning only for what init leaves and a pid that can name a process; the head-comment refusal ends "nothing was set up"; the output error names the recorded path is in `sync.resolve_all`). `init` takes the lock for its first sync (note 5): `sync_distros` always takes it.
+- The eleven notes of the last plan review, each with its test: (1) a directory replaced by a file is in the way only when it holds a file not tracked in `HEAD` (`test_a_directory_replaced_by_a_file_holding_an_ignored_file_stops_it`, `..._holding_only_tracked_files_is_followed`); (2) `lstat` (`test_an_ignored_link_where_an_incoming_directory_goes_is_never_taken_for_one`); (3) `test_a_branch_rewound_upstream_while_head_is_on_another_origin_branch`; (4) the url tests in `test_update.py` (repoint, local commits not on it, new url not fetchable, origin set by hand, no recorded url, trailing `/` and `.git`, `insteadOf`, probe refs left by a kill, version missing from a hand-set origin); (5) `test_init_takes_the_lock_for_its_first_sync`; (6) `--no-prune-tags` (`test_a_local_only_tag_is_kept_by_the_fetch`, with `fetch.pruneTags=true`) and `submodule.recurse=false`; (7) design text on shallow clones; (8) `git -C <path> pull --rebase origin <version>`; (9) the hand-set-origin message; (10) a tag counts only when `git ls-remote --tags origin refs/tags/<V>` lists it (`test_a_local_tag_absent_from_origin_is_not_taken_as_the_version`); (11) the `moving` line words rung 5 and 8 only when `HEAD` is its `from` or `to`.
+- Tests: `test_update.py` (63), `test_update_safety.py` (32: the forbidden-words scan, and the paths check on the fast-forward, a switch to a new branch, a switch to a local branch then fast-forward, and a detached switch to a tag, each with an ignored and an untracked file and with a file where an incoming directory goes, each `snapshot_repo(fetched=True)` equal), `test_sync_distros.py` (15: per-distro reports, the lock both ways, the build note, the manifest in a moved clone, a stub `git` for SIGKILL before a fetch and after a merge or switch, SIGTERM during a merge or switch, and a failing second step undone), two `vcs` behaviours in `test_vcs_behaviours.py` (pass on vcstool 0.3.0), an init sweep test. Part 1 tests changed for the new behaviour are named in commit 62113648; `test_build.py::test_the_install_note_names_removed_and_added_repos` now moves its repo by hand (5f8130f0).
+- Documents: the tool's `docs/design.md` ("sync": the rules in order, the paths check and why, the url rule with `pushurl` / `pushInsteadOf`, the lock, the build note, submodules and shallow clones, the stop and kill table; "Where the resolved files and state go": `url` and `moving`, the lock; "Where repos are fetched from"; "Work done on a field machine" keeps its paragraph and says the rebase is not built; "build": the lock shared with sync; "What is built"; the layer question left "Open questions"), `README.md`, `docs/roadmap.md` (the init/sync line gets the check `file-exists src/repos_manifest/update.py`), and the workspace's `docs/manifest/design.md` (two sentences that said the tool's sync leaves a clone that is there as it is). Each design sentence was checked against the code after it was written.
+
+### Departures from the plan
+- A place that is a link to a directory is left alone ("is a link to <target>; sync does not update a repo through a link"), exit 0; the plan did not name the case, and updating through the link would change a repo outside the system.
+- Rung 11's `pull --rebase` line is printed when origin's tip is not an ancestor of `HEAD` (origin has commits `HEAD` lacks). The plan wrote `merge-base --is-ancestor HEAD O` false, which is true whenever `HEAD` has unpushed commits.
+- The moved-tag next step is chosen by matching git's `[rejected] ... (would clobber existing tag)` line on the failed fetch. It changes only the wording of a failure; nothing else reads git's messages.
+- A version given as a commit counts when the object is there (7 to 40 hex digits); it is not checked to be reachable from an `origin` ref.
+- For a recorded version that names none, "on the recorded version" means on the branch `origin/HEAD` points to now.
+- A flat system whose manifest gained distros is now reported for that distro (exit 1) like the other per-distro reports, not a whole-run error; the manifest file that cannot be read stays a whole-run error.
+- The plan said the workspace's `docs/manifest/design.md` does not change; two of its sentences became false (the tool's sync "leaves a repo that is there as it is", "that part of sync is not built yet"), so they were corrected, and its exit-status line names a reported distro.
+- `docs/roadmap.md`'s Direction section holds no status, so parts 3 and 4 are not named there; the line got a check instead. The workspace's `docs/manifest/roadmap.md` has no row that changes.
+- The kill tests kill `sync` before a fetch and right after a merge or a switch (a stub `git`); a kill in the middle of git's own tree write is not reproduced. The wording it leads to is tested with a hand-written `moving` line and a changed tree.
+
+### Checks
+- Whole suite at `5f8130f0`: `cd tools/repos-manifest && REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest -p no:cacheprovider`: 1268 passed in 312.52s (vcs from /usr/bin/vcs, vcstool 0.3.0).
+- The signal and kill tests of `test_sync_distros.py` and the vcs tests, three runs in a row: 13 passed each time.
+- `bash .agent/scripts/check_design_anchors.sh`: exit 0. black and flake8 ran in the commit hooks.
+- No workspace script changed, so no `.agent/scripts/tests/` suite was run; the full pre-commit pass is left to the host. Commits made with `SKIP=validate-script-tests`.
+
+### By hand, in a scratch system (local file remotes; `init ../m.manifest.yaml --distro rolling --yes`, three repos on main)
+1. The pin of `core_a` changed in the manifest from main to dev, then `sync`: `core/src/core_a: moved from main to dev`, `updated (1): core/src/core_a`, `up to date (2)`, exit 0; branch `dev`; `state.yaml` for core_a: `version: dev`, the new commit, `url: <S>/remotes/core_a`. `sync` again: `up to date (3)`, exit 0. This is the issue's 2026-11-19 case.
+2. `origin` of `core_b` set by hand to another bare copy, then `sync`: `core/src/core_b: origin is <S>/remotes/core_b-mine.git, the manifest says <S>/remotes/core_b; left as set (to use the manifest's: git -C <S>/sys/core/src/core_b remote set-url origin <S>/remotes/core_b)`, `up to date (3)`, exit 0; origin unchanged. The line comes again on the next run.
+3. A local commit in `core_c` and a commit upstream, then `sync`: `core/src/core_c: left alone: has 1 commits not on origin; to bring origin's in by hand: git -C <S>/sys/core/src/core_c pull --rebase origin main`, `left alone (1): core/src/core_c`, exit 0; `HEAD` unchanged, status clean.
+(`<S>` is the scratch directory; the script is the session scratchpad's `byhand.sh`.)
+
+### By-hand acceptance for the owner
+Not run by this pass. With the tool installed from this branch into `~/p11-venv`, in `~/project11` (or wherever his system is), with the repo of his own pin change in place of `<repo>` and its layer in place of `<layer>`:
+
+```bash
+cd ~/project11
+git -C rolling/<layer>/src/<repo> status --short; git -C rolling/<layer>/src/<repo> log --oneline -1   # before
+~/p11-venv/bin/repos-manifest sync --distro rolling
+git -C rolling/<layer>/src/<repo> status --short; git -C rolling/<layer>/src/<repo> branch --show-current
+grep -A6 '<repo>:' .repos-manifest/state.yaml    # version, commit and url are the new ones
+~/p11-venv/bin/repos-manifest sync --distro rolling     # again: "up to date", nothing changes
+```
+
+His clones whose `origin` is ssh while the manifest says https are left as set, with one line each per run; this system's record has no urls yet, so none of them is repointed. For the safety rows, on a throw-away system made the same way in `~/p11-test` (never the real one): a changed tracked file (left alone, "has uncommitted changes"), a local commit (left alone, with the `git pull --rebase origin <branch>` command), a repo switched by hand to another branch (left alone, "moved by a person"), an `origin` set by hand (left as set, one line), an ignored file where an incoming file arrives (left alone, the path named with "(ignored)"); after each, `sync` then `git status` and `git log -1` compared with before.
+
+### For the pull request body
+- `sync` now updates each repo that is there, after the place checks, by rules checked in order. A clean clone on the manifest's branch is fast-forwarded; one on the version `sync` last recorded, when the manifest names another, is switched to it (a new tracking branch, a local branch fast-forwarded, or detached at a tag or commit); a clone pinned to a tag or commit stays. `state.yaml` records the new version, commit and url.
+- Left as it is and reported, with the repo unchanged: tracked changes (also assume-unchanged and skip-worktree files, and changed files inside a submodule); commits not on `origin` (with the `git pull --rebase origin <branch>` command), including after an upstream force-push; another branch or a detached `HEAD` elsewhere; a rebase, merge, cherry-pick, revert, bisect or `index.lock`; no single `origin`; not a repository of its own; a link at the repo's place; a local branch of the new version with commits not on origin, or checked out in another work tree; a branch rewritten upstream; and any untracked or ignored file where an incoming file goes. Untracked files elsewhere do not stop an update.
+- `origin`: repointed only when it still has the url `sync` recorded and the manifest names a new one, and only when every local branch is on the new url; an `origin` set by hand is left as set with one line per run. A system made before this change has no recorded urls, so nothing in it is repointed.
+- A repo the manifest gives another layer is not moved: `sync` prints the `mkdir -p ... && mv ...` command and exits 1 (an optional repo is skipped). A repo no longer in the manifest is listed and left on disk.
+- Per distro: a distro that does not resolve, or whose lock a `build` holds, is reported and the others go on (exit 1). `sync` and `init` hold the distro's build lock while they write its resolved files and update its repos; a build refused by a sync says "a sync of distro <d> is still running". A built layer whose repos changed gets a line saying `build` brings it up to date.
+- Never run by `sync`: `reset`, `checkout -f`, `clean`, `stash`, `rebase`, `pull`, `push`, `gc`, `prune`, branch deletion, `--force`, `--no-verify` (a test scans `update.py`). Success is judged by the repo's state after each git call.
+- Left for part 3: step 1 of the design's `sync` (the manifest's own clone and `local_manifest`, `--local-manifest`) and arguments after `--`. Left for part 4: the rebase of unpushed commits, with the three findings of the first part-2 plan review as its test list.
+- Open on purpose: a repo left alone while the manifest names another version exits 0 (`status`, issue 502, is the script-readable check); the hand-set-origin line prints on every run; submodules are never updated (the report gives `git submodule update`); a shallow clone grows by the history of the tags the fetch brings.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 15:48 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-500 at `4fa6356c`
+**Base**: origin/main
+**Depth**: Deep (reason: about 3,600 lines over 22 files; safety-critical git operations on a person's clones)
+**Must-fix**: 6 | **Suggestions**: 10
+**Round**: 1 | **Ship**: continue — round 1: 6 must-fix; first round always re-reviews after fixes
+
+Part 2 (sync on clones that are there). Whole suite at 4fa6356c: 1268 passed in 311s (`REPOS_MANIFEST_REQUIRE_COLCON=1`). Six mutations of update.py (paths check off, ahead check off, directory walk off, stat for lstat, repoint with no recorded url, tracked-changes check off) each fail 1 to 15 tests, so the snapshot comparison catches them. The owner's four answers are followed. Scratch systems (local file remotes, session scratchpad): ignored and untracked files, ignored directories, links, a directory replaced by a file, version moves, local commits, a detached HEAD, staged/intent-to-add/rm --cached, url rule, layers, shallow clones, hooks, signals and kills, and the lock all held, except the findings below. Cross-model: gemini and codex both completed.
+
+### Findings
+- [x] (must-fix) A submodule that an incoming commit replaces with a file or a link is deleted with its work tree; when its `.git` is a directory, the submodule's unpushed commits are deleted too. Exit 0, "updated". `in_the_way` checks only `--diff-filter=A` and skips paths tracked in HEAD (a gitlink is), and `tracked_changes` does not count a submodule on another commit. Reproduced: submodule `sub` cloned in place, a commit on branch `mywork` inside it, upstream replaces `sub` with a file; after sync `sub` is a file and the commit is gone. A submodule replaced by a directory also writes upstream files into the person's submodule. Check every gitlink of HEAD that is not the same gitlink in the target and leave the repo alone when its directory holds anything — `update.py:207-263`, `update.py:190`
+- [x] (must-fix) A moved tag can never be followed. sync tells the person to `git tag -d <tag>` and sync again, but the next sync finds HEAD detached at the recorded commit with the version unchanged, and reports "moved by a person" on every later run. Reproduced: pin v1, move v1 on origin, follow the message; runs 2 and 3 exit 0 "left alone: moved by a person". The design's rule 7 implies this works — `update.py:500-507`, `update.py:550-565`
+- [x] (must-fix) A local-only tag with the same name as the pinned branch fails the repo with "version dev is both a branch and a tag" (exit 1). The ambiguity check runs before the `ls-remote` check. The design's rule 8 says that a local tag origin lacks does not count. Reproduced with `git tag dev` in the clone and the pin set to `dev` — `update.py:355-358`
+- [x] (must-fix) A two-step move (switch to a local branch, then fast-forward) whose `post-checkout` hook fails is an ERROR, exit 1, "another sync will not change that". The switch did happen, and the next sync completes it. The design says that a move with a failing hook counts. Reproduced: main→dev with a local dev behind origin/dev, hook `exit 1`. Judge step 1 by its state (HEAD on the local branch), not by its exit status — `update.py:630-642`
+- [x] (must-fix) Design, sync: "Nothing in the repo changes before a fast-forward or a switch, except the remote-tracking refs and objects a fetch brings". The fetch also creates local tags (`--tags`). Name them — `tools/repos-manifest/docs/design.md` (sync, after the field-machine bullet list)
+- [x] (must-fix) The record keeps the old layer after a person runs the printed `mv` and the repo is then left alone (for example, local commits). The design says "moved there by hand, it is handled there and its record names the new layer". `left()` should record the layer, as it records the url. Reproduced by the adversarial subagent (scratch case 2a) — `update.py:416-422`
+- [x] (suggestion) Pass `--no-overwrite-ignore` to every `merge` and `switch`, including the undo, so git itself refuses an ignored file created between the paths check and the call. The race was reproduced with a wrapper that writes `build.log` just before the merge — `update.py:547,586,591,598,600,639-641`
+- [x] (suggestion) A stale `moving` line hides the real reason ("a sync was stopped…" instead of "has uncommitted changes") after a hand reset to the `from` commit plus an edit, and `left()` never clears it. A record made by `_change` for a repo with no record is not removed on a clean failure either — `update.py:453-457`, `update.py:416-422`, `update.py:645-646`
+- [x] (suggestion) Departure 4 (a commit counts when the object is there): a pin to a commit that exists only locally was followed (detached there), and the report did not say it is not on origin. Check that it is reachable from an origin ref or tag, with a stated rule for shallow clones — `update.py:371-374`
+- [x] (suggestion) Departure 5 (origin/HEAD read as it is cached): when origin's default branch changes, the clone stays on the old branch, and a pin change is reported as "moved by a person". Say so in the design or record the branch used — `update.py:339-354`, `update.py:568-577`
+- [x] (suggestion) The fetch runs with the person's `remote.origin.fetch`. A forced refspec into `refs/heads/*` would move local branches before any check. Fetch with an explicit `+refs/heads/*:refs/remotes/origin/*` refspec — `update.py:496-498`
+- [x] (suggestion) After a repoint, if the fetch or the version lookup fails, the new url is not recorded. A later url change is then read as an origin set by hand (safe, but repointing stops) — `update.py:478-481`, `update.py:508-515`
+- [x] (suggestion) A clean sparse checkout is always left as "has uncommitted changes (n files)", because skip-worktree entries are counted. Word it, or tell sparse entries apart — `update.py:192-197`
+- [x] (suggestion) Urls are printed raw in the by-hand and repoint lines, including any `user:token@` — `update.py:483-486`, `update.py:696-715`
+- [x] (suggestion) A disk failure writing one distro's resolved files ends the whole run (only `Refusal` is caught per distro). The design's "cannot be written out" means building the text; make that clear or catch it — `sync.py:611-616`
+- [x] (suggestion) `git merge-tree` of this branch with `feature/issue-531` conflicts in `tools/repos-manifest/README.md` (the build paragraph). Code files merge cleanly, and the only build-side file this branch touches is the stated `tests/test_build.py` change — `tools/repos-manifest/README.md:124-127` (deferred: the host resolves the README conflict with issue 531's branch at merge, as the handoff says; this pass left it)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 16:30 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-500 at `a342fc56`
+**Addressed**: Local Review (Pre-Push) at `4fa6356c` (2026-11-19 15:48 -05:00)
+**Commits**: dcbf4ec8, bd216203, fd3a0183, 8a24293d, 119fedcf, 1276ef9f, 4642805f, 535c803b, 34e7587f, da9d44b2, d07d6dd5, ca0dbc92, 1b98d10c, c236b3fc, 566dca05, 820c8769, 13a7327f, f5114a5c, 238134d9, a342fc56 (box checks)
+
+Every finding was reproduced first: the reviewer's `probe2.py` (moved tag, local tag `dev`, two-step hook) and `probe3.py` (submodule replaced by a file, its unpushed commit lost) all failed as described at `5619a7a3`; after the fixes the same probes show the tag followed, `dev` moved to, the two-step move counted, and the submodule left with `mine.txt` there. Each code fix has a test that fails with the fix taken out (checked by reverting the source diff and running the new tests), comparing the whole repo with `snapshot_repo`, which now also covers each nested repository's HEAD, branch, refs, config and status.
+
+### Actions
+- [x] (must-fix 1) Submodules: before every fast-forward or switch, each gitlink of HEAD is compared with the same path in every target; a populated submodule the move removes or replaces (file, link, directory), or one whose pointer changes while its own HEAD is not the recorded commit (or that is not a repository of its own), leaves the repo as it was, named, "has to be dealt with by hand". Not-checked-out submodules and untracked files in a submodule whose pointer moves are no obstacle (git does not touch its work tree); a file or directory turned into a submodule goes through the paths check. `tests/test_update_submodules.py` (28 cases; 21 fail without the fix) — `update.py` `submodules_in_the_way`, `_change`
+- [x] (must-fix 2) A tag moved on origin is followed after `git tag -d`: detached at the commit recorded for the tag the manifest still names, origin's tag elsewhere, the repo is switched there; never a tag force-update. Whole sequence tested (pin, move, report, `tag -d`, follow, up to date) and a repo moved off the tag by a person stays left — `update.py` update_repo, `_move`
+- [x] (must-fix 3) A local tag counts only when origin has the same object, asked before the both-a-branch-and-a-tag check; both directions tested (local tag `dev` with a branch pin; local branch `v1` with a tag pin) — `update.py` `find_version`
+- [x] (must-fix 4) Each step of a move is judged by the state it leaves (HEAD on that step's commit and branch, no tracked changes); a failing `post-checkout` on the switch of a two-step move is a note and the fast-forward follows. Tested — `update.py` `_change`
+- [x] (must-fix 5) Design: the fetch brings origin's remote-tracking refs (and prunes gone ones), objects, local tags origin has and the clone lacks, and `FETCH_HEAD`; no local branch, HEAD, index or work-tree file changes before a move — `docs/design.md` sync
+- [x] (must-fix 6) A repo moved by hand to its new layer has the layer recorded before the rules run, so whether followed or left (local commit, changed file, index.lock: tested) — `sync.py` `present_repo`
+- [x] (suggestion) `--no-overwrite-ignore` on every merge and switch, the undo included; git 2.53.0 accepts it for both `merge` and `switch` (`-h` lists `--[no-]overwrite-ignore`). Race test with a stub git writing an ignored file just before the call, for the merge and the switch — `update.py`, `tests/test_sync_distros.py`
+- [x] (suggestion) The moving line is added to the reason (uncommitted changes, operation in progress, index.lock), never in its place; a sync that finds HEAD on neither commit removes it; a clean failed fast-forward of a repo with no record writes a record without it — `update.py`
+- [x] (suggestion) A commit pin is followed only when reachable, in the clone's history, from an origin branch or a tag origin has (same object); otherwise left alone and reported (exit 0). Shallow rule stated in the design — `update.py` `commit_on_origin`
+- [x] (suggestion) Design states the default branch is origin/HEAD as the clone records it (the fetch does not move it; tested), what happens when origin's default changes, and the deleted-branch error now gives the `set-head` command — `docs/design.md`, `update.py`
+- [x] (suggestion) Fetch with `--refmap= origin +refs/heads/*:refs/remotes/origin/*`; tested with `remote.origin.fetch=+refs/heads/*:refs/heads/*` (without the fix the person's `dev` was overwritten and `feature` pruned). Neighbour, own commit: the url probe also passes its refspec and `--refmap=` — `update.py`
+- [x] (suggestion) The url is recorded right after a repoint, before the fetch; tested with a version that then fails — `update.py`
+- [x] (suggestion) A sparse checkout (`core.sparseCheckout`) is left alone with a message saying so, cone and non-cone tested — `update.py`
+- [x] (suggestion) Credentials: `mask_urls` masks `scheme://userinfo@` in every repo line `sync` prints (its words and git's), keeping an ssh user name alone; the `set-url` command for a masked url says to use the repo's url as the manifest gives it — `update.py`, `sync.py` `_say`
+- [x] (suggestion) A failure putting one distro's resolved files on the disk is a `Refusal` for that distro; its repos are untouched, the others go on. Three part-1 tests in `test_sync.py` changed with it (238134d9) — `sync.py` `_sync_distro`
+- [x] (suggestion) README conflict with issue 531's branch — `README.md:124-127` (deferred: the host resolves it at merge, as the handoff says; this pass changed README lines 108-118 only, not the build paragraph)
+
+### Departures
+- Must-fix 1, pointer moves: a submodule left on its old commit by an earlier `sync` (which never updates submodules) stops the next pointer move until a person updates it. That is the safe reading of "own HEAD is not the commit the superproject records": the two cases cannot be told apart, and sync's own `git submodule update` advice would otherwise move a person's detached commit away.
+- Must-fix 1, tracked changes or untracked files in a submodule: tracked changes already leave the repo (`tracked_changes`); untracked files block only when the move removes or replaces the submodule (it is populated). A pointer move leaves the submodule's work tree as it is (`submodule.recurse=false`), so its untracked files do not block one; tested.
+- Added beyond the list, found trying neighbours: the fetch passes `--no-recurse-submodules` (13a7327f). `-c submodule.recurse=false` already kept it out of submodules even with `fetch.recurseSubmodules=true`; the test fails only with both removed, so it guards existing behaviour and makes it independent of config order.
+- Suggestion 8 leaves the repo alone (exit 0), not an error, as the handoff says.
+- Masking keeps an ssh url's bare user name (`ssh://git@host`) and masks any other user name, since an https one is often a token.
+- The "tag here is not origin's tag" branch of must-fix 3 is a guard for a tag that changed on origin between the fetch and the lookup; it has no test (the fetch refuses the clobber first).
+
+### Tried by hand (scratch, `fx/neigh.py`, `fx/recurse.py`, `fx/refmap.sh` in the session scratchpad)
+- A submodule at `lib/sm` whose parent `lib` becomes a file: left alone, repo unchanged.
+- A submodule place that is a link to a person's clone with its own commit, pointer moved: left alone ("`git status` fails here"), unchanged.
+- An annotated tag moved on origin: run 1 exit 1; after `tag -d`, followed to the new commit; again up to date.
+- A directory with an ignored file replaced by a file: the paths check leaves it; git alone with `merge --ff-only --no-overwrite-ignore` also refuses (exit 1, file kept).
+- An origin `https://alice:s3cret@127.0.0.1:9/x.git` (unreachable): neither the name nor the password printed, in sync's line or git's.
+- A layer moved by hand, then the manifest moves it back: record says `extra`, then the `mv` command back is printed.
+- A sparse checkout with `extensions.worktreeConfig`: left alone, unchanged.
+- `fetch --refmap=` with explicit refspec against a hostile `remote.origin.fetch`: local branches kept, prune works.
+
+### Checks
+- Whole suite at `238134d9`: `cd tools/repos-manifest && REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest -p no:cacheprovider`: `1331 passed in 345.98s` (vcs 0.3.0 at /usr/bin/vcs, colcon at /usr/bin/colcon). The first run at `f5114a5c` had 3 failures, the part-1 tests fixed in 238134d9.
+- Signal and kill tests (`test_sync_distros.py`, `test_vcs_behaviours.py`, `-k "kill or stop or signal or step or ignored_file_made or vcs or no_record"`) three runs: 17 passed each time.
+- Forbidden-commands scan (`test_update_safety.py`) passes in the whole suite.
+- `bash .agent/scripts/check_design_anchors.sh`: exit 0. black and flake8 ran in the commit hooks.
+- No workspace script changed; no `.agent/scripts/tests/` suite run. The full pre-commit pass is left to the host. Commits with `SKIP=validate-script-tests`.
+- `docs/manifest/design.md` re-read: its sync sentences still hold (exit 1 "a distro was reported" covers the new per-distro write report); not changed.
+
+### For the pull request body
+- `sync` updates each repo that is there, by rules checked in order. A clean clone on the manifest's branch is fast-forwarded; one on the version `sync` last recorded is switched to the manifest's new one (a new tracking branch, a local branch fast-forwarded, or detached at a tag or commit). A clone pinned to a tag stays; when origin moves that tag, the fetch fails with the `git tag -d` command, and after it the next `sync` follows the tag, if the repo is still where `sync` put it. `state.yaml` records version, commit, url and layer.
+- What `sync` changes before a move: the fetch (`--refmap=` with its own refspec, `--no-recurse-submodules`) brings origin's remote-tracking refs, objects, new tags and `FETCH_HEAD`; never a local branch, a local tag, `HEAD`, the index or a work-tree file, whatever `remote.origin.fetch` or `fetch.recurseSubmodules` say.
+- Left as it is and reported: tracked changes; commits not on origin (with `git pull --rebase origin <branch>`); another branch or detached HEAD; an operation in progress or `index.lock`; no single origin; not a repository of its own; a link at the place; a sparse checkout; a local branch of the new version with commits not on origin or checked out elsewhere; a branch rewritten upstream; an untracked or ignored file where an incoming file goes (git also refuses through `--no-overwrite-ignore`); a version given as a commit that origin does not hold.
+- Submodules are never updated. A move that would remove or replace a checked-out submodule, or move the commit of one whose HEAD is not the recorded commit, leaves the whole repo as it was and names the submodule to be dealt with by hand; an empty (not checked out) submodule is no obstacle.
+- Tags: only a tag origin has counts as the version; a local-only tag or branch of the same name never blocks or redirects a pin.
+- `origin`: repointed only when it still has the recorded url and every local branch is on the new one; the new url is recorded at once. An origin set by hand is left as set, with one line per run. No line `sync` prints shows a url's user name or password; a masked `set-url` command says to use the manifest's url for that repo.
+- A repo the manifest moves to another layer is not moved: the `mv` command is printed (exit 1, optional skipped); once moved by hand, the record names the new layer whatever happens next. Per distro: a distro that does not resolve, whose resolved files cannot be written, or whose lock a build holds, is reported and the others go on.
+- Left for part 3: the manifest's own clone and `local_manifest` (step 1), arguments after `--`. Part 4: the rebase of unpushed commits, with its three findings as the test list.
+- Open on purpose: a repo left alone while the manifest names another version exits 0 (`status`, issue 502); the hand-set-origin line prints every run; a submodule left behind by `sync` stops the next pointer move until a person updates it; a shallow clone grows by the history of fetched tags; when origin's default branch changes, a manifest with no version keeps the old branch until `git remote set-head origin --auto`, after which the repo reads as moved by a person; urls in vcs clone output are masked by the same report path, but urls in manifest errors (`show`, `resolve`, refusals) are not this part's.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 16:39 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a52816d3cdcc13103, resume 1 of 3)
+
+**Branch**: feature/issue-500 at `36c5febb`
+**Base**: origin/main
+**Depth**: Deep (reason: whole branch diff, about 4,600 lines over 23 files; safety-critical git operations on a person's clones)
+**Must-fix**: 3 | **Suggestions**: 9
+**Round**: 2 | **Ship**: continue — round 2: 3 must-fix is high; another independent read warranted
+
+All six round-1 must-fix are fixed. I re-ran each reproduction at 36c5febb, and each is now safe:
+- **Submodule replaced by a file:** left alone, and `mine.txt` and the commit are kept. The subagent also covered a link and a directory, by fast-forward and by switch, with `.git` as a directory and as a file.
+- **Moved tag:** after `tag -d`, it is followed, then up to date.
+- **Local tag `dev`:** the branch pin is followed.
+- **Failing hook on the two-step move:** counted, exit 0.
+- **Layer record after a hand move:** recorded (subagent).
+- **Local-only commit pin:** left alone.
+
+Checks:
+- **Whole suite at 36c5febb:** 1331 passed in 345s.
+- **Submodule rule turned off in a copy:** 21 of 28 tests in `test_update_submodules.py` fail.
+- **Forbidden-commands scan:** passes in the suite.
+- **The three part-1 tests changed in 238134d9:** they still check the error text and the per-distro "reported above" line.
+
+The submodule rule held in every direction tried: removed, replaced by a file, a link or a directory, nested, never initialised, deinitialised, absorbed, a file or directory turned into a submodule, a pointer move with the submodule's HEAD on and off the recorded commit, and switches adding or dropping one. The deep snapshots also compared the objects reachable in each nested repo and in `.git/modules`; nothing was lost.
+
+Other cases that held:
+- The moved-tag follow never moves a clone the person moved elsewhere. A detached HEAD at the recorded commit cannot be told apart from where sync put it, and it carries no work.
+- `--no-overwrite-ignore` held on both steps and on the undo.
+- A commit only on a pull-request ref, only on a local tag, or only local is left alone.
+- With `fetch.recurseSubmodules=true`, the url probe did not fetch into a submodule (codex point 3, not reproduced).
+
+### Findings
+- [x] (must-fix) A move to a branch the clone's `remote.origin.fetch` does not map is left half-switched. This is a `git clone --single-branch` or `--depth` clone with the pin changed main→dev. `git switch -c dev --track refs/remotes/origin/dev` writes dev's tree into the index and work tree, then dies with "cannot set up tracking information", and HEAD stays on main. The undo is not tried because it was the first step.
+  - Reproduced (`mine/probe5.py`, and the subagent's `adv2/c3b_detail.py`). Run 1: exit 1, "left the repo changed: HEAD was X (main), is X (main)". Afterwards main has `D .gitignore`, `A BRANCH` staged, so a `git commit -a` would commit dev's tree onto main. Run 2: exit 0, "has uncommitted changes (2 files); a sync was stopped while moving this repo", although nothing was stopped.
+  - Fix: use `--no-track` and set `branch.<n>.remote`/`merge` explicitly; or check the mapping first and leave the repo alone. Also put a failed first step back, and stop calling a failure a stop in the wording. — `update.py:786-794`, `update.py:842-877`
+- [x] (must-fix) sync's fetch prunes a person's remote-tracking refs that are not branches. With an extra `+refs/pull/*/head:refs/remotes/origin/pr/*` refspec, `--prune` with sync's own refspec removed `refs/remotes/origin/pr/1`, which origin still has.
+  - Reproduced: `for-each-ref refs/remotes/origin/pr` held one ref before and was empty after. The subagent saw 3 objects become unreachable and a branch made from the PR now counted as not on origin.
+  - The design's sentence "removes those of branches origin no longer has" is false.
+  - Fix: prune only what sync's refspec brings, for example by listing `origin`'s heads and deleting `refs/remotes/origin/<b>` for each one gone; or drop `--prune`; or state the behaviour. — `update.py:668-678`, `docs/design.md` (sync, the fetch paragraph)
+- [x] (must-fix) A password holding `'`, `"` or a space is printed in full. The `USERINFO` class stops at quotes and spaces, so `https://alice:s3cr'x@host/...` is shown whole (`mask_urls` checked directly, and the subagent saw it in the by-hand and repoint lines). The design's "A url's user name and password are never printed" is false for these urls. Fix: let the user info run to the last `@` before `/`, `?`, `#` or the end of the token, quotes included. — `update.py:152-161`
+- [x] (suggestion) A person's own local tag that origin later also creates fails every fetch (exit 1) even when the manifest does not name it. The message says "was moved on origin" (false), and the advised `git tag -d` can orphan the person's commit when the tag is its only ref. Word it as "origin has a tag of the same name", and warn when the local tag is the only ref holding its commit. — `update.py:679-688`
+- [x] (suggestion, usability) After the first fast-forward that moves a submodule's pointer, which sync never updates, every later move of that pointer is blocked until a person updates the submodule. A repo with submodules stops following at its second pointer move.
+  - The blocked message, "submodule sm is on X, not on Y, the commit recorded here, and the move changes that commit; not updated (a submodule has to be dealt with by hand, then sync again)", gives no command.
+  - For a submodule cloned by the person and not registered in `.git/config`, the earlier `git submodule update` hint does nothing.
+  - The design says the blocking (line 809). The README says only "one a person has moved", which does not cover a submodule sync left behind.
+  - Put `git -C <place> submodule update --init -- <path>` in the message, say "the commit the superproject's HEAD records", and add the case to the README. — `update.py:300-305`, `README.md:111-112`
+- [x] (suggestion) A successful first step is not checked with `_arrived` before the second. A `post-checkout` hook that changes tracked files and exits 0 lets the fast-forward run on a dirty tree. It ends as an error, nothing is lost (codex). — `update.py:842-849`
+- [x] (suggestion) The fetches run without the lock descriptor. A `sync` killed during a fetch frees the lock while git still writes refs (codex); the design's kill table covers the result. — `update.py:668-678`, `update.py:906`
+- [x] (suggestion) A detached HEAD at the recorded commit of a recorded branch is treated as sync's own and moved on a pin change. Nothing is lost; the design states it (rule 11). Codex says to record attached or detached. — `update.py:765-766` (deferred: left as it is, the host's decision: nothing is lost and design rule 11 states it)
+- [x] (suggestion) A commit pin beyond a shallow clone's history is reported as "version X is not on origin" (exit 1). That is true by design rule 8, but the message could name the shallow history. — `update.py:496-500`
+- [x] (suggestion) The url-rule notes and the `left alone` lines are masked through `sync.py`. Messages raised as `ManifestError` from `present_repo` (the "may have been changed" path) and per-distro `Refusal`s are not. Not reached by a url in testing; worth one pass. — `sync.py:404-416`
+- [x] (suggestion) A person switching branches between sync's HEAD read and the merge could have another branch fast-forwarded (codex). This is speculative, and the result is still a fast-forward of commits on origin. — `update.py:842` (deferred: left as it is, the host's decision: speculative, and the result is still only a fast-forward to commits on origin)
+- [x] (suggestion, repeated from round 1) The README conflict with `feature/issue-531` is still deferred to the host at merge. — `README.md:124-127` (deferred: the host resolves the README conflict with issue 531's branch at merge)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 17:11 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a5f44b6979a40343e, resume 1 of 3)
+
+**Branch**: feature/issue-500 at `c295c3e9`
+**Addressed**: Local Review (Pre-Push) at `36c5febb` (2026-11-19 16:39 -05:00)
+**Commits**: df68895f, 407b8461, 611b146d, b4721144, a0c3ea30, d3d0bb2f, 7df20ca3, 7f5b4e2b, c295c3e9 (box checks)
+
+I reproduced each must-fix first with the reviewer's `probe5.py`. M1: a single-branch clone moved main to dev failed with "HEAD was 9158e359…, is 9158e359…", `dev`'s tree was left staged, and the next run said "a sync was stopped". M2: `refs/remotes/origin/pr/1` was removed. S1: `mask_urls` printed `s3cr'x` and `p w` whole. After the fixes, each new test that covers a broken path fails when the source diff is reverted. The exceptions are the new single-branch tag and commit cases, the local-branch direction, and the narrow cases that guard paths which were already right.
+
+### Actions
+- [x] (must-fix 1) Narrow clones: a branch not yet local is made with `git switch -c <name> --no-track <origin's commit>`, which either does all of it or nothing. The upstream is set afterwards with `git branch --set-upstream-to`. If that fails, the move stands and a note says the branch has no upstream, why (the clone's `remote.origin.fetch` does not cover it, when that is the case), and gives the two `git config` commands that set one. Every step is checked by the state it leaves. A step that leaves a half-change is reported as "left the repo half-changed: HEAD is still at X (branch); staged: …; changed, not staged: …". Those changes are said to be git's, and the moving line is dropped, so the next sync reports uncommitted changes and not "a sync was stopped". Tests: `test_a_narrow_clone_is_moved_whole_or_not_at_all` (`--single-branch` and `--depth 1` × dev, tag, commit), `test_an_upstream_that_cannot_be_set_is_a_note_and_the_move_stands` (stub fails only the upstream step), `test_a_switch_that_leaves_a_half_change_says_what_it_left` (stub reproduces the M1 end state) — `update.py` `_move`, `_change`, `_half_changed`, `_set_upstream`
+- [x] (must-fix 2) The fetch passes `--no-prune --no-prune-tags`, which win over `fetch.prune` and `remote.origin.prune`, so `sync` removes no remote-tracking ref. The version is asked of origin (`ls-remote origin refs/heads/V refs/tags/V`), and a branch's remote-tracking ref must equal origin's commit. A branch deleted on origin is an error that names the stale ref. A commit pin is followed only when a ref that holds it is listed by origin now. The "commits not on origin" count still uses `--remotes=origin`. A stale ref there can only let a repo be moved, and a move never loses a commit; the design says so. Tests: the reviewer's pull-request refspec with `None`, `fetch.prune` and `remote.origin.prune`; a pinned branch deleted on origin (repo unchanged); a commit held only by a stale ref (not followed) — `update.py` `find_version`, `ask_origin`, `_branch`, `commit_on_origin`, fetch
+- [x] (must-fix 3) Masking by parsing, in the new `masking.py`. Every url the tool reads is registered: the manifest's at validation, before any error quotes it; origin's and the recorded one in `update_repo`. Its user information is everything between `://` and the last `@`, whatever it holds. That string and its `%`-decoded form are masked wherever they appear. Any other url is masked by its shape, up to the first `@` that a host follows. Tests: quotes, a space, `@`, `:`, `/`, `%` escapes and unicode in the user and the password, in by-hand, repoint and git lines. Two whole `sync` runs against `127.0.0.1:9` grep all output (18 cases fail with the old pattern) — `masking.py`, `update.py`, `sync.py`, `cli.py`, `manifest.py`
+- [x] (suggestion a) Tag clash: git exits 1 for a tag it will not replace and still fetches the branches (checked: `origin/main` and `origin/dev` updated, exit 1). `sync` then fetches the branches again with `--no-tags` and goes on when that exits 0. A clash on a tag the manifest does not name is a note. For the manifest's tag the error gives both commits. It says origin "moved" the tag and advises `git tag -d` only when the record shows sync followed that tag at the commit it holds here; otherwise "which to keep is for a person to decide", with no deletion advice. Tests: a non-manifest clash (followed, local tag kept); a person's own tag that origin also made (no `tag -d`); the moved-tag sequence from round 1, unchanged — `update.py` fetch, `_tag_clash`
+- [x] (suggestion b) The blocked-submodule messages give a command. For a submodule on another commit: `git -C P submodule update -- <path>` when it holds nothing of yours. For one removed or replaced: move it aside. The README says a repo with submodules follows one change of a submodule's commit and stops at the next until the submodule is updated by hand. A test shows that the given command lets the next sync follow — `update.py`, `README.md`
+- [x] (suggestion c) Each step is judged by state even when it exits 0. A `post-checkout` hook that edits a tracked file after the switch stops the move before the fast-forward, reported as a half-change. `test_a_hook_that_edits_a_tracked_file_stops_a_two_step_move_after_its_switch` fails at the commit before 407b8461 — `update.py` `_change`
+- [x] (suggestion d) The fetches (main and probe) are given the lock descriptor (`hold=True`) but not the held signals, so Ctrl-C still stops a hanging fetch or a password prompt. The kill-before-fetch test now asserts that the lock stays held while the killed sync's fetch runs, then that the next sync follows — `update.py` `Git.run`
+- [x] (suggestion e) A commit pin beyond a shallow clone's history: "is not in this shallow clone's history; sync never deepens a clone (`git -C P fetch --unshallow origin`, run by hand, makes it whole)". Tested with a commit outside every tag's history — `update.py` `find_version`
+- [x] (suggestion f) Errors (`cli.py`) and per-distro report and refusal lines (`sync.py`) go through `mask_urls`. A test with a url the manifest refuses (`foo::https://alice:<pw>@…`), in `sync` and `resolve`, found that a url in git's `<transport>::<address>` form was not registered; the scheme is now searched for anywhere in it — `cli.py`, `sync.py`, `masking.py`
+- [x] (suggestion) Detached HEAD at a recorded branch's commit moved on a pin change (deferred: the host's decision; nothing is lost and design rule 11 states it)
+- [x] (suggestion) A branch switched by a person during the run (deferred: the host's decision; speculative, and the result is still only a fast-forward to commits on origin)
+- [x] (suggestion) README conflict with issue 531's branch (deferred: the host's at merge)
+
+### Departures
+- Must-fix 2 and suggestions a, d and e are in one commit (b4721144), because they are the same edits to the fetch and the version lookup.
+- Must-fix 1 did not need a separate "create the ref, then switch" pair. `git switch -c <name> --no-track <commit>` makes the branch only when the switch succeeds, so it is one step that does all or nothing. Tracking is the separate last step, as asked. Undoing a half-change is not attempted, since sync runs no reset or forced checkout. The report names what is staged instead.
+- Every sync now makes one `ls-remote origin` per repo, plus one more for a commit pin. That is the price of not reading a possibly stale ref. An https origin without a credential helper is asked for its password twice.
+- The upstream advice gives `git config branch.<b>.remote origin` and `branch.<b>.merge refs/heads/<b>`, which work whatever the fetch settings are. `--set-upstream-to` would still refuse in a narrow clone.
+
+### Tried by hand (session scratchpad `fx/neigh2.py`, `fx/clash.sh`, `fx/showmask.py`)
+- A single-branch clone with `branch.autoSetupMerge=always`, pinned to dev: moved, clean, no upstream, note given (`--no-track` wins). Then pinned back to main (two-step path): moved, clean.
+- A pinned branch deleted on origin with the pin unchanged: exit 1, the stale-ref message, repo unchanged.
+- Passwords `a://b`, `x@y@z` and `p://q@r s`: masked whole in both quoted and bare forms.
+- The manifest's tag moved on origin after sync followed it: the error gives both commits and the `tag -d` advice.
+- An origin path that is gone: the by-hand line, then a fetch error.
+- `remote.origin.tagOpt=--no-tags` with a pin to a new tag: found and moved to.
+- Which path each awkward manifest url takes: all reach the repoint probe's failed fetch, masked. A refused url is covered by the new refused-url test.
+
+### Checks
+- Whole suite at `7df20ca3`: `cd tools/repos-manifest && REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest -p no:cacheprovider` gave `1387 passed in 370.58s` (vcs 0.3.0, colcon present). Only the design text changed after that (7f5b4e2b).
+- Signal and kill tests (`test_sync_distros.py`, `test_vcs_behaviours.py`, `-k "kill or stop or signal or step or ignored_file_made or vcs or no_record or upstream or half"`), three runs: 19 passed each time.
+- The forbidden-commands scan passes. Its sanity check now reads `fetch --tags` and the `--no-prune --no-prune-tags` argument list.
+- `check_design_anchors.sh`: exit 0. black and flake8 ran in the commit hooks. No workspace script changed. The full pre-commit pass is the host's. Commits used `SKIP=validate-script-tests`.
+
+### For the pull request body
+- `sync` updates each repo that is there, by rules checked in order. A clean clone on the manifest's branch is fast-forwarded. One on the version `sync` last recorded is moved to the manifest's new one. A branch not yet local is made with `git switch -c --no-track` at origin's commit, all or nothing, and its upstream is set after as a separate step; in a `--single-branch` or `--depth` clone that step is refused, and the report gives the two `git config` commands. A local branch is switched to and fast-forwarded. A tag or a commit is checked out detached. Every step is judged by the state it leaves. A step that leaves a half-change is reported as exactly that, naming HEAD and the staged files, and nothing more runs in that repo.
+- The fetch (`--tags --no-prune --no-prune-tags --no-recurse-submodules --refmap= origin +refs/heads/*:refs/remotes/origin/*`) removes no ref and writes no local branch, whatever the person's fetch settings. It holds the distro's lock but not the stop signals. The version is asked of origin itself, so a remote-tracking ref left from a deleted branch is never followed.
+- Tags: only a tag origin has, as the same object, counts. A clash on a tag the manifest does not name is a note. For the manifest's tag, the error gives both commits, and advises `git tag -d` only when sync had followed that tag there. After that, the next sync follows origin's tag. A local tag or branch of the same name never blocks a pin.
+- Left as it is and reported: tracked changes; commits not on origin (with `git pull --rebase origin <branch>`); another branch or detached HEAD; an operation in progress or `index.lock`; no single origin; not a repository of its own; a link at the place; a sparse checkout; a local branch of the new version with commits not on origin or checked out elsewhere; a branch rewritten upstream; an untracked or ignored file where an incoming file goes; a commit pin origin does not hold. A commit beyond a shallow clone's history and a branch origin deleted are errors that say so.
+- Submodules are never updated. A move that would remove or replace a checked-out submodule, or move the commit of one whose HEAD is not the recorded commit, leaves the repo as it was and names the command to run. A repo with submodules follows one change of a submodule's commit and stops at the next until it is updated by hand.
+- `origin` is repointed only when it still has the recorded url and every local branch is on the new one. An origin set by hand is left as set. No user name or password of a url is printed, in any repo line, error or refusal, whatever characters it holds.
+- Layers, per-distro reports and the lock are as before. A repo moved by hand to its new layer has that layer recorded.
+- Left for part 3: the manifest's own clone and `local_manifest`, and arguments after `--`. Part 4: the rebase of unpushed commits.
+- Open on purpose: a repo left alone while the manifest names another version exits 0 (issue 502); the hand-set-origin line prints every run; one extra `ls-remote` per repo per run; a shallow clone grows by the history of fetched tags; origin's default branch follows the clone's `origin/HEAD` until `git remote set-head origin --auto`; a detached HEAD at a recorded branch's commit is moved on a pin change (nothing lost); a branch switched by a person during the run is not re-checked before the fast-forward.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 17:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a52816d3cdcc13103, resume 2 of 3)
+
+**Branch**: feature/issue-500 at `3d8601c8`
+**Base**: origin/main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 6
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Scope: the round 2 findings and the fix diff `482e0655..3d8601c8`. Cross-model: skipped (round-3 convergence check, per handoff). The Claude adversarial specialist ran fresh, held to this scope.
+
+Round 2 must-fix, re-run at 3d8601c8:
+- **Single-branch move (`probe5.py`):** moved to dev, clean, with the no-upstream note and the two `git config` commands. The next run is up to date.
+- **Pull-request refspec:** `refs/remotes/origin/pr/1` is kept.
+- **Passwords with quotes and spaces:** masked in sync's output, through the registered url. A bare unregistered url holding a space is not matched by the shape pattern; the design states the shape rule ("within one run of characters that are not white space").
+
+Checks:
+- Whole suite at 3d8601c8: 1387 passed in 370s.
+- The forbidden-commands scan passes and still forbids the `prune` command and `remote prune`. It does not forbid the `--prune` or `-p` flags (suggestion).
+
+The adversarial specialist found no lost work and no printed credential:
+- Full, `--single-branch` and `--depth 1` moves held, with a local branch behind, ahead or unrelated.
+- A refused upstream step left the move standing, with a note.
+- After each half-change the `moving` line was cleared and the next sync said "has uncommitted changes".
+- The design's stale-ref claim held: a commit only on a stale ref and HEAD's branch is still on the local branch after a move. This was with `fetch.prune` and `remote.origin.prune` set.
+- A branch renamed on origin, a tag deleted on origin, and `ls-remote` failing after a good fetch each gave an error with the repo unchanged.
+- In a tag clash, the person's tag was kept and the second fetch changed nothing of theirs. There was no `tag -d` advice for a person's tag.
+- No credential appeared in stdout or stderr for manifest, origin, `foo::https://`, `%` or `insteadOf` urls.
+
+### Findings
+- [x] (suggestion) The half-change report says the changed files "are git's, not a person's", and the design says "which are git's, since the repo had no tracked changes before". When a person's `post-checkout` or `post-merge` hook made them, they are the hook's: reproduced by the specialist, cases 1a-1c in `adv3/s1_moves.py`. Say "made by git or a hook it ran". — `update.py:964-967`, `docs/design.md:815`
+- [x] (suggestion) The two-step half-change report is inaccurate:
+  - It says "nothing more was run here" after the undo switch ran, and that switch carried a hook's edit back onto main.
+  - It says HEAD "is still at main" when it went to dev and back.
+  - It does not say that the local `dev` was fast-forwarded.
+
+  No commit was lost (`adv3/s1_moves.py` 1a). — `update.py:913-922`, `update.py:955-970`
+- [x] (suggestion) A new branch whose move ends half-changed returns before `_set_upstream`. It is left without an upstream, and once the person cleans up, nothing says so (`adv3/s1c_next.py`). — `update.py:936-937`
+- [x] (suggestion) Registered user information is replaced wherever `<info>@` appears.
+  - A `file://` path holding `@` masks the system's own path in printed commands: `git -C ***@x/...`.
+  - A user such as `git` or `main` turns `git@github.com:...` or `origin/main@{upstream}` into `***@...`.
+
+  No leak, and the design says "more masked, never less". Register nothing for `file://` urls, or for user information holding `/`, and anchor the replacement after `://`. (`adv3/s4_mask.py`) — `masking.py:56-57`, `masking.py:71-72`
+- [x] (suggestion) After a `sync` is killed, its orphaned fetch holds the lock, and the next run says "a sync is still running" naming a dead pid. A fetch stopped at a password prompt may hold the lock until killed. The design says "until the fetch ends"; say that this may need a kill, and name the git child in the refusal. (`adv3/s5_lock.py`) — `system.py:505-512`, `docs/design.md:909`
+- [x] (suggestion) Add `--prune` (and fetch's `-p`) to the forbidden words, now that the design says sync prunes nothing. — `update.py` `NEVER`, `tests/test_update_safety.py`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 17:42 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 approved with six suggestions; three of them are report lines that say something untrue and one prints a wrong command, which are not published as they are; main has also moved under the branch)
+**After**: publish
+**Decision**: address
+
+The full pre-commit pass was not run: the answer changes the code, so the pass runs on the head that follows. Fixed in this round: suggestion 1 (the half-change report and the design say the changes were made by git or a hook it ran); suggestion 2 (the two-step half-change report says what really ran: the switch, the fast-forward of the local branch if it happened, the switch back, and where HEAD is); suggestion 3 (a branch left without an upstream after a half-change is reported on the run that finds the repo clean again, or the note is given with the half-change report); suggestion 4 (masking registers nothing for file urls and matches credentials only after ://, so a path or a name such as git@ or main@ is never masked); suggestion 5 (the lock message after a killed sync says a fetch of that sync may still be running, and the design says a fetch waiting at a prompt holds the lock until it ends or is killed); suggestion 6 (--prune and fetch's -p join the forbidden words). The branch also takes origin/main, which now holds pull request 534, and the README conflict is resolved.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 18:12 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a5f44b6979a40343e, resume 2 of 3)
+
+**Branch**: feature/issue-500 at `8279b435`
+**Addressed**: Local Review (Pre-Push) at `3d8601c8` (2026-11-19 17:17 -05:00)
+**Commits**: 64c5d0a2 (merge of origin/main), 3fa23a13, e5bbcde3, 35bb01d0, 9099dcf9, 8279b435 (box checks)
+
+### Step 0: origin/main merged
+- 64c5d0a2 merges `origin/main` into the branch, bringing pull request 534 (issue 531). It is a merge commit, not a rebase.
+- There was one conflict, in `tools/repos-manifest/README.md`'s build paragraph. Both changes are kept: 531's sentence on `--packages-skip` and `--packages-ignore` and the record of skip and ignore options, and this branch's "or a `sync` of that distro" in the lock sentence.
+- `system.py`, `docs/design.md`, `tests/test_build.py` and `tests/test_system.py` merged without conflict. In `system.py`, 531's `without` field and its record read and write (`LayerRecord`, `read_built`, `_read_without`) sit beside this branch's `RepoRecord` `url` and `moving` fields and the lock's `holder`. They share no function. This branch's changed test (`test_the_install_note_names_removed_and_added_repos`, the repo moved by hand) is still there, beside 531's new tests.
+- Whole suite right after the merge: `1551 passed in 504.49s`.
+- The merged design's "build" and "sync" sections were read for sentences the other change made untrue. "A `sync` writes no build record", "the record does not say that a layer is up to date with `sync`", and the shared lock sentences all still hold.
+
+### Actions
+- [x] (suggestion 1) The half-change report and the design say the changes "were made by git or a hook it ran (the repo had no tracked changes before)" — `update.py` `_half_changed`, `docs/design.md` sync
+- [x] (suggestion 2) The half-change report says what ran, in order: each call with its exit status and where it took HEAD; a fast-forward naming the branch and both commits; the switch back when it ran; and where HEAD is now. It ends with "nothing after the steps above was run here". The switch back now runs only from a clean tree, so a hook's edit is never carried onto the old branch. In the review's case 1a the repo is left on dev at origin's commit with the hook's change, and once the person cleans it up the next sync records it as up to date. Tests: case 1a (a post-merge hook edits README), a hook on the switch after the first step, the switch back changed by a hook (three calls listed), and the stub half-switch. Each fails at the commit before 3fa23a13 — `update.py` `_change`, `_what_ran`, `_half_changed`
+- [x] (suggestion 3) A branch that a half-changed move made, when it has no upstream, is reported in the same run with the two `git config` commands ("the move did not finish, so it was not set"). The review's case 1c gives it, and the stub half-switch test asserts it — `update.py` `_change`, `_no_upstream`
+- [x] (suggestion 4) `file://` urls register nothing. A registered user information is masked only right after a scheme's `://`, by the same ssh and file rule as any url. Tests cover the review's three false positives: a system under `w@x` with `file://` urls (both urls and the command printed whole); `git@github.com:...` after an `https://git@` url; and `origin/main@{upstream}` and `/srv/main@2` after an `https://main@` url. A further test covers a registered `git` user next to an `ssh://git@host` url. For a password that is a common word (`git`, `main`, `a`), the registered text is `alice:<word>`, which only matches right after `://`, so the url is masked and the command printed beside it is unchanged. Every round-2 masking test still passes — `masking.py`, `docs/design.md`
+- [x] (suggestion 5) When the lock file names a sync whose process has ended (or cannot be checked), the refusal says: "a sync … has ended (process N), and a git it started, such as a fetch, may still hold its lock … `fuser -v <lock>` names it … The fetch ends on its own, or, when it waits at a password prompt, only when it is killed (`kill <pid>` …)". The design says the same, and that a fetch at a password prompt holds the lock until it is killed. Tests: the dead-pid test and the kill-before-fetch test. The review's `s5_lock.py` now prints this — `system.py` `hold_build_lock`, `docs/design.md`
+- [x] (suggestion 6) `--prune` and `-p` are in `NEVER`. The scan matches whole words, and a test shows `--prune` and `-p` are found while `--no-prune`, `--no-prune-tags` and `--prune-tags` are not. The design's list of what `sync` never passes names them — `update.py`, `tests/test_update_safety.py`
+
+### Tried by hand
+These used the session scratchpad: `fx/s1abc.py` (review cases 1a to 1c), `fx/s4_mask.py`, `fx/s5_lock.py`.
+- 1a (post-merge hook, two-step): the report lists the switch and the fast-forward of dev with both commits. The repo is left on dev, and README is not carried to main.
+- 1b (hook edits BRANCH): the same, no switch back.
+- 1c (post-checkout hook on a new branch): the no-upstream note, then the half-change report.
+- `s4_mask.py`: the system under `w@x` prints its paths whole, and `main@`, `git@github.com` and `origin/main@{upstream}` are unmasked.
+- `s5_lock.py`: an orphaned fetch after a kill gives the new refusal.
+
+### Checks
+- Whole suite at `9099dcf9`: `cd tools/repos-manifest && REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest -p no:cacheprovider` gave `1569 passed in 506.61s` (vcs 0.3.0 at /usr/bin/vcs, colcon at /usr/bin/colcon).
+- Signal and kill tests (`test_sync_distros.py`, `test_vcs_behaviours.py`, `-k "kill or stop or signal or step or ignored_file_made or vcs or no_record or upstream or half or ended"`), three runs: 20 passed each time.
+- The forbidden-commands scan passes with `--prune` and `-p` added. black and flake8 ran in the commit hooks. No workspace script changed. The full pre-commit pass is the host's. Commits used `SKIP=validate-script-tests`.
+
+### For the pull request body
+**What `sync` does with a repo that is there.** The rules are checked in order (tool `docs/design.md`, "sync"):
+- A git repo of its own, with one `origin`, nothing in progress, no tracked changes, not sparse, on the manifest's branch: fast-forwarded (`git merge --ff-only --no-overwrite-ignore`).
+- A repo on the version `sync` last recorded, when the manifest names a new one: moved.
+  - A new branch: `git switch -c <b> --no-track <origin's commit>` (all or nothing), then its upstream. In a `--single-branch` or `--depth` clone git refuses the upstream; the move stands, and a note gives the two `git config` commands.
+  - A local branch: switched to and fast-forwarded. If the fast-forward does not get there from a clean tree, the switch is undone.
+  - A tag or a commit: detached.
+- A repo pinned to a tag stays. A tag moved on origin after `sync` followed it is reported with both commits and the `git tag -d` step; after that, the next `sync` follows it.
+- Every call is judged by the state it leaves, whatever its exit status. A failing `post-checkout` hook after a real switch counts, with a note. A hook that edits tracked files stops the move. A call that leaves a half-change is reported as what ran, in order, where HEAD is now, and the files changed by git or a hook it ran. `sync` puts nothing back, and the next run reports uncommitted changes, never "a sync was stopped".
+- Before any move: a paths check (no untracked or ignored file where an incoming file goes, judged with `lstat`), and a submodule check (no checked-out submodule removed or replaced, and no pointer moved under a submodule whose HEAD differs). Git's `--no-overwrite-ignore` is behind the paths check.
+
+**Left as it is and reported:**
+- tracked changes;
+- commits not on origin (with `git pull --rebase origin <branch>`);
+- another branch or a detached HEAD elsewhere;
+- a rebase, merge, cherry-pick, revert, bisect or `index.lock`;
+- no single origin;
+- not a repository of its own;
+- a link at the repo's place;
+- a sparse checkout;
+- a local branch of the new version with commits not on origin, or checked out in another work tree;
+- a branch rewritten upstream;
+- an untracked or ignored file where an incoming file goes;
+- a commit pin that origin does not hold;
+- a blocked submodule, with the command to run.
+
+Untracked files elsewhere never stop an update.
+
+**Errors that another sync will not fix:**
+- a version not on origin, or both a branch and a tag there;
+- a branch origin deleted (the stale ref is named);
+- a commit beyond a shallow clone's history;
+- a tag clash on the manifest's own tag.
+
+A fetch that fails, or an `ls-remote` that fails, is an error a later sync can fix. An optional repo is skipped, not failed.
+
+**The fetch.** `git fetch --tags --no-prune --no-prune-tags --no-recurse-submodules --refmap= origin +refs/heads/*:refs/remotes/origin/*`:
+- It removes no ref and moves no local branch, whatever `remote.origin.fetch`, `fetch.prune`, `remote.origin.prune`, `fetch.pruneTags` or `fetch.recurseSubmodules` say.
+- A tag clash on a tag the manifest does not name is a note; the branches are fetched again without tags.
+- The version is asked of origin (`ls-remote`), so a stale remote-tracking ref is never followed.
+- Every git runs with automatic gc and maintenance off and `submodule.recurse` off.
+- `sync` never runs reset, `checkout -f`, clean, stash, rebase, pull, push, gc or prune, never deletes a branch, and passes no `--force`, `--no-verify`, `--prune` or `-p`. A test reads `update.py` for each.
+
+**`origin` and urls:**
+- `origin` is repointed only when it has the url `sync` recorded and every local branch is on the manifest's new url (probe refs in a namespace of their own); the new url is recorded at once.
+- An origin set by a person is left as set, with one line per run and the `set-url` command; the update follows it. A system made before urls were recorded is never repointed.
+- No user name or password of a url is printed in any repo line, error or refusal, whatever characters it holds (parsed, registered, masked after `://`). `file://` urls, local paths, scp-like addresses and `origin/main@{upstream}` are never masked.
+
+**Layers and records:**
+- A repo the manifest gives another layer is not moved. The `mkdir -p … && mv …` command is printed, and that is an error (exit 1) for a repo that is not optional.
+- Moved by hand, the repo's record names the new layer.
+- A repo that left the manifest is listed and left on disk.
+- `state.yaml` records each repo's version, commit, url and, while a move runs, a `moving` line.
+
+**Per distro, `init` and the lock:**
+- A distro that does not resolve, whose resolved files cannot be written, or whose lock is held is reported, and the others go on (exit 1).
+- `sync` and `init` (for its first sync) hold the distro's build lock from before the resolved files are written to the end of its repos. Every git that changes a repo, fetches included, is given the lock.
+- A build refused by a running sync says so. After a killed sync, the refusal says a fetch it started may still hold the lock, how to find it with `fuser -v`, and that it ends on its own or, at a password prompt, when killed.
+- A built layer whose repos this sync changed gets a line saying `build` brings it up to date.
+
+**Documents changed:**
+- `tools/repos-manifest/docs/design.md`: "sync", with its rules, the fetch, the paths and submodule checks, the url rule, credentials, the lock, and the stop and kill table; "Where the resolved files and state go"; "Where repos are fetched from"; "Work done on a field machine"; "build", on the shared lock; "What is built".
+- `tools/repos-manifest/README.md`.
+- `tools/repos-manifest/docs/roadmap.md`: a file-exists check.
+- The workspace's `docs/manifest/design.md`: two sentences that said `sync` leaves a repo that is there as it is, and the exit-status line.
+
+**Left for part 3:** step 1 of the design's sync (the manifest's own clone and `local_manifest`), `--local-manifest`, and the arguments after `--` passed to `vcs import`.
+
+**Left for part 4:** the rebase of unpushed commits. Its three test cases, from the first part-2 plan review:
+- an ignored file overwritten and then deleted by an aborted rebase;
+- the rebase running under the person's git settings;
+- a force-pushed upstream replayed as local commits.
+
+**Open on purpose:**
+- A repo left alone while the manifest names another version exits 0 (`sync.py:641-654`, `closing`). `status`, issue 502, is the check a script reads.
+- The hand-set-origin line prints every run (`update.py:709`).
+- One `ls-remote` per repo per run, plus one more for a commit pin (`update.py:486`, `update.py:455` `find_version`). An https origin without a credential helper asks for a password twice.
+- Submodules are never updated (`update.py:957`). A repo with submodules follows one change of a submodule's commit and stops at the next until it is updated by hand.
+- A shallow clone grows by the history of the tags it fetches (`update.py:734`).
+- A manifest with no version follows the clone's `origin/HEAD` until `git remote set-head origin --auto` (`update.py:463`).
+- A detached HEAD at a recorded branch's commit is moved on a pin change, and nothing is lost (`update.py:821-826`, `_on_recorded`; design rule 11).
+- A branch switched by a person during the run is not re-checked before the fast-forward (`update.py:870`, `_change`).
+- An https url whose path holds `@` has more masked than its user information (`masking.py:12`).
+
+**Tests:** 1569 pass in the tool's suite with `REPOS_MANIFEST_REQUIRE_COLCON=1`, the 1315 that came with pull request 534 included.
+
+**By-hand acceptance for the owner,** on his real project. Install the tool from this branch into his venv first (`~/p11-venv/bin/pip install --upgrade <this checkout>/tools/repos-manifest`). Then, in his system directory, with his own pin change in place of `<repo>` and its layer in place of `<layer>`:
+
+```bash
+cd ~/project11
+git -C rolling/<layer>/src/<repo> status --short; git -C rolling/<layer>/src/<repo> log --oneline -1   # before
+~/p11-venv/bin/repos-manifest sync --distro rolling
+git -C rolling/<layer>/src/<repo> status --short; git -C rolling/<layer>/src/<repo> branch --show-current
+grep -A6 '<repo>:' .repos-manifest/state.yaml    # version, commit and url are the new ones
+~/p11-venv/bin/repos-manifest sync --distro rolling     # again: "up to date", nothing changes
+```
+
+His clones whose `origin` is ssh while the manifest says https are left as set, with one line each per run; his record has no urls yet, so none is repointed. For the safety rows, use a throw-away system made the same way (never the real one): a changed tracked file, a local commit, a repo switched by hand, an `origin` set by hand, and an ignored file where an incoming file arrives. After each, run `sync`, then `git status` and `git log -1`, and compare with before.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 18:21 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a52816d3cdcc13103, resume 3 of 3)
+
+**Branch**: feature/issue-500 at `00ffcba9`
+**Base**: origin/main
+**Depth**: Deep (reason: round 4 convergence check per handoff)
+**Must-fix**: 1 | **Suggestions**: 8
+**Round**: 4 | **Ship**: continue — round 4: must-fix rising (0 -> 1); the one must-fix is a mechanical fix
+
+Scope: the round 3 suggestions and `3d8601c8..00ffcba9`. Cross-model: skipped (round-4 convergence check, per handoff). The Claude adversarial specialist ran fresh, held to this scope.
+
+**Merge (64c5d0a2):** correct. For every file both sides touched, the change lines of `git diff 3d8601c8 64c5d0a2 -- tools/` equal those of `git diff b836e5e1 origin/main -- tools/` (PR 534's), except `README.md`. There, both sentences are kept whole: 534's skip and ignore options and record, and this branch's "or a `sync` of that distro". `system.py`, `docs/design.md`, `test_build.py` and `test_system.py` hold both changes. Whole suite at 00ffcba9: 1569 passed in 506s.
+
+The six round 3 suggestions:
+1. **"Made by git or a hook it ran":** fixed.
+2. **The report lists what ran, in order:** fixed. Adversarial cases 1a-1c match the reflog word for word. The switch back runs only from a clean tree. In no path was the person left on a branch without the report saying so, or moved further than the manifest's branch.
+3. **The upstream note with a half-change:** fixed. It is given once (S4 below).
+4. **Masking:** the round-3 false positives are gone (`w@x` with `file://` urls, `git@github.com:`, `origin/main@{upstream}`, `/srv/main@2`, and common-word passwords). Every round-2 and round-3 leak case still holds. Two new leaks, below.
+5. **Lock refusal after a killed sync:** every word true (`s5_lock.py`, `s5b.py`).
+6. **`--prune` and `-p` in the scan:** fixed. `--no-prune` and `--prune-tags` are not flagged.
+
+### Findings
+- [x] (must-fix) A password held by a url in the manifest refusals is printed in full when Python's `repr` escapes it and it holds white space: `'` together with `"`, or a `\`, plus a space.
+  - The refusals quote the url with `{url!r}`. The escaped text no longer matches the registered user information, and the fallback pattern stops at the space.
+  - Reproduced through sync's output by the specialist (`adv4/s3_e2e.py` cases 0 and 4). Output: `repositories.a.url: 'foo::https://u:a\'b" c@127.0.0.1:9/r.git': the <transport>::<address> form is refused`.
+  - Reproduced here at the function level: `mask_urls(repr(u))` after `remember_url(u)` returns the password whole for `u:a'b" c` and for `u:p\ q`.
+  - The design says the user information is masked "whatever characters it holds (quotes, spaces, …)".
+  - Fix: mask the url before quoting it in these messages. — `manifest.py:270`, `:281` (and the same `{url!r}` at :296, :300, :305, :313, :320, :338, :347, :364)
+- [x] (suggestion) A `file://` url's user and password are printed whole (`file://u:SECRETPW@localhost/...` in the repoint failure line, `adv4/s3_e2e.py` case 5). I grade this a suggestion, not a printed credential:
+  - The design says on purpose that a `file://` url is never masked.
+  - git's file transport takes no user or password.
+
+  Still, masking a `file://` user information that holds `:` and no `/` would close it. — `masking.py:44-49`, `docs/design.md:884`
+- [x] (suggestion) The design's "so a change git or a hook made is never carried back onto the branch the repo was on" holds for tracked changes. An ignored file a `post-checkout` hook made on `dev` stays in the work tree after the switch back, and the report says "left as it was" (`adv4/s2_behaviour.py` 2b). Say "a tracked change". — `docs/design.md:805-807`
+- [x] (suggestion) A half-changed move leaves the repo on `dev` with the record still on `main`. If the manifest then goes back to `main` and the tree is cleaned, the next sync says "moved by a person: it is on dev", though sync moved it (`adv4` 2e). — `update.py:815` (deferred: the host's decision: the record cannot tell sync's own unfinished move from a person's without a new field; the design now says so (be578f0f))
+- [x] (suggestion) The report says "These changes were made by git or a hook it ran" when no changes are listed (both the merge and the switch back refused, so the tree is clean, case 2d). When git printed nothing, the error ends in "was run here:" and an empty line. — `update.py:1002`
+- [x] (suggestion) With a stub git only, a merge that moves `dev` part way and exits 1 on a clean tree triggers the switch back. The report says "left as it was" while `dev` was moved; the `ran` list is dropped on the LEFT path. A real `merge --ff-only` is all-or-nothing, and the commits stay reachable (case 2h). — `update.py:940` (deferred: the host's decision: it needs a fake git, and a real merge --ff-only is all or nothing)
+- [x] (suggestion) The missing upstream after a half-changed `switch -c` is said once. Once the tree is clean, later runs say "up to date" and never mention it again (1c, `s1c_next.py`). — `update.py:951` (deferred: the host's decision: a branch without an upstream is a normal state; the note is given once, with the half-change report)
+- [x] (suggestion) Where `_holds` cannot check the process (no /proc, or a sync run by another user), a running sync is now reported as one that "may have ended", with advice to kill what `fuser` names. Before this diff it said "is still running". — `system.py:505-515`
+- [x] (suggestion) The scan does not flag `-P`/`--prune-tags`, a bundled `-pt`, `switch -f`, `--discard-changes`, `branch -f`, or arguments held in a tuple variable. — `update.py` `NEVER`, `tests/test_update_safety.py`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 18:22 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 4 found one must-fix, a password printed in the manifest's refusal lines; a branch that prints a credential is not published; this is the host's first address at this checkpoint for this part)
+**After**: rounds
+**Decision**: address
+
+Round 4 confirmed the merge of main and all six round 3 points. Its one must-fix: a password holding a quote together with a double quote, or a backslash, and a space is printed whole in the manifest's refusal lines, because the url is quoted with repr before it is masked. The fix is structural, not one more pattern: a url is masked before it is put into any message (the refusal lines of manifest.py and every other place a url is formatted with repr or quotes), and a test walks every message in the tool's source that formats a url. Fixed with it: file urls whose user part holds a colon and no slash are masked too; the design sentence says a tracked change is never carried back; the half-change report prints no "These changes were made by" line when it lists no changes and never ends in an empty line; the lock refusal does not say a sync "may have ended" when it cannot check the process, and does not advise killing what it cannot identify; the forbidden-words scan covers -P, --prune-tags given to a pruning fetch, bundled short flags that include p, switch -f, --discard-changes and branch -f. Left, with the reason on the box: "moved by a person" after sync's own half-changed move when the manifest is then changed back (the record cannot tell the two apart without a new field; noted in the design); the missing upstream mentioned once only (a branch without an upstream is a normal state); a partly moved branch reported as left as it was (needs a fake git; a real fast-forward is all or nothing).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 18:42 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a5f44b6979a40343e, resume 3 of 3)
+
+**Branch**: feature/issue-500 at `4cc02562`
+**Addressed**: Local Review (Pre-Push) at `00ffcba9` (2026-11-19 18:21 -05:00)
+**Commits**: 81bdc172, be578f0f, c46c0ecd, 6e79d6ef, cfa593d4, 4cc02562 (box checks)
+
+I reproduced the reviewer's `adv4/s3_e2e.py` first.
+- Before the fix: case 0 (`foo::https://u:a'b" c@…`) and case 4 (`ssh://u:a'b" c@127.0.0.1:9`) printed the escaped password `a\'b` in the manifest's refusal, and case 5 printed `SECRETPW` from a `file://` url.
+- After the fix: none of the 8 cases prints the password or its escaped form. The probe still lists `c` and `z`, but those are the one-letter last words of the passwords, matched anywhere in the output.
+
+### Actions
+- [x] (must-fix) **The structural fix.** A url is masked before it is put into any message. Every place in the tool that formats a url goes through one of two functions in `masking.py`: `mask_url` (masked, plain) or `quoted_url` (masked, then quoted as `repr` would).
+  - Changed: the eleven `{url!r}` and the two `{value!r}` of `manifest.py` (used by `resolve`, `validate`, `init` and `sync`), the plan listing in `init.py`, the label of an extends base in `extends.py`, and the repoint lines in `update.py`.
+  - Two f-strings that are not messages carry a `# url-text:` reason: the probe's git argument and a hash input.
+  - The masking of what is printed stays as the second line of defence.
+  - **The source-walking test** (`tests/test_url_messages.py`) parses every module of the package and looks at each value put into text: each f-string `{…}`, each operand of `+` or `%` on text, each `.format` argument, and each direct argument to `print`, `ManifestError`, `Refusal`, `Done` or `warn`. A value whose names (variables, attributes, constant keys) hold "url" or are `origin` must be a call of `mask_url`, `quoted_url`, `mask_urls` or `set_url_command`. Module constants in capitals are message text and not counted.
+  - It chooses names over a marker because names are what the code already uses. A second test closes the name gap: a url taken from `.url`, `["url"]` or `self.url(...)` must be stored under a name the scan reads, so a url cannot change its name on the way to a message.
+  - What it cannot follow is a url passed as an argument to a parameter with another name (`value` in `manifest.py`). Those functions use `quoted_url` on whatever they get, and the end-to-end test covers them.
+  - Run over the previous source, the scan finds the 11 sites in `manifest.py`, 6 in `update.py`, 1 in `init.py` and 2 in `extends.py`.
+  - **The end-to-end test** (`test_masking.py`) runs `resolve`, `validate`, `init` and `sync` over manifests in four forms: a repo url, a `foo::https://` url, an ssh url with no path, and a `file://` url. The passwords hold both quotes with a space, a backslash with a space, `%` escapes and letters beyond ASCII, and one user name holds a quote and a space. It greps stdout and stderr for each password, user name, escaped form and decoded form; 11 cases fail at the previous commit.
+  - The earlier format's `extends.url` is tested with `resolve` and `validate`. It is refused without being echoed ("Credentials do not belong in a manifest").
+  - The repo url is the format's only other url key: `base` takes paths.
+- [x] (suggestion a) A `file://` url's `user:password` (a `:` and no `/`) is masked like any other, and a path before an `@` (`file:///srv/w@x/…`) is not. The design sentence is corrected, and a test covers both (81bdc172).
+- [x] (suggestion b) The design says a *tracked* change is never carried back. It also says that an untracked or ignored file a hook wrote stays in the work tree and is not reported, because the "left as it was" comparison covers HEAD, branch, config, index and tracked status (be578f0f).
+- [x] (suggestion c) The half-change report says "with no tracked changes; sync does not move it back" when it lists none, with no "These changes were made by" line. A report whose git printed nothing ends in a full stop, never an empty line after a colon. Tests: the fast-forward fails and the switch back is refused because a hook wrote an untracked file; and a silent failure (be578f0f).
+- [x] (suggestion d) When the process the lock file names runs but its open files cannot be read (no `/proc`, or another user's process), the refusal says it cannot tell whether that is the sync, names the pid with `ps -p <pid> -o user,args` and `fuser -v <lock>`, and gives no advice to kill it. "Has ended" and the kill advice remain for a process that is gone. Tested by making `_holds` return None (c46c0ecd).
+- [x] (suggestion e) `NEVER` gains `-P`, `--prune-tags`, `--discard-changes`, `switch -f` and `branch -f`. A test refuses bundled short flags holding `p`, `P` or `f` (`-pt`, `-fq`). `count` and `ask_origin` are scanned as git calls. The scan's docstring says what it cannot see (an argument held in a variable that is not a list literal), and a test holds `update.py` to spreading only argument names the scan reads (6e79d6ef).
+- [x] (suggestion) "Moved by a person" after sync's own half-changed move when the manifest is changed back (deferred: the host's decision; the record cannot tell the two apart without a new field, and the design now says so, be578f0f)
+- [x] (suggestion) A partly moved branch reported as left as it was (deferred: the host's decision; it needs a fake git, and a real `merge --ff-only` is all or nothing)
+- [x] (suggestion) The missing upstream mentioned once only (deferred: the host's decision; a branch without an upstream is a normal state, and the note comes with the half-change report)
+
+### Checks
+- Whole suite at `cfa593d4`: `cd tools/repos-manifest && REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest -p no:cacheprovider` gave `1666 passed in 516.62s` (vcs 0.3.0, colcon present).
+- `git status --porcelain` is clean. black and flake8 ran in the commit hooks. No workspace script changed. The full pre-commit pass is the host's. Commits used `SKIP=validate-script-tests`.
+- I re-read the changed sentences of the tool's `docs/design.md` (masking, the switch back, the half-change report, the record's limit, the lock refusal, the never-run list) and `README.md` (masking now names `init`, `resolve` and `validate`) against the code.
+
+### For the pull request body
+Changed from the round 3 entry's text: the masking and the open-on-purpose items. Everything else stands as written there.
+- **Masking:** no line `sync`, `init`, `resolve` or `validate` prints, an error included, shows a url's user name or password, whatever characters they hold.
+  - Every message that formats a url masks it first (`masking.mask_url` or `quoted_url`), so quoting or `repr` escaping cannot hide it. What is printed is masked again.
+  - A test walks the tool's source for every formatted value that names a url, and another runs all four commands over awkward passwords in every url form.
+  - Nothing that does not follow `://` is masked: local paths holding `@`, `git@github.com:…` and `origin/main@{upstream}` print as they are. In a `file://` url, a path before an `@` is kept, and a `user:password` is masked.
+- **The never-run list:** `sync` never runs reset, `checkout -f`, clean, stash, rebase, pull, push, gc or prune, never deletes a branch, and passes no `--force`, `--no-verify`, `--prune`, `-p`, `-P`, `--prune-tags`, `--discard-changes`, `switch -f`, `branch -f` or a bundled short flag holding `p`, `P` or `f`. A test reads `update.py` for each.
+- **Half-changed moves:** the report lists what ran, where HEAD is, and the tracked changes git or a hook made, or says there are none. An untracked or ignored file a hook wrote stays in the work tree and is not reported.
+- **Open on purpose:**
+  - A repo left alone while the manifest names another version exits 0 (`sync.py:641-654`).
+  - The hand-set-origin line prints every run (`update.py:714`).
+  - One `ls-remote` per repo per run (`update.py:491`, `find_version` at `update.py:460`).
+  - Submodules are never updated (`update.py:962`).
+  - A shallow clone grows by the history of fetched tags (`update.py:739`).
+  - No version follows the clone's `origin/HEAD` (`update.py:468`).
+  - A detached HEAD at a recorded branch's commit is moved on a pin change (`update.py:826-831`).
+  - A branch switched by a person during the run is not re-checked (`update.py:875`).
+  - An https url whose path holds `@` has more masked (`masking.py:13`).
+  - After sync's own half-changed move, a manifest changed back reads the repo as moved by a person (design, sync).
+  - A branch left without an upstream by a half-changed move is mentioned once.
+  - An untracked file a hook wrote during a move that was undone is not reported.
+- **Tests:** 1666 pass with `REPOS_MANIFEST_REQUIRE_COLCON=1`.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 19:01 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-500 at `e260464e`
+**Base**: origin/main
+**Depth**: Deep (reason: round 5 convergence check per handoff)
+**Must-fix**: 3 | **Suggestions**: 3
+**Round**: 5 | **Ship**: continue — round 5: 3 must-fix is high; another independent read warranted
+
+Scope: the round 4 findings and `git diff 15a94062..e260464e -- tools/`. Cross-model: skipped (round-5 convergence check, per handoff). The Claude adversarial specialist ran fresh, held to this scope. Static analysis: flake8 is clean under the repo's config. Whole suite at e260464e: `1666 passed in 517.79s` (REPOS_MANIFEST_REQUIRE_COLCON=1).
+
+The round 4 must-fix is fixed for a url given as a string: `foo::https://`, ssh, https and `file://` urls whose passwords hold both kinds of quote with a space, or a backslash, no longer print. The five smaller fixes each have a test that fails when its source hunk is reverted. The one exception is `--prune-tags` (S2 below). Every changed design sentence about the half-change report, the untracked files, the record, the lock refusal and the never-run list is true. The update rules are untouched. But the changed README sentence ("No line `sync`, `init`, `resolve` or `validate` prints, an error included, shows a url's user name and password, whatever characters they hold") and the design's "every message that formats a url does it through one of two functions" are false. The three cases below each print a password; all three were reproduced.
+
+### Findings
+- [x] (must-fix) A url that is not a string prints whole. `quoted_url` on a non-str runs `mask_urls(repr(value))` without registering it, and the shape fallback stops at white space. Repro: `repositories: {a: {type: git, url: ["https://aliceQ:pw zQ@127.0.0.1:9/x.git"], version: main}}`, then `validate --manifest m1.yaml` prints `got a list (['https://aliceQ:pw zQ@127.0.0.1:9/x.git'])`. The specialist also saw it through `resolve`, `init` and `sync`, with a mapping, and with a password holding `@` and `/`. — `masking.py:103`, `manifest.py:215`
+- [x] (must-fix) A `base:` url is echoed with `!r` and not masked. The scan misses it because the names are `path` and `location`. Repro: `base: "https://aliceQ:pw zQ@127.0.0.1:9/base.git"`, then `validate` prints `base: 'https://aliceQ:pw zQ@127.0.0.1:9/base.git' is a URL, not a path`. The mapping form of `base` prints the whole dict. — `manifest.py:488`, `:493`
+- [x] (must-fix) A `file://` user:password is kept whole when the text before the last `@` holds a `/`: `mask_url("file://aliceQ:pw zQ@localhost/srv/w@x")` and `mask_url("file://aliceQ:pw/zQ@localhost/srv/x")` both return the url unchanged, and `init` prints it in its plan. git ignores it, but this makes the changed README sentence ("whatever characters they hold") false. — `masking.py:58`, `README.md:118`
+- [x] (suggestion) Gaps in the source-walking scan: a url under another name (`getattr`, a tuple or annotated assignment, a walrus, a for target), a url passed to a helper, `", ".join(...)`, a dict then formatted, logging or `sys.stderr.write`, `prefix + url` with no constant side, `+=`, keyword arguments to `Done` or `Refusal`, and an exception printed as `{exc}`. Its docstring should name these. — `tests/test_url_messages.py`
+- [x] (suggestion) The `--prune-tags` entry in `NEVER` has no test that fails without it (the only sample also holds `--prune`). The scan is adjacency-only: `["switch","-q","-f",…]` and `["branch","-q","-f",…]` pass. — `tests/test_update_safety.py:114`, `update.py` `NEVER`
+- [x] (suggestion) An unknown top-level key holding a url is warned with `{name!r}` unmasked. — `manifest.py`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 19:02 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 5 found three more ways a credential in a url is printed; this is the host's second address in a row at this checkpoint for this part, so the next answer here is the owner's)
+**After**: rounds
+**Decision**: address
+
+Round 5 confirmed the update rules untouched and the five small fixes, and found three more paths that print a url's credentials (a url value that is not a string; a base: url; a file url whose user part holds a slash), which make two absolute sentences false: the README's "No line ... shows a url's user name and password, whatever characters they hold" and the design's "every message that formats a url does it through one of two functions". Each round since round 1 has found another such path. The absolute promise was the host's own addition in round 1 (a suggestion about credentials in printed urls); the format's specification says a credential in a url is not looked for, since the manifest is as trusted as the code it names. The host's decision: fix the three paths the cheap and sure way (a value that is not a string, and a base value, are not echoed at all, only described by type; the file url rule), and replace the absolute sentences with what is true: which messages mask a url's user information, how (the two functions and the output filter), what the source-walking test does and the gaps the review listed, and that this is a guard against accidents, not a guarantee, so credentials belong in a credential helper or an ssh key, not in a manifest url. Suggestions fixed with it: the scan's docstring names its gaps; --prune-tags gets its test and the scan looks at every word after the command, not only the next one; an unknown top-level key is not echoed with its value. A stronger guarantee, if the owner wants one, is its own issue; the host proposes it.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 19:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-500 at `9fa1e6f5`
+**Addressed**: Local Review (Pre-Push) at `e260464e` (2026-11-19 19:01 -05:00)
+**Commits**: 5ae078a3, 14b102f6, 7936cdf2, ab91f9a2, 94755862, 9fa1e6f5 (box checks)
+
+I reproduced each must-fix first. The reviewer's `adv5/drive.py` gave `cases 56 leaks 66` at `4f4efa0a` (the list and mapping urls, and both file url forms, through `validate`, `resolve`, `init` and `sync`), `lead5/m1.yaml` printed the list, `lead5/b1.yaml` printed the `base:` url, and `mask_url` returned both file urls unchanged. At `94755862`: `cases 56 leaks 0`; `m1.yaml` gives `must be a string, got a list; quote it in the YAML ...`; `b1.yaml` gives `base: 'https://***@127.0.0.1:9/base.git' is a URL, not a path`.
+
+### Actions
+- [x] (must-fix M1) A value of the wrong type is described, never echoed. `quoted_url` on a value that is not a string returns its kind (`a list`, `a mapping`, `a int`), from `masking.type_name` (moved from `manifest.py`), and `manifest.py`'s "must be a string, got ..." no longer quotes the value. That one message serves `url`, `base`, `version` and `type`; `name()` (layer, group, distro, role names) and the `format:` message describe a wrong-type value the same way (14b102f6).
+- [x] (must-fix M2) `base:` as a string goes through `quoted_url`; its mapping form is described ("is a mapping, the form of a file in a git repo"), not shown. Every other value `manifest.py` echoed with `!r` now goes through `quoted_url`: a version, a name, a repeated name, a reserved layer name, a repo key (and the `where` built from it), a type, an unknown top-level, repo or distro key. In `schema.py` (earlier format): a name that fails its rule, case twins and unknown top-level keys. A test now holds `manifest.py` and `schema.py` to no `!r` and no `repr(...)` (14b102f6, 7936cdf2).
+- [x] (must-fix M3) In a `file://` url the user information is the text before the last `@` ahead of the first `/` when it holds a `:`; when there is none, the text before the last `@` in the url when that holds a `:` (a password holding a `/`; masks more, never less). Text starting with `/` is a path. `file:///srv/w@x/...`, `file://localhost/srv/w@x` and `file://bobQ@localhost/srv/w@x` stay unmasked; tests cover both sides (5ae078a3).
+- [x] (suggestion S1) `tests/test_url_messages.py`'s docstring says the scan is a guard, not a proof, and lists every gap the review named. A test holds the four calls the scan counts as safe to show nothing of a list, a mapping or a number (`quoted_url` describes it, `mask_url`, `mask_urls` and `set_url_command` raise `TypeError`) (7936cdf2).
+- [x] (suggestion S2) The never-run scan finds a command's flag anywhere after the command (`["switch", "-q", "-f", ...]`, `["branch", "-q", "-f", ...]`, `["reset", "-q", "--hard", ...]` are flagged), and a `--prune-tags`-only sample fails when `--prune-tags` is taken out of `NEVER`; checked by hand both ways. The commit message of ab91f9a2 says "passes" where it means "would pass unflagged", i.e. the test fails (ab91f9a2).
+- [x] (suggestion S3) An unknown top-level key, and an unknown repo or distro key, is named through `quoted_url`: masked when a string, described when not (14b102f6).
+- [x] (documents) README and design no longer claim that no line shows a credential; they say where masking happens, that a wrong-type value is described, what the scan checks and cannot see, and that it is a guard, not a guarantee, quoting the specification's "a credential in a `url` is not looked for" (94755862).
+
+Tests that fail without each fix, run against the source at `4f4efa0a` with the new tests: 33 in `test_masking.py` (list, mapping and both file url forms end to end; the three file url unit cases; the type description; the `base:` url, mapping and list; eight keys, names and values holding a url) plus 2 earlier-format cases, and 3 in `test_url_messages.py`. `test_masking.py` now clears the registered urls before each test: before, a url registered by an earlier test masked a later one and hid the file-url leak in the end-to-end test.
+
+### Checks
+- Whole suite at `94755862`: `cd tools/repos-manifest && PYTHONDONTWRITEBYTECODE=1 REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest -p no:cacheprovider --basetemp=<scratchpad>` gave `1712 passed in 524.76s (0:08:44)` (1666 before; 46 new).
+- black and flake8 ran in the commit hooks. No workspace script changed, so no script suite was run; the full pre-commit pass is the host's. Commits used `SKIP=validate-script-tests`. `git status --porcelain` is clean.
+- `update.py`'s rules, `sync.py`'s flow and the build code are unchanged (`git diff 4f4efa0a -- tools/repos-manifest/src/repos_manifest/{update,sync,build}.py` is empty).
+- I re-read every masking sentence in `tools/repos-manifest/README.md` and `docs/design.md` (sync section) against `masking.py`, `manifest.py`, `schema.py`, `cli.py` (the `ERROR:` filter) and `sync.py` (its line filter).
+
+### For the pull request body
+Changed from the round 4 entry's text: the masking item and one open-on-purpose line. Everything else stands as written there and is copied here.
+- **Masking:** a guard against accidents, not a guarantee; a user name and password belong in a credential helper or an ssh key, not in a manifest url (the specification already says a credential in a `url` is not looked for).
+  - Where a message formats a url, and where the manifest reader quotes a value from a manifest (a `base:` path, a version, a name, a key), it goes through `masking.mask_url` or `quoted_url`, so quoting or `repr` escaping cannot hide the user information. A value of the wrong type (a list or a mapping given as a url) is described by its kind, never shown.
+  - The lines `sync` prints and the `ERROR:` line of any command are masked again as they are printed.
+  - A test walks the source for formatted values named as urls, another holds `manifest.py` and `schema.py` to no `!r`/`repr`, and end-to-end tests run `resolve`, `validate`, `init` and `sync` over awkward passwords in every url form, a list and a mapping among them.
+  - Nothing that does not follow `://` is masked: local paths holding `@`, `git@github.com:…` and `origin/main@{upstream}` print as they are. In a `file://` url, a path starting with `/` is kept and a `user:password` before the host is masked, also when the path holds an `@` or the password a `/`.
+- **The never-run list:** `sync` never runs reset, `checkout -f`, clean, stash, rebase, pull, push, gc or prune, never deletes a branch, and passes no `--force`, `--no-verify`, `--prune`, `-p`, `-P`, `--prune-tags`, `--discard-changes`, `switch -f`, `branch -f` or a bundled short flag holding `p`, `P` or `f`. A test reads `update.py` for each, a command's flag anywhere after the command.
+- **Half-changed moves:** the report lists what ran, where HEAD is, and the tracked changes git or a hook made, or says there are none. An untracked or ignored file a hook wrote stays in the work tree and is not reported.
+- **Open on purpose:**
+  - A repo left alone while the manifest names another version exits 0 (`sync.py:641-654`).
+  - The hand-set-origin line prints every run (`update.py:714`).
+  - One `ls-remote` per repo per run (`update.py:491`, `find_version` at `update.py:460`).
+  - Submodules are never updated (`update.py:962`).
+  - A shallow clone grows by the history of fetched tags (`update.py:739`).
+  - No version follows the clone's `origin/HEAD` (`update.py:468`).
+  - A detached HEAD at a recorded branch's commit is moved on a pin change (`update.py:826-831`).
+  - A branch switched by a person during the run is not re-checked (`update.py:875`).
+  - An https url whose path holds `@`, or a `file://` url whose password holds `/`, has more masked (`masking.py`).
+  - After sync's own half-changed move, a manifest changed back reads the repo as moved by a person (design, sync).
+  - A branch left without an upstream by a half-changed move is mentioned once.
+  - An untracked file a hook wrote during a move that was undone is not reported.
+  - Masking is a guard, not a guarantee. The source scan cannot see a url under another name (`getattr`, tuple, annotated or walrus assignment, a `for` target, a parameter named otherwise), one passed to a helper, joined or formatted inside a list or mapping, `prefix + url` with no constant side, `+=`, keyword arguments, logging or `sys.stderr.write`, or an exception formatted whole; such a message is masked only by the print filter, which covers `sync`'s lines and `ERROR:` lines, and only a url with no white space in its user information when the tool did not read it. Warnings are not filtered. The earlier format's other value-printing messages (`docs/prototype.md` lists them) and an earlier-format `extends` path in its "escapes"/"not found" messages are not masked at the source.
+- **Tests:** 1712 pass with `REPOS_MANIFEST_REQUIRE_COLCON=1`.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 19:36 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a586f9fcf3beb71f1, resume 1 of 3)
+
+**Branch**: feature/issue-500 at `7593acc6`
+**Base**: origin/main
+**Depth**: Deep (reason: round 6 convergence check per handoff)
+**Must-fix**: 2 | **Suggestions**: 6
+**Round**: 6 | **Ship**: recommended — round 6: 2 mechanical must-fix (prev 3), not rising — fix and ship rather than another full round
+
+Scope: the round 5 findings, the round 5 suggestions and `git diff bd108b2b..7593acc6 -- tools/`. Cross-model: skipped (round-6 convergence check, per handoff). The Claude adversarial specialist ran fresh with the same scope and must-fix rule. Whole suite at 7593acc6: `1712 passed in 524.35s` (REPOS_MANIFEST_REQUIRE_COLCON=1).
+
+Round 5 must-fix:
+- M1 (url not a string): fixed. `lead5/m1.yaml` now gives `must be a string, got a list; …`.
+- M2 (`base:` url): fixed. `lead5/b1.yaml` now gives `base: 'https://***@127.0.0.1:9/base.git' is a URL, not a path`.
+- M3 (`file://` user:password with a `/`): fixed. `adv5/drive.py` gives `cases 56 leaks 0`.
+
+Round 5 suggestions:
+- S1 (the scan's gaps): fixed. The docstring names them, and the safe-call test holds.
+- S2 (`--prune-tags`): fixed. It has a test that fails without it, and the scan reads every word after the command; a flag after `--` is flagged, which errs on the safe side.
+- S3 (unknown key): fixed. The key is named through `quoted_url`.
+
+Other checks:
+- Test isolation: no other test file depends on urls registered earlier. The test files pass alone and in both orders.
+- `update.py`, `sync.py` and `build.py` are unchanged in this range.
+
+### Findings
+- [x] (must-fix) The design's "the `ERROR:` line of any command are masked again", and the README's "the error a command stops with", are false. Only a `ManifestError` (`cli.py:331`) and sync's lines are masked; `cli.py:128`, `:136`, `:159`, `signals.py:52` and `sync.py:612` print raw. Repro: `resolve --manifest p4.yaml --role 'https://alice:s3cret@h/x' --distro jazzy --out o4` prints `ERROR: unknown role 'https://alice:s3cret@h/x' (known: ['dev'])`. The value is typed by the user. Narrow both sentences, or mask those prints. — `docs/design.md` (masking, "As lines are printed"), `README.md:117-118`
+- [x] (must-fix) The design gives the `file://` fallback as "for a password holding a `/`", but `_file_userinfo` applies it to any `file://host/...` url whose text before the last `@` holds a `:`. A url with no credential then has its host and path masked: `mask_url("file://localhost/srv/a:b/w@x")` gives `file://***@x`. With a real repo at such a path, `init` shows `file://***@x`, and sync's hand-set-origin line shows `origin is file://***@x, the manifest says file://***@x` with a `set-url` command that fails if copied. State the real condition and this consequence, or tighten the rule. — `docs/design.md` (`file://` rule), `masking.py` `_file_userinfo`
+- [x] (suggestion) The docstring of `tests/test_url_messages.py` says the third test holds `manifest.py` and `schema.py` "to echo a value only through `quoted_url`". It checks only `!r` and `repr(`. `schema.py` still echoes `'{layer}'` (`:265`, `:275`) and whole lists (`:255`, `:262`, `:267`, `:276`). A repo key that is a url with a space in its password is printed by `validate`, earlier format (`adv6/p1-p3.yaml`). The design's limits cover those messages. — `tests/test_url_messages.py`
+- [x] (suggestion) The top docstring of `tests/test_masking.py` still says a url's credentials are "never printed". — `tests/test_masking.py:1-3`
+- [x] (suggestion, leak route, covered by the limits) The scp-like `aliceQ:pwzQ@127.0.0.1:x.git` passes `validate` and is printed whole in the `init` plan. Covered by "nothing that does not follow `://` is masked". — `masking.py`
+- [x] (suggestion, leak route, not in the limits) `!r` echoes outside the manifest readers: `system.py:379`, `:643` (format of `state.yaml` and the built file), and `selection.py:61-86` and `init.py:62-92` (command-line role and distro). None takes a manifest url. — `system.py`, `selection.py`, `init.py`
+- [x] (suggestion) Warnings are not filtered (`system.warn`). The progress entry says so; the design's limits do not. — `docs/design.md`
+- [x] (suggestion) `test_pruning_flags_are_forbidden_and_no_prune_is_not` still lists `["fetch","--prune-tags"]` as `False`, which reads as if it were allowed. The never-run list also misses `+refs/...` forced refspecs, `reset --merge`/`--keep`, `checkout -B` and `update-ref -d`; these gaps predate this diff. — `tests/test_update_safety.py`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 20:08 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: rounds
+**Decision**: address
+
+The owner was shown round 6's two must-fix verbatim (the changed sentences about error lines claim more than the code masks; the design states the wrong condition for the file:// fallback rule, and a file url with no credential whose path holds both a colon and an at sign gets its host and path masked), that the update rules have held since round 3, and four options: fix both then publish, publish now, drop the masking from this pull request, or stop. His answer: "Fix both, then publish (Recommended)" (one short pass: narrow the two sentences to what is true, and tighten the file:// rule so a path is never masked; then a narrow check of only that, the full local pass, and the pull request).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 20:22 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ae5fd1d2f18230daa, resume 1 of 3)
+
+**Branch**: feature/issue-500 at `022ccad0`
+**Addressed**: Local Review (Pre-Push) at `7593acc6` (2026-11-19 19:36 -05:00)
+**Commits**: 0b8b4005, ecb00ada, d613429e, 022ccad0 (box checks)
+
+This pass follows the owner's answer in the round 6 checkpoint: narrow the two sentences and tighten the `file://` rule, nothing more. The only code change is `_file_userinfo` and `_kept` in `masking.py`; no print site was added to the filter.
+
+### Actions
+- [x] (must-fix 1) The design and README name exactly which lines the print filter covers. Covered: each line `sync` prints for a repo (`_say`, and a repo's notes, `sync.py:328-334`, `:418`), sync's `ERROR:` line for a distro whose plan or run failed (`sync.py:628`, `:635`), and the `ERROR:` line of a `ManifestError` (`cli.py:331`). Printed as given: the earlier format's "unknown role" error (`cli.py:128`, `:159`), the stop line of a signal (`signals.py:52`), sync's setup-file line (`sync.py:612`, `:614`), and every `WARNING:` line (`system.warn`) (ecb00ada, d613429e).
+- [x] (must-fix 2) A `file://` url's user information is only in its authority, the text between `file://` and the first `/`: the text before the last `@` there, when it holds a `:`. The fallback to the last `@` in the whole url is gone, and `_kept` keeps any `file://` text holding a `/`, so the shape filter cannot mask a path either. `file://localhost/srv/a:b/w@x` and its neighbours print whole; an end-to-end test runs a system under `a:b/w@x` with a hand-set origin, checks that nothing is masked, and runs the printed `set-url` command, which sets the manifest's url. `file://user:pw@host/path` is still masked. The two cases that relied on the fallback (`file://aliceQ:pw/zQ@localhost/srv/x`, `file://u@sQ:p:w/@zQ@localhost/srv/w@x`) are now listed as not masked, and the end-to-end form "file url, / in its password" is removed. Six tests fail on the previous source (0b8b4005).
+- [x] (suggestion) The docstring of `tests/test_url_messages.py` says the reader test checks for `!r` and `repr(` only, and that `schema.py` still echoes some values as they are (ecb00ada).
+- [x] (suggestion) The top docstring of `tests/test_masking.py` no longer says "never printed" (0b8b4005).
+- [x] (suggestion) The scp-like form `user:password@host:path` is in the design's list of what is not masked, and the README now says it masks a `scheme://` url's user name and password (ecb00ada, d613429e).
+- [x] (suggestion) Messages outside the manifest readers that echo a value typed on the command line or read from the tool's record files are in the list of what is not masked, unless the filter covers their line (ecb00ada).
+- [x] (suggestion) Warnings are in the list of what is not masked (ecb00ada).
+- [x] (suggestion) `test_pruning_flags_are_forbidden_and_no_prune_is_not` now checks every `NEVER` entry, so the `["fetch", "--prune-tags"]` sample is marked forbidden (`True`). The older gaps (`+refs/...` forced refspecs, `reset --merge`/`--keep`, `checkout -B`, `update-ref -d`) are named in the test file's docstring and left as they are (ecb00ada).
+
+### Checks
+- Whole suite at `ecb00ada` (code and tests as at the head; `d613429e` changes only the README, and `tests/test_documents.py` passes after it, 11 passed): `cd tools/repos-manifest && PYTHONDONTWRITEBYTECODE=1 REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest -p no:cacheprovider --basetemp=<scratchpad>` gave `1713 passed in 522.27s (0:08:42)` (1712 before; one new test, and one end-to-end form fewer with new unit cases).
+- black and flake8 ran in the commit hooks. No workspace script changed; the full pre-commit pass is the host's. Commits used `SKIP=validate-script-tests`. `git status --porcelain` is clean.
+- `update.py`, `sync.py`, `build.py`, `cli.py` and `signals.py` are unchanged.
+- I read every sentence about masking in `tools/repos-manifest/README.md` and `docs/design.md` (sync section) against `masking.py`, `manifest.py`, `schema.py`, `cli.py`, `signals.py`, `sync.py` and `system.py`. Each is true as it now stands. The README's "an error that echoes a value typed on the command line" is an example: the new format's unknown role or distro is a `ManifestError`, so its line passes the filter, which masks a url by its shape when its user information has no white space.
+
+### For the pull request body
+Changed from the round 5 entry's text: the masking item and the masking lines under "open on purpose". Everything else stands as written there and is copied here.
+- **Masking:** a guard against accidents, not a guarantee; a user name and password belong in a credential helper or an ssh key, not in a manifest url (the specification already says a credential in a `url` is not looked for).
+  - Where a message formats a url (as far as the source scan sees), and where the manifest reader quotes a value from a manifest (a `base:` path, a version, a name, a key), it goes through `masking.mask_url` or `quoted_url`, so quoting or `repr` escaping cannot hide a `scheme://` url's user information. A value of the wrong type (a list or a mapping given as a url) is described by its kind, never shown.
+  - These lines are masked again as they are printed: each line `sync` prints for a repo, sync's `ERROR:` line for a distro whose plan or run failed, and the `ERROR:` line of a manifest that cannot be read or is refused (the tool's own kind of error). Other lines are printed as given.
+  - In a `file://` url, user information is only the text before the last `@` in the authority (between `file://` and the first `/`), when it holds a `:`; a path is never masked.
+  - Nothing that does not follow `://` is masked: local paths holding `@`, `git@github.com:…` and `origin/main@{upstream}` print as they are.
+  - Tests: a source scan for formatted values named as urls; no `!r`/`repr(` in `manifest.py` and `schema.py`; end-to-end runs of `resolve`, `validate`, `init` and `sync` over awkward passwords in every url form, a list and a mapping among them.
+- **The never-run list:** `sync` never runs reset, `checkout -f`, clean, stash, rebase, pull, push, gc or prune, never deletes a branch, and passes no `--force`, `--no-verify`, `--prune`, `-p`, `-P`, `--prune-tags`, `--discard-changes`, `switch -f`, `branch -f` or a bundled short flag holding `p`, `P` or `f`. A test reads `update.py` for each, a command's flag anywhere after the command.
+- **Half-changed moves:** the report lists what ran, where HEAD is, and the tracked changes git or a hook made, or says there are none. An untracked or ignored file a hook wrote stays in the work tree and is not reported.
+- **Open on purpose:**
+  - A repo left alone while the manifest names another version exits 0 (`sync.py:641-654`).
+  - The hand-set-origin line prints every run (`update.py:714`).
+  - One `ls-remote` per repo per run (`update.py:491`, `find_version` at `update.py:460`).
+  - Submodules are never updated (`update.py:962`).
+  - A shallow clone grows by the history of fetched tags (`update.py:739`).
+  - No version follows the clone's `origin/HEAD` (`update.py:468`).
+  - A detached HEAD at a recorded branch's commit is moved on a pin change (`update.py:826-831`).
+  - A branch switched by a person during the run is not re-checked (`update.py:875`).
+  - An https url whose path holds `@` has more masked (`masking.py`).
+  - After sync's own half-changed move, a manifest changed back reads the repo as moved by a person (design, sync).
+  - A branch left without an upstream by a half-changed move is mentioned once.
+  - An untracked file a hook wrote during a move that was undone is not reported.
+  - The never-run list does not cover `+refs/...` forced refspecs, `reset --merge`/`--keep`, `checkout -B` or `update-ref -d`; `update.py` runs none of them.
+  - Masking is a guard, not a guarantee. Not masked: a `file://` url whose password holds a `/` (it cannot be told from a path; git's file transport ignores it); the scp-like `user:password@host:path`; values the earlier format's reader still prints as they are (`docs/prototype.md` lists them); every `WARNING:` line; the earlier format's "unknown role" error, a signal's stop line and sync's setup-file line; messages outside the manifest readers that echo a value typed on the command line or read from the tool's record files, unless the filter covers their line; and a url reaching a message by a way the source scan cannot see (another name, a helper, a join, a list or mapping formatted whole, keyword arguments, `+=`, logging, an exception formatted whole) on a line the filter does not cover, or one the tool did not read with white space in its user information.
+- **Tests:** 1713 pass with `REPOS_MANIFEST_REQUIRE_COLCON=1`.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 20:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a586f9fcf3beb71f1, resume 2 of 3)
+
+**Branch**: feature/issue-500 at `b9302842`
+**Base**: origin/main
+**Depth**: Deep (reason: round 7 convergence check per handoff)
+**Must-fix**: 2 | **Suggestions**: 3
+**Round**: 7 | **Ship**: recommended — round 7: 2 mechanical must-fix (prev 2), not rising — fix and ship rather than another full round
+
+Scope: the round 6 findings and `git diff b8e35602..b9302842 -- tools/`. Cross-model: skipped (round-7 convergence check, per handoff). A fresh Claude adversarial specialist ran with the same scope and must-fix rule. Whole suite at b9302842: `1713 passed in 521.99s` (REPOS_MANIFEST_REQUIRE_COLCON=1).
+
+Both round 6 must-fix are resolved:
+- **The error-line sentences:** the design's "As some lines are printed" bullet is true line by line. `Refusal` subclasses `ManifestError` (`system.py:61`), so every refusal reaches `cli.py:331`. `sync.py:628` and `:635` are filtered. `signals.py:52`, `sync.py:612` and `:614`, and `WARNING:` lines are printed as given. The earlier format's unknown role is printed as given. The README is the exception (below).
+- **The `file://` rule:** it matches `_file_userinfo` and `_kept`. No path is masked: `file://localhost/srv/a:b/w@x`, `…/a:b@x` and `file:///srv/a:b@c` print as they are. A `user:password` in the authority is masked through `mask_url`, `quoted_url` and the fallback; this was checked with `FILE://`, with a port, and with no path. The new end-to-end test runs the printed `set-url` command, and it fails on the old `masking.py`.
+
+Other checks:
+- The "What is not masked" list is true item by item.
+- The prune-tags test fails when `--prune-tags` is removed from `NEVER`.
+- `update.py`, `sync.py`, `build.py`, `cli.py` and `signals.py` are unchanged.
+
+### Findings
+- [x] (must-fix) The README's "Other lines, such as an error that echoes a value typed on the command line, are printed as given" is false for the current format. There, an unknown role or distro is a `ManifestError`, and its line passes the filter: `validate --manifest tests/fixtures/project11/project11.manifest.yaml --role 'https://alice:s3cret@h/x'` prints `has no role 'https://***@h/x'`. Only the earlier format prints it as given; the design says so correctly. Match the design. — `README.md:121-122`
+- [x] (must-fix) The new docstring says "nothing in `update.py` runs these today: a forced refspec (`+refs/...`), … and `update-ref -d`". But `update.py:737` and `:1085` fetch with `+refs/heads/*:refs/remotes/…`, and `update.py:230` runs `update-ref -d` on probe refs. They touch only remote-tracking and probe refs, so the sentence should say that. — `tests/test_update_safety.py:6-8`
+- [x] (suggestion) "Each line `sync` prints for a repo" is not quite true: `cloning <path>` (`sync.py:242`) and "holds the manifest" (`sync.py:524`) are not filtered. They cannot carry a `scheme://` url, since a repo key cannot hold `//`. — `docs/design.md:916-918`
+- [x] (suggestion) "Other lines are printed as given:" reads as a complete list. It leaves out the earlier format's `--out` error (`cli.py:136`), the earlier format's `validate` table and violation lines (`cli.py:165-170`), and build's NOTE and report lines. Limits item 5 covers these; "among them:" would read truer. — `docs/design.md:924-927`
+- [x] (suggestion) The `_say` docstring still says the user name and password "are never printed", which the limits list now contradicts. That line is outside this range. — `sync.py:325`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 20:32 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 7 found two one-sentence wording must-fix and three wording suggestions, no behaviour; the owner's answer at the previous rounds checkpoint was to fix and then publish, and these are fixed in that same spirit; the previous answer here was the owner's, so this is the host's first in a row)
+**After**: rounds
+**Decision**: address
+
+All five are sentences, fixed as the review states them: the README's example of a line printed as given is made true for the current format (it names the earlier format's unknown-role error, as the design does); the docstring of tests/test_update_safety.py says which forced refspec and which update-ref -d the update module does run (remote-tracking refs and its own probe refs only) and what the scan does not look for; the design's "each line sync prints for a repo" names the two lines that are not filtered and why they cannot hold a scheme url; "Other lines are printed as given" reads "among them"; the _say docstring in sync.py no longer says credentials are never printed. No code behaviour changes.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 20:34 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ae5fd1d2f18230daa, resume 2 of 3)
+
+**Branch**: feature/issue-500 at `a4d8da8c`
+**Addressed**: Local Review (Pre-Push) at `b9302842` (2026-11-19 20:31 -05:00)
+**Commits**: a4d8da8c (sentences and box checks)
+
+Sentences only: no behaviour changed. The one source file touched is a docstring in `sync.py`.
+
+### Actions
+- [x] (must-fix) README: "Other lines are printed as given: for example, the "unknown role" error of an earlier-format manifest, which echoes the role typed on the command line (in the current format that error passes the filter)." Checked against `cli.py`: the earlier format prints it at `cli.py:128` and `:159` with no filter; in the current format `selection.py` raises a `ManifestError`, which `cli.py:331` prints through `mask_urls`. The README also now says "the lines `sync` prints for a repo's outcome" (a4d8da8c).
+- [x] (must-fix) `tests/test_update_safety.py` docstring: `update.py` fetches with a forced refspec into remote-tracking refs (`update.py:737`, `+refs/heads/*:refs/remotes/origin/*`) and into its own probe refs (`:1085`), and runs `update-ref -d` only on those probe refs (`:230`, `delete_probe_refs`). Neither touches a local branch, a tag or the work tree. The scan looks for none of these forms, nor for `reset --merge`/`--keep` or `checkout -B`; grep finds no `reset` or `checkout` call in `update.py`, only their names in `NEVER` and in messages (a4d8da8c).
+- [x] (suggestion) Design: the filter covers "each line `sync` prints for a repo's outcome". The two lines it does not cover, `cloning <path>` (`sync.py:242`) and "<path>: holds the manifest, …" (`sync.py:524`), are named. They show only the repo key, which cannot hold a `scheme://` url because a repo key has no `//` (a4d8da8c).
+- [x] (suggestion) Design: "Other lines are printed as given, among them:" (a4d8da8c).
+- [x] (suggestion) `_say` docstring: what `sync` or git says goes through the masking filter (`mask_urls`) "within the limits the design lists"; it no longer says "never printed" (a4d8da8c).
+
+### The grep
+I grepped `tools/repos-manifest` (source, tests, documents) for "never printed", "never shown", "whatever characters", "every message" and "any command". I fixed `sync.py:325`. The other hits are true as written, so I left them:
+- `manifest.py:186`, `schema.py:166` and `masking.py:137` ("never shown") are about a value of the wrong type, which is described by its kind and not shown.
+- `masking.py:7` ("whatever characters it holds") is about how a registered url's user information is parsed, with the `file://` exception stated next to it.
+- `extends.py:290` (git's output "never printed") is about the earlier format's extends clone, whose output is captured.
+- `output.py:287` ("Every message") is not about masking.
+- `design.md` ("every message of the manifest reader that quotes a value", "the `ERROR:` line any command ends with when it stops on the tool's own kind of error") is true as qualified.
+- `prototype.md:154` ("a `url` or `ref` that fails its rule is never printed") is about the earlier format and is true.
+- No test file matched.
+
+### Checks
+- `cd tools/repos-manifest && PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src /usr/bin/python3 -m pytest -p no:cacheprovider tests/test_documents.py tests/test_update_safety.py tests/test_masking.py tests/test_url_messages.py`: `239 passed in 32.77s`.
+- I did not run the whole suite for this sentences-only pass: the host's full pass and CI run it. The last whole run was `1713 passed` at `ecb00ada`, and the reviewer's at `b9302842` also gave 1713.
+- black and flake8 ran in the commit hook. No workspace script changed. The commit used `SKIP=validate-script-tests`. `git status --porcelain` is clean.
+
+### For the pull request body
+Changed from the round 6 entry's text: the second masking line and the never-run line under "open on purpose". Everything else stands as written there and is copied here.
+- **Masking:** a guard against accidents, not a guarantee; a user name and password belong in a credential helper or an ssh key, not in a manifest url (the specification already says a credential in a `url` is not looked for).
+  - Where a message formats a url (as far as the source scan sees), and where the manifest reader quotes a value from a manifest (a `base:` path, a version, a name, a key), it goes through `masking.mask_url` or `quoted_url`, so quoting or `repr` escaping cannot hide a `scheme://` url's user information. A value of the wrong type (a list or a mapping given as a url) is described by its kind, never shown.
+  - These lines are masked again as they are printed: each line `sync` prints for a repo's outcome, sync's `ERROR:` line for a distro whose plan or run failed, and the `ERROR:` line of the tool's own kind of error (a manifest that cannot be read or is refused, a system or a record in the wrong state). Other lines are printed as given, for example the earlier format's "unknown role" error.
+  - In a `file://` url, user information is only the text before the last `@` in the authority (between `file://` and the first `/`), when it holds a `:`; a path is never masked.
+  - Nothing that does not follow `://` is masked: local paths holding `@`, `git@github.com:…` and `origin/main@{upstream}` print as they are.
+  - Tests: a source scan for formatted values named as urls; no `!r`/`repr(` in `manifest.py` and `schema.py`; end-to-end runs of `resolve`, `validate`, `init` and `sync` over awkward passwords in every url form, a list and a mapping among them.
+- **The never-run list:** `sync` never runs reset, `checkout -f`, clean, stash, rebase, pull, push, gc or prune, never deletes a branch, and passes no `--force`, `--no-verify`, `--prune`, `-p`, `-P`, `--prune-tags`, `--discard-changes`, `switch -f`, `branch -f` or a bundled short flag holding `p`, `P` or `f`. A test reads `update.py` for each, a command's flag anywhere after the command.
+- **Half-changed moves:** the report lists what ran, where HEAD is, and the tracked changes git or a hook made, or says there are none. An untracked or ignored file a hook wrote stays in the work tree and is not reported.
+- **Open on purpose:**
+  - A repo left alone while the manifest names another version exits 0 (`sync.py:641-654`).
+  - The hand-set-origin line prints every run (`update.py:714`).
+  - One `ls-remote` per repo per run (`update.py:491`, `find_version` at `update.py:460`).
+  - Submodules are never updated (`update.py:962`).
+  - A shallow clone grows by the history of fetched tags (`update.py:739`).
+  - No version follows the clone's `origin/HEAD` (`update.py:468`).
+  - A detached HEAD at a recorded branch's commit is moved on a pin change (`update.py:826-831`).
+  - A branch switched by a person during the run is not re-checked (`update.py:875`).
+  - An https url whose path holds `@` has more masked (`masking.py`).
+  - After sync's own half-changed move, a manifest changed back reads the repo as moved by a person (design, sync).
+  - A branch left without an upstream by a half-changed move is mentioned once.
+  - An untracked file a hook wrote during a move that was undone is not reported.
+  - The never-run scan does not look for forced refspecs or `update-ref -d`. `update.py` uses them only on remote-tracking refs and its own probe refs, never on a local branch, a tag or the work tree. It also does not look for `reset --merge`/`--keep` or `checkout -B`, which `update.py` does not run.
+  - Masking is a guard, not a guarantee. Not masked: a `file://` url whose password holds a `/` (it cannot be told from a path; git's file transport ignores it); the scp-like `user:password@host:path`; values the earlier format's reader still prints as they are (`docs/prototype.md` lists them); every `WARNING:` line; the earlier format's "unknown role" error, a signal's stop line and sync's setup-file line; messages outside the manifest readers that echo a value typed on the command line or read from the tool's record files, unless the filter covers their line; and a url reaching a message by a way the source scan cannot see (another name, a helper, a join, a list or mapping formatted whole, keyword arguments, `+=`, logging, an exception formatted whole) on a line the filter does not cover, or one the tool did not read with white space in its user information.
+- **Tests:** 1713 pass with `REPOS_MANIFEST_REQUIRE_COLCON=1` (last whole run at `ecb00ada`; this pass changed sentences only).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 20:35 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a586f9fcf3beb71f1, resume 3 of 3)
+
+**Branch**: feature/issue-500 at `00f2ea1c`
+**Base**: origin/main
+**Depth**: Deep (reason: round 8 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 8 | **Ship**: recommended — no must-fix findings
+
+Scope: `git diff d69c85ff..00f2ea1c -- tools/`: four files, five sentences, no code. Cross-model: skipped (round-8 convergence check, per handoff). No adversarial specialist ran; the handoff waived it for a diff of five sentences.
+
+Tests: `tests/test_documents.py`, `test_update_safety.py`, `test_masking.py` and `test_url_messages.py` give `239 passed in 32.55s`.
+
+The five sentences are each true:
+1. **README:** the masked lines (`_say`, a `ManifestError`) are as stated. The "unknown role" example is right in both formats: the earlier format prints it as given (`cli.py:128`, `:159`); the current one passes the filter (round 7 repro: `has no role 'https://***@h/x'`).
+2. **The `test_update_safety.py` docstring:** the forced refspecs are at `update.py:737` (into `refs/remotes/origin/*`) and `:1085` (into `refs/remotes/repos-manifest-probe/*`). `update-ref -d` runs only over `refs/remotes/repos-manifest-probe/` (`update.py:228-231`). No `reset --merge`, `reset --keep` or `checkout -B` is run.
+3. **The design's filter bullet:** the `cloning` line (`sync.py:242`) and the "holds the manifest" line (`sync.py:526`) are the unfiltered ones. Neither can hold `://`: a repo key has no `//` (`manifest.py:513`), and the distro and layer names in the path are single words (`manifest.py:42`).
+4. **"Other lines are printed as given, among them":** true; `signals.py:52`, `sync.py:612` and `system.warn` print raw.
+5. **The `_say` docstring:** true; it masks with `mask_urls(done.detail)`.
+
+Spot-checked leftover wording, all true: `manifest.py:186`, `schema.py:166`, `masking.py:7` and `:137`, `extends.py:290`, and `design.md:912`.
+
+### Findings
+- [ ] (suggestion) "they show only the repo's path, its key" equates the path with the key. The path is the distro and layer directories, `src`, then the key (`sync.py:232`). The conclusion holds, since those names are single words. "its path, made of single-word names and its key" would be exact. — `docs/design.md:924-926`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 20:36 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 8 approved with no must-fix; the host's full pre-commit pass over the branch passed at fa98c208, every hook, no SKIP; the owner's answer at the round 6 checkpoint was to fix and then publish)
+**After**: publish
+**Decision**: publish
+
+Round 8 approved the branch with one wording suggestion, which the pull request lists. The full pass ran on head fa98c208 with exit 0. The pull request says "Part of #500": parts 3 and 4 are not delivered, and the owner's by-hand acceptance on his real project is not done.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-19 20:46 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #535 at `75549803`
+**Depth**: Deep (reason: 7092+/254- lines over 31 files; safety-critical git mutation of a person's clones)
+**Must-fix**: 5 | **Suggestions**: 10
+
+Point 1 (real systems made with init from local remotes, record without urls): clone switched to rolling by hand: up to date, record now rolling with url, no clone change; clone on jazzy clean: moved to rolling (untracked and ignored files kept, upstream set); on rolling with 1 local commit: left alone, "has 1 commits not on origin", record stays jazzy; on jazzy with a tracked edit: left alone, "has uncommitted changes (1 files)". Second sync quiet each time. Hand-set origin: never repointed, one line per run. Lock both ways: refused and reported. Suite: 1713 passed (REPOS_MANIFEST_REQUIRE_COLCON=1). Cross-model: codex complete (7 findings, 2 reproduced); gemini failed twice (headless tool denial, empty response).
+
+### Findings
+- [x] (must-fix) Fast-forward (rule 10) moves a branch also checked out in another work tree (`git worktree add -f`): that tree then shows the upstream commits reversed as staged changes; design says a linked work tree's branch is never moved; check `worktree_holding` before the merge — `tools/repos-manifest/src/repos_manifest/update.py:793`
+- [x] (must-fix) `version: heads/<branch>` (spec-valid; init clones it) makes every sync exit 1 with the false "version heads/jazzy is not on origin"; strip `heads/`/`tags/` as the manifest reader does — `tools/repos-manifest/src/repos_manifest/update.py:491`
+- [x] (must-fix) Probe cleanup `update-ref -d` follows a symbolic ref: a symref under refs/remotes/repos-manifest-probe/ to refs/heads/topic made sync delete branch topic; use `--no-deref` (precondition contrived, fix one word) — `tools/repos-manifest/src/repos_manifest/update.py:230`
+- [x] (must-fix) False doc sentences: README and design say the report gives the `git pull --rebase` command for commits not on origin, but it is printed only when origin's branch has commits the clone lacks (not in the owner's case); design "the url rule counts its commits" is false for a detached linked work tree (repoint went ahead) — `tools/repos-manifest/README.md:128`, `tools/repos-manifest/docs/design.md:691`, `tools/repos-manifest/docs/design.md:853`
+- [x] (must-fix) PR body: "A system made before the record held urls is never repointed" is false once its first sync records the url (reproduced: repointed); "nothing in rounds 4 to 8 touched [the update rules]" is false (3fa23a13 changed the undo condition in `_change`); "branch deletion" never run is false while the symref case stands; the pull --rebase line is conditional — PR #535 body
+- [x] (suggestion) A stale origin/release blocks origin's new release/next: every sync fails, and the closing line says "once they can be fetched" though another sync will not change it — `tools/repos-manifest/src/repos_manifest/update.py:737`
+- [x] (suggestion) An existing remote named repos-manifest-probe makes `-c remote.<probe>.url` append, so the probe fetches the person's remote, not the manifest url (codex; not reproduced) — `tools/repos-manifest/src/repos_manifest/update.py:1080`
+- [x] (suggestion) Branch names unquoted in the printed `git config branch.<b>...` commands — `tools/repos-manifest/src/repos_manifest/update.py:1061`
+- [x] (suggestion) A tag that peels to a tree or blob gives an empty target and ends as left alone with exit 0 (codex; not reproduced) — `tools/repos-manifest/src/repos_manifest/update.py:507`
+- [x] (suggestion) `CLOBBERED_TAG` matches English git output only; set LC_ALL=C/LANGUAGE in `Git.env` — `tools/repos-manifest/src/repos_manifest/update.py:86`
+- [x] (suggestion) No minimum git version is checked; tag non-clobbering needs >= 2.20, switch >= 2.23 — `tools/repos-manifest/docs/design.md:1686`
+- [x] (suggestion) Detached HEAD is switched without re-reading HEAD right before the call (small race; a commit made there would be left to the reflog) — `tools/repos-manifest/src/repos_manifest/update.py:846`
+- [x] (suggestion) `_half_changed` blames git or a hook for a tracked edit a person made during the move — `tools/repos-manifest/src/repos_manifest/update.py:1007`
+- [x] (suggestion) "has 1 commits"; and the c1 case records rolling with only "up to date (2)" printed, naming no repo — `tools/repos-manifest/src/repos_manifest/update.py:781`
+- [x] (suggestion) Acceptance block: the editable install runs from /home/roland/agent_workspace, so it has the change only once that checkout is pulled after the merge — PR #535 body
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 21:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent ae5fd1d2f18230daa, resume 3 of 3)
+
+**PR**: #535 at `e55acb4e`
+**Addressed**: Local Review at `75549803` (2026-11-19 20:46 -05:00)
+**Commits**: c5f240c1 (code and tests), 17d8c744 (README and design), e55acb4e (box checks)
+
+I reproduced must-fix 1, 2 and 3 first (`scratchpad/fix8/repro.py`, built on the reviewer's `rev/scen.py`):
+- Must-fix 1 before the fix: `rolling/core/src/a: fast-forwarded 1 commits`, and the other work tree's status went from `''` to `'D  new'`.
+- Must-fix 2 before the fix: `sync 1 ERROR: src/a: version heads/jazzy is not on origin`.
+- Must-fix 3 before the fix: branch `topic` was gone after `sync`.
+- After the fix: the clone is left alone, naming the other work tree, and that work tree's status stays `''`; `heads/jazzy` syncs with exit 0, up to date; `topic` is kept.
+
+The code and its tests went into one commit (c5f240c1) rather than one per finding: the fixes share `update.py`'s `find_version`, `_change` and `_repoint`, and splitting them by hunk would have left commits that do not build alone.
+
+### Actions
+- [x] (must-fix 1) A branch that is also checked out in another work tree is not fast-forwarded: the repo is left alone and the report names that work tree (`update.py`, rule 10). The two-step move already checked that before both its switch and its fast-forward. When the work trees cannot be listed, the repo is left alone too. Tests compare both work trees, whole, before and after:
+  - the clone's branch held by `git worktree add -f`;
+  - a held local branch the move would switch to;
+  - a linked work tree on another branch, which is unaffected.
+- [x] (must-fix 2) `version_ref` in `manifest.py` reads `heads/x` as branch `x` and `tags/x` as tag `x`. The manifest reader's own check now uses it, and so does every place in the update rules that reads a version: the lookup on origin, "on the manifest's version", `_on_recorded`, the move decision (`same_version`), the tag-clash advice and the clash note. The record keeps the version as written. Tests:
+  - `heads/main` and `main` each sync, follow a new commit, and move to `heads/dev`, then to `tags/v1`, then back to `main`;
+  - `tags/v1` is the tag where origin also has a branch `v1`, and `heads/v1` then moves to that branch.
+- [x] (must-fix 3) The probe cleanup runs `update-ref --no-deref -d`, and only on refs under `refs/remotes/repos-manifest-probe/`. When the clone has a remote of that name, there is no check: the repo is left alone with the `remote rename` command, and that remote's refs are never removed. Tests:
+  - the reviewer's symbolic ref: branch `topic` is kept and the symbolic ref removed;
+  - a remote of the probe's name (by a `fetch` setting, and by `remote add`), with the whole repo unchanged;
+  - `test_update_safety.py` holds `update-ref --no-deref -d` to be the module's only ref deletion, and its docstring says so.
+- [x] (must-fix 4a) Commits not on origin, on the manifest's branch: when origin's branch has commits the clone lacks, the `pull --rebase` line as before; when it has none, "origin's <b> has nothing this clone lacks, so the commits are only here; to publish them (sync never pushes): git -C <place> push origin <b>". The README and design say both. Test on a real clone.
+- [x] (must-fix 4b) Before a repoint, the HEAD of every work tree, detached ones included, must be on the new url; otherwise the repo is left alone, naming "the detached HEAD of <path>". Test with the reviewer's detached linked work tree: origin stays, and both work trees are unchanged. The design sentence is now true.
+- [x] (must-fix 5) Pull request body: corrected sentences below, under "For the pull request body" (the host's to apply).
+- [x] (suggestion) A stale remote-tracking ref in the way: git 2.53 says only "some local refs could not be updated", so `sync` asks origin for its branches and finds the conflict itself. The error names `refs/remotes/origin/release` and origin's `release/next`, says another sync will not change it, and gives `git -C <place> update-ref -d refs/remotes/origin/release`. The closing line then says "another sync will not change that", not "once they can be fetched".
+- [x] (suggestion) The reserved probe name: fixed under must-fix 3.
+- [x] (suggestion) Branch names are quoted in the printed `git config branch.<b>...` commands. Every other printed command (`set-url`, `pull`, `submodule update`, `mv`, `tag -d`, `status`) already quoted its paths and names, as did the new `push` and `update-ref` lines.
+- [x] (suggestion) A tag that names a tree or a blob is an error ("tag odd names a tree, not a commit"), not "left alone". Tested with both.
+- [x] (suggestion) Every git call whose output the module reads runs with `LC_ALL=C` and without `LANGUAGE`. The calls whose output is only shown keep the person's locale: the move steps, the switch back, `branch --set-upstream-to` and `remote set-url`.
+- [x] (suggestion) `git --version` is read once per run, in `require_tools` (used by `sync` and `init`). The run stops, with nothing changed, below 2.23 ("git 2.22 is on PATH, and this tool needs git 2.23 or later (for `git switch`); nothing was changed. Install git 2.23 or later").
+  - I chose 2.23 because it brought `git switch`, with the `--no-overwrite-ignore`, `--detach`, `-c` and `--no-track` it is run with.
+  - Everything else is older: a tag not replaced without `--force` (2.20), `config --type` (2.18), `--no-prune-tags` (2.17), `--is-shallow-repository` (2.15), `status --porcelain=v2` (2.11), `worktree list --porcelain` and `for-each-ref --contains` (2.7), `--refmap` (2.1).
+  - A version printed in an unusual form is not judged. I took the release numbers from what I know of git's release notes and did not check them against a source in this pass; only 2.53 was run.
+  - Tested with a fake `git` that reports 2.22.5: the whole repo is unchanged.
+- [x] (suggestion) HEAD and its branch are read again right before the first call; if either moved, the repo is left alone ("HEAD moved while sync was checking the repo; not moved"). Tested by committing, and by switching branches, from inside the paths check.
+- [x] (suggestion) The half-change line says the changes were made "during the move, by git, a hook it ran, or something else". "1 commit", "1 file", "1 path … is", "1 local commit … is" are now singular; 32 test expectations were updated to match.
+- [x] (suggestion) When a clone is already on the manifest's version and only its record was behind, one line says so: "<path>: already on rolling; record updated (was jazzy)". A record behind only by its commit gets "already on <v> at <sha>; record updated". A record that gains only the manifest's url, and a first record, print nothing. Tests: the owner's case, and a clone fast-forwarded by hand.
+- [x] (suggestion) The acceptance block: the sentence for the body is below.
+
+### The point-1 case by hand
+A scratch system from the reviewer's `setup("point1", strip_urls=True)`: every repo on `jazzy`, the record holding no url, `a` pinned to `rolling` for distro rolling, and the clone already switched to `rolling` by hand. `sync` exits 0 and prints:
+```
+distro jazzy:
+  up to date (2)
+rolling/core/src/a: already on rolling; record updated (was jazzy)
+distro rolling:
+  up to date (2)
+```
+The record afterwards is `version: rolling` at the clone's commit, with the manifest's url. A second `sync` prints only the two "up to date (2)" blocks.
+
+### Checks
+- Whole suite at `17d8c744`: `cd tools/repos-manifest && PYTHONDONTWRITEBYTECODE=1 REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest -p no:cacheprovider --basetemp=<scratchpad>` gave `1734 passed in 535.12s (0:08:55)` (1713 before; 21 new).
+- The signal and kill tests, three times: `tests/test_interrupted.py` gave `18 passed` each time. The signal, kill and stop tests selected by `-k "signal or kill or stop or interrupt or SIG"` in `test_interrupted.py`, `test_sync.py`, `test_sync_distros.py`, `test_clone.py` and `test_init_refusals.py` gave `31 passed` each time.
+- Each new test fails on the source before c5f240c1: 19 of them fail there, and the two that pass were meant to (a linked work tree on another branch, and the existing switch check). The plural changes fail there through the updated expectations.
+- black and flake8 (all files) are clean. No workspace script changed. Commits used `SKIP=validate-script-tests`; the full pre-commit pass is the host's. `git status --porcelain` is clean.
+- I re-read each changed sentence of the tool's `README.md` and `docs/design.md` against the code: the next-step lines, linked work trees, the url rule's work trees and probe name, `heads/`/`tags/`, the stale ref, the tree or blob tag, `LC_ALL`, git 2.23, the re-read HEAD, the half-change wording, `--no-deref`, the record-updated line, and a record with no url yet.
+
+### Departures
+- One commit for the code and tests, not one per finding (reason above).
+- A failure to list the work trees leaves the repo alone, instead of being taken as "no other work tree", which is what the code did before.
+- The stale-ref error suggests `update-ref -d` on that one ref, not `git remote prune origin`, which would remove every stale ref.
+
+### For the pull request body
+Changed from the round 7 entry's text: the corrected sentences the review faults, the never-run line, the half-change line, the update rules this pass changes, the timeline, and the acceptance note. Everything else stands as written there and is copied here.
+- **The update rules this pass changes** (after the pull request's first review):
+  - A branch that is also checked out in another work tree is never fast-forwarded or switched to; the repo is left alone and reported, naming that work tree. A linked work tree on another branch (as the workspace makes them) is unaffected.
+  - `heads/<name>` is the branch and `tags/<name>` the tag, as vcstool reads them, everywhere in the rules.
+  - The probe's refs are removed with `update-ref --no-deref -d`, only under its own prefix. A remote of the probe's reserved name stops the url check, and its refs are kept.
+  - A repoint needs the HEAD of every work tree, detached ones included, on the new url.
+  - HEAD is read again right before the first call that moves anything.
+  - A tag that names a tree or a blob is an error.
+  - A stale remote-tracking ref in the way of a new branch of origin is an error naming both, with the command that clears it.
+  - git 2.23 or later is required; git output the code reads is parsed in the C locale.
+- **Timeline of the update rules:** they were written in the part 2 commit and changed in the fix passes after rounds 1 and 2, and in round 3's fix pass (3fa23a13 changed the undo condition of a two-step move in `_change`). Round 4's fix pass changed only the half-change report's wording (be578f0f), the never-run list and its scan (6e79d6ef), and the masking of `update.py`'s messages (81bdc172). Rounds 5 to 8 did not touch `update.py`. This pass, after the pull request's first review, changes them again (above).
+- **A system made before the record held urls:** an `origin` a person set is never repointed. The first sync records the manifest's url for a clone whose `origin` matches it, so a later change of that url in the manifest does repoint such a clone, under the same checks as any other.
+- **Commits not on origin:** on the manifest's branch, `sync` prints the `git pull --rebase` command when origin's branch has commits the clone lacks, and otherwise the `git push` command that publishes the clone's commits; `sync` itself never pushes.
+- **When only the record is behind:** a clone already on the manifest's version gets one line naming it, "already on <version>; record updated".
+- **Masking:** a guard against accidents, not a guarantee; a user name and password belong in a credential helper or an ssh key, not in a manifest url (the specification already says a credential in a `url` is not looked for).
+  - Where a message formats a url (as far as the source scan sees), and where the manifest reader quotes a value from a manifest (a `base:` path, a version, a name, a key), it goes through `masking.mask_url` or `quoted_url`, so quoting or `repr` escaping cannot hide a `scheme://` url's user information. A value of the wrong type (a list or a mapping given as a url) is described by its kind, never shown.
+  - These lines are masked again as they are printed: each line `sync` prints for a repo's outcome, sync's `ERROR:` line for a distro whose plan or run failed, and the `ERROR:` line of the tool's own kind of error (a manifest that cannot be read or is refused, a system or a record in the wrong state). Other lines are printed as given, for example the earlier format's "unknown role" error.
+  - In a `file://` url, user information is only the text before the last `@` in the authority (between `file://` and the first `/`), when it holds a `:`; a path is never masked.
+  - Nothing that does not follow `://` is masked: local paths holding `@`, `git@github.com:…` and `origin/main@{upstream}` print as they are.
+  - Tests: a source scan for formatted values named as urls; no `!r`/`repr(` in `manifest.py` and `schema.py`; end-to-end runs of `resolve`, `validate`, `init` and `sync` over awkward passwords in every url form, a list and a mapping among them.
+- **The never-run list:** `sync` never runs reset, `checkout -f`, clean, stash, rebase, pull, push, gc or prune. It never deletes a branch or a tag: its one ref deletion is of its own probe refs, with `update-ref --no-deref -d`, which removes a symbolic ref there and never what it points to. It passes no `--force`, `--no-verify`, `--prune`, `-p`, `-P`, `--prune-tags`, `--discard-changes`, `switch -f`, `branch -f` or a bundled short flag holding `p`, `P` or `f`. A test reads `update.py` for each, a command's flag anywhere after the command.
+- **Half-changed moves:** the report lists what ran, where HEAD is, and the tracked changes made during the move (by git, a hook it ran, or something else), or says there are none. An untracked or ignored file a hook wrote stays in the work tree and is not reported.
+- **Acceptance:** the editable install the owner runs points at `/home/roland/agent_workspace`, so it has this change only once that checkout is on `main` after the merge (`git -C /home/roland/agent_workspace pull` there); until then the by-hand acceptance runs the old code.
+- **Open on purpose:**
+  - A repo left alone while the manifest names another version exits 0 (`sync.py`).
+  - The hand-set-origin line prints every run (`update.py`).
+  - One `ls-remote` per repo per run (`find_version`).
+  - Submodules are never updated.
+  - A shallow clone grows by the history of fetched tags.
+  - No version follows the clone's `origin/HEAD`.
+  - A detached HEAD at a recorded branch's commit is moved on a pin change.
+  - A branch switched by a person after the re-read just before the first call is not checked again.
+  - An https url whose path holds `@` has more masked (`masking.py`).
+  - After sync's own half-changed move, a manifest changed back reads the repo as moved by a person (design, sync).
+  - A branch left without an upstream by a half-changed move is mentioned once.
+  - An untracked file a hook wrote during a move that was undone is not reported.
+  - The never-run scan does not look for forced refspecs or `update-ref -d`; `update.py` uses them only on remote-tracking refs and its own probe refs. It also does not look for `reset --merge`/`--keep` or `checkout -B`, which `update.py` does not run.
+  - Masking is a guard, not a guarantee. Not masked: a `file://` url whose password holds a `/`; the scp-like `user:password@host:path`; values the earlier format's reader still prints as they are (`docs/prototype.md` lists them); every `WARNING:` line; the earlier format's "unknown role" error, a signal's stop line and sync's setup-file line; messages outside the manifest readers that echo a value typed on the command line or read from the tool's record files, unless the filter covers their line; and a url reaching a message by a way the source scan cannot see, on a line the filter does not cover, or one the tool did not read with white space in its user information.
+- **Tests:** 1734 pass with `REPOS_MANIFEST_REQUIRE_COLCON=1`.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-19 21:29 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aae2dec0f27df04d4, resume 1 of 3)
+**Verdict**: changes-requested
+
+**PR**: #535 at `f7a1d443`
+**Depth**: Deep (reason: whole-diff classification, 7000+ lines over 31 files; fix-round re-review)
+**Must-fix**: 4 | **Suggestions**: 9
+
+The owner's case, rerun on real systems (record without urls): clone switched to rolling by hand prints "already on rolling; record updated (was jazzy)", exit 0, clone unchanged, record rolling with url; clean on jazzy: moved to rolling; on rolling with one local commit: left alone with the quoted `git push` hint; on jazzy with an edit: left alone, "(1 file)". Second sync quiet each time. The three first-review reproductions are fixed (other work tree's branch not fast-forwarded; heads/jazzy syncs; branch topic kept). heads/rolling to rolling is no move and quiet. Stale-ref error names both refs. Printed push command quotes a branch with ; and $(). Git 2.23 minimum agrees with git's release notes for switch (2.23) and tag non-clobbering (2.20); switch's --no-overwrite-ignore is undocumented in git help switch but works on 2.53. Suite: 1734 passed (private --basetemp; a first run collided with a concurrent pytest's shared basetemp and errored, not the code). Codex: 7 findings, 1 reproduced (must-fix 2), 3 repeat ruled points (state race, run-time switch, half-move reading as a person's). Gemini failed twice (headless tool denial, empty response).
+
+### Findings
+- [x] (must-fix) A branch under rebase in another work tree (`git worktree add -f`, then `rebase -i` stopped) is listed as detached, so sync fast-forwards it; `rebase --continue` then fails "cannot lock ref refs/heads/jazzy" and the person's commit is left on a detached HEAD; design and README say such a branch is not moved; read each work tree's rebase-merge/rebase-apply head-name and BISECT_START — `tools/repos-manifest/src/repos_manifest/update.py:670`
+- [x] (must-fix) A branch pin `release` changed to `tags/release` (origin gains a tag of that name) is not followed and is reported "moved by a person: it is on release" (false); `same_version` takes an unprefixed version as equal to either kind, against design's "`tags/<name>` the tag only ... everywhere: ... the comparison with the record" — `tools/repos-manifest/src/repos_manifest/update.py:476`
+- [x] (must-fix) Design says "Every command a report prints quotes paths, branch names and refs for the shell", but the lock refusals print `fuser -v {path}` unquoted (a system path with a space breaks it) — `tools/repos-manifest/src/repos_manifest/system.py:486`
+- [x] (must-fix) PR body: "The reviewer in round 2 broke six safety rules" — the six mutations are in round 1's review (progress.md:1233) — PR #535 body (deferred: the host's: already corrected in the PR body (round 1); nothing changed here)
+- [x] (suggestion) A work tree on an unborn branch (`worktree add --orphan`) lists HEAD 000..0, which makes every url repoint "its commits cannot be counted" with no hint; drop the null id — `tools/repos-manifest/src/repos_manifest/update.py:1234`
+- [x] (suggestion) The url probe fetch lacks `--no-recurse-submodules`/`--no-prune`, unlike rule 7's fetch (codex) — `tools/repos-manifest/src/repos_manifest/update.py:1210`
+- [x] (suggestion) The printed `update-ref -d refs/remotes/origin/<old>` may drop the only ref to commits origin deleted; say so or give a check first — `tools/repos-manifest/src/repos_manifest/update.py:1283`
+- [x] (suggestion) A prunable work tree (directory deleted) holding the branch blocks the fast-forward naming a path that no longer exists; add `git worktree prune` to the line — `tools/repos-manifest/src/repos_manifest/update.py:693`
+- [x] (suggestion) `worktree list --porcelain` without `-z` misreads a path holding a newline (`-z` needs 2.36) — `tools/repos-manifest/src/repos_manifest/update.py:673` (deferred: a path holding a newline; -z needs git 2.36, newer than the stated minimum 2.23)
+- [x] (suggestion) `same_url` strips `.git`, so local `/srv/robot` and `/srv/robot.git` read as one repo and the probe is skipped (codex) — `tools/repos-manifest/src/repos_manifest/update.py:192` (deferred: the same rule git hosting uses; noted in the design)
+- [x] (suggestion) `build` reads the resolved plan before taking the lock it shares with sync (codex; build.py is outside this diff: a follow-up) — `tools/repos-manifest/src/repos_manifest/build.py:1453` (deferred: build.py is outside this diff; a follow-up for the lock issue)
+- [x] (suggestion) A tracked edit made between the checks and the merge is reported as a half-change "made during the move" — `tools/repos-manifest/src/repos_manifest/update.py:1029`
+- [x] (suggestion) PR body "sync removes no remote-tracking ref" sits beside its own probe-ref deletion (refs under refs/remotes/); say "of origin" — PR #535 body (deferred: the host's PR body: the sentence is in this pass's Implementation entry; the stale-ref error now says 'of origin' too)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 08:16 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #535 at `d3d5c434`
+**Addressed**: Local Review at `f7a1d443` (2026-11-19 21:29 -05:00)
+**Commits**: ae4765c7 (code and tests), 7486be9a (README and design), d3d5c434 (box checks)
+
+I reproduced must-fix 1 and 2 first, with the reviewer's `rev/scen9.py` and `rev/scen8.py` copied to a scratch directory:
+- Must-fix 1 before the fix: `rolling/core/src/a: fast-forwarded 1 commit` while the other work tree's `rebase -i` was stopped at `break`; `rebase --continue` then failed "cannot lock ref 'refs/heads/jazzy': is at 914c… but expected 63c9…", and the commit made during the rebase was left on a detached HEAD.
+- Must-fix 2 before the fix: `release` to `tags/release` printed "left alone: moved by a person: it is on release; the manifest names tags/release", and the record stayed `release`.
+- After the fix: the first is "left alone: branch jazzy is held by the work tree <path> (a rebase of jazzy is stopped there); not fast-forwarded", jazzy is not moved, and `rebase --continue` ends with the person's commit on jazzy. The second is "moved from branch release to tag release", and the record is `tags/release`.
+
+### Actions
+- [x] (must-fix 1) A branch is held by another work tree when that work tree has it checked out, or an operation in progress there names it, as git itself counts it (`git branch -f` refuses each of these, checked by hand on git 2.53):
+  - a rebase whose `rebase-merge/head-name` or `rebase-apply/head-name` is the branch;
+  - a rebase with `--update-refs` whose `update-refs` list names it;
+  - a bisect whose `BISECT_START` names it.
+  When an operation is there and what it returns to cannot be read (a rebase with no `head-name`, or a file that cannot be read), every branch is held. What I checked holds no branch: a rebase of a detached HEAD (`head-name` is `detached HEAD`), a bisect started detached (`BISECT_START` holds a commit), and a `git am`, merge or cherry-pick on a detached HEAD (no `head-name`; `am` leaves `rebase-apply/applying`). The check runs before the fast-forward (rule 10) and before the switch of a move, so also before the fast-forward of an existing local branch. The line names the work tree and why. Each work tree's git directory is read under the common directory (the main one, and `worktrees/<id>`, its path from the `gitdir` file); when they cannot be read, the repo is left alone. Tests, each comparing every work tree, whole, and each linked one's git directory, before and after (`_whole`):
+  - the reviewer's `rebase -i` stopped at `break` with a commit made there, which `rebase --continue` then puts on main;
+  - a rebase stopped on a conflict;
+  - a bisect started on main, at a commit it checked out;
+  - `rebase --update-refs` naming the local branch a move would switch to;
+  - a detached work tree with a `rebase-merge` directory and no `head-name`;
+  - a local branch under `rebase -i` that the move would switch to;
+  - the neighbours that hold nothing: a rebase of a detached HEAD and a stopped `git am` there; the clone is fast-forwarded and that work tree is unchanged.
+- [x] (must-fix 2) The comparison with the record keeps the kind: `same_version` takes the kind a plain version named, and `recorded_kind` reads it for a record. The record keeps the version as written, as before, so records written by earlier code and by this code are the same and cannot be told apart by their text. I chose to read a plain recorded version from where the repo is: on the branch of its name, the branch; detached at the recorded commit, the tag when the tag of that name here is at that commit and the local branch is not, the branch the other way round, and a commit for hex digits that commit starts with. When both the branch and the tag are at the recorded commit (or, on the branch, the tag is), which one sync followed cannot be told: the repo is left alone with a line that says so, not "moved by a person". When neither is (a tag origin moved since, which the stale-tag rule follows), the record reads as the manifest's version when the names are the same, as before. When a move changes only the kind, the line says "moved from branch release to tag release". The lookup is unchanged: plain `x` that is both a branch and a tag on origin is still the "both" error; `heads/x` and `tags/x` are never refused for it. Tests on real clones:
+  - the reviewer's case: branch `release`, then `tags/release` (moved, branch kept), `heads/release` (moved back), plain `release` (the "both" error);
+  - plain `v2` recorded as the tag, then `heads/v2`: moved to the branch;
+  - `tags/v3`, then plain `v3` once origin has only a branch `v3`: moved to the branch;
+  - branch and tag `rel` at the recorded commit, pin `tags/rel`: left alone, whole, with the new line;
+  - the neighbour: a person detaches at the recorded branch's commit and the manifest does not change: still "moved by a person".
+- [x] (must-fix 3) The lock refusals in `system.py` print `fuser -v` with the lock file's path through `shlex.quote` (the function `update.quoted` wraps; `system.py` cannot import `update`). I grepped the package for printed commands: `update.py`'s were already quoted (`<place>` placeholders are replaced with the quoted path before they are printed), and so were `sync.py`'s `mv`; `build.py` prints `repos-manifest build <layers>`, `pgrep -g <pgid>` and `ps -p <pid>`, whose layer names hold only letters, digits, `_` and `-`. I made the sentence true and named what it covers: "Every command a report or a refusal of `sync` prints, the lock refusals' `fuser -v` included, quotes paths, branch names and refs for the shell (`shlex.quote`); the commands `build` prints name only layers, whose names hold letters, digits, `_` and `-`, and process numbers." Test: a system whose path holds a space and a `'`, for a sync and a build holding the lock; the printed `fuser -v` command, split as a shell splits it, is the lock file's path.
+- [x] (must-fix 4) Pull request body: the host corrected it ("round 1", not "round 2"); its box is checked with that note (the check script writes a note as "deferred: …"), nothing changed here.
+- [x] (suggestion) A work tree on an unborn branch (`worktree add --orphan`) lists the null id, which is no longer counted, so it does not stop a repoint. Test: an orphan work tree and a url change: repointed, and that work tree's git directory and files are unchanged.
+- [x] (suggestion) The url probe's fetch passes `--no-prune` and `--no-recurse-submodules`. Neither changed what git 2.53 did here: every git runs with `-c submodule.recurse=false`, and with it a `git fetch` by hand did not go into a submodule under `fetch.recurseSubmodules=true`; a prune on the probe's own refspec could only touch its own refs. So the test that fails without the change is a source scan (`test_update_safety.py`: every fetch with `--refmap=` holds both flags); a real-repo test (repoint with a submodule and `fetch.recurseSubmodules`/`submodule.recurse` set: the submodule's refs, HEAD and status unchanged) guards the behaviour and passes either way.
+- [x] (suggestion) The stale-ref error says, before the `update-ref -d` command, that removing that ref may remove the only ref here to commits origin has since deleted, and gives `git -C <place> branch <a new name> <ref>` to keep them. Test: origin deletes `release`, whose last commit only the clone's `origin/release` holds; the two printed commands, run by a shell in order, keep that commit on a branch and clear the way, and the next sync fetches.
+- [x] (suggestion) A work tree whose directory no longer exists: the line says so and gives `git -C <place> worktree prune`, to run when the directory is gone for good, not on a drive that is not mounted. Test: the printed command, run by a shell, lets the next sync fast-forward.
+- [x] (suggestion) `worktree list --porcelain` without `-z` (deferred: a path holding a newline; `-z` needs git 2.36, newer than the stated minimum 2.23).
+- [x] (suggestion) `same_url` reads `/srv/robot` and `/srv/robot.git` as one repo (deferred: the same rule git hosting uses; the design now says so).
+- [x] (suggestion) `build` reads the resolved plan before taking the lock it shares with sync (deferred: `build.py` is outside this diff; a follow-up for the lock issue).
+- [x] (suggestion) A tracked file edited during the checks: the tracked files are read again right before the first call, with HEAD, and such a repo is left alone ("a tracked file was changed while sync was checking the repo; not moved (sync again once it is committed or put back)"). The half-change report no longer says the changes were made "during the move": "sync's last check, just before the move, found no tracked changes, so these were made since: by git, a hook it ran, or a person". Test: an edit made from inside the paths check, for a fast-forward and a switch; the repo is left, whole, as the person left it, and the record is unchanged. Four existing expectations follow the new wording.
+- [x] (suggestion) Pull request body, "sync removes no remote-tracking ref": the sentence is below. The stale-ref error now says "no remote-tracking ref of origin" too.
+
+### Being my own adversary
+- With real git, before writing the rule: which files each operation leaves in a linked work tree's git directory (rebase on both backends, `--update-refs`, bisect on a branch and detached, `am` and cherry-pick on a detached HEAD, a rebase of a detached HEAD), and that `git branch -f` refuses the branch in each case the rule holds.
+- `--update-refs` does not list a branch checked out in another work tree, so the test uses a local branch that is not checked out (the move's switch target).
+- The main work tree rebasing a branch while the clone is a linked work tree of it: held. A bare common directory with two linked work trees, one rebasing: held from the other. The clone reached through a link to its directory: not taken for another work tree. After `rebase --abort`: held again only as checked out.
+- A first version of `recorded_kind` read "no tag at the recorded commit" as a branch a person detached; the existing stale-tag test caught that it is also a tag origin moved, so neither is now "cannot tell", which keeps the earlier behaviour.
+- `sync` after a person detaches at the recorded branch's commit, with the manifest unchanged, is still "moved by a person" (tested).
+- The `fuser` path with a space and a `'`, and the printed `worktree prune` and `branch`/`update-ref` commands, run by a real shell.
+- Each new test fails on the source before ae4765c7 (run with that source's `src` on `PYTHONPATH`), except those meant to pass there: the two neighbours of must-fix 1 (a detached rebase and `am`), the detached-person neighbour of must-fix 2, and the real-repo probe submodule test (above).
+
+### Checks
+- Whole suite at `7486be9a`: `cd tools/repos-manifest && PYTHONDONTWRITEBYTECODE=1 REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest -p no:cacheprovider --basetemp=<private dir>` gave `1757 passed in 574.50s (0:09:34)` (1734 before; 23 new)
+- The signal and kill tests, three times: `tests/test_interrupted.py` gave `18 passed` each time; the tests selected by `-k "signal or kill or stop or interrupt or SIG"` in `test_interrupted.py`, `test_sync.py`, `test_sync_distros.py`, `test_clone.py` and `test_init_refusals.py` gave `31 passed, 109 deselected` each time.
+- `test_update.py`, `test_update_safety.py`, `test_sync_distros.py` and `test_update_submodules.py` together: `264 passed` before the commit (plus the two tracked-edit tests after).
+- flake8 is clean on the changed files; black ran in the commit hooks. No workspace script changed. Commits used `SKIP=validate-script-tests`; the full pre-commit pass is the host's. `git status --porcelain` is clean.
+- I re-read each changed sentence of the tool's `README.md` and `docs/design.md` against the code: rule 7's stale ref, rule 8's kinds, rules 10 and 11's held branch, the re-read before the first call, the half-change wording, the quoting sentence, the work-tree paragraph, the probe fetch flags, and the url comparison.
+
+### Departures
+- One commit for the code and tests, and one for the docs, not one per finding: the fixes share `update.py`'s `worktree_holding`, `_change` and the move decision.
+- The tracked files are read again before the first call and such a repo is left alone, which goes further than rewording the half-change report: an edit made during the checks is the person's, and a move on top of it is not needed to report it.
+- The case where branch and tag are both at the recorded commit is left alone with its own line rather than moved, since which one sync followed cannot be told (the host's rule: when in doubt, leave it alone and report).
+- The session scratchpad's volume (`/tmp`) ran out of inodes during this pass and removing the earlier passes' test directories there was refused (`scratchpad/fix6/pt6.J2nT`, `fix6/pt.0zPH`, `fix8/full.vKDS`, `fix8/pt.AZRo`, `fix8/pt.NFTs`, `pt/bt`, about 790 000 inodes). I put this pass's scratch files and pytest `--basetemp` in the worktree's ignored `.agent/scratchpad/fix9.beTz/` instead, with `TMPDIR` pointing there. The Bash tool could not start at all for a while (it captures output on that volume); the whole suite finished meanwhile, and the box checks, the signal and kill runs and this entry came after the host freed the volume. Removing my own `scratchpad/fix9` in the session scratchpad was refused; it and `.agent/scratchpad/fix9.beTz/` (ignored) remain.
+
+### For the pull request body
+Only what changes or is new in this pass; the rest of the last entry's text stands.
+- **The update rules this pass changes** (after the pull request's second review), to add to that list:
+  - A branch another work tree holds is never fast-forwarded or switched to: checked out there, or named by a rebase (`head-name`, `--update-refs`) or a bisect (`BISECT_START`) in progress there, as git itself counts it; when that cannot be read, every branch is held. The repo is left alone and reported, naming that work tree and why; a work tree whose directory is gone gets the `git worktree prune` command.
+  - A version's kind counts in the comparison with the record: a recorded branch `x` and a pin `tags/x` are two versions, so a clean repo on the branch is moved to the tag ("moved from branch x to tag x"), and the other way round. A plain recorded name is read from where the repo is; when the branch and the tag of that name are both at the recorded commit, the repo is left alone with a line that says why.
+  - The tracked files are read again with HEAD right before the first call; a change a person made during the checks leaves the repo alone.
+  - The url probe's fetch passes `--no-prune` and `--no-recurse-submodules`; a work tree on a branch with no commit does not stop a repoint.
+- In place of "A branch that is also checked out in another work tree is never fast-forwarded or switched to; ..." (the first-review line): the held-branch line above.
+- **Quoting:** every command a report or a refusal of `sync` prints quotes paths, branch names and refs for the shell, the lock refusals' `fuser -v` included; the commands `build` prints name only layers (letters, digits, `_`, `-`) and process numbers.
+- **The never-run list:** in place of "sync removes no remote-tracking ref": "sync removes no remote-tracking ref of origin; its one ref deletion is of its own probe refs". The stale-ref error now also gives the `git branch` command that keeps commits only that ref holds, before the `update-ref -d` command.
+- **Half-changed moves:** in place of "the tracked changes made during the move (by git, a hook it ran, or something else)": "the tracked changes made since the check just before the first call found none (by git, a hook it ran, or a person)".
+- **Tests:** 1757 pass with `REPOS_MANIFEST_REQUIRE_COLCON=1`.
+- **Left open, on purpose** (add):
+  - `git worktree list --porcelain` is read without `-z`, so a work tree path holding a newline is misread (`-z` needs git 2.36; the minimum is 2.23).
+  - Urls are compared after one trailing `/` and `.git` are taken off, so local `/srv/robot` and `/srv/robot.git` read as one repository, as git hosting reads `x` and `x.git`.
+  - `build` reads the resolved plan before it takes the lock it shares with `sync` (`build.py`, a follow-up for the lock issue).
+  - A plain recorded version whose branch and tag are both at the recorded commit is left alone until a person moves the repo (the record keeps the version as written, not its kind).
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-20 08:22 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aae2dec0f27df04d4, resume 2 of 3)
+**Verdict**: approved
+
+**PR**: #535 at `f01f6336`
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Round 3, narrow: the round 2 findings and `git diff 3e9e484c..f01f6336 -- tools/`; cross-model skipped (round-3 convergence check, per handoff). Reproduced on real systems from `init`, snapshotting every work tree: a rebase of jazzy stopped in a `-f` work tree now leaves the clone alone ("a rebase of jazzy is stopped there") and `rebase --continue` then succeeds; a detached bisect started on jazzy is held; a rebase dir with no head-name holds every branch; a move to a branch a rebase there returns to is "not switched"; a linked work tree on another branch is still unaffected (fast-forwarded). `git branch -f` refuses the same branches (git's own rule, as the design says). Branch `release` to `tags/release` moves ("moved from branch release to tag release"), back via `heads/release` moves, second syncs quiet; tag and branch both at the recorded commit: left alone with the reason (listed as left open); `tags/v1` to `v1` no move, then `heads/v1` moves. A tracked edit made during the checks (in_the_way patched to write it) leaves the clone alone, the edit kept, next sync "uncommitted changes". Owner's case unchanged: already on rolling, record updated (was jazzy); clean moved; local commit with push hint; edit left alone. `fuser -v` now quoted; no other unquoted printed command found in sync.py, system.py, init.py, update.py. PR body's new sentences checked against code and timeline (round 1 for the six mutations is right). Tests touched by the diff: test_update, test_update_safety, test_update_submodules, test_sync_distros: 266 passed. CI at f01f6336: Validate Documentation and Adapter Contract pass; Lint and the tool's tests pending.
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-20 09:09 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #535 at `948659e6`
+**Sources**: 3 (Local Review @ `f01f6336` (covers 948659e6 via bookkeeping), Local Review (Pre-Push) @ `00f2ea1c` (stale; its open box re-checked against the head), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+GitHub side: 0 reviews, 0 inline comments, 0 conversation comments (Copilot left none). CI at `948659e6`: all 10 check runs success (Lint, Validate Documentation, Validate Adapter Contract, repos-manifest tests on Python 3.10 and 3.14, each twice). Local Review @ `f01f6336` (round 3, approved, no findings) covers the head: `948659e6` adds only `progress.md`. The `sources` helper dropped Local Review (Pre-Push) @ `00f2ea1c` as stale with one open suggestion, which no later entry ticked or ruled on; the sentence it names is unchanged at the head (`tools/repos-manifest/docs/design.md:1005-1006`), and its premise holds: `_put_in_place` prints `"/".join(src + key_parts)` (`sync.py:269-272,280`), the layer's src parts then the key, so it is carried forward.
+
+### Findings
+- [x] (suggestion, Local Review (Pre-Push) @ `00f2ea1c`) "they show only the repo's path, its key" equates the shown path with the key; the path is the distro and layer directories, `src`, then the key (`sync.py:269-272`). The conclusion (no `scheme://` can appear) still holds, since those names are single words; reword to "its path, made of single-word names and its key" — `tools/repos-manifest/docs/design.md:1005-1006`
+
+### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 09:12 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+"Fix it first"
+
+Asked with the one open finding of the Integrated Review at 948659e6 in the dialog: the design's sentence that sync's two unfiltered lines "show only the repo's path, its key", where the printed path is the distro and layer directories, then src, then the key. The other choices offered were to merge with it deferred, or hold. An earlier dialog in this session asked him to merge before the triage had run; his "Merge" there was not acted on.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 09:13 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #535 at `fc1923bf`
+**Addressed**: Integrated Review at `948659e6` (2026-11-20 09:09 -05:00)
+**Commits**: fc1923bf
+
+Owner's direction at the findings checkpoint, quoted: "Fix it first".
+
+### Actions
+- [x] The design's sentence on sync's two unfiltered lines equated the shown path with the repo's key; it now says the path is the distro's and the layer's directories where the system has them, then `src`, then the key, and why that path cannot hold a `scheme://` url (distro and layer names allow only letters, digits, `_` and `-`, checked in `manifest.py:42` and `schema.py:113,126`; the path is built in `sync.py:268-271` from `system.py:286-288`) — `tools/repos-manifest/docs/design.md:1005-1009`. No code changed. The tool's README does not repeat the wording (checked: `tools/repos-manifest/README.md:120-135` says nothing of these two lines).
+
+### For the pull request body
+Remove this line from "Left open, on purpose", now fixed:
+- One wording point from the last review: the design says the two unfiltered lines "show only the repo's path, its key", where the path is the distro and layer directories, `src`, then the key (`docs/design.md:924-926`).
+
+### Checks
+No suite run: the change is documentation only (`tools/repos-manifest/docs/design.md`), no script, skill or knowledge text changed. The commit's hooks ran with `SKIP=validate-script-tests` and passed. The full pre-commit pass is left to the host.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-20 09:16 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #535 at `4348acf8`
+**Depth**: Light (reason: round 4 convergence check per handoff; fix diff is one documentation sentence)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Round 4, narrow: the one finding of the Integrated Review at `948659e6` and `git diff f01f6336..HEAD -- tools/` (fc1923bf, `tools/repos-manifest/docs/design.md:1005-1009` only); cross-model skipped (round-4 convergence check, per handoff). Each claim of the new sentence checked against the code. The path both unfiltered lines print is `"/".join(src + key parts)`: `cloning` at `sync.py:269-272,280`, and "holds the manifest" prints `done.path` of an updated repo, set by `present_repo` as `"/".join(parts)` with `parts = src + key parts` (`sync.py:413-416,507,564`). `src` is `layer_src_parts` (`system.py:286-288`): the distro's directory only in the distro-dirs layout (`distro_parts`, `system.py:281-283`), the layer's directory except for the unnamed layer, then `src`, so "where the system has them" is right. Names: `sync` reads only the specification's format (`base.load_manifest`; the reader refuses earlier-format keys, `manifest.py:399-405`), whose distro and layer names pass `_NAME` = `[A-Za-z][A-Za-z0-9_-]*` (`manifest.py:42,266,425,429`); a distro sync acts on must be one the manifest lists (`selection.py:71-81`), so a distro recorded in `config.yaml` (only checked to be a string, `system.py:221-223`) cannot reach the path otherwise. The earlier format's rules are within the sentence too (layer `[A-Za-z0-9_-]+`, distro `[a-z][a-z0-9_]*`, repository name with no `/`; `schema.py:113,126,117`). Every repo key of every manifest part passes `repo_key` (`manifest.py:472-473`), which refuses an empty key, a leading `/`, a trailing `/` and `//` (`manifest.py:515-534`), so the joined path has no empty part and no `//`; the masker matches only `scheme://` (`masking.py:34,41-43,110`), so these lines lose nothing by being unfiltered. The README does not repeat the wording. PR body: the wording point is gone from "Left open, on purpose" and nothing else in the body speaks of it. Commit fc1923bf carries `#500` and the agent identity. No suite run (documentation only). CI at `4348acf8`: Validate Documentation pass, the rest pending.
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-20 09:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #535 at `25e6719e`
+**Sources**: 2 (Local Review @ `4348acf8` (covers 25e6719e via bookkeeping), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+GitHub side: 0 reviews, 0 inline comments, 0 conversation comments. CI at `25e6719e`: all 10 check runs pending when read (Lint, Validate Documentation, Validate Adapter Contract, repos-manifest tests on Python 3.10 and 3.14, each twice); not waited for. Local Review @ `4348acf8` (round 4, approved, no findings) covers the head: `25e6719e` adds only `progress.md`. The `sources` helper returned no open local findings. It still lists Local Review (Pre-Push) @ `00f2ea1c` as stale with one open suggestion; that suggestion was carried forward by the Integrated Review at `948659e6`, fixed in fc1923bf, and is confirmed fixed at the head: `tools/repos-manifest/docs/design.md:1005-1009` now says the path is the distro's and layer's directories where the system has them, then `src`, then the key, and why it cannot hold a `scheme://` url. The only change under `tools/` since round 3 (`f01f6336`) is that sentence.
+
+### Findings
+
+### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 10:43 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+"Merge"
+
+Asked at the merge checkpoint for pull request 535 after the Integrated Review at dd241342 with no open findings. The dialog gave: the design.md sentence fixed, the narrow re-review approved with no findings, all 10 CI checks passing on head dd241342 (the pull-request run's Validate Adapter Contract job lost its hosted runner after 46 minutes and passed on a re-run of that job; the same job had passed on the push run), merge state CLEAN, and the outside reviewers (Codex ran on earlier rounds and its defects were fixed, Gemini failed twice, Copilot left no review, the last narrow re-review had none). The other choices offered were hold and stop.

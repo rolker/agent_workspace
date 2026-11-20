@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Callable, List, Optional, Sequence
 
 from . import selection
+from .masking import mask_url
 from .output import process_has_ended, signals_held
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
 from .sync import FINISH, Planned, closing, plan_distros, require_tools, sync_distros
@@ -108,7 +109,7 @@ def summary(config: Config, plan: Sequence[Planned]) -> str:
             for repo in layer.repos:
                 version = repo.version if repo.version is not None else "(its default branch)"
                 optional = "  (optional)" if repo.optional else ""
-                lines.append(f"    {repo.key}  {version}  {repo.url}{optional}")
+                lines.append(f"    {repo.key}  {version}  {mask_url(repo.url)}{optional}")
     if config.layout == LAYOUT_DISTRO_DIRS:
         lines.append("Layout: a directory per distro.")
     elif config.distros is not None:
@@ -127,6 +128,17 @@ def ask(question: str) -> bool:
     return reply.strip().lower() in ("y", "yes")
 
 
+def _is_process_id(pid: int) -> bool:
+    """Whether `pid` can name a process at all (`os.kill` takes it)."""
+    try:
+        os.kill(pid, 0)
+    except (OverflowError, ValueError):
+        return False
+    except OSError:
+        return True
+    return True
+
+
 def sweep_asides(system: Path) -> None:
     """Remove what an ended `init` left in the person's directory: a directory of the aside's
     name, not a link, whose process has ended, that is empty or holds only `config.yaml`.
@@ -138,18 +150,25 @@ def sweep_asides(system: Path) -> None:
             continue
         config = entry / CONFIG_FILE
         directory = not entry.is_symlink() and entry.is_dir()
-        if directory and not process_has_ended(int(match.group("pid"))):
-            warn(
-                f"{entry}: a temporary of repos-manifest whose process is still running (another"
-                " init may be setting up here); left as it is"
-            )
-            continue
         ours = directory and all(child == config for child in entry.iterdir())
         if not ours or config.is_symlink() or (os.path.lexists(config) and not config.is_file()):
             warn(
                 f"{entry}: named like a temporary of repos-manifest, but not what init leaves;"
                 " left as it is"
             )
+            continue
+        pid = int(match.group("pid"))
+        if not process_has_ended(pid):
+            if 0 < pid and _is_process_id(pid):
+                warn(
+                    f"{entry}: a temporary of repos-manifest whose process is still running"
+                    " (another init may be setting up here); left as it is"
+                )
+            else:
+                warn(
+                    f"{entry}: named like a temporary of repos-manifest, but not what init"
+                    " leaves; left as it is"
+                )
             continue
         try:
             config.unlink(missing_ok=True)
@@ -243,9 +262,13 @@ def _init(
             layout=layout,
             distros=distros if manifest.distros is not None else None,
         )
-        plan = plan_distros(
-            [selection.resolve(manifest, role, distro, groups) for distro in config.distro_keys]
-        )
+        resolved_distros = [
+            selection.resolve(manifest, role, distro, groups) for distro in config.distro_keys
+        ]
+        try:
+            plan = plan_distros(resolved_distros)
+        except ManifestError as exc:
+            raise ManifestError(f"{exc}; nothing was set up") from None
         for resolved in (planned.resolved for planned in plan):
             layers = [layer.name for layer in resolved.layers]
             for parts in paths_init_creates(layout, resolved.distro, layers):
