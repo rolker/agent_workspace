@@ -70,3 +70,11 @@ Other stale strings: none. The two other occurrences, lines 4193 and 4424, are t
 **Decision**: proceed
 
 Read: the Issue Review at 2665c097. Its actions go into the plan: part 1 is the one expected string at test line 5065; part 2 is the CI install of vcs and the skip count, and the plan says whether a missing vcs in CI fails the job and whether anything parses the summary line. The CI workflow change in part 2 is on the Ask First list; the owner approved the issue's three items on 2026-11-20 ("Issue + fix main first (Recommended)"), and the part 2 pull request names the workflow change for his merge decision.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-20 12:17 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-539/plan.md` at `38fcf8de`
+
+Two parts. Part 1: the one expected string becomes the tool's "up to date (2)", verified by running the suite here with vcs present. Part 2: CI installs vcstool 0.3.0 by pip, a missing vcs fails where CI is set, and the Results line counts the real-tool skip (no parser of it found); the workflow change is Ask First and named in the part 2 pull request.
