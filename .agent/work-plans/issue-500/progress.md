@@ -2068,3 +2068,13 @@ Spot-checked leftover wording, all true: `manifest.py:186`, `schema.py:166`, `ma
 
 ### Findings
 - [ ] (suggestion) "they show only the repo's path, its key" equates the path with the key. The path is the distro and layer directories, `src`, then the key (`sync.py:232`). The conclusion holds, since those names are single words. "its path, made of single-word names and its key" would be exact. — `docs/design.md:924-926`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 20:36 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 8 approved with no must-fix; the host's full pre-commit pass over the branch passed at fa98c208, every hook, no SKIP; the owner's answer at the round 6 checkpoint was to fix and then publish)
+**After**: publish
+**Decision**: publish
+
+Round 8 approved the branch with one wording suggestion, which the pull request lists. The full pass ran on head fa98c208 with exit 0. The pull request says "Part of #500": parts 3 and 4 are not delivered, and the owner's by-hand acceptance on his real project is not done.
