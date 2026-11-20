@@ -2398,3 +2398,18 @@ Remove this line from "Left open, on purpose", now fixed:
 
 ### Checks
 No suite run: the change is documentation only (`tools/repos-manifest/docs/design.md`), no script, skill or knowledge text changed. The commit's hooks ran with `SKIP=validate-script-tests` and passed. The full pre-commit pass is left to the host.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-20 09:16 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #535 at `4348acf8`
+**Depth**: Light (reason: round 4 convergence check per handoff; fix diff is one documentation sentence)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Round 4, narrow: the one finding of the Integrated Review at `948659e6` and `git diff f01f6336..HEAD -- tools/` (fc1923bf, `tools/repos-manifest/docs/design.md:1005-1009` only); cross-model skipped (round-4 convergence check, per handoff). Each claim of the new sentence checked against the code. The path both unfiltered lines print is `"/".join(src + key parts)`: `cloning` at `sync.py:269-272,280`, and "holds the manifest" prints `done.path` of an updated repo, set by `present_repo` as `"/".join(parts)` with `parts = src + key parts` (`sync.py:413-416,507,564`). `src` is `layer_src_parts` (`system.py:286-288`): the distro's directory only in the distro-dirs layout (`distro_parts`, `system.py:281-283`), the layer's directory except for the unnamed layer, then `src`, so "where the system has them" is right. Names: `sync` reads only the specification's format (`base.load_manifest`; the reader refuses earlier-format keys, `manifest.py:399-405`), whose distro and layer names pass `_NAME` = `[A-Za-z][A-Za-z0-9_-]*` (`manifest.py:42,266,425,429`); a distro sync acts on must be one the manifest lists (`selection.py:71-81`), so a distro recorded in `config.yaml` (only checked to be a string, `system.py:221-223`) cannot reach the path otherwise. The earlier format's rules are within the sentence too (layer `[A-Za-z0-9_-]+`, distro `[a-z][a-z0-9_]*`, repository name with no `/`; `schema.py:113,126,117`). Every repo key of every manifest part passes `repo_key` (`manifest.py:472-473`), which refuses an empty key, a leading `/`, a trailing `/` and `//` (`manifest.py:515-534`), so the joined path has no empty part and no `//`; the masker matches only `scheme://` (`masking.py:34,41-43,110`), so these lines lose nothing by being unfiltered. The README does not repeat the wording. PR body: the wording point is gone from "Left open, on purpose" and nothing else in the body speaks of it. Commit fc1923bf carries `#500` and the agent identity. No suite run (documentation only). CI at `4348acf8`: Validate Documentation pass, the rest pending.
+
+### Findings
+- [ ] No issues found. LGTM.
