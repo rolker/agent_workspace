@@ -2348,3 +2348,20 @@ Round 3, narrow: the round 2 findings and `git diff 3e9e484c..f01f6336 -- tools/
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-20 09:09 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #535 at `948659e6`
+**Sources**: 3 (Local Review @ `f01f6336` (covers 948659e6 via bookkeeping), Local Review (Pre-Push) @ `00f2ea1c` (stale; its open box re-checked against the head), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+GitHub side: 0 reviews, 0 inline comments, 0 conversation comments (Copilot left none). CI at `948659e6`: all 10 check runs success (Lint, Validate Documentation, Validate Adapter Contract, repos-manifest tests on Python 3.10 and 3.14, each twice). Local Review @ `f01f6336` (round 3, approved, no findings) covers the head: `948659e6` adds only `progress.md`. The `sources` helper dropped Local Review (Pre-Push) @ `00f2ea1c` as stale with one open suggestion, which no later entry ticked or ruled on; the sentence it names is unchanged at the head (`tools/repos-manifest/docs/design.md:1005-1006`), and its premise holds: `_put_in_place` prints `"/".join(src + key_parts)` (`sync.py:269-272,280`), the layer's src parts then the key, so it is carried forward.
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) @ `00f2ea1c`) "they show only the repo's path, its key" equates the shown path with the key; the path is the distro and layer directories, `src`, then the key (`sync.py:269-272`). The conclusion (no `scheme://` can appear) still holds, since those names are single words; reword to "its path, made of single-word names and its key" — `tools/repos-manifest/docs/design.md:1005-1006`
+
+### False positives
