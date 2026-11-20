@@ -1,6 +1,8 @@
-"""A url's user name and password are never printed (``docs/design.md``, "sync"): the user
-information is found by parsing the whole url, whatever it holds, and is masked in every line
-`sync` prints, its own and git's, and in the errors and refusals of a run."""
+"""A url's user name and password are masked in what the tool prints (``docs/design.md``,
+"sync"), as a guard against accidents, not a guarantee: the user information is found by
+parsing the whole url, and is masked where a message formats a url and again in the lines
+`sync` prints for a repo, its own and git's, and in the error of a manifest that cannot be read
+or is refused. The design's list of limits says what is not masked."""
 
 import subprocess
 
@@ -229,11 +231,11 @@ def _url_forms(user, password):
         "ssh with no path": f"ssh://{info}@127.0.0.1:9",
         "file url": f"file://{info}@localhost/nonexistent/x.git",
         # Round 5: a value that is not a string, and a file url whose user information is
-        # followed by a path holding an `@`, or holds a `/` itself.
+        # followed by a path holding an `@`. (A file url's password holding a `/` is not masked:
+        # it cannot be told from a path; see the design's limits and the test below.)
         "list": [f"https://{info}@127.0.0.1:9/x.git"],
         "mapping": {"u": f"https://{info}@127.0.0.1:9/x.git"},
         "file url, @ in its path": f"file://{info}@localhost/srv/w@x",
-        "file url, / in its password": f"file://{user}:{password}/zQ@localhost/srv/x",
     }
 
 
@@ -313,17 +315,47 @@ def test_an_extends_url_of_the_earlier_format_prints_no_password(tmp_path, capsy
         ("file://bobQ@localhost/x.git", "file://bobQ@localhost/x.git"),
         # Round 5: an `@` in the path after the user information is not part of it ...
         ("file://aliceQ:pw zQ@localhost/srv/w@x", "file://***@localhost/srv/w@x"),
-        # ... and a password holding a `/` is masked whole (with more after it, never less).
-        ("file://aliceQ:pw/zQ@localhost/srv/x", "file://***@localhost/srv/x"),
-        ("file://u@sQ:p:w/@zQ@localhost/srv/w@x", "file://***@x"),
-        # A path after a host, holding an `@` and no `:`, is not user information.
+        # A path after a host, holding an `@` with or without a `:`, is never masked (round 6).
         ("file://localhost/srv/w@x/r", "file://localhost/srv/w@x/r"),
         ("file://bobQ@localhost/srv/w@x", "file://bobQ@localhost/srv/w@x"),
+        ("file://localhost/srv/a:b/w@x", "file://localhost/srv/a:b/w@x"),
+        ("file://localhost/srv/a:b@x", "file://localhost/srv/a:b@x"),
+        ("file://localhost/a:b@c/d", "file://localhost/a:b@c/d"),
+        ("file:///srv/a:b/w@x", "file:///srv/a:b/w@x"),
+        # Not masked, as the design's limits say: a password holding a `/` reaches past the
+        # authority and cannot be told from a path (git's file transport ignores it anyway).
+        ("file://aliceQ:pw/zQ@localhost/srv/x", "file://aliceQ:pw/zQ@localhost/srv/x"),
+        ("file://u@sQ:p:w/@zQ@localhost/srv/w@x", "file://u@sQ:p:w/@zQ@localhost/srv/w@x"),
     ],
 )
 def test_a_file_urls_user_and_password_are_masked_and_its_path_is_not(url, shown):
     assert masking.mask_url(url) == shown
     assert masking.quoted_url(url) == repr(shown)
+    assert masking.mask_urls(f"origin is {url}") == f"origin is {shown}"
+
+
+def test_a_file_url_whose_path_holds_a_colon_and_an_at_prints_whole(vcs, tmp_path, capsys):
+    """Round 6: a system under `a:b/w@x`, its repo from a `file://localhost/...` url and an
+    origin set by hand to another one. Nothing is masked, and the printed `set-url` command
+    sets the manifest's url when it is run."""
+    root = tmp_path / "a:b" / "w@x"
+    remote = make_remote(root / "remotes", "a")
+    url = f"file://localhost{remote}"
+    sys_dir, _ = make_system(root, {"a": repo(url, "main")})
+    clone = sys_dir / "src" / "a"
+    other = root / "remotes" / "a2"
+    git("clone", "-q", "--bare", str(remote), str(other))
+    git("remote", "set-url", "origin", f"file://localhost{other}", cwd=clone)
+    status, out = _all_output(sys_dir, capsys)
+    assert status == 0, out
+    assert "***" not in out, out
+    command = f"git -C {clone} remote set-url origin {url}"
+    assert (
+        f"src/a: origin is file://localhost{other}, the manifest says {url}; left as set (to use"
+        f" the manifest's: {command})"
+    ) in out, out
+    subprocess.run(command, shell=True, check=True)
+    assert git("remote", "get-url", "origin", cwd=clone).strip() == url
 
 
 # --- Values of the wrong type, and keys and names that are not urls by name (round 5) -------

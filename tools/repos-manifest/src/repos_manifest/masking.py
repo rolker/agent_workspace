@@ -3,21 +3,23 @@
 helper or an ssh key, not in a manifest url.
 
 Every url the tool reads (a manifest's, a clone's `origin`, a recorded one) is registered with
-`remember_url`, which parses the url whole: its user information is everything between `://`
-and the last `@` in it, whatever characters it holds (quotes, spaces, `@`, `:`, `/`, `%`
-escapes, any letter). `mask_urls` replaces each registered user information, and its
-percent-decoded form, where it follows `://` in a text, and then masks any other
+`remember_url`, which parses the url whole: its user information (a `file://` url's aside,
+below) is everything between `://` and the last `@` in it, whatever characters it holds
+(quotes, spaces, `@`, `:`, `/`, `%` escapes, any letter). `mask_urls` replaces each
+registered user information, and its percent-decoded form, where it follows `://` in a text,
+and then masks any other
 `scheme://...@host` it finds by a pattern, for a url the tool did not read itself (one git
 prints after an `insteadOf` rewrite). Nothing not after `://` is masked: a local path holding
-`@`, `git@github.com:...` and `origin/main@{upstream}` are printed as they are. A `file://`
-url whose text after `://` starts with `/` (`file:///srv/w@x/...`) has no user information. In
-any other `file://` url, the user information is the text before the last `@` ahead of the
-first `/` when that text holds a `:`, or else the text before the last `@` in the url when that
-holds a `:`; a bare name before an `@` is kept. An https url, or a `file://` url, whose path
-holds an `@` can have more masked than its user information; never less.
+`@`, `git@github.com:...` and `origin/main@{upstream}` are printed as they are. In a `file://`
+url, user information is only in its authority, the text between `file://` and the first `/`
+after it: the text before the last `@` there, when that text holds a `:`. A path is never
+masked (`file:///srv/w@x/...`, `file://localhost/srv/a:b/w@x`), and so neither is a password
+that holds a `/`, which cannot be told from a path. An https url whose path holds an `@` can
+have more masked than its user information; never less.
 
-The messages that put a url into text do it through `mask_url` (plain) or `quoted_url`
-(quoted for display, as `repr` would), so a url is masked before it is quoted or escaped.
+Messages that put a url into text where the source scan sees it, and the manifest reader's
+messages, do it through `mask_url` (plain) or `quoted_url` (quoted for display, as `repr`
+would), so a url is masked before it is quoted or escaped.
 `quoted_url` given a value that is not a string shows only what kind of value it is (`a list`,
 `a mapping`), nothing of its content. A test walks the tool's source for values formatted into
 text whose names say they are urls (``tests/test_url_messages.py`` names what it cannot see).
@@ -58,31 +60,25 @@ def userinfo_of(url: str) -> Optional[Tuple[str, str]]:
 
 
 def _file_userinfo(rest: str) -> Optional[str]:
-    """The user information of a `file://` url, from the text after `file://`. Text that starts
-    with `/` is a path. Otherwise the user information ends at the last `@` before the first
-    `/` when the text before it holds a `:` (`user:password@host/srv/w@x`: the `@` in the path
-    is not part of it). A password may hold a `/` (`user:pass/word@host/...`) or an `@` and a
-    `/` together; then the first `/` is in it, and the user information runs to the last `@` in
-    the url when the text before that holds a `:`, which masks more than it, never less."""
-    if rest.startswith("/"):
-        return None
+    """The user information of a `file://` url, from the text after `file://`: only in the
+    authority, the text before the first `/`, and only the text before the last `@` there when
+    it holds a `:` (`user:password@host/srv/w@x`: the `@` in the path is not part of it). A path
+    is never masked, so a password holding a `/` (`user:pass/word@host/...`) is not either: it
+    cannot be told from a path, and git's file transport ignores user information."""
     slash = rest.find("/")
     head = rest if slash < 0 else rest[:slash]
     at = head.rfind("@")
     if at >= 0 and ":" in head[:at]:
         return head[:at]
-    at = rest.rfind("@")
-    if at >= 0 and ":" in rest[:at]:
-        return rest[:at]
     return None
 
 
 def _kept(scheme: str, userinfo: str) -> bool:
     """An ssh url's user name alone names an account, as in `ssh://git@host/...`. In a
-    `file://` url, text before an `@` that starts with `/` is a path on this machine, and a
-    bare name is not a secret either; only text holding a `:` is masked."""
+    `file://` url, text before an `@` that holds a `/` reaches into the path, which is never
+    masked, and a bare name is not a secret either; only an authority's `user:password` is."""
     if scheme.lower() == "file://":
-        return userinfo.startswith("/") or ":" not in userinfo
+        return "/" in userinfo or ":" not in userinfo
     return "ssh" in scheme.lower() and ":" not in userinfo
 
 
