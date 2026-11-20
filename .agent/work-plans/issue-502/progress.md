@@ -314,3 +314,17 @@ The plan answers the second review and puts every cause the owner named on the s
 - [ ] `standing` takes `changes` (or `status.py` adds the clause); the stopped-move text appears once.
 - [ ] Owner (veto): a repo with no `origin` url at all — `left-alone` (exit 0) as planned, or `unusable` (exit 1)?
 - [ ] Design text: the recorded/acted-on distros sentence; `unpushed` null for `left-alone` and `unusable`.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 11:48 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the third plan review's verdict is ready, with nine low findings the implementer can fix from the entry)
+**After**: plan
+**Decision**: proceed
+
+Read the Plan Review at a0da9ddd: the split of the old `unknown` state puts every cause the owner named where his words put it, and nothing found would make the code wrong. Its nine low findings go to the implementer in the handoff rather than a fourth plan round. Host decisions, listed for the owner's veto:
+
+1. Finding 8, which the review raised as a question: a required repo with no `origin` url at all is `unusable` (exit 1), because the owner's words put "its version cannot be found" on that side and with no `origin` there is nothing to find it in. A repo whose `origin` has more than one url stays `left-alone`. Undoing it is one line of the mapping and its test.
+2. Finding 5: the `validate` row of `docs/manifest/design.md` is worded as failing when `status` exits 1, with what that covers said in plain words, so an unreadable distro is covered too.
+3. Finding 1: the plan's decision 16 compared optional repos with `sync` wrongly. `sync` turns any failure of an optional repo into "skipped", so `status` and `sync` follow the same rule; the plan's sentence is corrected in the design text and the agreement test accepts "skipped" from `sync` for optional fixtures.
