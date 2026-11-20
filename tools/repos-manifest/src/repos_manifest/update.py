@@ -549,18 +549,29 @@ def ask_local(git: Git, *patterns: str) -> Tuple[Optional[Dict[str, str]], str]:
     origin's branch (`refs/heads/<name>`), and each tag here as origin's tag, a peeled tag's
     commit under `<tag>^{}`; only the refs the `patterns` match, as `ls-remote` matches them.
     A tag made here and a remote-tracking ref left from a branch origin deleted count as
-    origin's: offline they cannot be told apart."""
+    origin's: offline they cannot be told apart. A tag of a tag is peeled to the end, as
+    `ls-remote` peels it (a git that peels `%(*objectname)` one level only leaves a tag there,
+    and `rev-parse <tag>^{}` peels the rest). The lines are split at `\n` only: a ref name holds
+    no control character and no space, but may hold U+2028 and the like, which `splitlines`
+    would split at."""
     status, printed, error = git.run(
-        "for-each-ref", "--format=%(refname) %(objectname) %(*objectname)",
+        "for-each-ref", "--format=%(refname) %(objectname) %(*objectname) %(*objecttype)",
         "refs/remotes/origin/", "refs/tags/",
     )  # fmt: skip
     if status != 0:
         return None, f"`git for-each-ref` exited {status}:\n{error.rstrip()}"
     found: Dict[str, str] = {}
     prefix = "refs/remotes/origin/"
-    for line in printed.splitlines():
+    for line in printed.split("\n"):
+        if not line:
+            continue
         ref, _, rest = line.partition(" ")
-        oid, _, peeled = rest.partition(" ")
+        oid, _, rest = rest.partition(" ")
+        peeled, _, peeled_type = rest.partition(" ")
+        if peeled_type == "tag":
+            peeled = git.out("rev-parse", "--verify", "-q", f"{ref}^{{}}") or ""
+            if not peeled:
+                return None, f"tag {ref} cannot be peeled to the object it names"
         if ref.startswith(prefix):
             if ref == f"{prefix}HEAD":
                 continue

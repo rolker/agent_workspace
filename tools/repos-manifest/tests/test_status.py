@@ -407,6 +407,46 @@ def test_ask_local_reads_the_refs_as_ls_remote_gives_them(vcs, tmp_path):
     assert list(only) == ["refs/heads/dev"]
 
 
+def test_ask_local_peels_a_tag_of_a_tag_to_the_end(vcs, tmp_path, monkeypatch):
+    """As `ls-remote` peels it; also when git's `%(*objectname)` peels one level only, as an
+    older git's does (shown here by giving the inner tag where the commit was printed)."""
+    case = make_case(tmp_path)
+    git("tag", "-a", "-m", "inner", "inner", cwd=case.clone)
+    git("tag", "-a", "-m", "outer", "outer", "inner", cwd=case.clone)
+    git_ = update.Git(case.clone, dict(os.environ), None)
+    theirs, _ = update.ask_local(git_, "refs/tags/*")
+    assert theirs["refs/tags/outer^{}"] == head(case.clone)
+    assert theirs["refs/tags/outer"] == git("rev-parse", "outer", cwd=case.clone)
+    inner = git("rev-parse", "inner", cwd=case.clone)
+    real = update.Git.run
+
+    def one_level(self, *args, **kwargs):
+        status_, printed, error = real(self, *args, **kwargs)
+        if args and args[0] == "for-each-ref":
+            lines = printed.split("\n")
+            for n, line in enumerate(lines):
+                if line.startswith("refs/tags/outer "):
+                    lines[n] = line.replace(f"{head(case.clone)} commit", f"{inner} tag")
+                    assert lines[n] != line
+            printed = "\n".join(lines)
+        return status_, printed, error
+
+    monkeypatch.setattr(update.Git, "run", one_level)
+    theirs, _ = update.ask_local(git_, "refs/tags/outer")
+    assert theirs["refs/tags/outer^{}"] == head(case.clone)
+
+
+def test_ask_local_keeps_a_ref_name_with_a_line_separator_whole(vcs, tmp_path):
+    case = make_case(tmp_path)
+    name = "a\u2028b"
+    git("update-ref", f"refs/remotes/origin/{name}", head(case.clone), cwd=case.clone)
+    git_ = update.Git(case.clone, dict(os.environ), None)
+    theirs, problem = update.ask_local(git_, "refs/heads/*")
+    assert problem == ""
+    assert theirs[f"refs/heads/{name}"] == head(case.clone)
+    assert all("\u2028" not in ref or ref == f"refs/heads/{name}" for ref in theirs)
+
+
 # --- Output and exit status ---------------------------------------------------------------
 
 
