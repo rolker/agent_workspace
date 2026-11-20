@@ -114,10 +114,14 @@ follows one change of a submodule's commit and stops at the next, until that sub
 updated by hand (the report gives the `git submodule update` command), and a sparse checkout is left as
 it is. A version given as a commit is followed only when `origin` holds it. An
 `origin` a person set is left as set; the manifest's new url replaces `origin` only when the
-clone still has the url `sync` recorded and no local branch has commits it lacks. No line
-`sync`, `init`, `resolve` or `validate` prints, an error included, shows a url's user name
-and password, whatever characters they hold. A repo the
-manifest moves to another layer is not moved: `sync` prints the `mv` command. A clone with
+clone still has the url `sync` recorded and no local branch has commits it lacks. Where
+`sync`, `init`, `resolve` and `validate` put a url into a message, and in the lines `sync`
+prints and the error a command stops with, a url's user name and password are masked as
+`***`, and a value of the wrong type is described, not shown. That is a guard against
+accidents, not a guarantee: a user name and password belong in a credential helper or an ssh
+key, not in a manifest url ([docs/design.md](docs/design.md#sync) says what is masked and
+what is not). A repo the manifest moves to another layer is not moved: `sync` prints the
+`mv` command. A clone with
 commits not on `origin` is not rebased yet; `sync` prints the `git pull --rebase` command for a
 person to run. Both need `git`, and `vcs` from vcs2l or vcstool, on `PATH`.
 [docs/design.md](docs/design.md#sync) gives the rules and

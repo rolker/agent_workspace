@@ -881,29 +881,61 @@ a repo that is recorded, is in the same run unless the fetch or the version look
 a repoint `U` is recorded at once, before the fetch, so a fetch or a lookup that fails next does
 not leave the new url read as one a person set.
 
-A url's user name and password are never printed: in every line `sync` prints for a repo,
-what it says and what git says, and in the errors and refusals of any command, the user
-information of a `scheme://user:password@host` url is shown as `***` (an ssh url's user name
-alone is kept; any other user name is masked, since an https one is often a token). Each url
-the tool reads (the manifest's, the clone's `origin`, the recorded one) is parsed whole: its
-user information is everything between `://` and the last `@` in it, whatever characters it
-holds (quotes, spaces, `@`, `:`, `/`, `%` escapes, any letter), and it is masked, and its
-`%`-decoded form, where it follows a scheme's `://`, by the same rule as above; an https url
-whose path holds an `@` has more masked, never less. Nothing that does not follow `://` is
-masked: a local path holding `@`, `git@github.com:...` and `origin/main@{upstream}` are
-printed as they are, so a password that is a common word (`git`, `main`, `a`) cannot change a
-printed command. In a `file://` url the text before an `@` is a path when it holds a `/`
-(`file:///srv/w@x/...`) and is printed as it is; a `user:password` there (a `:` and no `/`) is
-masked like any other. A url is masked before it is put into a message, so no quoting or
-escaping (`repr`, which escapes a quote or a backslash) can hide its user information from the
-masking: every message that formats a url does it through one of two functions, one that
-masks it and one that masks it and then quotes it, and a test walks the tool's source for
-every value formatted into text that names a url. What is printed is masked again as it is
-printed. A url the tool did not read itself (git's message after an `insteadOf` rewrite) is
-masked by its shape, up to the first `@` that a host follows within one run of characters that
-are not white space. A `set-url` command whose url is masked says so, and that the
-url to give it is the repo's url as the manifest gives it. The urls are written in full where
-they are kept: the resolved files, `state.yaml` and the clone's configuration.
+The tool masks a url's user name and password in what it prints. This is a guard against
+accidents, not a guarantee: a user name and password belong in a credential helper or an ssh
+key, not in a manifest url, and the specification does not look for one there ("a credential
+in a `url` is not looked for: the manifest is as trusted as the code it names",
+[spec.md](spec.md#reading-a-manifest-before-using-it)).
+
+The user information of a `scheme://user:password@host` url is shown as `***` (an ssh url's
+user name alone is kept; any other user name is masked, since an https one is often a token).
+Each url the tool reads (the manifest's, the clone's `origin`, the recorded one) is parsed
+whole: its user information is everything between `://` and the last `@` in it, whatever
+characters it holds (quotes, spaces, `@`, `:`, `/`, `%` escapes, any letter); an https url
+whose path holds an `@` has more masked, never less. In a `file://` url, text after `://` that
+starts with `/` (`file:///srv/w@x/...`) is a path and is printed as it is; otherwise the user
+information is the text before the last `@` ahead of the first `/` when it holds a `:`
+(`file://user:password@host/srv/w@x`: the path's `@` is not part of it), or, for a password
+holding a `/`, the text before the last `@` in the url when that holds a `:`, which can mask
+part of the path too. Nothing that does not follow `://` is masked: a local path holding `@`,
+`git@github.com:...` and `origin/main@{upstream}` are printed as they are, so a password that
+is a common word (`git`, `main`, `a`) cannot change a printed command.
+
+It is masked at two places:
+- Where a url is put into a message. A message that formats a value named as a url (the
+  scan below holds the source to it), and every message of the manifest reader
+  (`manifest.py`) that quotes a value from a manifest (a `base:` path, a version, a name, a
+  repo key, an unknown key), does it through `mask_url` or `quoted_url`, which masks a url and
+  then quotes it as `repr` would, so no quoting or escaping (a quote or a backslash) can hide
+  the user information. A value of the wrong type (a list or a mapping given as a `url`, a
+  `base`, a version or a name) is described by its kind (`must be a string, got a list`),
+  never shown. The earlier format's reader (`schema.py`) refuses a url with a password without
+  printing it, and shows a name that fails its rule, two names that differ only in case and
+  an unknown top-level key the same way; its other messages that print a value from a
+  manifest ([prototype.md](prototype.md) lists them) are masked only as they are printed.
+- As lines are printed. Every line `sync` prints for a repo, what it says and what git says,
+  and the `ERROR:` line of any command are masked again: each url the tool read is masked
+  where it follows `://`, its `%`-decoded form too, and a url it did not read itself (git's
+  message after an `insteadOf` rewrite) is masked by its shape, up to the first `@` that a
+  host follows within one run of characters that are not white space.
+
+Tests check it. One walks the tool's source for values formatted into text whose names say
+they are urls (holding "url", or `origin`) and fails on one that does not go through the
+masking functions; another holds `manifest.py` and `schema.py` to quote no value with `!r` or
+`repr`. The walk cannot see a url held under another name, passed to a helper, joined, or
+formatted inside a list or a mapping, nor keyword arguments, `+=`, logging, or an exception
+formatted whole; `tests/test_url_messages.py` lists what it misses. A message reached that way
+is masked only by the filter above, so only in `sync`'s lines and `ERROR:` lines, and a url the
+tool did not read is masked there only when its user information holds no white space. End to
+end, `resolve`, `validate`, `init` and `sync` are run over repo urls whose passwords hold
+quotes, a backslash, a space, `%` escapes and letters beyond ASCII, in every url form the
+tests name (a list and a mapping among them); `resolve`, `validate` and `init` over a `base:`
+url, mapping and list; and `validate` over keys, names and values that hold a url. Their
+output is searched for the user name and the password.
+
+A `set-url` command whose url is masked says so, and that the url to give it is the repo's url
+as the manifest gives it. The urls are written in full where they are kept: the resolved
+files, `state.yaml` and the clone's configuration.
 
 A person who fetches over https and pushes over ssh sets `remote.origin.pushurl`, or
 `url.<base>.pushInsteadOf`, and keeps `origin`'s url the manifest's.
