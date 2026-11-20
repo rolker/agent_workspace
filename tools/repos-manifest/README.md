@@ -115,8 +115,13 @@ change of a submodule's commit and stops at the next, until that submodule is up
 version given as a commit is followed only when `origin` holds it. An `origin` a person set is
 left as set; the manifest's new url replaces `origin` only when the clone still has the url
 `sync` recorded and no local branch, and no work tree's `HEAD`, has commits it lacks. A branch
-that is also checked out in another work tree is not moved, and a linked work tree on another
-branch is unaffected. Where `sync`, `init`, `resolve` and `validate` put a url into a message, a
+another work tree holds is not moved: one checked out there, or one a rebase or a bisect in
+progress there will return to or set, as git itself counts it; a linked work tree on another
+branch is unaffected. A version written `heads/<name>` or `tags/<name>` is the branch or the
+tag of that name only, and a pin changed from the branch to the tag of the same name (or back)
+moves the repo like any other pin change; when that branch and tag are both at the commit
+`sync` recorded, which one it followed cannot be told, and the repo is left as it is and
+reported. Where `sync`, `init`, `resolve` and `validate` put a url into a message, a
 `scheme://` url's user name and password are masked as `***`, and a value of the wrong type is
 described, not shown; the lines `sync` prints for a repo's outcome, and the error of a manifest
 that cannot be read or is refused, are masked again as they are printed. Other lines are printed

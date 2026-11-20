@@ -740,7 +740,9 @@ local branch, `HEAD`, index or work-tree file changes before then.
    the way of a branch `origin` has now (`origin/release` here against `origin`'s
    `release/next`) makes git refuse the fetch without naming either: the error names both,
    says another sync will not change it, and gives the `git update-ref -d` command that
-   removes the old ref by hand. A tag here and `origin`'s tag of the same name that name other objects make
+   removes the old ref by hand; before it, it says that ref may be the only one here to
+   commits `origin` has since deleted, and gives the `git branch <a new name> <ref>` command
+   that keeps them on a local branch. A tag here and `origin`'s tag of the same name that name other objects make
    git refuse that tag and exit 1, though it fetches the branches; `sync` then fetches the
    branches again without tags and goes on when that exits 0. A clash on a tag the manifest
    does not name is a note. For the manifest's own tag it is an error (rule 8) that gives both
@@ -758,7 +760,19 @@ local branch, `HEAD`, index or work-tree file changes before then.
    version written `heads/<name>` is the branch `<name>` only, and `tags/<name>` the tag
    `<name>` only, as vcstool reads them (`version_ref` in `manifest.py`, which the reader's
    check uses too), everywhere in these rules: the lookup, "on the manifest's version", the
-   move, and the comparison with the record, which keeps the version as written. A tag that
+   move, and the comparison with the record. The record keeps the version as written, so
+   what a version written without a prefix named when it was recorded is read from where
+   the repo is: on the branch of that name, the branch; detached at the recorded commit, the
+   tag when the tag of that name here is at that commit and the local branch is not, the
+   branch when it is the other way round, and a commit for hex digits that commit starts
+   with. A recorded branch `release` and a pin `tags/release` are then two versions, and a
+   clean repo on the branch is moved to the tag (the report says "moved from branch release
+   to tag release"); so is the other way round. When both the branch and the tag of that
+   name are at the recorded commit (or, on the branch, the tag is), which one `sync` followed
+   cannot be told: the repo is left as it is and the report says so. When neither is (a tag
+   `origin` moved since), the record is read as the manifest's version when the names are
+   the same, as before. A plain name that is both a branch and a tag on `origin` stays the
+   error below; `heads/<name>` and `tags/<name>` are never refused for it. A tag that
    names a tree or a blob, not a commit, is an error. A
    commit counts only when it is reachable, in the history the clone has, from a branch of
    `origin` or from a tag `origin` has, as `origin` lists them now (a remote-tracking ref left
@@ -784,10 +798,11 @@ local branch, `HEAD`, index or work-tree file changes before then.
     detached at its commit): followed. A branch whose `HEAD` is behind `origin/<version>` is
     fast-forwarded (`git merge --ff-only`), whatever the branch's own upstream is; one that
     `origin/<version>` no longer contains, because the branch was rewritten upstream, is left as
-    it is. A branch that is also checked out in another work tree of the repo (one made with
-    `git worktree add -f`) is not fast-forwarded: the repo is left as it is and the report
-    names that work tree, since a fast-forward would move the branch under that work tree's
-    files, and git would show the new commits there as staged changes. A tag or a commit has
+    it is. A branch another work tree of the repo holds is not fast-forwarded: the repo is
+    left as it is and the report names that work tree and why (below, "held"), since a
+    fast-forward would move the branch under that work tree's files, and git would show the
+    new commits there as staged changes, or under a rebase that sets the branch when it
+    ends. A tag or a commit has
     nothing to follow: `sync` leaves it where it is. When the repo is already there and only
     its record is behind (the manifest changed to the version a person had already put it on,
     or a person fast-forwarded it), the record is brought up to date and one line names the
@@ -801,8 +816,8 @@ local branch, `HEAD`, index or work-tree file changes before then.
     settings do not cover that branch, the move stands and the report says the branch has no
     upstream, why, and the two `git config` commands that set one. A tag or a commit is checked
     out detached. A local branch of that name is used when `origin/<version>` contains it: it
-    is switched to and then fast-forwarded. If that local branch has commits not on `origin`,
-    or is checked out in another work tree, the repo is left as it is. The branch left behind
+    is switched to and then fast-forwarded. If another work tree holds that branch, or it has
+    commits not on `origin`, the repo is left as it is. The branch left behind
     keeps every commit it had. A repo pinned to a tag the manifest still names, detached at the
     commit recorded for it, is moved the same way when origin's tag now names another commit.
 12. Anything else (another branch, a detached `HEAD` elsewhere, or no record and not on the
@@ -824,8 +839,9 @@ says which are ignored. Git's own refusal stays behind that check: every `git me
 `git switch` of `sync`, the undo included, is given `--no-overwrite-ignore` (both commands
 accept it in git 2.53.0), so an ignored file written where an incoming file goes between the
 check and the call (a build writing a log) makes git refuse, and the repo is left as it was.
-Right before the first call, `HEAD` and its branch are read again: a person who committed or
-switched branches while the checks ran keeps that, and the repo is left as it is and reported.
+Right before the first call, `HEAD`, its branch and the tracked files are read again: a
+person who committed, switched branches or edited a tracked file while the checks ran keeps
+that, and the repo is left as it is and reported.
 
 Every `git` that changes a repo's tree is one call (a switch, or a fast-forward) that does
 all of what it is for or nothing, except the switch to a local branch followed by its
@@ -844,8 +860,9 @@ left the repo as it was (`HEAD`, the branch, the configuration, the index and th
 status compared) is reported and the repo left. One that left it otherwise is an error that
 says what ran, in order (each call with its exit status and where it took `HEAD`, a
 fast-forward naming the branch and both commits, and the switch back when it ran), where
-`HEAD` is now, and the files that now differ from it, staged or not, which were made during the
-move, by git, a hook it ran, or something else, since the repo had no tracked changes before (when there are none, it says so instead);
+`HEAD` is now, and the files that now differ from it, staged or not, which were made after the
+check just before the first call found none, by git, a hook it ran, or a person (when there are
+none, it says so instead);
 `sync` does not put them back, and nothing after those calls runs in that repo. What git
 printed follows on lines of its own; when it printed nothing, the line ends there. A branch such a move made is left without an upstream,
 and the same report says so, with the two `git config` commands that set one. Its record loses
@@ -866,7 +883,9 @@ fast-forward, setting an upstream or a url) keeps the person's language. `sync` 
 `git --version` once per run and stop, with nothing changed, when it names a git older than
 2.23, the release that brought `git switch`; the other commands and options they use are
 older (a fetch that does not replace a tag without `--force` came in 2.20). Every command a
-report prints quotes paths, branch names and refs for the shell.
+report or a refusal of `sync` prints, the lock refusals' `fuser -v` included, quotes paths,
+branch names and refs for the shell (`shlex.quote`); the commands `build` prints name only
+layers, whose names hold letters, digits, `_` and `-`, and process numbers.
 
 A clone with submodules is followed like any other, and its submodules are not updated: the
 report gives the `git submodule update` command. Before every fast-forward or switch, `sync`
@@ -886,10 +905,24 @@ has and is never deepened or made whole; the fetch brings the history of every t
 shallow clone of a repo with tags grows at its first `sync`. A linked work tree of a clone (the
 workspace this tool is used from makes them, on feature branches) on another branch is
 unaffected: `sync` moves only the branch of the clone's own work tree, and never touches
-another work tree's files. When a linked work tree has the clone's branch checked out too
-(`git worktree add -f`), or the local branch a move would switch to, the repo is left as it is
-and reported, naming that work tree. The url rule counts the `HEAD` of every work tree, a
-detached one included.
+another work tree's files. A branch is held by another work tree when that work tree has it
+checked out (`git worktree add -f` allows that), or is in the middle of an operation that
+names it, as git itself counts it (`git branch -f` refuses such a branch): a rebase whose
+`rebase-merge/head-name` or `rebase-apply/head-name` is that branch, which it sets when it
+ends (git lists that work tree as detached meanwhile); a rebase with `--update-refs` whose
+`update-refs` list names it; a bisect whose `BISECT_START` names it, where `bisect reset`
+returns. When an operation is there and what it returns to cannot be read (a rebase with no
+`head-name`, a file that cannot be read), every branch is held. A rebase of a detached `HEAD`
+(`head-name` is `detached HEAD`), a bisect started detached (`BISECT_START` holds a commit),
+and a `git am`, merge, cherry-pick or revert, which work on `HEAD` as it is, hold no branch
+beyond the one checked out there. When another work tree holds the clone's branch, or the
+branch a move would switch to (before the switch, so also before the fast-forward of an
+existing local branch), the repo is left as it is and reported, naming that work tree and why.
+When that work tree's directory no longer exists, the line says so and gives `git worktree
+prune`, to run when the directory is gone for good (not on a drive that is not mounted). When
+the work trees cannot be listed or their git directories read, the repo is left as it is too.
+The url rule counts the `HEAD` of every work tree, a detached one included; one on a branch
+with no commit yet (`git worktree add --orphan`) has none to count.
 
 For a manifest that names no version, the branch followed is `origin`'s default branch as the
 clone records it (`refs/remotes/origin/HEAD`, set when it was cloned); `sync`'s fetch does not
@@ -901,11 +934,13 @@ branch that is gone, and the repo is an error whose message gives that `set-head
 
 The url rule. `W` is the clone's `origin` url as written in its configuration (before any
 `insteadOf` rewrite), `U` the manifest's url, and `R` the one recorded; urls are compared after
-one trailing `/` and one trailing `.git` are taken off.
+one trailing `/` and one trailing `.git` are taken off, as git hosting reads `x` and `x.git` as
+one repository; so local paths `/srv/robot` and `/srv/robot.git` are read as one too.
 
 - `W` is `U`: nothing to do.
 - `W` is `R` and the manifest now names another `U`: the manifest moved the repo. `sync` fetches
-  `U` into refs of its own (`refs/remotes/repos-manifest-probe/`, removed afterwards, and at
+  `U`, with `--no-tags --no-prune --no-recurse-submodules`, into refs of its own
+  (`refs/remotes/repos-manifest-probe/`, removed afterwards, and at
   every later check if a run was killed) and repoints `origin` to `U` only when every local
   branch and the `HEAD` of every work tree of the repo, detached ones included, are on it.
   Otherwise `origin` stays, and the repo is left as it is with the number of commits and the
