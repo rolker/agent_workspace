@@ -45,10 +45,11 @@ if [ "$(id -u)" -eq 0 ]; then
 fi
 
 # One sandbox for the whole run, created at top level so the trap fires
-# (issue #297). The read-only directories a failed case leaves behind are
-# made writable first, or the cleanup itself would fail on them.
+# (issue #297). The read-only and no-search directories a failed case
+# leaves behind get u+rwx first (u+w alone cannot enter a mode 600
+# directory), or the cleanup itself would fail on them.
 SANDBOX="$(mktemp -d)"
-trap 'chmod -R u+w "$SANDBOX" 2>/dev/null; rm -rf "$SANDBOX"' EXIT
+trap 'chmod -R u+rwx "$SANDBOX" 2>/dev/null; rm -rf "$SANDBOX"' EXIT
 export AGENT_NAME="Test Agent"
 export AGENT_EMAIL="test+agent@example.com"
 unset WORKTREE_ISSUE WORK_PLANS_DIR_OVERRIDE PROGRESS_PERSISTENCE_STRICT
