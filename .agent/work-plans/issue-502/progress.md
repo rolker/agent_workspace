@@ -568,3 +568,35 @@ LFS-like filter evidence (clean `base64 -w0`, smudge `base64 -d`, required): in 
 - [x] (suggestion) The adapter's validate line still says "(there is no repos-manifest status yet)", which is now false. Reword it with its test, or leave it to #503 and say so — `.agent/project_types/ros2_colcon/adapter.sh:1087`
 - [x] (suggestion) An origin url set to an empty value passes as one url. `status` then answers from stale refs (possibly expected, exit 0), while `sync`'s fetch fails. Found by reading the code, not run — `tools/repos-manifest/src/repos_manifest/update.py:999`
 - [x] (suggestion) A duplicate assert (line 83 repeats line 82) — `tools/repos-manifest/tests/test_status.py:83`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 14:28 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-502 at `0ee41b71`
+**Addressed**: Local Review (Pre-Push) at `fd86341d` (2026-11-20 13:47 -05:00)
+**Commits**: 93a2f49a, 4958af37, eb1c036a, 626d0cef, 13f54e08, 4f99421a, 81c069fc, c7b81b51, 8b610c68, d74faec8, 19225610, 0ee41b71
+
+### Actions
+- [x] (must-fix) Filters: per the host's decision, `status` now runs git with the clone's own filter drivers on, as `sync`'s git and `git status` do; FILTER_OFF and the GIT_CONFIG_COUNT handling are gone. The design says `status` writes nothing in the system directory, makes no network call of its own, and runs the clean filters a clone's config names, so a filter that writes or fetches is outside its promise. The marker test's filter half is replaced by a test that the filter runs and `status` agrees with `git status`; the agreement test gains "a filtered fresh clone" (expected, sync up to date) and "a filtered file touched, behind" (status predicts the fast-forward, sync does it), both with a required clean filter that changes the stored form — `status.py`, `design.md` "status", `status_cases.py`, `test_status.py` (93a2f49a)
+- [x] (must-fix) The design no longer claims `validate` fails on `status`: it says the workspace's `validate` does not run `status` yet and is to call it under issue 503. docs/manifest/design.md's `validate` row is the Target column and says no more — `design.md:1686` (4958af37; reworded in 0ee41b71 because the tool's documents may not name the adapter, `tests/test_documents.py`)
+- [x] (suggestion) `ask_local` filters by pattern first and peels only the tags asked for; tested with an unpeelable tag of a tag that is not asked for — `update.py:546` (eb1c036a)
+- [x] (suggestion) The design's order for what stops a move now matches `_would_move` and `_move`: the work tree first — `design.md` (626d0cef)
+- [x] (suggestion) A commit pin held only by a branch origin deleted is in the design's list of cases that differ and in DIFFER/CASES; the agreement test runs both (status expected, sync left alone, not followed) — `status_cases.py`, `test_status_agrees_with_sync.py` (13f54e08)
+- [x] (suggestion) `fetched_from` is filled in for in-progress, index.lock and sparse repos by a config read; the design says when it is null (no single origin url, not a git clone with a commit, a link at the place); tested — `status.py` (4f99421a)
+- [x] (suggestion) GIT_CONFIG_COUNT limits: disposed of with the filter code removed in 93a2f49a
+- [x] (suggestion) Stated limits: the submodule-filter limit no longer applies (filters run). The partial-clone limit on git before 2.45 is closed: with such a git, or one whose version cannot be read, `status` calls a partial clone `unusable` and says why; `sync.git_version` is split out of `require_git_version` with unchanged behaviour and messages; tested with the version patched — `status.py`, `sync.py` (81c069fc, wording 19225610)
+- [x] (suggestion) The adapter's validate line says the adapter does not call repos-manifest status yet and that issue 503 makes it do so; its test changed with it, nothing else in the adapter — `adapter.sh:1087`, `test_ros2_colcon.sh:4494` (d74faec8)
+- [x] (suggestion) An origin url set to an empty value is `unusable` in `status` only: moving it into the shared check would change what `sync` prints (it now says "origin is , ... left as set" and its fetch fails, checked by a run). Added as an agreement case — `status.py`, `status_cases.py` (c7b81b51)
+- [x] (suggestion) Duplicate assert removed — `test_status.py` (8b610c68)
+
+### Host decisions recorded (the owner may veto)
+- Filters run under `status` (the earlier decision to turn them off is withdrawn); fsmonitor and lazy fetch stay off.
+- How it is known they cannot change the answer: an fsmonitor hook only tells git which files it need not look at again, and with none git looks at every file (what a working hook stands in for). For lazy fetch, the objects `status`'s git reads are the refs' commits and tags, what those tags name, and the checked-out trees and blobs; a blob:none partial clone has each (checked by hand: a tag of a blob is fetched with the clone), and `test_no_lazy_fetch_does_not_change_the_answer` shows a partial clone, with its remote gone, gives the same answer with lazy fetch allowed as with it off, and the expected state.
+- A partial clone with git older than 2.45 is `unusable` (exit 1). Ubuntu 24.04 ships git 2.43, so such clones fail `status` there; that is the price of the promise and is for the host to weigh.
+
+### Tests
+- Whole tool suite, `tools/repos-manifest`: `2103 passed in 675.77s (0:11:15)` (a first run had 1 failure, the design sentence naming the adapter, fixed in 0ee41b71 before this run).
+- `bash .agent/scripts/tests/test_ros2_colcon.sh` (the suite that names the changed message): `=== Results: 1375 passed, 0 failed, 0 skipped ===`.
+- The full pre-commit pass was left to the host. Nothing in ~/project11 was read, written or run.
