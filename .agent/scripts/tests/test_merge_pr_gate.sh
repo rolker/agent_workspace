@@ -201,7 +201,28 @@ ci_wt() { echo "$1/worktrees/workspace/issue-workspace-7"; }
 api_key() { printf '%s' "$1" | tr '/' '_'; }
 checkruns_path() { printf 'repos//commits/%s/check-runs' "$1"; }
 status_path()    { printf 'repos//commits/%s/status' "$1"; }
-workflows_path() { printf 'repos//actions/workflows'; }
+# merge_pr.sh asks for one page of 100 (issue 428); `?` and `=` survive
+# api_key and the stub's sanitize, so the query is part of the file name.
+workflows_path() { printf 'repos//actions/workflows?per_page=100'; }
+# The actions/workflows answer in the API's real shape (issue 428): a bare
+# {"total_count":N} with no `workflows` array is an unknown count now.
+wf_entry() {  # <path> [state] -- one workflow entry
+    printf '{"id":%d,"name":"%s","path":"%s","state":"%s"}' "$RANDOM" "${1##*/}" "$1" "${2:-active}"
+}
+workflows_list() {  # <total_count> [entry-json...] -- the answer with these entries
+    local total="$1" IFS=,; shift
+    printf '{"total_count":%s,"workflows":[%s]}' "$total" "$*"
+}
+workflows_json() {  # <n_files> [dynamic] -- n active .github/workflows files; `dynamic` adds the hosted reviewer's two dynamic entries
+    local n="$1" i
+    local -a e=()
+    for ((i = 1; i <= n; i++)); do e+=("$(wf_entry ".github/workflows/ci${i}.yml")"); done
+    if [[ "${2:-}" == dynamic ]]; then
+        e+=("$(wf_entry dynamic/agents/copilot-pull-request-reviewer)")
+        e+=("$(wf_entry dynamic/copilot-pull-request-reviewer/copilot-pull-request-reviewer)")
+    fi
+    workflows_list "${#e[@]}" ${e[@]+"${e[@]}"}
+}
 write_api_fixture() {  # <sb> <path> <json> [seq_n]
     local sb="$1" path="$2" json="$3" n="${4:-}" key f
     key="$(api_key "$path")"
@@ -1971,7 +1992,7 @@ fi
 echo "TEST: CI wait — check-runs empty for the first calls then green: merges (#271)"
 sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
 wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
-write_workflows "$sb" '{"total_count":1}'
+write_workflows "$sb" "$(workflows_json 1)"
 write_checkruns "$sb" "$reviewed" "$CHECKRUNS_NONE" 1
 write_checkruns "$sb" "$reviewed" "$CHECKRUNS_NONE" 2
 write_checkruns "$sb" "$reviewed" "$CHECKRUNS_SUCCESS"
@@ -1986,7 +2007,7 @@ fi
 echo "TEST: CI wait — CI configured but checks never register: grace-window error, no merge (distinct from no-CI)"
 sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
 wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
-write_workflows "$sb" '{"total_count":1}'
+write_workflows "$sb" "$(workflows_json 1)"
 write_checkruns "$sb" "$reviewed" "$CHECKRUNS_NONE"
 out="$(MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
 if ! merged_called "$sb" && [[ "$out" == *"no checks registered for"*"${reviewed:0:7}"* ]]; then
@@ -2073,7 +2094,7 @@ fi
 echo "TEST: CI wait — Copilot review check-run is the ONLY run: treated as no checks registered, no merge (#300)"
 sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
 wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
-write_workflows "$sb" '{"total_count":1}'
+write_workflows "$sb" "$(workflows_json 1)"
 write_checkruns "$sb" "$reviewed" "$CHECKRUNS_COPILOT_ONLY"
 out="$(MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
 if ! merged_called "$sb" && [[ "$out" == *"no checks registered for"*"${reviewed:0:7}"* ]] \
@@ -2086,7 +2107,7 @@ fi
 echo "TEST: CI wait — Copilot review check-run still running is the ONLY run: still no checks registered (#300)"
 sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
 wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
-write_workflows "$sb" '{"total_count":1}'
+write_workflows "$sb" "$(workflows_json 1)"
 write_checkruns "$sb" "$reviewed" "$CHECKRUNS_COPILOT_ONLY_RUNNING"
 out="$(MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
 if ! merged_called "$sb" && [[ "$out" == *"no checks registered for"*"${reviewed:0:7}"* ]] \
@@ -2149,7 +2170,7 @@ fi
 echo "TEST: CI wait — Copilot review still running on a repo with no CI: still holds the merge (#300)"
 sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
 wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
-write_workflows "$sb" '{"total_count":0}'
+write_workflows "$sb" "$(workflows_json 0)"
 write_checkruns "$sb" "$reviewed" "$CHECKRUNS_COPILOT_ONLY_RUNNING"
 out="$(MERGE_PR_CI_TIMEOUT_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
 if ! merged_called "$sb" && [[ "$out" == *"review check-run 'copilot-pull-request-reviewer' still in progress on"* ]] \
@@ -2199,7 +2220,7 @@ head_now=$(git -C "$wt" rev-parse HEAD)
 remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
 printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x\\n\\n**Recommendation**: merge"}],"body":"plain"}\n' "$head_now" \
     > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
-write_workflows "$sb" '{"total_count":1}'
+write_workflows "$sb" "$(workflows_json 1)"
 write_checkruns "$sb" "$head_now" "$CHECKRUNS_NONE"      # CI never registered on the bookkeeping tip
 write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"      # ...but the code head is green
 write_mergeable_fixture "$sb" "MERGEABLE"
@@ -2223,7 +2244,7 @@ for roadmap_rel in docs/ROADMAP.md docs/roadmap.md; do
     remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
     printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x\\n\\n**Recommendation**: merge"}],"body":"plain"}\n' "$head_now" \
         > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
-    write_workflows "$sb" '{"total_count":1}'
+    write_workflows "$sb" "$(workflows_json 1)"
     write_checkruns "$sb" "$head_now" "$CHECKRUNS_NONE"
     write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
     write_mergeable_fixture "$sb" "MERGEABLE"
@@ -2246,7 +2267,7 @@ head_now=$(git -C "$wt" rev-parse HEAD)
 remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
 printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x\\n\\n**Recommendation**: merge"}],"body":"plain"}\n' "$head_now" \
     > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
-write_workflows "$sb" '{"total_count":1}'
+write_workflows "$sb" "$(workflows_json 1)"
 write_checkruns "$sb" "$head_now" "$CHECKRUNS_NONE"
 write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
 out="$(MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
@@ -2271,7 +2292,7 @@ head_now=$(git -C "$wt" rev-parse HEAD)
 remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
 printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x\\n\\n**Recommendation**: merge"}],"body":"plain"}\n' "$head_now" \
     > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
-write_workflows "$sb" '{"total_count":1}'
+write_workflows "$sb" "$(workflows_json 1)"
 write_checkruns "$sb" "$head_now" "$CHECKRUNS_NONE"
 write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
 out="$(MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
@@ -2293,7 +2314,7 @@ head_now=$(git -C "$wt" rev-parse HEAD)
 remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
 printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x\\n\\n**Recommendation**: merge"}],"body":"plain"}\n' "$head_now" \
     > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
-write_workflows "$sb" '{"total_count":1}'
+write_workflows "$sb" "$(workflows_json 1)"
 write_checkruns "$sb" "$head_now" "$CHECKRUNS_NONE"
 write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
 write_mergeable_fixture "$sb" "MERGEABLE"
@@ -2320,7 +2341,7 @@ head_now=$(git -C "$wt" rev-parse HEAD)
 remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
 printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x\\n\\n**Recommendation**: merge"}],"body":"plain"}\n' "$head_now" \
     > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
-write_workflows "$sb" '{"total_count":1}'
+write_workflows "$sb" "$(workflows_json 1)"
 write_checkruns "$sb" "$head_now" "$CHECKRUNS_NONE"
 write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
 out="$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=diff.ignoreSubmodules GIT_CONFIG_VALUE_0=all \
@@ -2346,7 +2367,7 @@ make_walkback_sandbox() {
     remote_key="$(printf '%s' "${sb}.remote.git" | tr '/' '_')"
     printf '{"state":"OPEN","headRefName":"feature/issue-7","title":"Test PR","headRefOid":"%s","comments":[{"body":"## Decision summary\\n\\n**What changed**: x\\n\\n**Recommendation**: merge"}],"body":"plain"}\n' "$head_now" \
         > "$sb/gh_fixtures/pr_view_${remote_key}_${PR}.json"
-    write_workflows "$sb" '{"total_count":1}'
+    write_workflows "$sb" "$(workflows_json 1)"
     write_mergeable_fixture "$sb" "MERGEABLE"
     echo "$sb $green $head_now"
 }
@@ -2450,7 +2471,7 @@ make_stale_sandbox() {
         > "${sb}.remote.git/hooks/post-receive"
     chmod +x "${sb}.remote.git/hooks/post-receive"
     set_pr_head "$sb" "$green"
-    write_workflows "$sb" '{"total_count":1}'
+    write_workflows "$sb" "$(workflows_json 1)"
     write_mergeable_fixture "$sb" "MERGEABLE"
     echo "$sb $green $(git -C "$wt" rev-parse HEAD)"
 }
@@ -2585,7 +2606,7 @@ reviewed=$(git -C "$wt" rev-parse HEAD)
 set_pr_head "$sb" "$reviewed"
 printf '#!/bin/bash\n[ -f refused_once ] && exit 0\ntouch refused_once\necho "refusing the first push" >&2\nexit 1\n' > "${sb}.remote.git/hooks/pre-receive"
 chmod +x "${sb}.remote.git/hooks/pre-receive"
-write_workflows "$sb" '{"total_count":1}'
+write_workflows "$sb" "$(workflows_json 1)"
 write_mergeable_fixture "$sb" "MERGEABLE"
 write_checkruns "$sb" "$reviewed" "$CHECKRUNS_COPILOT_RUNNING_PLUS_LINT_SUCCESS"
 out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" GH_MERGE_EXIT=0 \
@@ -2635,7 +2656,7 @@ EOF
 echo "TEST: review hold — a host push lands on top of this run's record commit before Step 2: the hold reads the host's commit (#323)"
 sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
 green=$(git -C "$(ci_wt "$sb")" rev-parse HEAD)
-write_workflows "$sb" '{"total_count":1}'
+write_workflows "$sb" "$(workflows_json 1)"
 write_mergeable_fixture "$sb" "MERGEABLE"
 write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
 add_late_host_push "$sb" "$CHECKRUNS_COPILOT_ONLY_RUNNING"          # review running on the host's commit
@@ -2655,7 +2676,7 @@ fi
 echo "TEST: review hold — the same late host push with its review finished: merges, the hold read the host's commit (#323)"
 sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
 green=$(git -C "$(ci_wt "$sb")" rev-parse HEAD)
-write_workflows "$sb" '{"total_count":1}'
+write_workflows "$sb" "$(workflows_json 1)"
 write_mergeable_fixture "$sb" "MERGEABLE"
 write_checkruns "$sb" "$green" "$CHECKRUNS_SUCCESS"
 add_late_host_push "$sb" "$CHECKRUNS_COPILOT_ONLY"                  # the host commit's review finished
@@ -2754,7 +2775,7 @@ fi
 echo "TEST: CI wait — zero workflows and no runs: proceeds with a 'no CI configured' note (not a failure)"
 sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
 wt="$(ci_wt "$sb")"
-write_workflows "$sb" '{"total_count":0}'
+write_workflows "$sb" "$(workflows_json 0)"
 write_mergeable_fixture "$sb" "MERGEABLE"
 out="$(GH_MERGE_EXIT=0 run_merge_wait "$sb" 2>&1)" || true
 if merged_called "$sb" && [[ "$out" == *"no CI configured for"* ]]; then
@@ -2809,6 +2830,133 @@ if ! merged_called "$sb" && [[ "$out" == *"no checks registered for"*"${reviewed
     pass "(ci-16) workflows-count lookup fails: treated as unknown, waits and errors (never assumes zero workflows)"
 else
     fail "(ci-16) (out=${out:0:400})"
+fi
+
+# Issue 428, item 2: GitHub lists hosted features as `dynamic/...` workflows
+# even in a repository with no workflow file. Those that never register a
+# check on a pull request are left out of the count; everything else counts.
+echo "TEST: CI wait — only the hosted reviewer's dynamic workflows, no checks: no-ci at once (issue 428)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_workflows "$sb" "$(workflows_json 0 dynamic)"
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_NONE"
+write_mergeable_fixture "$sb" "MERGEABLE"
+# A grace window longer than the run itself takes: a no-ci answer must not
+# wait it out (before issue 428 this shape waited the whole window).
+t0=$SECONDS
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_GRACE_SECONDS=20 MERGE_PR_CI_TIMEOUT_SECONDS=20 run_merge_wait "$sb" 2>&1)" || true
+elapsed=$((SECONDS - t0))
+if merged_called "$sb" && [[ "$out" == *"no CI configured for"* ]] && [[ "$out" != *"no checks registered"* ]] \
+    && [[ "$elapsed" -lt 20 ]] \
+    && grep -qF 'api repos//actions/workflows?per_page=100' "$sb/gh_calls.log"; then
+    pass "(ci-28a) both hosted-reviewer dynamic paths and nothing registered: 'no CI configured', merges with no grace wait"
+else
+    fail "(ci-28a) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — hosted reviewer's dynamic workflows and its review still running: the review hold still applies (issue 428)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_workflows "$sb" "$(workflows_json 0 dynamic)"
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_COPILOT_ONLY_RUNNING"
+out="$(MERGE_PR_CI_TIMEOUT_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"review check-run 'copilot-pull-request-reviewer' still in progress on"* ]] \
+    && [[ "$out" != *"no CI configured"* ]]; then
+    pass "(ci-28b) dynamic-only repository with the review running: review-pending error, the hold is unchanged"
+else
+    fail "(ci-28b) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — one workflow file beside the dynamic entries, no checks: never-registered (issue 428)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_workflows "$sb" "$(workflows_json 1 dynamic)"
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_NONE"
+out="$(MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"no checks registered for"*"${reviewed:0:7}"* ]] && [[ "$out" != *"no CI configured"* ]]; then
+    pass "(ci-28c) a .github/workflows file counts: never-registered after the grace window, not no-ci"
+else
+    fail "(ci-28c) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — a workflow list longer than one page: unknown count, never no-ci (issue 428)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+entries=()
+for i in $(seq 1 100); do entries+=("$(wf_entry ".github/workflows/w${i}.yml" disabled_manually)"); done
+write_workflows "$sb" "$(workflows_list 150 "${entries[@]}")"
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_NONE"
+out="$(MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+# All 100 entries returned are disabled, so a count over the page alone
+# would be 0: only the unread 50 make it unknown.
+if ! merged_called "$sb" && [[ "$out" == *"no checks registered for"*"${reviewed:0:7}"* ]] && [[ "$out" != *"no CI configured"* ]]; then
+    pass "(ci-28d) total_count 150 with 100 entries returned: unknown, waits and errors (not no-ci)"
+else
+    fail "(ci-28d) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — a bare total_count with no workflows array: unknown, never no-ci (issue 428)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_workflows "$sb" '{"total_count":0}'
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_NONE"
+out="$(MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"no checks registered for"*"${reviewed:0:7}"* ]] && [[ "$out" != *"no CI configured"* ]]; then
+    pass "(ci-28d2) an answer with no workflows array: unknown, waits and errors (not no-ci)"
+else
+    fail "(ci-28d2) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — only a disabled workflow file, no checks: no-ci (issue 428)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_workflows "$sb" "$(workflows_list 1 "$(wf_entry .github/workflows/ci.yml disabled_manually)")"
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_NONE"
+write_mergeable_fixture "$sb" "MERGEABLE"
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_GRACE_SECONDS=20 MERGE_PR_CI_TIMEOUT_SECONDS=20 run_merge_wait "$sb" 2>&1)" || true
+if merged_called "$sb" && [[ "$out" == *"no CI configured for"* ]]; then
+    pass "(ci-28e) a disabled workflow registers no checks: not counted, 'no CI configured', merges"
+else
+    fail "(ci-28e) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — code scanning's dynamic workflow, no checks yet: counted, never-registered (issue 428)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_workflows "$sb" "$(workflows_list 2 "$(wf_entry dynamic/agents/copilot-pull-request-reviewer)" "$(wf_entry dynamic/github-code-scanning/codeql)")"
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_NONE"
+out="$(MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"no checks registered for"*"${reviewed:0:7}"* ]] && [[ "$out" != *"no CI configured"* ]]; then
+    pass "(ci-28f) dynamic/github-code-scanning/codeql puts checks on pull requests: counted, never-registered"
+else
+    fail "(ci-28f) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — reviewer, Dependabot and Pages dynamic workflows only, no checks: no-ci (issue 428)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_workflows "$sb" "$(workflows_list 4 "$(wf_entry dynamic/copilot-pull-request-reviewer/copilot-pull-request-reviewer)" \
+    "$(wf_entry dynamic/dependabot/dependabot-updates)" "$(wf_entry dynamic/dependabot/update-graph)" \
+    "$(wf_entry dynamic/pages/pages-build-deployment)")"
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_NONE"
+write_mergeable_fixture "$sb" "MERGEABLE"
+out="$(GH_MERGE_EXIT=0 MERGE_PR_CI_GRACE_SECONDS=20 MERGE_PR_CI_TIMEOUT_SECONDS=20 run_merge_wait "$sb" 2>&1)" || true
+if merged_called "$sb" && [[ "$out" == *"no CI configured for"* ]]; then
+    pass "(ci-28g) the dependabot/ and pages/ prefixes are left out: 'no CI configured', merges"
+else
+    fail "(ci-28g) (out=${out:0:400})"
+fi
+
+echo "TEST: CI wait — the hosted coding agent's dynamic workflow counts (known gap 3, issue 428)"
+sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+write_workflows "$sb" "$(workflows_list 2 "$(wf_entry dynamic/agents/copilot-pull-request-reviewer)" "$(wf_entry dynamic/copilot-swe-agent/copilot)")"
+write_checkruns "$sb" "$reviewed" "$CHECKRUNS_NONE"
+out="$(MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+if ! merged_called "$sb" && [[ "$out" == *"no checks registered for"*"${reviewed:0:7}"* ]] && [[ "$out" != *"no CI configured"* ]]; then
+    pass "(ci-28h) dynamic/copilot-swe-agent runs on its own pull-request branches: counted, never-registered"
+else
+    fail "(ci-28h) (out=${out:0:400})"
 fi
 
 echo "TEST: CI wait — no local worktree for the PR's branch: targets HEAD_NOW directly and still waits/merges"

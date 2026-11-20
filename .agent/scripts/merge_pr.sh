@@ -84,6 +84,26 @@
 # pending, failed, and UNKNOWN-mergeable sequences without any network,
 # auth, or throwaway PR dependency.
 #
+# "No CI configured" (issue 428, item 2): when no check has registered on
+# the CI target, the wait ends at once with a note if the repository has
+# no active workflow that could register one. `actions/workflows` lists
+# GitHub's hosted features as `dynamic/...` entries even with no workflow
+# file, so the count leaves out a fixed list of them
+# (MERGE_PR_CI_WORKFLOW_LEAVE_OUT, with the evidence for each entry): the
+# hosted reviewer, Dependabot and Pages. A leave-out acts only before any
+# check registers on the pull request's head; a registered check is waited
+# for as before. A list longer than one page (100) or with no `workflows`
+# array is an unknown count, never 0. Known gaps, left as they are:
+#   (1) a workflow file that runs only on other events (a tag, a schedule)
+#       still counts, so such a repository still waits 120 s and then gets
+#       the `--no-wait` hint (reading each file's `on:` is not worth it);
+#   (2) a required check from an outside app with no workflow file counts
+#       0, as before this change;
+#   (3) the hosted coding agent's `dynamic/copilot-swe-agent/...` workflow
+#       runs on its own pull-request branches, so it can register checks
+#       and is counted: a repository with only the hosted reviewer and the
+#       coding agent still gets the 120 s wait and the `--no-wait` hint.
+#
 # Exit codes:
 #   0 — success
 #   1 — merge failed or dependency missing
@@ -1726,6 +1746,49 @@ MERGE_PR_CI_TIMEOUT_SECONDS="${MERGE_PR_CI_TIMEOUT_SECONDS:-1800}"
 # confirmed offender.
 readonly MERGE_PR_CI_EXCLUDE_CHECK_RUN="copilot-pull-request-reviewer"
 _ci_excluded_noted=false
+# Workflows that never register a check this wait could be waiting for on
+# a pull request (issue 428, item 2). GitHub lists its hosted features as
+# `dynamic/...` workflows in `actions/workflows` even in a repository with
+# no workflow file, so counting every entry turned "no CI" into a 120 s
+# wait and a `--no-wait` demand (a GeoZui4D merge, 2026-11-02 and 11-09:
+# the one entry was the hosted reviewer). An entry ending in `/` is a path
+# prefix, any other an exact path.
+#   - The hosted reviewer's two paths: its check-run is the one excluded
+#     by name above; it is a review signal, not CI.
+#   - `dynamic/dependabot/` and `dynamic/pages/`: an API read of every
+#     dynamic workflow of this owner's repositories (issue 428 plan review,
+#     2026-11-20) found 123 runs of them, every one `event: dynamic` on the
+#     default branch and none linked to a pull request: Pages builds on a
+#     push to its publishing branch, Dependabot runs on its own schedule.
+# A leave-out acts only while no check has registered on the head (the
+# `none` state below): a check that registers is waited for as before.
+# Everything else counts, `dynamic/github-code-scanning/` included (code
+# scanning's default setup does put check-runs on pull requests).
+readonly MERGE_PR_CI_WORKFLOW_LEAVE_OUT=(
+    "dynamic/agents/copilot-pull-request-reviewer"
+    "dynamic/copilot-pull-request-reviewer/copilot-pull-request-reviewer"
+    "dynamic/dependabot/"
+    "dynamic/pages/"
+)
+
+_ci_count_workflows() {  # reads the actions/workflows JSON on stdin; prints the number of active workflows not on the leave-out list, or "unknown"
+    # "unknown", never 0, when the answer is not the whole list: no
+    # `workflows` array, or `total_count` larger than the entries returned
+    # (a list past one page, per_page=100). A disabled workflow registers
+    # no checks, so only `active` entries count.
+    jq -r --args '
+        ($ARGS.positional) as $skip
+        | if (.workflows | type) != "array" then "unknown"
+          elif ((.total_count // 0) | tonumber? // 0) > (.workflows | length) then "unknown"
+          else [.workflows[]
+                | select(.state == "active")
+                | (.path // "") as $p
+                | select([$skip[] | . as $s
+                          | if ($s | endswith("/")) then ($p | startswith($s)) else $p == $s end]
+                         | any | not)]
+               | length
+          end' "${MERGE_PR_CI_WORKFLOW_LEAVE_OUT[@]}" 2>/dev/null || echo "unknown"
+}
 
 _ci_poll_state() {  # <sha> -- prints "<state>|<excluded>": state is one of none pending failed success error; excluded is a comma-joined list of the excluded run's verdicts (conclusion=<c>, or status=<s> while it is still running), empty when the excluded run is absent
     # "error" (issue #284 review) is distinct from "none": a nonzero `gh
@@ -1885,15 +1948,18 @@ if [[ "$NO_WAIT" == false ]]; then
     # masquerade as "no CI configured" and merge unverified. "unknown"
     # keeps the `none` branch below from taking the no-ci exit; it waits
     # out the grace window and errors instead, same as a real repo whose
-    # checks just haven't registered yet.
+    # checks just haven't registered yet. The count leaves out the
+    # workflows that never register a check on a pull request
+    # (MERGE_PR_CI_WORKFLOW_LEAVE_OUT, issue 428).
     _ci_wf_rc=0
-    _ci_wf_json=$(gh api "repos/${PR_REPO_SLUG}/actions/workflows" 2>/dev/null) || _ci_wf_rc=$?
+    _ci_wf_json=$(gh api "repos/${PR_REPO_SLUG}/actions/workflows?per_page=100" 2>/dev/null) || _ci_wf_rc=$?
     if [[ $_ci_wf_rc -ne 0 ]]; then
         _ci_wf_count="unknown"
     else
         [[ -z "$_ci_wf_json" ]] && _ci_wf_json='{}'
         if jq -e . >/dev/null 2>&1 <<<"$_ci_wf_json"; then
-            _ci_wf_count=$(jq -r '.total_count // 0' <<<"$_ci_wf_json" 2>/dev/null || echo "unknown")
+            _ci_wf_count=$(_ci_count_workflows <<<"$_ci_wf_json")
+            [[ "$_ci_wf_count" =~ ^[0-9]+$ ]] || _ci_wf_count="unknown"
         else
             _ci_wf_count="unknown"
         fi
