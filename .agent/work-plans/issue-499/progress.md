@@ -455,3 +455,18 @@ Read the Integrated Review at 2b073c88 (one open finding, no outside review arri
 ### Checks
 - `PYTHONPATH=src pytest tests/test_show_system.py tests/test_show.py tests/test_sync.py tests/test_init.py tests/test_cli.py`: 113 passed in 66.04s
 - No script under `.agent/scripts/` changed, so no script suite applies; the full pre-commit pass is left to the host.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-20 13:04 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #541 at `d02ab66`
+**Depth**: Light (reason: narrow re-review of one fix commit, 3b21957f, per handoff; no cross-model reviewers)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Scope: commit 3b21957f (show names the recorded manifest as recorded on every refusal) and what it could break. Hand-checked in a scratch system directory with a local git repo, comparing `show` and `sync` with no argument: a recorded path that is missing, a directory, not UTF-8 and does not parse (through `sub/../` and through a link) is named as recorded by both; a recorded role the manifest lacks is refused under the recorded name by both; the top manifest's unknown-key warning names the recorded path in both; a successful read through `..`, a link, and `link/../` prints the canonical path on the `manifest` line and the leaf's `from` lines, bases unchanged; a url recorded in `config.yaml` is refused by `read_config` identically in both. `is_url` has no use left in `cli.py` (still used in `system.py`). The source swap after resolve cannot hit a base's repos: bases are labelled by real path, and a base equal to the leaf is refused as a cycle. Design sentence (`docs/design.md:523`) and comment (`cli.py:206`) match the code. `pytest tests/test_show_system.py tests/test_show.py`: 35 passed.
+
+### Findings
+- [ ] (suggestion) The design sentence now promises every warning and refusal names the recorded path, but the new test covers only the directory and parse cases; add a case for a warning on the top manifest and a resolve refusal (recorded role not in the manifest), both hand-verified correct — `tools/repos-manifest/tests/test_show_system.py:203`
