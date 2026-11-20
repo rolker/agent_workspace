@@ -1003,7 +1003,10 @@ It is masked at two places:
   rewrite, a value typed on the command line) by its shape, up to the first `@` that a host
   follows within one run of characters that are not white space. Two other lines `sync` prints
   for a repo are not filtered, `cloning <path>` and "<path>: holds the manifest, …": they show
-  only the repo's path, its key, which cannot hold a `scheme://` url (a repo key has no `//`).
+  only the repo's path in the system directory, which is the distro's and the layer's
+  directories where the system has them, then `src`, then the repo's key. That path cannot hold
+  a `scheme://` url: a distro or layer name has only letters, digits, `_` and `-`, and a repo
+  key has no `//`.
   Other lines are printed as given, among them: the "unknown role" error of `resolve` and
   `validate` on an earlier-format manifest, which echoes the role typed on the command line, the
   `ERROR:` line of a run stopped by a signal, `sync`'s line for a setup file it could not write,
