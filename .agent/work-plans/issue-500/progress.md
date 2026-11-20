@@ -1780,3 +1780,56 @@ The round 4 must-fix is fixed for a url given as a string: `foo::https://`, ssh,
 **Decision**: address
 
 Round 5 confirmed the update rules untouched and the five small fixes, and found three more paths that print a url's credentials (a url value that is not a string; a base: url; a file url whose user part holds a slash), which make two absolute sentences false: the README's "No line ... shows a url's user name and password, whatever characters they hold" and the design's "every message that formats a url does it through one of two functions". Each round since round 1 has found another such path. The absolute promise was the host's own addition in round 1 (a suggestion about credentials in printed urls); the format's specification says a credential in a url is not looked for, since the manifest is as trusted as the code it names. The host's decision: fix the three paths the cheap and sure way (a value that is not a string, and a base value, are not echoed at all, only described by type; the file url rule), and replace the absolute sentences with what is true: which messages mask a url's user information, how (the two functions and the output filter), what the source-walking test does and the gaps the review listed, and that this is a guard against accidents, not a guarantee, so credentials belong in a credential helper or an ssh key, not in a manifest url. Suggestions fixed with it: the scan's docstring names its gaps; --prune-tags gets its test and the scan looks at every word after the command, not only the next one; an unknown top-level key is not echoed with its value. A stronger guarantee, if the owner wants one, is its own issue; the host proposes it.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-19 19:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-500 at `9fa1e6f5`
+**Addressed**: Local Review (Pre-Push) at `e260464e` (2026-11-19 19:01 -05:00)
+**Commits**: 5ae078a3, 14b102f6, 7936cdf2, ab91f9a2, 94755862, 9fa1e6f5 (box checks)
+
+I reproduced each must-fix first. The reviewer's `adv5/drive.py` gave `cases 56 leaks 66` at `4f4efa0a` (the list and mapping urls, and both file url forms, through `validate`, `resolve`, `init` and `sync`), `lead5/m1.yaml` printed the list, `lead5/b1.yaml` printed the `base:` url, and `mask_url` returned both file urls unchanged. At `94755862`: `cases 56 leaks 0`; `m1.yaml` gives `must be a string, got a list; quote it in the YAML ...`; `b1.yaml` gives `base: 'https://***@127.0.0.1:9/base.git' is a URL, not a path`.
+
+### Actions
+- [x] (must-fix M1) A value of the wrong type is described, never echoed. `quoted_url` on a value that is not a string returns its kind (`a list`, `a mapping`, `a int`), from `masking.type_name` (moved from `manifest.py`), and `manifest.py`'s "must be a string, got ..." no longer quotes the value. That one message serves `url`, `base`, `version` and `type`; `name()` (layer, group, distro, role names) and the `format:` message describe a wrong-type value the same way (14b102f6).
+- [x] (must-fix M2) `base:` as a string goes through `quoted_url`; its mapping form is described ("is a mapping, the form of a file in a git repo"), not shown. Every other value `manifest.py` echoed with `!r` now goes through `quoted_url`: a version, a name, a repeated name, a reserved layer name, a repo key (and the `where` built from it), a type, an unknown top-level, repo or distro key. In `schema.py` (earlier format): a name that fails its rule, case twins and unknown top-level keys. A test now holds `manifest.py` and `schema.py` to no `!r` and no `repr(...)` (14b102f6, 7936cdf2).
+- [x] (must-fix M3) In a `file://` url the user information is the text before the last `@` ahead of the first `/` when it holds a `:`; when there is none, the text before the last `@` in the url when that holds a `:` (a password holding a `/`; masks more, never less). Text starting with `/` is a path. `file:///srv/w@x/...`, `file://localhost/srv/w@x` and `file://bobQ@localhost/srv/w@x` stay unmasked; tests cover both sides (5ae078a3).
+- [x] (suggestion S1) `tests/test_url_messages.py`'s docstring says the scan is a guard, not a proof, and lists every gap the review named. A test holds the four calls the scan counts as safe to show nothing of a list, a mapping or a number (`quoted_url` describes it, `mask_url`, `mask_urls` and `set_url_command` raise `TypeError`) (7936cdf2).
+- [x] (suggestion S2) The never-run scan finds a command's flag anywhere after the command (`["switch", "-q", "-f", ...]`, `["branch", "-q", "-f", ...]`, `["reset", "-q", "--hard", ...]` are flagged), and a `--prune-tags`-only sample fails when `--prune-tags` is taken out of `NEVER`; checked by hand both ways. The commit message of ab91f9a2 says "passes" where it means "would pass unflagged", i.e. the test fails (ab91f9a2).
+- [x] (suggestion S3) An unknown top-level key, and an unknown repo or distro key, is named through `quoted_url`: masked when a string, described when not (14b102f6).
+- [x] (documents) README and design no longer claim that no line shows a credential; they say where masking happens, that a wrong-type value is described, what the scan checks and cannot see, and that it is a guard, not a guarantee, quoting the specification's "a credential in a `url` is not looked for" (94755862).
+
+Tests that fail without each fix, run against the source at `4f4efa0a` with the new tests: 33 in `test_masking.py` (list, mapping and both file url forms end to end; the three file url unit cases; the type description; the `base:` url, mapping and list; eight keys, names and values holding a url) plus 2 earlier-format cases, and 3 in `test_url_messages.py`. `test_masking.py` now clears the registered urls before each test: before, a url registered by an earlier test masked a later one and hid the file-url leak in the end-to-end test.
+
+### Checks
+- Whole suite at `94755862`: `cd tools/repos-manifest && PYTHONDONTWRITEBYTECODE=1 REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest -p no:cacheprovider --basetemp=<scratchpad>` gave `1712 passed in 524.76s (0:08:44)` (1666 before; 46 new).
+- black and flake8 ran in the commit hooks. No workspace script changed, so no script suite was run; the full pre-commit pass is the host's. Commits used `SKIP=validate-script-tests`. `git status --porcelain` is clean.
+- `update.py`'s rules, `sync.py`'s flow and the build code are unchanged (`git diff 4f4efa0a -- tools/repos-manifest/src/repos_manifest/{update,sync,build}.py` is empty).
+- I re-read every masking sentence in `tools/repos-manifest/README.md` and `docs/design.md` (sync section) against `masking.py`, `manifest.py`, `schema.py`, `cli.py` (the `ERROR:` filter) and `sync.py` (its line filter).
+
+### For the pull request body
+Changed from the round 4 entry's text: the masking item and one open-on-purpose line. Everything else stands as written there and is copied here.
+- **Masking:** a guard against accidents, not a guarantee; a user name and password belong in a credential helper or an ssh key, not in a manifest url (the specification already says a credential in a `url` is not looked for).
+  - Where a message formats a url, and where the manifest reader quotes a value from a manifest (a `base:` path, a version, a name, a key), it goes through `masking.mask_url` or `quoted_url`, so quoting or `repr` escaping cannot hide the user information. A value of the wrong type (a list or a mapping given as a url) is described by its kind, never shown.
+  - The lines `sync` prints and the `ERROR:` line of any command are masked again as they are printed.
+  - A test walks the source for formatted values named as urls, another holds `manifest.py` and `schema.py` to no `!r`/`repr`, and end-to-end tests run `resolve`, `validate`, `init` and `sync` over awkward passwords in every url form, a list and a mapping among them.
+  - Nothing that does not follow `://` is masked: local paths holding `@`, `git@github.com:…` and `origin/main@{upstream}` print as they are. In a `file://` url, a path starting with `/` is kept and a `user:password` before the host is masked, also when the path holds an `@` or the password a `/`.
+- **The never-run list:** `sync` never runs reset, `checkout -f`, clean, stash, rebase, pull, push, gc or prune, never deletes a branch, and passes no `--force`, `--no-verify`, `--prune`, `-p`, `-P`, `--prune-tags`, `--discard-changes`, `switch -f`, `branch -f` or a bundled short flag holding `p`, `P` or `f`. A test reads `update.py` for each, a command's flag anywhere after the command.
+- **Half-changed moves:** the report lists what ran, where HEAD is, and the tracked changes git or a hook made, or says there are none. An untracked or ignored file a hook wrote stays in the work tree and is not reported.
+- **Open on purpose:**
+  - A repo left alone while the manifest names another version exits 0 (`sync.py:641-654`).
+  - The hand-set-origin line prints every run (`update.py:714`).
+  - One `ls-remote` per repo per run (`update.py:491`, `find_version` at `update.py:460`).
+  - Submodules are never updated (`update.py:962`).
+  - A shallow clone grows by the history of fetched tags (`update.py:739`).
+  - No version follows the clone's `origin/HEAD` (`update.py:468`).
+  - A detached HEAD at a recorded branch's commit is moved on a pin change (`update.py:826-831`).
+  - A branch switched by a person during the run is not re-checked (`update.py:875`).
+  - An https url whose path holds `@`, or a `file://` url whose password holds `/`, has more masked (`masking.py`).
+  - After sync's own half-changed move, a manifest changed back reads the repo as moved by a person (design, sync).
+  - A branch left without an upstream by a half-changed move is mentioned once.
+  - An untracked file a hook wrote during a move that was undone is not reported.
+  - Masking is a guard, not a guarantee. The source scan cannot see a url under another name (`getattr`, tuple, annotated or walrus assignment, a `for` target, a parameter named otherwise), one passed to a helper, joined or formatted inside a list or mapping, `prefix + url` with no constant side, `+=`, keyword arguments, logging or `sys.stderr.write`, or an exception formatted whole; such a message is masked only by the print filter, which covers `sync`'s lines and `ERROR:` lines, and only a url with no white space in its user information when the tool did not read it. Warnings are not filtered. The earlier format's other value-printing messages (`docs/prototype.md` lists them) and an earlier-format `extends` path in its "escapes"/"not found" messages are not masked at the source.
+- **Tests:** 1712 pass with `REPOS_MANIFEST_REQUIRE_COLCON=1`.
