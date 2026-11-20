@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Callable, List, Optional, Sequence
 
 from . import selection
-from .masking import mask_url
 from .output import process_has_ended, signals_held
+from .show import render_body, render_head, shown_path
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
 from .sync import FINISH, Planned, closing, plan_distros, require_tools, sync_distros
 from .yamlload import ManifestError
@@ -95,21 +95,24 @@ def check_distros(manifest, distros: List[str], distro_dirs: bool) -> None:
 
 
 def summary(config: Config, plan: Sequence[Planned]) -> str:
-    """What `init` shows before it asks."""
-    lines = [f"Manifest: {config.manifest}"]
-    lines.append(f"Role: {config.role if config.role is not None else '(none)'}")
-    lines.append(f"Extra groups: {', '.join(config.groups) if config.groups else '(none)'}")
-    for resolved in (planned.resolved for planned in plan):
-        count = sum(len(layer.repos) for layer in resolved.layers)
-        name = resolved.distro if resolved.distro is not None else "(none)"
-        lines.append(f"Distro {name}: {count} repos in {len(resolved.layers)} layers")
+    """What `init` shows before it asks: what `show` prints (the manifest, base and role lines
+    once, then for each distro a `distro` line, left out when the manifest has no distros, and
+    its layers and the repos left out), each distro's `src/` directories it will create, and
+    the `Layout:` line."""
+    resolved_distros = [planned.resolved for planned in plan]
+    blocks = [render_head(resolved_distros[0])]
+    for resolved in resolved_distros:
+        body = render_body(resolved)
+        if resolved.distro is not None:
+            body = f"distro {resolved.distro}\n{body}"
+        blocks.append(body)
+        create = ["will create"]
         for layer in resolved.layers:
             src = "/".join(layer_src_parts(config.layout, resolved.distro, layer.name))
-            lines.append(f"  {src}/")
-            for repo in layer.repos:
-                version = repo.version if repo.version is not None else "(its default branch)"
-                optional = "  (optional)" if repo.optional else ""
-                lines.append(f"    {repo.key}  {version}  {mask_url(repo.url)}{optional}")
+            create.append(f"  {src}/")
+        if len(create) > 1:
+            blocks.append("\n".join(create))
+    lines = ["\n\n".join(blocks), ""]
     if config.layout == LAYOUT_DISTRO_DIRS:
         lines.append("Layout: a directory per distro.")
     elif config.distros is not None:
@@ -284,7 +287,7 @@ def _init(
                 "Give --yes to set up without asking",
             )
         print(summary(config, plan), flush=True)
-        if not yes and not ask(f"Set up this system in {system}? [y/N] "):
+        if not yes and not ask(f"Set up this system in {shown_path(str(system))}? [y/N] "):
             print("Nothing was created.")
             return 1
         make_system_dir(system, config, lambda: made.append(True))

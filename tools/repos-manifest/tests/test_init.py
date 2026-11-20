@@ -180,9 +180,12 @@ def test_distro_dirs_with_two_distros(remotes, tmp_path, system, capsys):
     assert config(system)["distros"] == {"jazzy": {}, "rolling": {}}
     assert config(system)["layout"] == "distro-dirs"
     out = capsys.readouterr().out
-    assert "Distro jazzy: 3 repos in 2 layers\n" in out
-    assert "Distro rolling: 3 repos in 2 layers\n" in out
-    assert "  rolling/underlay/src/\n" in out
+    # The manifest and role lines once, then each distro's body and the directories it makes.
+    assert out.count("manifest  ../m.manifest.yaml\n") == 1
+    assert out.count("role      full    groups on: ") == 1
+    for distro in ("jazzy", "rolling"):
+        assert f"\n\ndistro {distro}\nunderlay\n" in out
+        assert f"will create\n  {distro}/underlay/src/\n  {distro}/core/src/\n" in out
     assert "Layout: a directory per distro.\n" in out
 
 
@@ -324,7 +327,20 @@ def test_an_optional_repo_that_cannot_be_fetched_is_skipped_and_listed(
     assert set(state(system)["distros"]["_unnamed"]["repos"]) == {"a"}
     out = capsys.readouterr().out
     assert "optional, skipped (1): src/maybe" in out
-    assert "  maybe  (its default branch)" in out and "(optional)" in out
+    # No `distro` line for a manifest with no distros: the body follows the head.
+    assert (
+        "manifest  ../m.manifest.yaml\n"
+        "role      (none)    groups on: (none)\n"
+        "\n"
+        "(unnamed layer)\n"
+        f"  a       (its default branch)   {remotes['a']}\n"
+        f"  maybe   (its default branch)   {tmp_path / 'nowhere'}   optional\n"
+        "\n"
+        "will create\n"
+        "  src/\n"
+        "\n"
+        "Layout: one directory for the system.\n"
+    ) in out
     # Listed every time.
     assert run(system, "sync") == 0
     assert "optional, skipped (1): src/maybe" in capsys.readouterr().out

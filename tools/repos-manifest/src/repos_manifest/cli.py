@@ -1,5 +1,6 @@
-"""`repos-manifest` CLI: resolve and validate; init and sync set up a system directory and
-clone its repos; build builds its layers with colcon and writes its setup.bash.
+"""`repos-manifest` CLI: resolve and validate; show prints what a manifest comes to for a
+machine; init and sync set up a system directory and clone its repos; build builds its layers
+with colcon and writes its setup.bash.
 
 A manifest with a top-level `repositories:` or `base:` key is read by the reader for the format
 in docs/spec.md (``base.py``); any other file, one that does not read or parse included, by
@@ -9,6 +10,7 @@ the reader for the earlier shape (``schema.py`` and ``extends.py``).
 from __future__ import annotations
 
 import argparse
+import os
 import signal
 import sys
 from pathlib import Path
@@ -23,9 +25,19 @@ from .merge import merge_chain
 from .masking import mask_urls
 from .schema import ManifestError
 from .selectors import select_repos
+from .show import render, shown_path
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
-from .sync import run_sync
-from .system import read_manifest
+from .sync import recorded_manifest, run_sync
+from .system import (
+    SYSTEM_DIR,
+    Refusal,
+    current_directory,
+    find_system,
+    one_distro_for,
+    read_config,
+    read_manifest,
+    reporting_oserror,
+)
 from .validate import build_validation_table, check_dependencies
 
 
@@ -173,6 +185,57 @@ def cmd_validate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _show_in_system(args: argparse.Namespace, cwd: Path) -> selection.Resolved:
+    """`show` with no manifest: what the system directory `cwd` is in records, for the one
+    distro "Which distro a command uses" picks. Reads `config.yaml` and the manifest only."""
+    system = find_system(cwd)
+    if system is None:
+        raise Refusal(
+            f"no manifest given, and no system directory in {shown_path(str(cwd))} or above it"
+            f" (no {SYSTEM_DIR}/ found)",
+            "Give the manifest's path, or run show inside a system directory",
+        )
+    if args.role is not None or args.with_groups:
+        given = "--role" if args.role is not None else "--with"
+        raise Refusal(
+            f"{given} without a manifest: in a system directory show uses what it records",
+            "Give the manifest to try another role or other groups",
+        )
+    config = read_config(system)
+    distro = one_distro_for(system, config, [args.distro] if args.distro else [], cwd)
+    # The recorded path is read and resolved as sync reads it, from the system directory, which
+    # need not be the current one, and under its recorded name, so every refusal and warning
+    # names it as sync's do. Only once it has read and resolved is it shown, like the
+    # manifests it builds on, as an absolute path with links followed, so that it opens from
+    # where show is run.
+    try:
+        manifest = read_manifest(config.manifest, system)
+        resolved = selection.resolve(manifest, config.role, distro, config.groups)
+    except ManifestError as exc:
+        raise ManifestError(f"{exc} {recorded_manifest(system)}") from None
+    canonical = os.path.realpath(system / config.manifest)
+    for layer in resolved.layers:
+        for repo in layer.repos:
+            if repo.source == resolved.source:
+                repo.source = canonical
+    resolved.source = canonical
+    return resolved
+
+
+def cmd_show(args: argparse.Namespace) -> int:
+    if args.distro == "":
+        raise ManifestError("--distro is given an empty name; name the distro to show")
+    with reporting_oserror():
+        cwd = current_directory()
+        if args.manifest is None:
+            resolved = _show_in_system(args, cwd)
+        else:
+            manifest = read_manifest(args.manifest, cwd)
+            resolved = selection.resolve(manifest, args.role, args.distro, args.with_groups or [])
+    print(render(resolved))
+    return 0
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     return run_init(
         args.manifest,
@@ -252,6 +315,27 @@ def build_parser() -> argparse.ArgumentParser:
     _add_with(validate_p)
     validate_p.add_argument("--cache-dir", default=None)
     validate_p.set_defaults(func=cmd_validate, parser=validate_p)
+
+    show_p = sub.add_parser(
+        "show",
+        help=(
+            "Print what a manifest comes to for a role and distro, with what is left out and"
+            " why; with no manifest, what the system directory you are in records"
+        ),
+    )
+    show_p.add_argument(
+        "manifest",
+        nargs="?",
+        help="Path to the manifest file (default: the one the system directory records)",
+    )
+    show_p.add_argument("--role", help="The role, when the manifest has roles")
+    _add_with(show_p)
+    show_p.add_argument(
+        "--distro",
+        action=_Once,
+        help="The distro, when the manifest has distros; in a system, one it records",
+    )
+    show_p.set_defaults(func=cmd_show, parser=show_p)
 
     init_p = sub.add_parser(
         "init",

@@ -63,6 +63,9 @@ def merge_parts(parts: Sequence[Part], bases: Sequence[str] = ()) -> Manifest:
                 first[key] = index
                 brought[key] = list(given)
             for name, value in given.items():
+                earlier = repos[key].get(name)
+                if name == "url" and earlier is not None and earlier.value == value:
+                    continue  # a url repeated unchanged keeps the manifest that gave it
                 repos[key][name] = _Given(value, part.source)
 
     layer_list, group_list = list(layers), list(groups)
@@ -131,7 +134,8 @@ def _check_complete(key: str, brought: List[str], source: str, has_earlier: bool
 
 def _repo(key: str, given: Dict[str, _Given]) -> Repo:
     """The merged entry as a `Repo`; `_check_complete` has passed, and a later manifest cannot
-    take a key away."""
+    take a key away. Its `source` is the manifest that gave the `url` in effect: where the key
+    first appears, or the last manifest in reading order that changed the url."""
     values = {name: g.value for name, g in given.items()}
     return Repo(
         key=key,
@@ -143,6 +147,7 @@ def _repo(key: str, given: Dict[str, _Given]) -> Repo:
         groups=list(values.get("groups", [])),
         distros=values.get("distros"),
         optional=values.get("optional", False),
+        source=given["url"].source,
     )
 
 
