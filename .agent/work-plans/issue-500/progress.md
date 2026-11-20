@@ -2247,3 +2247,88 @@ The owner's case, rerun on real systems (record without urls): clone switched to
 - [x] (suggestion) `build` reads the resolved plan before taking the lock it shares with sync (codex; build.py is outside this diff: a follow-up) — `tools/repos-manifest/src/repos_manifest/build.py:1453` (deferred: build.py is outside this diff; a follow-up for the lock issue)
 - [x] (suggestion) A tracked edit made between the checks and the merge is reported as a half-change "made during the move" — `tools/repos-manifest/src/repos_manifest/update.py:1029`
 - [x] (suggestion) PR body "sync removes no remote-tracking ref" sits beside its own probe-ref deletion (refs under refs/remotes/); say "of origin" — PR #535 body (deferred: the host's PR body: the sentence is in this pass's Implementation entry; the stale-ref error now says 'of origin' too)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 08:16 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #535 at `d3d5c434`
+**Addressed**: Local Review at `f7a1d443` (2026-11-19 21:29 -05:00)
+**Commits**: ae4765c7 (code and tests), 7486be9a (README and design), d3d5c434 (box checks)
+
+I reproduced must-fix 1 and 2 first, with the reviewer's `rev/scen9.py` and `rev/scen8.py` copied to a scratch directory:
+- Must-fix 1 before the fix: `rolling/core/src/a: fast-forwarded 1 commit` while the other work tree's `rebase -i` was stopped at `break`; `rebase --continue` then failed "cannot lock ref 'refs/heads/jazzy': is at 914c… but expected 63c9…", and the commit made during the rebase was left on a detached HEAD.
+- Must-fix 2 before the fix: `release` to `tags/release` printed "left alone: moved by a person: it is on release; the manifest names tags/release", and the record stayed `release`.
+- After the fix: the first is "left alone: branch jazzy is held by the work tree <path> (a rebase of jazzy is stopped there); not fast-forwarded", jazzy is not moved, and `rebase --continue` ends with the person's commit on jazzy. The second is "moved from branch release to tag release", and the record is `tags/release`.
+
+### Actions
+- [x] (must-fix 1) A branch is held by another work tree when that work tree has it checked out, or an operation in progress there names it, as git itself counts it (`git branch -f` refuses each of these, checked by hand on git 2.53):
+  - a rebase whose `rebase-merge/head-name` or `rebase-apply/head-name` is the branch;
+  - a rebase with `--update-refs` whose `update-refs` list names it;
+  - a bisect whose `BISECT_START` names it.
+  When an operation is there and what it returns to cannot be read (a rebase with no `head-name`, or a file that cannot be read), every branch is held. What I checked holds no branch: a rebase of a detached HEAD (`head-name` is `detached HEAD`), a bisect started detached (`BISECT_START` holds a commit), and a `git am`, merge or cherry-pick on a detached HEAD (no `head-name`; `am` leaves `rebase-apply/applying`). The check runs before the fast-forward (rule 10) and before the switch of a move, so also before the fast-forward of an existing local branch. The line names the work tree and why. Each work tree's git directory is read under the common directory (the main one, and `worktrees/<id>`, its path from the `gitdir` file); when they cannot be read, the repo is left alone. Tests, each comparing every work tree, whole, and each linked one's git directory, before and after (`_whole`):
+  - the reviewer's `rebase -i` stopped at `break` with a commit made there, which `rebase --continue` then puts on main;
+  - a rebase stopped on a conflict;
+  - a bisect started on main, at a commit it checked out;
+  - `rebase --update-refs` naming the local branch a move would switch to;
+  - a detached work tree with a `rebase-merge` directory and no `head-name`;
+  - a local branch under `rebase -i` that the move would switch to;
+  - the neighbours that hold nothing: a rebase of a detached HEAD and a stopped `git am` there; the clone is fast-forwarded and that work tree is unchanged.
+- [x] (must-fix 2) The comparison with the record keeps the kind: `same_version` takes the kind a plain version named, and `recorded_kind` reads it for a record. The record keeps the version as written, as before, so records written by earlier code and by this code are the same and cannot be told apart by their text. I chose to read a plain recorded version from where the repo is: on the branch of its name, the branch; detached at the recorded commit, the tag when the tag of that name here is at that commit and the local branch is not, the branch the other way round, and a commit for hex digits that commit starts with. When both the branch and the tag are at the recorded commit (or, on the branch, the tag is), which one sync followed cannot be told: the repo is left alone with a line that says so, not "moved by a person". When neither is (a tag origin moved since, which the stale-tag rule follows), the record reads as the manifest's version when the names are the same, as before. When a move changes only the kind, the line says "moved from branch release to tag release". The lookup is unchanged: plain `x` that is both a branch and a tag on origin is still the "both" error; `heads/x` and `tags/x` are never refused for it. Tests on real clones:
+  - the reviewer's case: branch `release`, then `tags/release` (moved, branch kept), `heads/release` (moved back), plain `release` (the "both" error);
+  - plain `v2` recorded as the tag, then `heads/v2`: moved to the branch;
+  - `tags/v3`, then plain `v3` once origin has only a branch `v3`: moved to the branch;
+  - branch and tag `rel` at the recorded commit, pin `tags/rel`: left alone, whole, with the new line;
+  - the neighbour: a person detaches at the recorded branch's commit and the manifest does not change: still "moved by a person".
+- [x] (must-fix 3) The lock refusals in `system.py` print `fuser -v` with the lock file's path through `shlex.quote` (the function `update.quoted` wraps; `system.py` cannot import `update`). I grepped the package for printed commands: `update.py`'s were already quoted (`<place>` placeholders are replaced with the quoted path before they are printed), and so were `sync.py`'s `mv`; `build.py` prints `repos-manifest build <layers>`, `pgrep -g <pgid>` and `ps -p <pid>`, whose layer names hold only letters, digits, `_` and `-`. I made the sentence true and named what it covers: "Every command a report or a refusal of `sync` prints, the lock refusals' `fuser -v` included, quotes paths, branch names and refs for the shell (`shlex.quote`); the commands `build` prints name only layers, whose names hold letters, digits, `_` and `-`, and process numbers." Test: a system whose path holds a space and a `'`, for a sync and a build holding the lock; the printed `fuser -v` command, split as a shell splits it, is the lock file's path.
+- [x] (must-fix 4) Pull request body: the host corrected it ("round 1", not "round 2"); its box is checked with that note (the check script writes a note as "deferred: …"), nothing changed here.
+- [x] (suggestion) A work tree on an unborn branch (`worktree add --orphan`) lists the null id, which is no longer counted, so it does not stop a repoint. Test: an orphan work tree and a url change: repointed, and that work tree's git directory and files are unchanged.
+- [x] (suggestion) The url probe's fetch passes `--no-prune` and `--no-recurse-submodules`. Neither changed what git 2.53 did here: every git runs with `-c submodule.recurse=false`, and with it a `git fetch` by hand did not go into a submodule under `fetch.recurseSubmodules=true`; a prune on the probe's own refspec could only touch its own refs. So the test that fails without the change is a source scan (`test_update_safety.py`: every fetch with `--refmap=` holds both flags); a real-repo test (repoint with a submodule and `fetch.recurseSubmodules`/`submodule.recurse` set: the submodule's refs, HEAD and status unchanged) guards the behaviour and passes either way.
+- [x] (suggestion) The stale-ref error says, before the `update-ref -d` command, that removing that ref may remove the only ref here to commits origin has since deleted, and gives `git -C <place> branch <a new name> <ref>` to keep them. Test: origin deletes `release`, whose last commit only the clone's `origin/release` holds; the two printed commands, run by a shell in order, keep that commit on a branch and clear the way, and the next sync fetches.
+- [x] (suggestion) A work tree whose directory no longer exists: the line says so and gives `git -C <place> worktree prune`, to run when the directory is gone for good, not on a drive that is not mounted. Test: the printed command, run by a shell, lets the next sync fast-forward.
+- [x] (suggestion) `worktree list --porcelain` without `-z` (deferred: a path holding a newline; `-z` needs git 2.36, newer than the stated minimum 2.23).
+- [x] (suggestion) `same_url` reads `/srv/robot` and `/srv/robot.git` as one repo (deferred: the same rule git hosting uses; the design now says so).
+- [x] (suggestion) `build` reads the resolved plan before taking the lock it shares with sync (deferred: `build.py` is outside this diff; a follow-up for the lock issue).
+- [x] (suggestion) A tracked file edited during the checks: the tracked files are read again right before the first call, with HEAD, and such a repo is left alone ("a tracked file was changed while sync was checking the repo; not moved (sync again once it is committed or put back)"). The half-change report no longer says the changes were made "during the move": "sync's last check, just before the move, found no tracked changes, so these were made since: by git, a hook it ran, or a person". Test: an edit made from inside the paths check, for a fast-forward and a switch; the repo is left, whole, as the person left it, and the record is unchanged. Four existing expectations follow the new wording.
+- [x] (suggestion) Pull request body, "sync removes no remote-tracking ref": the sentence is below. The stale-ref error now says "no remote-tracking ref of origin" too.
+
+### Being my own adversary
+- With real git, before writing the rule: which files each operation leaves in a linked work tree's git directory (rebase on both backends, `--update-refs`, bisect on a branch and detached, `am` and cherry-pick on a detached HEAD, a rebase of a detached HEAD), and that `git branch -f` refuses the branch in each case the rule holds.
+- `--update-refs` does not list a branch checked out in another work tree, so the test uses a local branch that is not checked out (the move's switch target).
+- The main work tree rebasing a branch while the clone is a linked work tree of it: held. A bare common directory with two linked work trees, one rebasing: held from the other. The clone reached through a link to its directory: not taken for another work tree. After `rebase --abort`: held again only as checked out.
+- A first version of `recorded_kind` read "no tag at the recorded commit" as a branch a person detached; the existing stale-tag test caught that it is also a tag origin moved, so neither is now "cannot tell", which keeps the earlier behaviour.
+- `sync` after a person detaches at the recorded branch's commit, with the manifest unchanged, is still "moved by a person" (tested).
+- The `fuser` path with a space and a `'`, and the printed `worktree prune` and `branch`/`update-ref` commands, run by a real shell.
+- Each new test fails on the source before ae4765c7 (run with that source's `src` on `PYTHONPATH`), except those meant to pass there: the two neighbours of must-fix 1 (a detached rebase and `am`), the detached-person neighbour of must-fix 2, and the real-repo probe submodule test (above).
+
+### Checks
+- Whole suite at `7486be9a`: `cd tools/repos-manifest && PYTHONDONTWRITEBYTECODE=1 REPOS_MANIFEST_REQUIRE_COLCON=1 PYTHONPATH=src /usr/bin/python3 -m pytest -p no:cacheprovider --basetemp=<private dir>` gave `1757 passed in 574.50s (0:09:34)` (1734 before; 23 new)
+- The signal and kill tests, three times: `tests/test_interrupted.py` gave `18 passed` each time; the tests selected by `-k "signal or kill or stop or interrupt or SIG"` in `test_interrupted.py`, `test_sync.py`, `test_sync_distros.py`, `test_clone.py` and `test_init_refusals.py` gave `31 passed, 109 deselected` each time.
+- `test_update.py`, `test_update_safety.py`, `test_sync_distros.py` and `test_update_submodules.py` together: `264 passed` before the commit (plus the two tracked-edit tests after).
+- flake8 is clean on the changed files; black ran in the commit hooks. No workspace script changed. Commits used `SKIP=validate-script-tests`; the full pre-commit pass is the host's. `git status --porcelain` is clean.
+- I re-read each changed sentence of the tool's `README.md` and `docs/design.md` against the code: rule 7's stale ref, rule 8's kinds, rules 10 and 11's held branch, the re-read before the first call, the half-change wording, the quoting sentence, the work-tree paragraph, the probe fetch flags, and the url comparison.
+
+### Departures
+- One commit for the code and tests, and one for the docs, not one per finding: the fixes share `update.py`'s `worktree_holding`, `_change` and the move decision.
+- The tracked files are read again before the first call and such a repo is left alone, which goes further than rewording the half-change report: an edit made during the checks is the person's, and a move on top of it is not needed to report it.
+- The case where branch and tag are both at the recorded commit is left alone with its own line rather than moved, since which one sync followed cannot be told (the host's rule: when in doubt, leave it alone and report).
+- The session scratchpad's volume (`/tmp`) ran out of inodes during this pass and removing the earlier passes' test directories there was refused (`scratchpad/fix6/pt6.J2nT`, `fix6/pt.0zPH`, `fix8/full.vKDS`, `fix8/pt.AZRo`, `fix8/pt.NFTs`, `pt/bt`, about 790 000 inodes). I put this pass's scratch files and pytest `--basetemp` in the worktree's ignored `.agent/scratchpad/fix9.beTz/` instead, with `TMPDIR` pointing there. The Bash tool could not start at all for a while (it captures output on that volume); the whole suite finished meanwhile, and the box checks, the signal and kill runs and this entry came after the host freed the volume. Removing my own `scratchpad/fix9` in the session scratchpad was refused; it and `.agent/scratchpad/fix9.beTz/` (ignored) remain.
+
+### For the pull request body
+Only what changes or is new in this pass; the rest of the last entry's text stands.
+- **The update rules this pass changes** (after the pull request's second review), to add to that list:
+  - A branch another work tree holds is never fast-forwarded or switched to: checked out there, or named by a rebase (`head-name`, `--update-refs`) or a bisect (`BISECT_START`) in progress there, as git itself counts it; when that cannot be read, every branch is held. The repo is left alone and reported, naming that work tree and why; a work tree whose directory is gone gets the `git worktree prune` command.
+  - A version's kind counts in the comparison with the record: a recorded branch `x` and a pin `tags/x` are two versions, so a clean repo on the branch is moved to the tag ("moved from branch x to tag x"), and the other way round. A plain recorded name is read from where the repo is; when the branch and the tag of that name are both at the recorded commit, the repo is left alone with a line that says why.
+  - The tracked files are read again with HEAD right before the first call; a change a person made during the checks leaves the repo alone.
+  - The url probe's fetch passes `--no-prune` and `--no-recurse-submodules`; a work tree on a branch with no commit does not stop a repoint.
+- In place of "A branch that is also checked out in another work tree is never fast-forwarded or switched to; ..." (the first-review line): the held-branch line above.
+- **Quoting:** every command a report or a refusal of `sync` prints quotes paths, branch names and refs for the shell, the lock refusals' `fuser -v` included; the commands `build` prints name only layers (letters, digits, `_`, `-`) and process numbers.
+- **The never-run list:** in place of "sync removes no remote-tracking ref": "sync removes no remote-tracking ref of origin; its one ref deletion is of its own probe refs". The stale-ref error now also gives the `git branch` command that keeps commits only that ref holds, before the `update-ref -d` command.
+- **Half-changed moves:** in place of "the tracked changes made during the move (by git, a hook it ran, or something else)": "the tracked changes made since the check just before the first call found none (by git, a hook it ran, or a person)".
+- **Tests:** 1757 pass with `REPOS_MANIFEST_REQUIRE_COLCON=1`.
+- **Left open, on purpose** (add):
+  - `git worktree list --porcelain` is read without `-z`, so a work tree path holding a newline is misread (`-z` needs git 2.36; the minimum is 2.23).
+  - Urls are compared after one trailing `/` and `.git` are taken off, so local `/srv/robot` and `/srv/robot.git` read as one repository, as git hosting reads `x` and `x.git`.
+  - `build` reads the resolved plan before it takes the lock it shares with `sync` (`build.py`, a follow-up for the lock issue).
+  - A plain recorded version whose branch and tag are both at the recorded commit is left alone until a person moves the repo (the record keeps the version as written, not its kind).
