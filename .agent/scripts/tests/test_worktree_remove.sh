@@ -368,6 +368,96 @@ check "inside link, no search: exit 1" test "$rc" -eq 1
 check "inside link, no search: names the folder inside the worktree" grep -qF "cannot enter $c/layer_ws/src:" <<<"$out"
 check "inside link, no search: the entry is still there" test -f "$c/layer_ws/src/pkg_a/package.xml"
 
+# The review's reproduction: a link inside the worktree whose target sits
+# under a folder with no search permission. `[ -d ]` through the link was
+# false on EACCES, so the entry was taken as gone and deleted with its
+# uncommitted work. Two shapes: the link is a folder on the entry's path
+# (alias -> layer_ws/src/sub, the manifest names alias/pkg_a), or the
+# entry's own name (alias_pkg -> layer_ws/src/sub/pkg_a). Refused, plain
+# and --force, naming the inside folder.
+for shape in path entry; do
+    for mode in plain --force; do
+        echo "TEST: an inside link whose target sits under a folder that cannot be entered is refused ($shape link, $mode)"
+        sb="$(make_sandbox)"; c="$sb/worktrees/workspace/issue-workspace-7"
+        pkg="$(make_pkg_repo)"
+        make_aggregate "$sb" layer_ws/src/sub/pkg_a "$pkg"
+        if [ "$shape" = path ]; then
+            ln -s layer_ws/src/sub "$c/alias"; rel=alias/pkg_a
+        else
+            ln -s layer_ws/src/sub/pkg_a "$c/alias_pkg"; rel=alias_pkg
+        fi
+        printf '# project=demo issue=owner/pkg_a#7 layer=l1 base=main\n%s\t%s\tfeature/issue-7\n' "$pkg" "$rel" > "$c/.worktree-repos"
+        printf 'uncommitted\n' > "$c/layer_ws/src/sub/pkg_a/package.xml"
+        chmod 600 "$c/layer_ws/src"
+        if [ "$mode" = plain ]; then set --; else set -- --force; fi
+        rc=0; out="$(run_remove "$sb" "$@" 2>&1)" || rc=$?
+        mode_after="$(stat -c %a "$c/layer_ws/src" 2>/dev/null || echo gone)"
+        chmod 700 "$c/layer_ws/src" 2>/dev/null || true
+        check "inside link under no search ($shape, $mode): exit 1" test "$rc" -eq 1
+        check "inside link under no search ($shape, $mode): names the inside folder" grep -qF "cannot enter $c/layer_ws/src:" <<<"$out"
+        check "inside link under no search ($shape, $mode): does not say it leads outside" bash -c '! grep -q "leads outside" <<<"$1"' _ "$out"
+        check "inside link under no search ($shape, $mode): the folder keeps mode 600" test "$mode_after" = 600
+        check "inside link under no search ($shape, $mode): the change is kept" grep -q uncommitted "$c/layer_ws/src/sub/pkg_a/package.xml"
+    done
+done
+set --
+
+# The entry's own name is a link to a folder inside that cannot be entered:
+# refused naming that folder, never as a link that leads outside.
+echo "TEST: an entry that is a link to an inside folder that cannot be entered names that folder"
+sb="$(make_sandbox)"; c="$sb/worktrees/workspace/issue-workspace-7"
+pkg="$(make_pkg_repo)"
+make_aggregate "$sb" layer_ws/src/pkg_a "$pkg"
+ln -s layer_ws/src/pkg_a "$c/alias_pkg"
+printf '# project=demo issue=owner/pkg_a#7 layer=l1 base=main\n%s\t%s\tfeature/issue-7\n' "$pkg" alias_pkg > "$c/.worktree-repos"
+chmod 600 "$c/layer_ws/src/pkg_a"
+rc=0; out="$(run_remove "$sb" 2>&1)" || rc=$?
+chmod 700 "$c/layer_ws/src/pkg_a"
+check "entry link, no search: exit 1" test "$rc" -eq 1
+check "entry link, no search: names the inside folder" grep -qF "cannot enter $c/layer_ws/src/pkg_a:" <<<"$out"
+check "entry link, no search: does not say it leads outside" bash -c '! grep -q "leads outside" <<<"$1"' _ "$out"
+check "entry link, no search: the entry is still there" test -f "$c/layer_ws/src/pkg_a/package.xml"
+
+# A healthy entry reached through an inside link is removed like any other.
+echo "TEST: a clean entry reached through an inside link is removed"
+sb="$(make_sandbox)"; c="$sb/worktrees/workspace/issue-workspace-7"
+pkg="$(make_pkg_repo)"
+make_aggregate "$sb" layer_ws/src/pkg_a "$pkg"
+ln -s layer_ws/src "$c/alias"
+printf '# project=demo issue=owner/pkg_a#7 layer=l1 base=main\n%s\t%s\tfeature/issue-7\n' "$pkg" alias/pkg_a > "$c/.worktree-repos"
+rc=0; out="$(run_remove "$sb" 2>&1)" || rc=$?
+check "inside link, clean: exit 0" test "$rc" -eq 0
+check "inside link, clean: the container is gone" test ! -e "$c"
+check "inside link, clean: the package repository no longer lists the entry" bash -c '! git -C "$1" worktree list | grep -qF "$2"' _ "$pkg" "$c/layer_ws/src/pkg_a"
+
+# A link is never taken as gone: a dangling link, a link to a file, and a
+# link out of the worktree to a folder that cannot be reached are each
+# refused (with --force too), with the advice to remove the link by hand.
+for shape in dangling file outside-unreachable missing-behind-link; do
+    echo "TEST: an entry behind a link that does not reach a folder inside is refused, never taken as gone ($shape)"
+    sb="$(make_sandbox)"; c="$sb/worktrees/workspace/issue-workspace-7"
+    pkg="$(make_pkg_repo)"
+    make_aggregate "$sb" layer_ws/src/pkg_a "$pkg"
+    out_dir="$(mktemp -d -p "$SANDBOX")"
+    rel=ext_pkg
+    case "$shape" in
+        dangling) ln -s no_such_folder "$c/ext_pkg" ;;
+        file) printf 'f\n' > "$c/afile"; ln -s afile "$c/ext_pkg" ;;
+        outside-unreachable)
+            mkdir -p "$out_dir/locked/pkg_x"
+            ln -s "$out_dir/locked/pkg_x" "$c/ext_pkg"
+            chmod 600 "$out_dir/locked" ;;
+        missing-behind-link) ln -s layer_ws/src "$c/alias"; rel=alias/pkg_gone ;;
+    esac
+    printf '%s\t%s\tfeature/issue-7\n' "$pkg" "$rel" >> "$c/.worktree-repos"
+    rc=0; out="$(run_remove "$sb" --force 2>&1)" || rc=$?
+    chmod 700 "$out_dir/locked" 2>/dev/null || true
+    check "link not reaching a folder ($shape): exit 1" test "$rc" -eq 1
+    check "link not reaching a folder ($shape): advises removing the link by hand" grep -qi "remove the link by hand" <<<"$out"
+    check "link not reaching a folder ($shape): gives no chmod advice" bash -c '! grep -q "chmod" <<<"$1"' _ "$out"
+    check "link not reaching a folder ($shape): the other entry is still there" test -f "$c/layer_ws/src/pkg_a/package.xml"
+done
+
 # The chmod never opens the top folder of a mount of another filesystem
 # (find -xdev alone still lists it). Mounting needs a user and mount
 # namespace (unshare -rm); where that is not allowed the case is skipped

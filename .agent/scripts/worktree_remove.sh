@@ -22,10 +22,17 @@
 #   ./worktree_remove.sh --path worktrees/workspace/skill-workspace-research-20261115-101010-1 --type workspace
 #
 # This will:
-#   1. Refuse, before removing anything, an entry that leads outside the
-#      worktree through a symbolic link or that sits under a folder it
-#      cannot enter (issue 428), and check for uncommitted changes (unless
-#      --force; a folder git status cannot open counts as not checked)
+#   1. Decide, before removing or changing anything, each entry the
+#      manifest names: present (reached), proven absent (its name is not
+#      there, found without passing a symbolic link), or refused, with or
+#      without --force (issue 428). Refused is everything else: a folder on
+#      the way that cannot be entered (give it back u+rwx by hand), or a
+#      symbolic link on the way or as the entry that does not lead to a
+#      folder inside the worktree: dangling, to a file, or outside. For a
+#      refused link, remove the link by hand (rm on a link removes only
+#      the link, never what it points to) and run this again. Then check
+#      present entries for uncommitted changes (unless --force; a folder
+#      git status cannot open counts as not checked)
 #   2. Remove the worktree directory, first giving its directories that
 #      lack any of u=rwx full owner permission (a build's install tree can
 #      leave read-only ones, which would block the removal; directories
@@ -397,103 +404,129 @@ done <<< "$MANIFEST_ENTRIES"
 # aggregate worktree is never half removed. ENTRY_OWNERS stays index-aligned
 # with ENTRY_DESTS; an entry already gone has an empty owner.
 #
-# "Already gone" must mean gone, never "could not be looked at" (issue 428
-# review): `[ -d ]` is false on a permission denial as on a missing path,
-# and an entry taken as gone gets no dirty check, after which the chmod and
-# `rm -rf` below would delete it with its uncommitted work. So the path is
-# walked down from the worktree, which was entered above: a name is looked
-# up only in a folder already entered, where a failed lookup can only mean
-# it is not there, and a folder on the way that cannot be entered is
-# reported. A folder on the way that is a symbolic link to a folder is
-# resolved (`readlink -f`): one that leads outside the worktree, or whose
-# target cannot be resolved, is reported as a link, before any search check,
-# because a `chmod` advised on it would follow it to a folder outside; one
-# that stays inside is walked through as before, and if its target cannot
-# be entered that target, inside the worktree, is the folder reported.
-# Returns 0 when the entry is a folder, as before; 1 when it is not
-# (missing, a non-folder, or a link whose target cannot be reached:
-# `rm -rf` then removes only the name, never a link's target); 2 when a
-# folder on the way cannot be entered, printing that folder; 3 when a
-# folder on the way is a link out of the worktree or one that cannot be
-# resolved, printing the link, a tab, and its target (empty when it could
-# not be resolved).
-_entry_reach() {  # <worktree_dir> <dest>
-    local cur="$1" rel part target
-    [ "$2" = "$1" ] && return 0
-    rel="${2#"$1"/}"
-    while :; do
-        part="${rel%%/*}"
-        if [ "$part" = "$rel" ]; then
-            [ -d "$cur/$part" ]
-            return
-        fi
-        cur="$cur/$part"
-        rel="${rel#*/}"
-        [ -d "$cur" ] || return 1
-        if [ -L "$cur" ]; then
-            target="$(readlink -f -- "$cur" 2>/dev/null || true)"
-            case "$target/" in
-                "$1/"*) ;;
-                *)
-                    printf '%s\t%s' "$cur" "$target"
-                    return 3
+# Each entry ends in exactly one of three states, decided here, before
+# anything is removed or any permission changed (issue 428 review). The
+# rule is "refuse unless proven": a case this function does not know is
+# refused, never taken as gone, because an entry taken as gone gets no
+# dirty check and the chmod and `rm -rf` below would delete it.
+#   PRESENT  (0): reached; prints its physical path, inside the worktree.
+#                 It then gets the owner check and the dirty check below.
+#   ABSENT   (1): proven gone: the walk went down from the worktree
+#                 through real folders only (no link), entering each, and
+#                 in the last one entered the next name does not exist at
+#                 all, as a file, a folder or a link.
+#   REFUSED  (2): everything else; prints what was found and where, and
+#                 what to do about it.
+# The walk looks a name up only in a folder it has entered, so a failed
+# lookup there means "not there", never "cannot look". A link is read one
+# level at a time (`readlink`) and the walk goes on along what it names,
+# under the same rules: the entry is PRESENT only when that path, inside
+# the worktree, is reached. A link written as an absolute path outside the
+# worktree's physical path, a dangling link, a link to a file, or a name
+# missing behind a link is refused, with the advice to remove the link by
+# hand (rm on a link removes only the link). A folder that cannot be
+# entered is refused naming it; it is a real folder inside the worktree,
+# so the advised chmod lands there and nowhere else.
+_entry_state() {  # <worktree_dir (physical, entered)> <dest>
+    local wt="$1" cur="$1" rest part name target link="" hops=0
+    if [ "$2" = "$wt" ]; then printf '%s' "$wt"; return 0; fi
+    rest="${2#"$wt"/}"
+    while [ -n "$rest" ]; do
+        part="${rest%%/*}"
+        if [ "$part" = "$rest" ]; then rest=""; else rest="${rest#*/}"; fi
+        case "$part" in
+            ""|.) continue ;;
+            ..)
+                if [ "$cur" = "$wt" ]; then
+                    if [ -n "$link" ]; then
+                        printf '%s\n' "the symbolic link $link leads outside this worktree (through ..)." \
+                            "Remove the link by hand (rm $(printf '%q' "$link"); that removes only the link), then run this command again."
+                    else
+                        printf '%s\n' "its path in the manifest (.worktree-repos) climbs out of this worktree (..)." \
+                            "Correct the manifest by hand, then run this command again."
+                    fi
+                    return 2
+                fi
+                cur="$(dirname -- "$cur")"
+                continue
+                ;;
+        esac
+        name="$cur/$part"
+        if [ -L "$name" ]; then
+            hops=$((hops + 1))
+            link="$name"
+            target="$(readlink -- "$name" 2>/dev/null)" || target=""
+            if [ -z "$target" ] || [ "$hops" -gt 40 ]; then
+                printf '%s\n' "$name is a symbolic link that cannot be followed." \
+                    "Remove the link by hand (rm $(printf '%q' "$name")), then run this command again."
+                return 2
+            fi
+            case "$target" in
+                "$wt") cur="$wt" ;;
+                "$wt"/*) cur="$wt"; rest="${target#"$wt"/}${rest:+/$rest}" ;;
+                /*)
+                    printf '%s\n' "$name is a symbolic link to $target, which leads outside this worktree." \
+                        "Remove the link by hand (rm $(printf '%q' "$name"); that removes only the link), then run this command again."
+                    return 2
                     ;;
+                *) rest="$target${rest:+/$rest}" ;;
             esac
-        else
-            target="$cur"
+            continue
         fi
-        if ! (cd "$cur" 2>/dev/null); then
-            printf '%s' "$target"
+        if [ ! -e "$name" ]; then
+            [ -z "$link" ] && return 1
+            printf '%s\n' "$name does not exist, and the way to it runs through the symbolic link $link (a dangling link, or an entry gone behind a link)." \
+                "Remove the link by hand (rm $(printf '%q' "$link")), then run this command again."
             return 2
         fi
+        if [ ! -d "$name" ]; then
+            if [ -n "$link" ]; then
+                printf '%s\n' "$name is not a folder, and the way to it runs through the symbolic link $link." \
+                    "Remove the link by hand (rm $(printf '%q' "$link")), then run this command again."
+            else
+                printf '%s\n' "$name is not a folder, where a folder should be." \
+                    "Check what it is and remove it by hand, then run this command again."
+            fi
+            return 2
+        fi
+        if ! (cd "$name" 2>/dev/null); then
+            printf '%s\n' "cannot enter $name: no search permission on it, so this script cannot tell what the entry holds." \
+                "Check what it holds, give it back its owner permission by hand (chmod u+rwx $(printf '%q' "$name")), then run this command again."
+            return 2
+        fi
+        cur="$name"
     done
+    printf '%s' "$cur"
+    return 0
 }
 
 declare -a ENTRY_OWNERS=()
 for _i in "${!ENTRY_DESTS[@]}"; do
     _dest="${ENTRY_DESTS[$_i]}"
-    _reach_rc=0
-    _blocked="$(_entry_reach "$WORKTREE_DIR" "$_dest")" || _reach_rc=$?
-    if [ "$_reach_rc" -eq 3 ]; then
-        _link="${_blocked%%$'\t'*}"
-        _target="${_blocked#*$'\t'}"
-        if [ -n "$_target" ]; then
-            echo "Error: ${_dest} leads outside this worktree (to ${_target}) through the symbolic link ${_link}; nothing was removed."
-        else
-            echo "Error: ${_dest} lies under the symbolic link ${_link}, which leads outside this worktree or cannot be resolved; nothing was removed."
-        fi
-        echo "Delete that link by hand (rm on a link removes only the link, never what it points to), then run this command again: an entry already gone is skipped."
-        exit 1
-    fi
-    if [ "$_reach_rc" -eq 2 ]; then
-        echo "Error: cannot enter ${_blocked}: no search permission on it, so this script cannot tell whether ${_dest} is there or what removing it would lose; nothing was removed."
-        echo "Check what it holds, give it back its owner permission by hand (chmod u+rwx $(printf '%q' "$_blocked")), then run this command again."
-        exit 1
-    fi
-    if [ "$_reach_rc" -ne 0 ]; then
-        ENTRY_OWNERS+=("")
-        continue
-    fi
-    # The entry must lie inside this worktree once links are resolved (issue
-    # 428 review): an entry that is a symbolic link, or sits under one, to a
-    # checkout elsewhere would have `git worktree remove` delete that other
-    # checkout's files. Refused before anything is removed.
-    _real="$(cd "$_dest" 2>/dev/null && pwd -P || true)"
-    # An entry that cannot be entered itself (a folder above it that cannot
-    # be entered, or that is a link out of the worktree, was refused just
-    # above) is not a link and leads nowhere:
-    # say so, never the link message below, which would name a link that
-    # does not exist.
-    if [ -z "$_real" ] && [ ! -L "$_dest" ]; then
-        echo "Error: cannot enter ${_dest}: no search permission on it; nothing was removed."
-        echo "Check what it holds, give it back its owner permission by hand (chmod u+rwx on that folder), then run this command again."
-        exit 1
-    fi
-    case "$_real/" in
-        "$WORKTREE_DIR/"*) ;;
-        *)
-            echo "Error: ${_dest} leads outside this worktree${_real:+ (to ${_real})} through a symbolic link; nothing was removed."
-            echo "Delete that link by hand (the entry itself or a folder above it in this worktree; rm on a link removes only the link, never what it points to), then run this command again: an entry already gone is skipped."
+    _state_rc=0
+    _state_out="$(_entry_state "$WORKTREE_DIR" "$_dest")" || _state_rc=$?
+    case "$_state_rc" in
+        0)  # PRESENT: from here on the entry is its physical path, reached.
+            # The link check is the walk itself: every link on the way was
+            # followed to a real folder inside. Asserted once more, so a
+            # path outside can never reach `git worktree remove`.
+            case "$_state_out/" in
+                "$WORKTREE_DIR/"*) ;;
+                *)
+                    echo "Error: cannot remove ${_dest}: it resolves to ${_state_out}, outside this worktree; nothing was removed."
+                    exit 1
+                    ;;
+            esac
+            ENTRY_DESTS[_i]="$_state_out"
+            _dest="$_state_out"
+            ;;
+        1)  # ABSENT: nothing to remove for it.
+            ENTRY_OWNERS+=("")
+            continue
+            ;;
+        *)  # REFUSED, with or without --force.
+            echo "Error: cannot remove ${_dest}: nothing was removed."
+            printf '%s\n' "$_state_out" | sed 's/^/  /'
             exit 1
             ;;
     esac
