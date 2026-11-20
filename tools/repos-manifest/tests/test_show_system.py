@@ -230,6 +230,61 @@ def test_a_recorded_path_that_exists_and_does_not_read_is_named_as_recorded_by_s
     assert reason and reason in synced
 
 
+def test_a_warning_from_the_recorded_manifest_names_it_as_recorded_by_show_and_sync(
+    tmp_path, capsys, monkeypatch
+):
+    # A top manifest with a top-level key it does not know reads with a warning: show prints it
+    # under the recorded `sub/../m.yaml`, as sync does, and never by the canonical path.
+    system = _system(tmp_path, ["jazzy"])
+    (system / "sub").mkdir()
+    _record(system, "sub/../m.yaml")
+    (system / "m.yaml").write_text(MANIFEST + "colour: blue\n")
+    monkeypatch.chdir(system)
+    warning = "WARNING: sub/../m.yaml: unknown top-level key 'colour' is ignored\n"
+    assert main(["show"]) == 0
+    shown = capsys.readouterr()
+    assert warning in shown.err
+    # sync reads the manifest and warns before it looks for git; stop it there, so it clones
+    # nothing.
+    from repos_manifest import sync
+
+    def no_tools():
+        raise sync.ManifestError("stopped before cloning")
+
+    monkeypatch.setattr(sync, "require_tools", no_tools)
+    assert main(["sync"]) == 1
+    synced = capsys.readouterr().err
+    assert warning in synced and "stopped before cloning" in synced
+    canonical = os.path.realpath(system / "m.yaml")
+    assert canonical not in shown.err and canonical not in synced
+
+
+def test_a_recorded_role_the_manifest_lacks_is_refused_as_recorded_by_show_and_sync(
+    tmp_path, capsys, monkeypatch
+):
+    # The recorded role `pilot` is not in the manifest: show and sync both refuse it, naming the
+    # manifest by its recorded `sub/../m.yaml`, never by the canonical path.
+    system = _system(tmp_path, ["jazzy"])
+    (system / "sub").mkdir()
+    config = Config("sub/../m.yaml", "pilot", [], "flat", ["jazzy"])
+    (system / SYSTEM_DIR / CONFIG_FILE).write_text(config_text(config))
+    monkeypatch.chdir(system)
+    assert main(["show"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    shown = captured.err
+    # sync reports a distro that does not resolve in its report of that distro, and goes on
+    # with the others, so its words may be on either stream.
+    assert main(["sync"]) == 1
+    captured = capsys.readouterr()
+    synced = captured.out + captured.err
+    refusal = "sub/../m.yaml: has no role 'pilot'; its roles are ['developer', 'robot']"
+    for said in (shown, synced):
+        assert refusal in said
+    canonical = os.path.realpath(system / "m.yaml")
+    assert canonical not in shown and canonical not in synced
+
+
 def test_the_no_system_refusal_prints_the_current_directory_on_one_line(
     tmp_path, capsys, monkeypatch
 ):
