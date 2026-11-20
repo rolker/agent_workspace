@@ -2039,3 +2039,32 @@ Changed from the round 6 entry's text: the second masking line and the never-run
   - The never-run scan does not look for forced refspecs or `update-ref -d`. `update.py` uses them only on remote-tracking refs and its own probe refs, never on a local branch, a tag or the work tree. It also does not look for `reset --merge`/`--keep` or `checkout -B`, which `update.py` does not run.
   - Masking is a guard, not a guarantee. Not masked: a `file://` url whose password holds a `/` (it cannot be told from a path; git's file transport ignores it); the scp-like `user:password@host:path`; values the earlier format's reader still prints as they are (`docs/prototype.md` lists them); every `WARNING:` line; the earlier format's "unknown role" error, a signal's stop line and sync's setup-file line; messages outside the manifest readers that echo a value typed on the command line or read from the tool's record files, unless the filter covers their line; and a url reaching a message by a way the source scan cannot see (another name, a helper, a join, a list or mapping formatted whole, keyword arguments, `+=`, logging, an exception formatted whole) on a line the filter does not cover, or one the tool did not read with white space in its user information.
 - **Tests:** 1713 pass with `REPOS_MANIFEST_REQUIRE_COLCON=1` (last whole run at `ecb00ada`; this pass changed sentences only).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 20:35 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a586f9fcf3beb71f1, resume 3 of 3)
+
+**Branch**: feature/issue-500 at `00f2ea1c`
+**Base**: origin/main
+**Depth**: Deep (reason: round 8 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 8 | **Ship**: recommended — no must-fix findings
+
+Scope: `git diff d69c85ff..00f2ea1c -- tools/`: four files, five sentences, no code. Cross-model: skipped (round-8 convergence check, per handoff). No adversarial specialist ran; the handoff waived it for a diff of five sentences.
+
+Tests: `tests/test_documents.py`, `test_update_safety.py`, `test_masking.py` and `test_url_messages.py` give `239 passed in 32.55s`.
+
+The five sentences are each true:
+1. **README:** the masked lines (`_say`, a `ManifestError`) are as stated. The "unknown role" example is right in both formats: the earlier format prints it as given (`cli.py:128`, `:159`); the current one passes the filter (round 7 repro: `has no role 'https://***@h/x'`).
+2. **The `test_update_safety.py` docstring:** the forced refspecs are at `update.py:737` (into `refs/remotes/origin/*`) and `:1085` (into `refs/remotes/repos-manifest-probe/*`). `update-ref -d` runs only over `refs/remotes/repos-manifest-probe/` (`update.py:228-231`). No `reset --merge`, `reset --keep` or `checkout -B` is run.
+3. **The design's filter bullet:** the `cloning` line (`sync.py:242`) and the "holds the manifest" line (`sync.py:526`) are the unfiltered ones. Neither can hold `://`: a repo key has no `//` (`manifest.py:513`), and the distro and layer names in the path are single words (`manifest.py:42`).
+4. **"Other lines are printed as given, among them":** true; `signals.py:52`, `sync.py:612` and `system.warn` print raw.
+5. **The `_say` docstring:** true; it masks with `mask_urls(done.detail)`.
+
+Spot-checked leftover wording, all true: `manifest.py:186`, `schema.py:166`, `masking.py:7` and `:137`, `extends.py:290`, and `design.md:912`.
+
+### Findings
+- [ ] (suggestion) "they show only the repo's path, its key" equates the path with the key. The path is the distro and layer directories, `src`, then the key (`sync.py:232`). The conclusion holds, since those names are single words. "its path, made of single-word names and its key" would be exact. — `docs/design.md:924-926`
