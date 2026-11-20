@@ -30,7 +30,9 @@
 #      lack any of u=rwx full owner permission (a build's install tree can
 #      leave read-only ones, which would block the removal; directories
 #      only, symlinks never followed, a mount of another filesystem
-#      neither walked nor changed, its top folder included; issue 428)
+#      neither walked nor changed, its top folder included, except a
+#      package worktree's entry that is itself on another filesystem,
+#      which is walked from its own top folder; issue 428)
 #   3. Prune the git worktree reference
 #   4. Show branch deletion instructions
 
