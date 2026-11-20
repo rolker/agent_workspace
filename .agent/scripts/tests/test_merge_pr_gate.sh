@@ -2907,6 +2907,22 @@ else
     fail "(ci-28d2) (out=${out:0:400})"
 fi
 
+echo "TEST: CI wait — total_count missing or not a number: unknown, never no-ci (issue 428)"
+# An empty `workflows` array alone would count 0 and give no-ci; without a
+# numeric total_count the list cannot be shown to be whole.
+for wf_answer in '{"workflows":[]}' '{"total_count":null,"workflows":[]}' '{"total_count":"150","workflows":[]}'; do
+    sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
+    wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)
+    write_workflows "$sb" "$wf_answer"
+    write_checkruns "$sb" "$reviewed" "$CHECKRUNS_NONE"
+    out="$(MERGE_PR_CI_GRACE_SECONDS=0 run_merge_wait "$sb" 2>&1)" || true
+    if ! merged_called "$sb" && [[ "$out" == *"no checks registered for"*"${reviewed:0:7}"* ]] && [[ "$out" != *"no CI configured"* ]]; then
+        pass "(ci-28d3) $wf_answer: unknown, waits and errors (not no-ci)"
+    else
+        fail "(ci-28d3) $wf_answer (out=${out:0:400})"
+    fi
+done
+
 echo "TEST: CI wait — only a disabled workflow file, no checks: no-ci (issue 428)"
 sb="$(make_ci_sandbox "$CHANGES_REQUESTED" with_summary)"
 wt="$(ci_wt "$sb")"; reviewed=$(git -C "$wt" rev-parse HEAD)

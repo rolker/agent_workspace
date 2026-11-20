@@ -1773,13 +1773,15 @@ readonly MERGE_PR_CI_WORKFLOW_LEAVE_OUT=(
 
 _ci_count_workflows() {  # reads the actions/workflows JSON on stdin; prints the number of active workflows not on the leave-out list, or "unknown"
     # "unknown", never 0, when the answer is not the whole list: no
-    # `workflows` array, or `total_count` larger than the entries returned
-    # (a list past one page, per_page=100). A disabled workflow registers
-    # no checks, so only `active` entries count.
+    # `workflows` array, a `total_count` that is missing or not a number
+    # (so the list cannot be shown to be whole), or a `total_count` larger
+    # than the entries returned (a list past one page, per_page=100). A
+    # disabled workflow registers no checks, so only `active` entries count.
     jq -r --args '
         ($ARGS.positional) as $skip
         | if (.workflows | type) != "array" then "unknown"
-          elif ((.total_count // 0) | tonumber? // 0) > (.workflows | length) then "unknown"
+          elif (.total_count | type) != "number" then "unknown"
+          elif .total_count > (.workflows | length) then "unknown"
           else [.workflows[]
                 | select(.state == "active")
                 | (.path // "") as $p
