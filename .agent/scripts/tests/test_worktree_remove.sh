@@ -16,6 +16,8 @@
 #     read-only one, are cleared by the aggregate step
 #   - an aggregate entry that is itself a symlink to a checkout outside the
 #     tree is refused before anything is removed, plain and --force
+#   - a read-only container directory holding the entries does not stop
+#     the removal part way
 #   - an aggregate entry that cannot be entered (no search permission) is
 #     refused as such, never as a link
 # Root ignores mode bits, so as root the tests would pass without the fix:
@@ -211,6 +213,22 @@ for mode in plain --force; do
     check "symlink entry ($mode): the outside package repository still lists its worktree" bash -c 'git -C "$1" worktree list | grep -qF "$2"' _ "$pkg_b" "$outside_wt"
 done
 set --
+
+echo "TEST: a read-only container directory between the worktree and its entries does not stop the removal part way"
+sb="$(make_sandbox)"; c="$sb/worktrees/workspace/issue-workspace-7"
+pkg="$(make_pkg_repo)"
+make_aggregate "$sb" layer_ws/src/pkg_a "$pkg"
+pkg_b="$(make_pkg_repo)"
+git -C "$pkg_b" worktree add --quiet -b feature/issue-7 "$c/layer_ws/src/pkg_b" main >/dev/null 2>&1
+printf '%s\t%s\tfeature/issue-7\n' "$pkg_b" layer_ws/src/pkg_b >> "$c/.worktree-repos"
+# layer_ws/src holds both entries; without write permission on it no entry
+# can be unlinked from it.
+chmod a-w "$c/layer_ws/src"
+check "container fixture: the directory holding the entries is read-only" test ! -w "$c/layer_ws/src"
+rc=0; out="$(run_remove "$sb" 2>&1)" || rc=$?
+check "container: exit 0" test "$rc" -eq 0
+check "container: the container is gone" test ! -e "$c"
+check "container: neither package repository lists its entry any more" bash -c '! git -C "$1" worktree list | grep -qF "$3" && ! git -C "$2" worktree list | grep -qF "$3"' _ "$pkg" "$pkg_b" "$c/layer_ws/src"
 
 echo "TEST: an aggregate entry that cannot be entered is refused as such, not as a link"
 sb="$(make_sandbox)"; c="$sb/worktrees/workspace/issue-workspace-7"

@@ -497,12 +497,21 @@ _make_dirs_writable() {  # <dir>
     find -P -- "$1" -xdev -type d ! -perm -u=rwx -exec chmod u+rwx {} \; 2>/dev/null || true
 }
 
+# Once over the whole tree before any entry goes: a read-only container
+# directory between the worktree and an entry (layer_ws/src, say) would
+# otherwise make `git worktree remove` fail part way, after an earlier
+# entry was already removed. Each entry of a package worktree is walked
+# again on its own, which also reaches an entry on another filesystem,
+# where -xdev stopped the tree's walk; the single-entry shape's one entry
+# is the tree itself, already walked.
+_make_dirs_writable "$WORKTREE_DIR"
+
 for _i in "${!ENTRY_DESTS[@]}"; do
     _dest="${ENTRY_DESTS[$_i]}"
     _owner="${ENTRY_OWNERS[$_i]}"
     [ -n "$_owner" ] || continue
     [ -d "$_dest" ] || continue
-    _make_dirs_writable "$_dest"
+    [ "$_dest" = "$WORKTREE_DIR" ] || _make_dirs_writable "$_dest"
     if [ "$FORCE" = true ]; then
         git -C "$_owner" worktree remove --force "$_dest"
     else
@@ -517,9 +526,8 @@ done
 # Only $WORKTREE_DIR itself is removed — never its parent (the root's
 # worktrees/ dir). This script never deletes a directory the user may have
 # customized (a worktrees= override, say), so an empty worktrees/ dir is
-# simply left behind. The single-entry tree is already gone by now, so
-# the guard in _make_dirs_writable skips it.
-_make_dirs_writable "$WORKTREE_DIR"
+# simply left behind. Its directories were made writable before the
+# entry loop, so nothing more is needed here.
 rm -rf "$WORKTREE_DIR"
 
 echo ""
