@@ -28,8 +28,8 @@
 #   2. Remove the worktree directory, first giving its directories that
 #      lack any of u=rwx full owner permission (a build's install tree can
 #      leave read-only ones, which would block the removal; directories
-#      only, symlinks never followed, a mount of another filesystem never
-#      crossed; issue 428)
+#      only, symlinks never followed, a mount of another filesystem
+#      neither walked nor changed, its top folder included; issue 428)
 #   3. Prune the git worktree reference
 #   4. Show branch deletion instructions
 
@@ -553,10 +553,14 @@ echo "Removing worktree..."
 # way, so any directory without all of u=rwx gets u+rwx.
 # -P and -type d: a symlink, as the starting point or met on the walk, is
 # never followed or changed, so an entry that links elsewhere cannot make
-# this touch another checkout. -xdev: a mount of another filesystem inside
-# the tree is not crossed (a bind mount from the same filesystem has the
-# same device and is walked, as `rm -rf` walks it). `--`: a path is never
-# read as an option.
+# this touch another checkout. -xdev and the device test: a mount of
+# another filesystem inside the tree is neither walked nor changed, its top
+# folder included (-xdev alone stops below that folder but still lists it,
+# and opening it would let `rm -rf` unlink what the mount holds). A bind
+# mount from the same filesystem has the same device and is walked. This
+# limits only what the chmod opens: `rm -rf` below still deletes into a
+# mount it can already write, as it did before issue 428. `--`: a path is
+# never read as an option.
 # `-exec ... \;`, not `+`: each directory is repaired when find reaches it,
 # before find tries to read it, so a directory under one that lacked r or
 # x is reached too (a batched `+` runs after the walk, too late for that).
@@ -564,7 +568,14 @@ echo "Removing worktree..."
 # one to show.
 _make_dirs_writable() {  # <dir>
     [ -d "$1" ] && [ ! -L "$1" ] || return 0
-    find -P -- "$1" -xdev -type d ! -perm -u=rwx -exec chmod u+rwx {} \; 2>/dev/null || true
+    # The device number: GNU stat, else BSD stat. When neither gives it,
+    # nothing is changed and the removal's own error shows.
+    local dev
+    dev="$(stat -c %d -- "$1" 2>/dev/null || stat -f %d -- "$1" 2>/dev/null)" || return 0
+    find -P -- "$1" -xdev -type d ! -perm -u=rwx -exec sh -c '
+        d="$(stat -c %d -- "$2" 2>/dev/null || stat -f %d -- "$2" 2>/dev/null)" &&
+            [ "$d" = "$1" ] && chmod u+rwx -- "$2"
+    ' _ "$dev" {} \; 2>/dev/null || true
 }
 
 # Once over the whole tree before any entry goes: a read-only container
@@ -572,8 +583,9 @@ _make_dirs_writable() {  # <dir>
 # otherwise make `git worktree remove` fail part way, after an earlier
 # entry was already removed. Each entry of a package worktree is walked
 # again on its own, which also reaches an entry on another filesystem,
-# where -xdev stopped the tree's walk at that mount; the single-entry
-# shape's one entry is the tree itself, already walked.
+# where the tree's walk stopped at that mount and left its top folder as
+# it was; the single-entry shape's one entry is the tree itself, already
+# walked.
 _make_dirs_writable "$WORKTREE_DIR"
 
 for _i in "${!ENTRY_DESTS[@]}"; do

@@ -311,6 +311,28 @@ check "absent: the container is gone" test ! -e "$c"
 check "absent: says it was removed" grep -q "Worktree removed successfully" <<<"$out"
 check "absent: the present entry's repository no longer lists it" bash -c '! git -C "$1" worktree list | grep -qF "$2"' _ "$pkg" "$c/layer_ws/src/pkg_a"
 
+# The chmod never opens the top folder of a mount of another filesystem
+# (find -xdev alone still lists it). Mounting needs a user and mount
+# namespace (unshare -rm); where that is not allowed the case is skipped
+# and says so. The function is taken from the script as it stands.
+echo "TEST: the chmod leaves a mount of another filesystem's top folder alone"
+if unshare -rm true 2>/dev/null; then
+    mt="$(mktemp -d -p "$SANDBOX")"
+    mkdir -p "$mt/tree/a/mnt" "$mt/tree/a/ro"
+    sed -n '/^_make_dirs_writable() {/,/^}/p' "$REAL_ROOT/.agent/scripts/worktree_remove.sh" > "$mt/fn.sh"
+    modes="$(unshare -rm bash -c '
+        source "$1/fn.sh"
+        mount -t tmpfs -o mode=555 none "$1/tree/a/mnt" || exit 1
+        chmod 555 "$1/tree/a/ro"
+        _make_dirs_writable "$1/tree"
+        stat -c %a "$1/tree/a/mnt" "$1/tree/a/ro" | tr "\n" " "
+    ' _ "$mt" 2>/dev/null)" || modes="mount failed"
+    check "mount: the function was found in the script" test -s "$mt/fn.sh"
+    check "mount: its top folder keeps mode 555, a same-filesystem folder gets u+rwx (got: $modes)" test "$modes" = "555 755 "
+else
+    echo "  SKIP: unshare -rm is not allowed here, so no mount can be made"
+fi
+
 echo ""
 echo "test_worktree_remove: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
