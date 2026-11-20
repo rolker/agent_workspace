@@ -439,3 +439,19 @@ Read the Local Review (Pre-Push) at e54b043b (round 3, approved, ship recommende
 **Decision**: address
 
 Read the Integrated Review at 2b073c88 (one open finding, no outside review arrived, CI pending). The finding: the design's "show" section and the comment in `cli.py` say a refusal names the manifest path as recorded, which is true only when the recorded path does not exist. Host decision, listed for the owner's veto: fix the code rather than narrow the sentence, so that every refusal by `show` inside a system directory names the path as recorded, as `sync` does, and the canonical path is printed only when the manifest was read. Undoing it is one label and its tests.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 13:02 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #541 at `3b21957`
+**Addressed**: Integrated Review at `4431a59` (2026-11-20 12:59 -05:00)
+**Commits**: 3b21957
+
+### Actions
+- [x] show named a recorded manifest that exists but does not read (a directory, unreadable, not UTF-8, does not parse) by its canonical path while sync named it as recorded. Fixed in the code: `_show_in_system` now reads and resolves under the recorded name, as sync does, so every refusal and warning names the path as recorded; the canonical path replaces it only after a successful read (the manifest line and the leaf's `from` lines). Design sentence and comment rewritten to match; parametrised test compares show's and sync's refusals for the directory and parse-failure cases (both fail on the old code) — `tools/repos-manifest/src/repos_manifest/cli.py:189`, `tools/repos-manifest/docs/design.md:523`, `tools/repos-manifest/tests/test_show_system.py`
+
+### Checks
+- `PYTHONPATH=src pytest tests/test_show_system.py tests/test_show.py tests/test_sync.py tests/test_init.py tests/test_cli.py`: 113 passed in 66.04s
+- No script under `.agent/scripts/` changed, so no script suite applies; the full pre-commit pass is left to the host.
