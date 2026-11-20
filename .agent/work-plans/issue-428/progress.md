@@ -793,3 +793,57 @@ Dropped:
 - test_skill_paths.sh: 164 passed, 0 failed
 
 No part 2 file and not `plan.md` touched. Scratch probe files in the session scratchpad were left: their delete was denied by the permission check.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-20 13:47 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent ae4a8940bb75088a1, resume 1 of 3)
+
+**PR**: #542 at `d2adb33a`
+**Depth**: Deep (reason: 11 files and about 900 changed lines, skill and knowledge files included; a fix round is classified on the whole diff, so cross-model ran)
+**Must-fix**: 0 | **Suggestions**: 3
+
+Re-review after the fix pass (d8bcf950, 49def999, 027c0b26, cc145c26; Implementation entry d2adb33a). This is PR-mode round 2. The verdict is approved because no finding is a must-fix, per the handoff.
+
+Earlier findings (Local Review e7ab04e3):
+- Must-fix (an entry under a folder with no search permission was taken as gone and deleted): fixed. My reproduction against the pushed head covers 20 shapes:
+  - Refused, change kept, plain and `--force`: a parent with no search permission (600), a grandparent with read only (400), an entry with mode 000.
+  - Dirty check reached as before: a parent with search only (100), and a dirty entry under a link inside the tree.
+  - Refused without `--force`, removed with it: an entry with no read permission (300), clean or dirty, and an untracked folder with mode 000.
+  - Refused through the link message, outside checkout kept: a parent that is a link out of the tree.
+  - Removed, with the outside checkout and its permissions kept: a parent link to a folder that cannot be reached.
+  - Removed as before: a healthy package worktree, a read-only install tree, and an ignored `build/` with mode 000 or 555 (`git status` never opens an ignored folder, so the new refusal does not block it).
+  - Both refusals stop the run before any chmod or removal. Refusing an unreadable `git status` without `--force` is right. `--force` removing an entry git cannot fully read is what `--force` already means.
+- Suggestion (chmod of a foreign mount's top folder): partly fixed. The chmod now changes only folders on the walk's own device. `rm -rf --one-file-system` was not taken; the comment says so. The mount test ran here and was not skipped.
+- Suggestion (second-triage cost): fixed. The time rule is replaced by `review_id`s, and no `**Fetched**` or time comparison is left in either skill.
+- Suggestion (endless triage on an unreadable time): fixed. Each review sends the host back to triage at most once.
+
+The `**Reviews-read**` rule ends in every case:
+- `review_id`, `state` and `commit_id` are real fields: `fetch_pr_reviews.sh:104-108,175`.
+- The list is cumulative, and the latest entry is the one read.
+- An entry with no such line counts as none read.
+- A PENDING draft keeps its id after it is submitted and is then new once.
+- A DISMISSED review keeps its id and needs no new read: right.
+- The rule that only a review on the head ends the wait reads correctly beside it, and is unchanged.
+
+Verified:
+- shellcheck at warning severity is clean on `worktree_remove.sh` and its test.
+- `test_worktree_remove.sh`: 74 passed, 0 failed.
+
+Reviewers:
+- Gemini ran, EXIT 0. It found suggestions 1 and 2. Dropped from its review:
+  - Plan drift: recorded in the pull request text.
+  - "Field names unverified": they are real.
+  - A wait-end on a non-hosted review: the text says "hosted".
+  - `WORKTREE_DIR` not physical: it is resolved with `pwd -P` at line 354.
+  - An EPERM wording point: marginal.
+  - `none` on a local-only triage: there are no pull-request reviews then, and the rule still ends.
+- Codex ran, EXIT 0. It found suggestion 3 (downgraded from must-fix). Its plan-drift point was dropped.
+- The Claude adversarial reviewer ran, with a fresh agent. No must-fix. It confirmed that `rm -rf` still crosses a writable mount, which the comment records.
+
+### Findings
+- [ ] (suggestion) A folder on an entry's path that is a symbolic link is not recognised. When the link's target has no search permission, the refusal names the link and advises `chmod u+rwx <link>`, which follows the link and changes a folder outside the worktree. The script itself changes nothing (reproduced: the outside mode stays 600). The same happens at line 452 for an entry with no search permission under a searchable outside link. Fix: in `_entry_reach`, give the "leads outside through a symbolic link" refusal when `[ -L "$cur" ]` points outside, before the search check. Found by Gemini. — `.agent/scripts/worktree_remove.sh:436`
+- [ ] (suggestion) The header (line 33) and the `script_reference.md` row say a mount of another filesystem is "neither walked nor changed, its top folder included". The per-entry walk at line 597 deliberately walks and repairs an entry that is itself on another filesystem, its top folder included. That behaviour is right, since the entry is what is being removed, but the claim needs that exception. Found by Gemini. — `.agent/scripts/worktree_remove.sh:597`
+- [ ] (suggestion) "So no review is merged past unread" overclaims. GitHub lets a review's body be updated under the same `review_id`, and the reviews API gives no edit time, so an edit after triage is not read again. The earlier time rule had the same gap, and the hosted reviewer posts new reviews rather than editing old ones. Name this limit in the text, or compare a hash of the body. Found by Codex, downgraded from must-fix. — `.claude/skills/run-issue/SKILL.md:1019`
