@@ -55,3 +55,15 @@ issue: 502
 - [ ] Build `status` read-only on the `update.py` helpers and `state.yaml`, adding no write path; test that nothing on disk changes.
 - [ ] Cover each state with local git repos: expected, different version, local changes, commits not on `origin`, missing, skipped optional, no longer in manifest, and fetched-from; plus a several-distro system directory and `--distro`.
 - [ ] Leave the by-hand project11 check to the owner; do not run anything in ~/project11.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 11:27 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+"Build both here (Recommended)"
+
+Asked with the issue review's scope finding in the dialog: the issue lists "a form a script can read, and an exit status for a missing repo" as not in scope unless issue 495 had settled them, and issue 495 did not. The question was whether issue 502 builds the script-readable form and the exit status too, with the plan writing them into the tool's design first. His answer puts both in scope. The other choices offered were the human-readable form only with a follow-up issue, or holding the drive.
