@@ -7,21 +7,6 @@
 #
 # Designed to consolidate multiple gh api calls into a single script invocation,
 # reducing permission prompts when called from agent skills.
-#
-# Each review carries `notice_only` (issue 428, item 5): true when the review
-# is the hosted reviewer saying it could not review, which holds no findings.
-# The hosted reviewer posts that notice as a review in form only: author
-# `copilot-pull-request-reviewer` (or `...[bot]`), state COMMENTED, no inline
-# comments, and a short body. The key is the phrase "unable to review this
-# pull request" in the body, on top of those three: over the last 60 pull
-# requests of this repository all 168 notices carry it, in three wordings
-# (two quota texts, 119 and 122 characters, and "Copilot encountered an
-# error and was unable to review this pull request", 117), and short real
-# reviews by the same account (204 to 296 characters, one with a finding in
-# its body and no inline comments) do not. Length or shape alone would mark
-# those real reviews. A wording this does not know is simply not flagged and
-# is read like any review, as before. No extra API call: the fields are the
-# ones already fetched.
 
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     echo "Error: This script should be executed, not sourced." >&2
@@ -206,12 +191,6 @@ OUTPUT="$(echo "$REVIEWS" | jq -c --slurpfile comments "$COMMENTS_TMPFILE" \
                     }
                 ]
             }
-            | .notice_only = (
-                (.user_login == "copilot-pull-request-reviewer" or .user_login == "copilot-pull-request-reviewer[bot]")
-                and .state == "COMMENTED"
-                and (.comments | length) == 0
-                and ((.body // "") | contains("unable to review this pull request"))
-            )
         ],
         ci_checks: $ci_checks,
         conversation_comments: $conversation_comments

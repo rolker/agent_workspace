@@ -206,9 +206,6 @@ declare -A ROOT_READERS=(
     # files:/exclude: regex could cover.
     [test_cross_model_review.sh]=""
     [test_dispatch_phase.sh]=".agent/project_types .agent/scripts"
-    # Copies the real fetch_pr_reviews.sh and its registry helper into its
-    # sandbox (issue 428).
-    [test_fetch_pr_reviews.sh]=".agent/scripts"
     # Exports the committed tree (`git archive HEAD`) into a scratch copy and
     # runs make validate/setup/dashboard/sync and the registration and PR
     # scripts there (issue #295): the Makefile and these two prefixes.

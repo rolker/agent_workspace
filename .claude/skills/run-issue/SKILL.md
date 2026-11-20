@@ -929,21 +929,20 @@ absent from the check list entirely) and any requested human reviews are
 in — otherwise `triage-reviews` runs before Copilot's review exists and
 triages a source that lands minutes later. **CI may still be running**:
 that is the wall-clock saving, since a triage of the review sources does
-not depend on the CI verdict. One case looks like a completed review but
-is not: when Copilot cannot review (its quota is exhausted, or it hit an
-error) it posts a **review** by its own account
-(`copilot-pull-request-reviewer[bot]`), state `COMMENTED`, no inline
-comments, and a short body saying it was unable to review this pull
-request. It is a review source in form only and holds no findings:
-`fetch_pr_reviews.sh` marks it `"notice_only": true`. Note it in the
-hand-back's outside-reviewer line and move on rather than waiting further.
-A short review that is not marked is read like any review: a real review
-by the same account can be short and carry a finding in its body (issue
-428, item 5).
+not depend on the CI verdict. When Copilot cannot review (its quota is
+exhausted, or it hit an error) it still posts a **review** by its own
+account (`copilot-pull-request-reviewer[bot]`) saying it was unable to
+review this pull request, and its check-run completes with it (seen on
+pull request 400: conclusion `failure`, within seconds of the review). So
+the wait ends as for any review; nothing has to recognise the notice for
+that. Read it like any review: it holds no findings only because its own
+words say it could not review. Say so on the hand-back's
+outside-reviewer line and dispatch `triage-reviews`, which reads it too
+(issue 428, item 5).
 
 **The wait is bounded** (issue 428, item 5). Poll `fetch_pr_reviews.sh` for
 at most about 900 s after publish (or after the PR-mode review). If the
-hosted review has neither arrived nor been marked `notice_only` by then,
+hosted review has not arrived by then,
 record "review never arrived" on the hand-back's outside-reviewer line and
 dispatch `triage-reviews` with the sources that exist, as for the notice.
 The 900 s is the standing rule's timeout of about twice the expected
