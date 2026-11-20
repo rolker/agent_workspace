@@ -484,3 +484,29 @@ exit status: 1
 The agreement test saw these pairs (state from `status`, then `sync`'s outcome), all within the allowed pairs or the listed differences: expected with up to date (6 cases), updated (behind) or left alone (commits only here, branch held by a work tree); a branch origin deleted is expected, then failed (listed); different with updated (the manifest changed version) or left alone (7 cases); a local tag origin lacks is different, then failed (listed); left-alone with left alone (8 cases); unusable with left alone (4 cases); a version not fetched is unusable, then updated (listed: the fetch brings it); missing with cloned; not-a-directory with failed.
 
 Left undone: none of the plan's items. The by-hand acceptance on project11 is the owner's. The adapter's use of `status` is #503 (the adapter calls the tool's commands).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-20 12:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-502 at `a437f64d`
+**Base**: main
+**Depth**: Deep (reason: about 2900 lines over 16 files; it changes `update.py`, which protects local work during `sync`)
+**Must-fix**: 2 | **Suggestions**: 8
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; the first round always re-reviews after fixes
+
+Checked: the refactor de71f9c9 does the same checks, in the same order, with the same text, and drops the `moving` line under the same condition as the code before it; the 13 characterisation tests plus test_update.py:407 pin each branch. The only untested branches are a stopped move together with a sparse checkout or no single origin: no suffix before or after the change. 310 tests passed in the status, agreement, characterisation, safety and url suites. Pre-commit was clean on the changed .py files. The behind-plus-changes and probe cases were reproduced by hand: status says one thing and sync does another. A repo-configured clean filter runs under status's `git status`; this was shown with a marker file. Outside reviewers: gemini and codex both completed; the Claude adversarial reviewer completed.
+
+### Findings
+- [ ] (must-fix) A repo behind origin on the manifest's branch with uncommitted changes is reported as "sync fast-forwards it", but sync leaves it alone ("has uncommitted changes"). Check `changes` as `_would_move` does, and add the same caveat to the design's expected row (design.md:1545) — `tools/repos-manifest/src/repos_manifest/update.py:1234`
+- [ ] (must-fix) The per-distro JSON `ok` stays true when a required repo in that distro fails. Only the top-level `ok` follows the exit status, so a script cannot tell which distro failed. Either compute it from `fails()` or document `ok` as "resolved". Also say that `repos` and `not_in_manifest` are absent, not empty, for an unresolved distro — `tools/repos-manifest/src/repos_manifest/status.py:144` (design.md:1599)
+- [ ] (suggestion) `_remote_note` says "sync repoints origin to it" when a `repos-manifest-probe` remote exists, but then sync leaves the repo alone. Check `update.probe_taken` (a local read), and say "tries to", since `_repoint` can still decline — `tools/repos-manifest/src/repos_manifest/status.py:280`
+- [ ] (suggestion) status calls `sync.require_tools()` and exits 1 with no document when `vcs` is missing, although it never runs vcs. `validate` would then fail, and the design does not list this cause — `tools/repos-manifest/src/repos_manifest/status.py:118`
+- [ ] (suggestion) "changes nothing on disk and makes no network call" depends on the clone's own config. A repo `core.fsmonitor` hook and clean filters such as LFS run under `git status`; this was verified. Nothing stops a lazy fetch in a partial clone. Pass `-c core.fsmonitor=false` and `GIT_NO_LAZY_FETCH=1`, and qualify the text — `tools/repos-manifest/docs/design.md:1515`
+- [ ] (suggestion) The agreement test is weak. GOES_WITH accepts expected→updated and different→updated whatever the text claims, so it would not catch a wrong "sync leaves it" or "would try to move it". There are no cases for uncommitted changes on expected or behind repos (the must-fix above slipped through), a missing version (default branch), url changed, probe taken, a moved tag, or blocked-place and in-other-layer (listed in GOES_WITH but with no case) — `tools/repos-manifest/tests/test_status_agrees_with_sync.py:15`
+- [ ] (suggestion) The read-only scan allows `config` with any arguments. It checks only keyword arguments, not the git subcommands, in the `update` functions status reaches, and it does not walk the `sync` functions status calls — `tools/repos-manifest/tests/test_update_safety.py:396`
+- [ ] (suggestion) "shares its checks with sync's, so the two read a repo the same way" overstates: rules 9-12 are a second implementation (`standing`), held in step only by the agreement test. Reword this sentence and the status.py docstring — `tools/repos-manifest/docs/design.md:1960`
+- [ ] (suggestion) `ask_local` differs from `ls-remote` in edge cases. `%(*objectname)` peels a tag of a tag only one level, while `ls-remote` peels fully. `splitlines()` also splits ref names that contain U+2028 or similar characters — `tools/repos-manifest/src/repos_manifest/update.py:551`
+- [ ] (suggestion) status never calls `remember_url` for origin, the manifest url or the recorded url, as `update_repo` does. Masking of free text then falls back to the pattern for urls the tool read — `tools/repos-manifest/src/repos_manifest/status.py:241`
