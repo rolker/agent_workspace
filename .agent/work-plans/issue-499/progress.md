@@ -144,3 +144,53 @@ Read the Plan Review at f15db74e (verdict needs-work, no question for the owner)
 **Plan**: `.agent/work-plans/issue-499/plan.md` at `15afac5e`
 
 Revision answering the nine findings of the plan review: the `Serves` line names "Trust, control and information"; chain tests move to `test_base_merge.py`; `init` keeps each layer's `src/` directory after `show`'s output with the head printed once and the design paragraph rewritten whole (host decision, listed with its undo cost); repo-level `absent` with no distros gets its own words; `test_init_refusals.py` dropped; `show`'s doc paragraphs sit next to the `init`/`sync` ones; `build` dropped from the root's stale list line; new `source` fields go last with defaults and `render` stays pure; the fixture's lack of a `base` is noted for the PR.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-20 11:34 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #499 — repos-manifest: `show` prints what a manifest comes to for a machine
+**Plan**: `.agent/work-plans/issue-499/plan.md` at `15afac5e`
+**Branch**: `feature/issue-499`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One PR: resolver fields, a pure renderer, one command, `init`'s summary, docs. |
+| Issue alignment | Good | All issue-review actions covered. Serves: "Goal: 'Trust, control and information' (`README.md#workspace-goals`): the person sees what a manifest comes to before anything is fetched (step 3 of the manifest design, `docs/manifest/design.md`); design section `tools/repos-manifest/docs/design.md#show`, roadmap row '`show` prints what a manifest comes to for a machine'." The goal section and the `#show` anchor both exist. |
+| File targeting | Good | Checked against the code: `Repo` is built only in `combine._repo` (a manifest with no `base` also goes through `merge_parts`, so every repo gets a source); `parts[first[key]].source` is what fills it; leaf sources are the location as given (`read_manifest(..., source=location)`) and base sources are the same strings `Resolved.bases` holds, so `chain` compares like with like; `Selected` is built positionally only at `selection.py:120` and `tests/test_update.py:511`; `Resolved` only at `selection.py:126`; the only tests pinning `init.summary` text are `test_init.py` 183-184 and 327 (the `Layout:` lines at 99, 127, 186 stay). Two leftovers in the text (findings 1, 2). |
+| Consequences | Good | `init`'s `src/` paths kept per the checkpoint; design "init" paragraph rewritten whole; root list line drops `show` and stale `build`; #502 overlap placed and expected. One gap in `init`'s new text for a manifest with no distros (finding 3). |
+| Principle alignment | Good | Tests before printer, sketch pinned whole, masking reused, prior art named, design and roadmaps in the same change. |
+| ADR compliance | Good | ADR-0022 (inside the part, one root line), ADR-0017 (step 6), ADR-0013. |
+| ROS conventions | N/A | Workspace tool plan. |
+
+### First review's nine findings
+
+1. Serves names a goal section: answered ("Trust, control and information").
+2. Chain tests in `test_base_merge.py`: answered in step 1; the Files table still lists `test_extends.py` (finding 1 below).
+3. `init`'s `src/` paths and the design paragraph: answered (step 4, Files table, host decision row); the Design Picture section still says only the clause changes (finding 2 below).
+4. `absent` with no `distros:`: answered (`absent_no_distro`, its words and a test). The logic holds against `_version_on`: with no distro the entry is never consulted, so `repo.absent` alone decides.
+5. `test_init_refusals.py`: answered (checked, not touched).
+6. #502 overlap: answered (placement next to `init`/`sync`, list-line conflict expected).
+7. Stale `build` on the root list line: answered.
+8. `source` last with default, lookup out of `show.py`: answered (step 1, step 3).
+9. Fixture has no `base`: answered (step 5, PR note).
+
+### Findings
+
+1. **[File targeting]** (minor) — The Files to Change row for tests still names `test_extends.py`, which step 1 now says is not used. Drop it from the row.
+2. **[Principle alignment / Keep one current design]** (minor) — `## Design Picture` says "init" changes only in "the 'until `show` is built' clause"; step 4 and the Files table rewrite the paragraph whole. Make the section say the same.
+3. **[Consequences]** (minor) — Step 4 prints "for each planned distro a `distro <name>` line". A manifest without `distros:` plans one distro `None` (the case `test_init.py:327` runs). Say what prints there: no `distro` line, or `distro (none)`, and pin it in the rewritten test at line 327.
+
+### Summary
+
+The revision answers all nine findings, and the new parts hold against the code: `render_head` once plus `render_body` per distro fits `init` (role and groups are the same for every distro it resolves), the provenance comparison uses consistent source names, and `absent_no_distro` matches the selection rules. Three small text fixes remain, none blocking; ready for implementation.
+
+### Recommended Actions
+
+- [ ] Drop `test_extends.py` from the Files to Change test row
+- [ ] Align `## Design Picture` with the whole rewrite of the "init" paragraph
+- [ ] Say what `init` prints in place of the `distro <name>` line when the manifest has no distros, and pin it at `test_init.py:327`
