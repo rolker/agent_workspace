@@ -511,3 +511,13 @@ Verified:
 
 ### Findings
 - [ ] (must-fix) The test for a review not yet read keys on a `**Reviews**` line. The `## Integrated Review` entry that triage-reviews persists has no such line (`triage-reviews/SKILL.md:396-412`; `**Reviews**` is only in its conversation report, line 292). Its `**Sources**` line is a count with optional examples, not a required list of each review and its commit. As written, the check can miss a late review. Fix: key the check on a field that exists, for example any review whose `submitted_at` is later than the latest Integrated Review's `**When**`; or make triage-reviews write the field it names. — `.claude/skills/run-issue/SKILL.md:1008-1013`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 12:06 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 left one must-fix open, so publishing is not clean; first host address at this checkpoint)
+**After**: rounds
+**Decision**: address
+
+Read: the Local Review (Pre-Push) at fc7eddcb, round 3, verdict changes-requested, Ship recommended, one must-fix and no suggestions: run-issue step 9's test for a review the latest Integrated Review has not read is keyed on a Reviews line that triage-reviews does not write into the entry and a Sources line that is a count, so the check can miss a late review. It goes back for one fix, keyed on fields that exist. No full pass was run: publish was not the chosen answer.
