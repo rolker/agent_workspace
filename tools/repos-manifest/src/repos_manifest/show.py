@@ -61,7 +61,7 @@ def render_body(resolved: Resolved) -> str:
     keys = [repo.key for repo in repos] + [left.key for left in resolved.left_out]
     key_width = max((len(key) for key in keys), default=0)
     version_width = max((len(_version(r.version)) for r in repos), default=0)
-    url_column = 2 + key_width + len(GAP) + version_width + len(GAP)
+    from_indent = 2 + key_width + len(GAP) + version_width + len(GAP)
     first = resolved.chain[0]
     lines: List[str] = []
     for layer in resolved.layers:
@@ -75,7 +75,7 @@ def render_body(resolved: Resolved) -> str:
                 line += f"{GAP}optional"
             lines.append(line)
             if repo.source and repo.source != first:
-                lines.append(" " * url_column + f"from {mask_urls(repo.source)}")
+                lines.append(" " * from_indent + f"from {mask_urls(repo.source)}")
     blocks = ["\n".join(lines) if lines else NOTHING_SELECTED]
     if resolved.left_out:
         left_lines = ["left out"]
