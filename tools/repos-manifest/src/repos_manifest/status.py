@@ -280,6 +280,10 @@ def _repo(
         found.state, found.detail = BLOCKED_STATE[blocked.kind], blocked.text
         if blocked.kind in (update.OPERATION, update.INDEX_LOCK):
             return  # `sync`'s text for these carries the stopped move already
+    elif origin == "":
+        # `sync` reads the empty value as one url and fails at the fetch; here it is no url at
+        # all (git 2.46 and later read an empty url as clearing the list), so no refs to trust.
+        found.state, found.detail = UNUSABLE, "has no origin url (it is set to an empty value)"
     elif not lazy_off and _partial(git):
         found.fetched_from = mask_url(origin)
         found.state, found.detail = UNUSABLE, (

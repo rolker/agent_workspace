@@ -337,6 +337,10 @@ def no_origin_url(case):
     git("config", "--unset-all", "remote.origin.url", cwd=case.clone)
 
 
+def empty_origin_url(case):
+    git("config", "remote.origin.url", "", cwd=case.clone)
+
+
 # --- not at its place -----------------------------------------------------------------------
 
 
@@ -447,6 +451,7 @@ CASES = {
     "a version not fetched": (version_not_fetched, "unusable", "version new is not on origin"),
     "git status fails": (git_status_fails, "unusable", "`git status` fails here"),
     "no origin url": (no_origin_url, "unusable", "has no single origin"),
+    "an empty origin url": (empty_origin_url, "unusable", "set to an empty value"),
     "missing": (missing, "missing", "is not there"),
     "a file at the place": (a_file_at_the_place, "not-a-directory", "is not a directory"),
     "a link on the way": (a_link_on_the_way, "blocked-place", "a link on the way"),
