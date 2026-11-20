@@ -94,6 +94,10 @@ class RepoStatus:
 
 @dataclass
 class DistroStatus:
+    """One distro: `ok` when it would not fail the exit status on its own (it resolved, and no
+    repo of it that is not optional is in a failing state); `problem` when it cannot be read or
+    resolved, and then no repos."""
+
     distro: Optional[str]
     ok: bool = True
     problem: Optional[str] = None
@@ -118,7 +122,7 @@ def run_status(named_distros: Sequence[str], as_json: bool) -> int:
         env = sync.require_tools()
         plan = _plan(system, config, distros)
         results = [distro_status(system, config, each, env) for each in plan]
-    ok = all(result.ok and not any(r.fails() for r in result.repos) for result in results)
+    ok = all(result.ok for result in results)
     if as_json:
         print(json.dumps(_document(system, config, results, ok), indent=2))
     else:
@@ -164,6 +168,7 @@ def distro_status(system: Path, config: Config, planned, env: Dict[str, str]) ->
         parts = layer_src_parts(config.layout, distro, record.layer) + tuple(key.split("/"))
         if os.path.lexists(system.joinpath(*parts)):
             result.not_in_manifest.append({"key": key, "path": "/".join(parts)})
+    result.ok = not any(repo.fails() for repo in result.repos)
     return result
 
 
@@ -321,7 +326,7 @@ def _document(system: Path, config: Config, results: Sequence[DistroStatus], ok:
     distros = []
     for result in results:
         entry = {"distro": result.distro, "ok": result.ok, "problem": result.problem}
-        if result.ok:
+        if result.problem is None:
             entry["repos"] = [asdict(r) for r in result.repos]
             entry["not_in_manifest"] = list(result.not_in_manifest)
         distros.append(entry)
@@ -365,7 +370,7 @@ def _print(
     for result in results:
         name = result.distro if result.distro is not None else "(no distro)"
         print(f"distro {name}:")
-        if not result.ok:
+        if result.problem is not None:
             print(f"  ERROR: {result.problem}")
             continue
         for repo in result.repos:

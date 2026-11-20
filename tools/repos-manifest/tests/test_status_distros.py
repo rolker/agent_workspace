@@ -93,5 +93,12 @@ def test_a_missing_repo_in_one_distro_fails_the_exit_status(two, capsys):
     code, doc, _ = _status(system, capsys)
     assert code == 1
     assert [d["repos"][0]["state"] for d in doc["distros"]] == ["expected", "missing"]
-    code, _, _ = _status(system, capsys, "--distro", "jazzy")
-    assert code == 0
+    # Each distro's `ok` says whether it would fail the exit status on its own; the top one is
+    # the exit status. A distro that resolved and failed still lists its repos.
+    assert [(d["ok"], d["problem"]) for d in doc["distros"]] == [(True, None), (False, None)]
+    assert doc["ok"] is False and "repos" in doc["distros"][1]
+    capsys.readouterr()
+    assert run(system, "status") == 1
+    assert "distro rolling:\n  rolling/core/src/a  missing: is not there" in capsys.readouterr().out
+    code, doc, _ = _status(system, capsys, "--distro", "jazzy")
+    assert code == 0 and doc["ok"] is True and doc["distros"][0]["ok"] is True

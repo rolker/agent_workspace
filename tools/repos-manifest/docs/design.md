@@ -1598,9 +1598,17 @@ layer's name, `_unnamed` for the unnamed first layer, as the resolved files name
 (`unpushed`) `HEAD` is detached, and all three are null for `left-alone` and `unusable`, which
 `status` does not compare; `behind` is null off the manifest's branch; `stopped_move` is false where
 it does not apply. `recorded_distros` is every distro the system was set up for, null when the
-manifest has none; `distros` holds the ones acted on. A distro that cannot be resolved has `ok:
-false`, its `problem`, and no `repos`; a manifest that cannot be read is the problem of every
-distro. The top `ok` is true exactly when the exit status is 0. Nothing else is printed on standard
+manifest has none; `distros` holds the ones acted on.
+
+`ok` is given at two levels. A distro's `ok` is true exactly when that distro would not fail the
+exit status on its own: it was read and resolved, and no repo of it that is not optional is in a
+failing state (`missing`, `not-a-directory`, `blocked-place`, `in-other-layer` or `unusable`). A
+distro's `problem` is null when it resolved, and otherwise says why it could not be read or
+resolved; a manifest that cannot be read is the problem of every distro. A distro with a problem
+has `ok: false`, and its `repos` and `not_in_manifest` are left out of its entry, not given as
+empty lists, since nothing of it was compared. A distro that resolved and has a failing repo has
+`ok: false`, a null `problem`, and its `repos` and `not_in_manifest` as usual. The top `ok` is true
+exactly when the exit status is 0, that is when every distro's `ok` is true. Nothing else is printed on standard
 output with `--json`; warnings go to standard error. When the system directory cannot be found or
 read (or a `--distro` names one it does not record) there is no document: the error goes to
 standard error and the exit status is 1.
