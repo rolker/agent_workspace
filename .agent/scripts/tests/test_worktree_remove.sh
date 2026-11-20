@@ -16,6 +16,8 @@
 #     read-only one, are cleared by the aggregate step
 #   - an aggregate entry that is itself a symlink to a checkout outside the
 #     tree is refused before anything is removed, plain and --force
+#   - an aggregate entry that cannot be entered (no search permission) is
+#     refused as such, never as a link
 # Root ignores mode bits, so as root the tests would pass without the fix:
 # the suite then skips with the reason.
 # Everything runs in sandboxes (mktemp) with the real scripts copied in.
@@ -209,6 +211,19 @@ for mode in plain --force; do
     check "symlink entry ($mode): the outside package repository still lists its worktree" bash -c 'git -C "$1" worktree list | grep -qF "$2"' _ "$pkg_b" "$outside_wt"
 done
 set --
+
+echo "TEST: an aggregate entry that cannot be entered is refused as such, not as a link"
+sb="$(make_sandbox)"; c="$sb/worktrees/workspace/issue-workspace-7"
+pkg="$(make_pkg_repo)"
+make_aggregate "$sb" layer_ws/src/pkg_a "$pkg"
+chmod 600 "$c/layer_ws/src/pkg_a"
+rc=0; out="$(run_remove "$sb" 2>&1)" || rc=$?
+chmod 700 "$c/layer_ws/src/pkg_a"
+check "no search: exit 1" test "$rc" -eq 1
+check "no search: says the entry cannot be entered" grep -q "cannot enter .*pkg_a: no search permission" <<<"$out"
+check "no search: does not speak of a symbolic link" bash -c '! grep -q "symbolic link" <<<"$1"' _ "$out"
+check "no search: the entry is still there" test -f "$c/layer_ws/src/pkg_a/package.xml"
+check "no search: the package repository still lists the entry" bash -c 'git -C "$1" worktree list | grep -qF "$2"' _ "$pkg" "$c/layer_ws/src/pkg_a"
 
 echo ""
 echo "test_worktree_remove: $PASS passed, $FAIL failed"

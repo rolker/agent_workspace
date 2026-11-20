@@ -404,6 +404,14 @@ for _i in "${!ENTRY_DESTS[@]}"; do
     # checkout elsewhere would have `git worktree remove` delete that other
     # checkout's files. Refused before anything is removed.
     _real="$(cd "$_dest" 2>/dev/null && pwd -P || true)"
+    # An entry that cannot be entered at all (no search permission on it or
+    # on a folder above it) is not a link and leads nowhere: say so, never
+    # the link message below, which would name a link that does not exist.
+    if [ -z "$_real" ] && [ ! -L "$_dest" ]; then
+        echo "Error: cannot enter ${_dest}: no search permission on it or on a folder above it in this worktree; nothing was removed."
+        echo "Check what it holds, give it back its owner permission by hand (chmod u+rwx on that folder), then run this command again."
+        exit 1
+    fi
     case "$_real/" in
         "$WORKTREE_DIR/"*) ;;
         *)
