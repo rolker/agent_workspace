@@ -701,3 +701,13 @@ A review in any state but PENDING with an empty or unreadable `submitted_at` (le
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 12:58 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the pre-push review approved with no findings and the host's full pass passed on the head to be pushed)
+**After**: publish
+**Decision**: publish
+
+Read: the Local Review (Pre-Push) at ed9e28df, round 6, approved, Ship recommended, no must-fix and no suggestions. After it, main was merged into the branch once more (a2a8b3ab): it brought in the one-line test fix of pull request 540 (part 1 of issue 539), which the owner asked to land on main before this branch is published, and that issue's work-plan records. The host's full pass (pre-commit over the branch's files against origin/main, no SKIP) then passed on that head: every hook Passed or had no files, the script test suites hook included. Part 1 of two: the pull request says Part of #428.
