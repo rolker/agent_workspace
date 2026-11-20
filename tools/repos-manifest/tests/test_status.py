@@ -142,6 +142,27 @@ def test_left_alone_and_unusable_have_no_counts(vcs, tmp_path, capsys, name):
     assert (found["changes"], found["unpushed"], found["behind"]) == (None, None, None)
 
 
+@pytest.mark.parametrize(
+    "name, named",
+    [
+        ("a merge in progress", True),
+        ("an index.lock", True),
+        ("a sparse checkout", True),
+        ("on its branch", True),
+        ("two origin urls", False),
+        ("no origin url", False),
+        ("not a git repository", False),
+    ],
+)
+def test_fetched_from_names_the_single_origin_of_a_repo(vcs, tmp_path, capsys, name, named):
+    """A repo left alone for work in progress or a sparse checkout still has one origin, and
+    `fetched_from` names it; it is null where there is no single origin to name."""
+    case = make_case(tmp_path)
+    CASES[name][0](case)
+    found = repo_a(status(case.system, capsys)[1])
+    assert found["fetched_from"] == (str(case.remote) if named else None), found
+
+
 def test_a_stopped_move_is_a_fact_and_its_text_is_said_once(vcs, tmp_path, capsys):
     case = make_case(tmp_path)
     CASES["a stopped move in a merge"][0](case)

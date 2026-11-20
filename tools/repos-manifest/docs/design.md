@@ -1625,7 +1625,10 @@ Facts, for a repo that is there: `changes` (tracked files changed, counted as `s
 `unpushed` (commits reachable from `HEAD` and from no remote-tracking ref of `origin`, counted as
 `sync` counts them: on a branch only, null when `HEAD` is detached), `behind` (commits of `origin`'s
 branch the clone lacks, on the manifest's branch), and `fetched_from`, the url of `origin`, with any
-user name and password masked. As `sync` does, `status` registers every url it reads (each repo's url
+user name and password masked; it is given also for a repo left alone for an operation in progress,
+an `index.lock` or a sparse checkout, and is null where there is no single `origin` url (none, more
+than one, or a place that is not a git clone with a commit) and for a link at the place, which
+`status` does not look into. As `sync` does, `status` registers every url it reads (each repo's url
 in the manifest, each recorded url, each `origin`) before it prints anything, so the user name and
 password of each is masked wherever it appears, in the JSON, in the lines a person reads and in error
 texts, and the manifest's location is masked too. When it is not the manifest's url the text says which: it is the url recorded,

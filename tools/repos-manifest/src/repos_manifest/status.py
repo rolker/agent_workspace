@@ -73,6 +73,9 @@ BLOCKED_STATE = {
     update.NO_ORIGIN: UNUSABLE,
     update.SEVERAL_ORIGINS: LEFT_ALONE,
 }
+# The checks that stop before `update.blocked_late` reads the url: a repo left alone at one of
+# them still has its `origin` named (`fetched_from`), read on its own.
+BEFORE_THE_URL = (update.OPERATION, update.INDEX_LOCK, update.SPARSE)
 
 # Two helpers a clone's own configuration could have `status`'s git start, turned off because
 # neither can change the answer (``docs/design.md``, "status"): an fsmonitor hook only tells
@@ -256,7 +259,10 @@ def _repo(
     stopped = update.stopped_move(record, head)
     found.stopped_move = stopped is not None
     blocked, origin = update.blocked_late(git, git_dir, record, head)
-    remember_url(origin)  # None when blocked: nothing to register
+    if blocked is not None and blocked.kind in BEFORE_THE_URL:
+        origin = _single_origin(git)
+        found.fetched_from = mask_url(origin) if origin is not None else None
+    remember_url(origin)  # None when there is no single origin: nothing to register
     if blocked is not None:
         found.state, found.detail = BLOCKED_STATE[blocked.kind], blocked.text
         if blocked.kind in (update.OPERATION, update.INDEX_LOCK):
@@ -272,6 +278,14 @@ def _reading_git(place: Path, env: Dict[str, str]) -> update.Git:
     the configuration git reads from files and from the environment, so it wins), and the
     clone's filter drivers as they are, as `git status` and `sync` run them."""
     return update.Git(place, env, None, options=NO_FSMONITOR)
+
+
+def _single_origin(git: update.Git) -> Optional[str]:
+    """The url of `origin` when it has exactly one, read from the configuration; None
+    otherwise."""
+    status, printed, _ = git.run("config", "--get-all", "remote.origin.url")
+    urls = printed.splitlines() if status == 0 else []
+    return urls[0] if len(urls) == 1 else None
 
 
 def _version(git, place, repo, record, head, origin, found):
