@@ -404,3 +404,13 @@ Cross-model: skipped (round-3 convergence check, per handoff). All five round-2 
 
 ### Findings
 - [ ] (suggestion) "a refusal names the path as recorded" is true only for a path that does not exist: `opens` tests `os.path.exists`, so a recorded path that exists but cannot be read (a directory) or does not parse (through a link) is named canonical by `show` and as recorded by `sync`. Narrow the sentence and the comment to "a path that does not exist", or name every refusal as recorded — `tools/repos-manifest/docs/design.md:524`, `tools/repos-manifest/src/repos_manifest/cli.py:212`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 12:50 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 approved with no must-fix; the host's full pass passed on this head)
+**After**: publish
+**Decision**: publish
+
+Read the Local Review (Pre-Push) at e54b043b (round 3, approved, ship recommended, one suggestion). The full pass (`pre-commit run --files` over the branch's files, no SKIP, branch even with origin/main) passed: every hook Passed or Skipped for no files, black and flake8 included. The one open suggestion goes to the pull request's triage rather than a fourth pre-push round: the design's "show" section says a refusal names the path as recorded, which holds only when the recorded path does not exist; when it exists but cannot be read, `show` names the canonical path and `sync` the recorded one.
