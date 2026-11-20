@@ -33,6 +33,7 @@ from helpers import (
     state_of,
 )
 from repos_manifest import status as status_module
+from repos_manifest import sync as sync_module
 from repos_manifest import update
 
 UPDATE = Path(update.__file__)
@@ -390,10 +391,39 @@ def test_every_fetch_passes_no_recurse_submodules_and_no_prune():
 
 STATUS = Path(status_module.__file__)
 
-# The git commands `status.py` may run itself, and the functions of `update` and `sync` it may
-# call: each reads only. A call to any other (`_move`, `_change`, `_repoint`,
-# `delete_probe_refs`, `update_repo`, `left_the_manifest`, ...) fails the scan.
-READ_ONLY_GIT = {"rev-parse", "symbolic-ref", "config", "for-each-ref", "rev-list", "merge-base"}
+# The git commands `status.py` and the functions of `update` it reaches may run, and the
+# functions of `update` and `sync` it may call: each reads only. A call to any other (`_move`,
+# `_change`, `_repoint`, `delete_probe_refs`, `update_repo`, `left_the_manifest`, ...) fails the
+# scan. `config` reads only in the forms `CONFIG_READS` names, and `worktree` only as `list`.
+READ_ONLY_GIT = {
+    "rev-parse",
+    "symbolic-ref",
+    "config",
+    "for-each-ref",
+    "rev-list",
+    "merge-base",
+    "status",
+    "ls-files",
+    "ls-tree",
+    "cat-file",
+    "worktree",
+}
+CONFIG_READS = {"--get", "--get-all", "--get-regexp", "--list", "-l"}
+CONFIG_WRITES = {
+    "--add",
+    "--unset",
+    "--unset-all",
+    "--replace-all",
+    "--rename-section",
+    "--remove-section",
+    "--edit",
+    "-e",
+    "set",
+    "unset",
+    "rename-section",
+    "remove-section",
+    "edit",
+}
 STATUS_MAY_CALL = {
     "update": {
         "Git",
@@ -418,6 +448,32 @@ STATUS_MAY_CALL = {
 # only a fetch or `ls-remote`), or a function that writes or asks origin.
 WRITES = {"change", "hold", "prompt"}
 NEVER_REACHED = {"_move", "_change", "_repoint", "delete_probe_refs", "ask_origin", "update_repo"}
+# What a function `status` reaches in `sync.py` may not call: a function that writes a file,
+# a directory, a record or a lock, clones, or updates a repo.
+SYNC_NEVER_CALLED = {
+    "write_output",
+    "put_distro_state",
+    "hold_build_lock",
+    "make_writable",
+    "write_text",
+    "write_bytes",
+    "mkdir",
+    "makedirs",
+    "mkdtemp",
+    "rename",
+    "unlink",
+    "rmtree",
+    "remove",
+    "rmdir",
+    "symlink_to",
+    "open",
+    "update_repo",
+    "present_repo",
+    "sync_distros",
+    "left_the_manifest",
+}
+# The commands `require_git` runs: `git rev-parse --local-env-vars` and `git --version`.
+SYNC_SUBPROCESS_WORDS = {"rev-parse", "--local-env-vars", "--version"}
 
 
 def _module_attributes(tree, module):
@@ -430,6 +486,34 @@ def _module_attributes(tree, module):
     }
 
 
+def _git_call_words(node):
+    """The constant arguments of a call `git.run`, `git.out` or `git.ok` (any receiver for
+    `status.py`'s own), or None when `node` is not one. Every argument must be a constant or a
+    spread `SPREAD` allows, and the first a constant: a subcommand the scan can read."""
+    if not (isinstance(node, ast.Call) and _called(node) in ("run", "out", "ok")):
+        return None
+    if (
+        not isinstance(node.func, ast.Attribute)
+        or getattr(node.func.value, "id", "") == "subprocess"
+    ):
+        return None
+    assert node.args and isinstance(node.args[0], ast.Constant), ast.dump(node)
+    for arg in node.args:
+        if isinstance(arg, ast.Starred):
+            assert getattr(arg.value, "id", "") in SPREAD, ast.dump(node)
+    return [a.value for a in node.args if isinstance(a, ast.Constant)]
+
+
+def _check_reading(words, where):
+    """`words` is a git command that reads only."""
+    assert words[0] in READ_ONLY_GIT, (where, words)
+    if words[0] == "config":
+        assert set(words) & CONFIG_READS, (where, words)
+        assert not set(words) & CONFIG_WRITES, (where, words)
+    if words[0] == "worktree":
+        assert words[1:2] == ["list"], (where, words)
+
+
 def test_status_calls_only_reading_functions_of_update_and_sync():
     tree = ast.parse(STATUS.read_text())
     constants = {name for name in dir(update) if name.isupper()}
@@ -440,30 +524,90 @@ def test_status_calls_only_reading_functions_of_update_and_sync():
 
 def test_status_runs_only_reading_git_commands_itself():
     tree = ast.parse(STATUS.read_text())
+    seen = 0
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and _called(node) in ("run", "out", "ok"):
-            words = [a.value for a in node.args if isinstance(a, ast.Constant)]
-            assert words and words[0] in READ_ONLY_GIT, words
-            assert not {k.arg for k in node.keywords} & WRITES
+        words = _git_call_words(node)
+        if words is None:
+            continue
+        seen += 1
+        _check_reading(words, "status.py")
+        assert not {k.arg for k in node.keywords} & WRITES
+    assert seen >= 2  # the scan sees `status.py`'s own calls
 
 
-def test_what_status_reaches_in_update_neither_writes_nor_asks_origin():
-    tree = ast.parse(UPDATE.read_text())
+def test_status_asks_the_local_refs_never_origin():
+    """`find_version` and `commit_on_origin` ask origin over the network unless they are given
+    `ask`; every call `status.py` makes passes `ask=update.ask_local`."""
+    tree = ast.parse(STATUS.read_text())
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and _called(node) in ("find_version", "commit_on_origin")
+    ]
+    assert len(calls) == 2
+    for call in calls:
+        (ask,) = [k.value for k in call.keywords if k.arg == "ask"]
+        assert ast.unparse(ask) == "update.ask_local"
+
+
+def _walk(path, start):
+    """The functions of the module at `path` that `start` reach by calls, each with its node."""
+    tree = ast.parse(path.read_text())
     functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
-    reached, todo = set(), sorted(STATUS_MAY_CALL["update"] & set(functions))
+    reached, todo = {}, sorted(set(start) & set(functions))
     while todo:
         name = todo.pop()
         if name in reached:
             continue
-        reached.add(name)
+        reached[name] = functions[name]
         for node in ast.walk(functions[name]):
+            if isinstance(node, ast.Call) and _called(node) in functions:
+                todo.append(_called(node))
+    return reached
+
+
+def test_what_status_reaches_in_update_neither_writes_nor_asks_origin():
+    reached = _walk(UPDATE, STATUS_MAY_CALL["update"])
+    commands = 0
+    for name, function in reached.items():
+        for node in ast.walk(function):
             if isinstance(node, ast.Call):
-                called = _called(node)
-                if called in functions and called not in reached:
-                    todo.append(called)
                 assert not {k.arg for k in node.keywords} & WRITES, (name, ast.dump(node))
+            words = _git_call_words(node)
+            if words is not None:
+                commands += 1
+                _check_reading(words, name)
     assert "standing" in reached and "worktree_holding" in reached  # the walk follows calls
-    assert not reached & NEVER_REACHED, reached & NEVER_REACHED
+    assert commands > 20  # and reads the git commands of what it reaches
+    assert not set(reached) & NEVER_REACHED, set(reached) & NEVER_REACHED
+
+
+def test_what_status_reaches_in_sync_writes_nothing():
+    reached = _walk(Path(sync_module.__file__), STATUS_MAY_CALL["sync"])
+    assert {"require_git", "resolve_all", "layer_moved", "plan_distros"} <= set(reached)
+    assert "require_tools" not in reached  # `vcs` is never run
+    commands = 0
+    for name, function in reached.items():
+        for node in ast.walk(function):
+            if not isinstance(node, ast.Call):
+                continue
+            assert _called(node) not in SYNC_NEVER_CALLED, (name, ast.dump(node))
+            if _called(node) == "run" and getattr(node.func.value, "id", "") == "subprocess":
+                commands += 1
+                words = {e.value for e in node.args[0].elts if isinstance(e, ast.Constant)}
+                assert words <= SYNC_SUBPROCESS_WORDS, (name, words)
+    assert commands == 2  # `git rev-parse --local-env-vars` and `git --version`
+
+
+def test_the_scan_of_a_git_command_catches_a_write():
+    for words in (["config", "remote.origin.url", "x"], ["config", "--unset", "a.b"]):
+        with pytest.raises(AssertionError):
+            _check_reading(words, "a test")
+    with pytest.raises(AssertionError):
+        _check_reading(["worktree", "prune"], "a test")
+    with pytest.raises(AssertionError):
+        _check_reading(["update-ref", "-d", "refs/x"], "a test")
+    _check_reading(["config", "--type=bool", "--get", "core.sparseCheckout"], "a test")
 
 
 def test_the_scan_of_status_catches_a_writing_call():
