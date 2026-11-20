@@ -940,12 +940,22 @@ words say it could not review. Say so on the hand-back's
 outside-reviewer line and dispatch `triage-reviews`, which reads it too
 (issue 428, item 5).
 
-**Only this round's review counts** (issue 428, item 5).
-`fetch_pr_reviews.sh` returns every review in the pull request's history,
-and its `ci_checks` are those of the current head. A review ends this
-round's wait only when its `commit_id` is the output's `head_sha`; an
-earlier round's review, a could-not-review one included, is about an
-older commit and does not end it.
+**What ends the wait, and what is read, are two different things** (issue
+428, item 5). `fetch_pr_reviews.sh` returns every review in the pull
+request's history, and its `ci_checks` are those of the current head.
+This round's wait ends when either is true:
+
+- the `copilot-pull-request-reviewer` check-run in `ci_checks` has a
+  `conclusion` (any: `success`, `failure` or other), even when no review
+  has landed on the head; or
+- a hosted review whose `commit_id` is the output's `head_sha` has
+  arrived.
+
+An earlier round's review, a could-not-review one included, is about an
+older commit and does not end this round's wait. Being read is wider:
+`triage-reviews` reads every review the pull request holds, whatever its
+`commit_id`, and the re-fetch before every merge checkpoint (below)
+sends any review it has not read to it first.
 
 **The wait is bounded while no review check-run has appeared** (issue
 428, item 5). Poll `fetch_pr_reviews.sh` after publish (or after the
@@ -965,13 +975,13 @@ PR-mode review):
   1800 s), then refuses with the review-pending error. A check-run still
   running after about 1800 s of the host's wait is recorded as "review
   still running after 1800 s" on the outside-reviewer line, and
-  `triage-reviews` is dispatched with the sources that exist. Before the
-  merge checkpoint, run `fetch_pr_reviews.sh` again: a hosted review on
-  the head that the `## Integrated Review` did not read goes to
-  `triage-reviews` before the checkpoint is presented, so a late review
-  is never merged past unread. A check-run that never appears holds
-  nothing in `merge_pr.sh`, which is why the first case needs the host's
-  own bound.
+  `triage-reviews` is dispatched with the sources that exist. A
+  check-run that never appears holds nothing in `merge_pr.sh`, which is
+  why the first case needs the host's own bound.
+
+Either exit can leave a review that lands after triage, and a later push
+of bookkeeping commits can leave one on an earlier commit of this round;
+the re-fetch before every merge checkpoint (below) catches both.
 
 The 900 s is the standing rule's timeout of about twice the expected
 duration (`host_standing_rules.md`: "no waits on things that will not
@@ -989,10 +999,23 @@ vocabulary) instead of `all-pass` / `failures-noted`. `merge_pr.sh` still
 gates the merge on CI regardless — triaging early never merges anything
 early.
 
-**Re-check CI before the merge checkpoint.** After an `## Integrated
-Review` that recorded `**CI**: pending`, run `fetch_pr_reviews.sh --pr
-<M>` again before presenting the `merge` checkpoint, and do not present it
-while CI is still running. After publish, CI on each push is the check on
+**Fetch again before every merge checkpoint.** Before presenting any
+`merge` checkpoint, run `fetch_pr_reviews.sh --pr <M>` again, on every
+path (a review that arrived, "review never arrived", "review still
+running after 1800 s", or a head moved by a bookkeeping push). Two
+checks on its output:
+
+- **A review not yet read.** The latest `## Integrated Review` names the
+  reviews it read on its `**Sources**` line (each with the commit it was
+  on) and counts them on its `**Reviews**` line. A hosted review it has
+  not read, whatever its `commit_id` (a review count now higher than
+  recorded, or a review on a commit its `**Sources**` does not name),
+  goes to `triage-reviews` before the checkpoint is presented, so no
+  review is merged past unread (issue 428, item 5).
+- **CI.** After an `## Integrated Review` that recorded `**CI**:
+  pending`, do not present the checkpoint while CI is still running.
+
+After publish, CI on each push is the check on
 a fix pass's commits: under the Hook rule (step 4) the pass ran only the
 suites that test what it changed, and the host's full pass ran once,
 before publish (step 7), so CI's verdict on the pushed head is confirmed
