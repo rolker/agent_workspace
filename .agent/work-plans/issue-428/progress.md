@@ -1148,3 +1148,13 @@ Summary: no must-fix open. S1 and S2 are valid wording fixes, one phrase or line
 - [x] (suggestion, Local Review @ `8ce42584`) S3: the Decision summary was out of date. Addressed by the host's rewrite of the pull request text, checked here. Item 5 now describes `**Reviews-read**` and the edited-review limit. Item 3 describes the three-state decision and the hand-fixed refusals, `..` included. "Open, small" lists S1 and S2. The counts are right: 6 `## Local Review (Pre-Push)` and 5 `## Local Review` entries in `progress.md`, and `test_worktree_remove.sh` ran here with 138 passed and 0 failed. The leave-out list (`dynamic/dependabot/`, `dynamic/pages/`) is in `merge_pr.sh:1770-1771` — pull request 542 body
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 14:53 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+The owner's answer in the dialog, to "Merge pull request 542 now, with F1 and F2 carried into part 2 of the same issue?": "Merge, carry F1 F2 (Recommended)". F1 is the open suggestion on run-issue step 11 ("present the merge checkpoint again" should say "call next again"); F2 is the open suggestion on the worktree_remove.sh header and its script_reference.md row (the refusal of a manifest path containing ".." is not listed). Both are deferred to part 2's pull request on this issue. The dialog showed: six pre-push rounds and five pull-request reviews, the last approved with no must-fix (4bd5eeb0); the Integrated Review at 895aae63; CI settled with all 10 checks passed on 8ce42584; no hosted review ever started; the host's fetch just before asking: no reviews, no comments, mergeable. His direction earlier the same day applies: "Let's not waist too much time going for perfect when we can have agents handle the edge cases."
