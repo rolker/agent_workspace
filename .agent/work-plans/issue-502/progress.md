@@ -539,3 +539,32 @@ The host's decisions 1 to 9 on the findings were followed as given (the owner ma
 - Run per fix: test_status.py, test_status_agrees_with_sync.py, test_status_distros.py, test_update_safety.py, test_init.py, test_documents.py, test_url_messages.py, test_masking.py, all passing.
 - The `.agent/scripts/tests/` suites: none apply (no workspace script changed). Every commit used `SKIP=validate-script-tests`; the full pre-commit pass is left to the host.
 - What sync does and prints is unchanged: `update_repo` and `_sync` were not edited. The shared changes are `Git`'s optional `options` (empty for sync), the `require_git` split (same checks, same order) and `ask_local` (status only). No edit to cli.py or docs/manifest/design.md. Nothing in ~/project11 was read or run.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-20 13:47 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-502 at `fd86341d`
+**Base**: origin/main
+**Depth**: Deep (reason: about 3600 lines over 17 files; changes update.py, which protects local work during sync)
+**Must-fix**: 2 | **Suggestions**: 9
+**Round**: 2 | **Ship**: continue — round 2: 2 must-fix include a design/correctness concern (not mechanical)
+
+Checked: round 1's ten findings are in the code. `sync` is unchanged: `Git(place, env, lock)` passes no options so its argv is the same as on main, `find_version`/`commit_on_origin` still default to `ask_origin`, and `require_tools` runs the same checks in the same order with the same messages before `require_git`. Every sentence `status` prints about `sync` was traced against `update_repo`, `_move` and `_repoint`: each holds, except the filter case below. Merge: `show.py` and its tests are byte for byte as on main; status/update/sync are unchanged by the merge; `cli.py` has both imports and both parsers; the three conflicted documents read correctly, apart from design.md:1678 below. The JSON fields match the design. Masking: five credential forms in origin, none leaked (adversarial reviewer). The git-2.45 statement for GIT_NO_LAZY_FETCH matches git's 2.45.0 release notes. Tests: 349 passed (test_status, test_status_agrees_with_sync, test_status_distros, test_update_safety, test_update_characterisation, test_show, test_cli). Pre-commit was clean on the changed files (validate-script-tests skipped). Outside reviewers: gemini and codex completed; the Claude adversarial reviewer completed.
+
+LFS-like filter evidence (clean `base64 -w0`, smudge `base64 -d`, required): in a fresh clone, `git status --porcelain` printed nothing, but `tracked_changes` under `_reading_git` counted 2 and under sync's `Git` counted 0. In the test harness, after sync, the remote moved ahead, the clone was fetched, and `a.bin` was touched: `git status` was clean. `status` said `expected 1 ... behind origin's as last fetched; sync leaves it while it has uncommitted changes (1 file)`, and then `sync` printed `src/a: fast-forwarded 1 commit`.
+
+### Findings
+- [ ] (must-fix) With filters turned off, a file under a clean/smudge filter (Git LFS) that is stat-dirty counts as changed while `git status` and `sync` see it as clean. This covers racily clean entries straight after a clone or sync, and any file that was touched. `status` then says "sync leaves it while it has uncommitted changes", but `sync` fast-forwards. The agreement test has no filtered case. Either run the clone's filters, or treat changed files that carry a filter attribute as unknown and make no claim about sync for them — `tools/repos-manifest/src/repos_manifest/status.py:312` (FILTER_OFF at :84; design.md:1561)
+- [ ] (must-fix) "The workspace's `validate` fails when `status` exits 1." is not built: `make validate` does not run status, and the adapter does not call it yet (#503) — `tools/repos-manifest/docs/design.md:1678`
+- [ ] (suggestion) `ask_local` peels every nested tag before it filters by pattern, so one unrelated tag that cannot be peeled makes a healthy repo `unusable` (exit 1). Filter first. Raised by three reviewers — `tools/repos-manifest/src/repos_manifest/update.py:568`
+- [ ] (suggestion) The design gives the move-blocking order as "local new branch ..., or the new branch held by another work tree ... in that order". The code and `_move` check the work tree first — `tools/repos-manifest/docs/design.md:1600`
+- [ ] (suggestion) A commit pin held only by a branch origin deleted: `status` says expected/pinned (exit 0), `sync` leaves it "not followed". This is not in the design's list of cases that differ, nor in DIFFER/CASES — `tools/repos-manifest/docs/design.md:1565`, `tools/repos-manifest/tests/status_cases.py`
+- [ ] (suggestion) `fetched_from` is null for in-progress, index.lock and sparse repos, which have one origin, because `blocked_late` reads the url last. The design's null list does not say so — `tools/repos-manifest/src/repos_manifest/status.py:257`
+- [ ] (suggestion) A filter name holding `=` is turned off through GIT_CONFIG_COUNT, which git only reads from 2.31 (the tool allows 2.23). A negative inherited count is advanced to a valid one, which leaves the filter on. Neither limit is in the design — `tools/repos-manifest/src/repos_manifest/status.py:289`
+- [ ] (suggestion) Two stated limits could be closed rather than documented: a filter set only in a submodule's own config still runs, and on git before 2.45 a partial clone may still lazy-fetch (refuse or flag a partial clone there) — `tools/repos-manifest/src/repos_manifest/status.py:81`
+- [ ] (suggestion) The adapter's validate line still says "(there is no repos-manifest status yet)", which is now false. Reword it with its test, or leave it to #503 and say so — `.agent/project_types/ros2_colcon/adapter.sh:1087`
+- [ ] (suggestion) An origin url set to an empty value passes as one url. `status` then answers from stale refs (possibly expected, exit 0), while `sync`'s fetch fails. Found by reading the code, not run — `tools/repos-manifest/src/repos_manifest/update.py:999`
+- [ ] (suggestion) A duplicate assert (line 83 repeats line 82) — `tools/repos-manifest/tests/test_status.py:83`
