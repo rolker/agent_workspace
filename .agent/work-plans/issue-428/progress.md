@@ -991,3 +991,63 @@ Per host direction, the entry decision is turned round to "refuse unless proven"
 - test_skill_paths.sh: 164 passed, 0 failed
 
 shellcheck at warning severity is clean on `worktree_remove.sh` and its test. No part 2 file and not `plan.md` touched. A link written as an absolute path to the worktree by a path other than its physical one is refused as outside; that errs toward refusing.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-20 14:25 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent ae4a8940bb75088a1, resume 3 of 3)
+
+**PR**: #542 at `7b49a579`
+**Depth**: Deep (reason: whole-diff classification for a fix round; no convergence-check words in the handoff, so cross-model ran)
+**Must-fix**: 2 | **Suggestions**: 1
+
+Re-review after b3dce4d6, which replaced the gone-or-not test with `_entry_state`: present, proven absent, or refused (Implementation entry 7b49a579).
+
+The owner's direction, given during this round (2026-11-20), quoted: "it's ok if scripts don't handle everything and come back saying they can't do it. If it's occasinal and an agent can deal with, that's fine. If it happens too often, than we can look at root causes and such. Let's not waist too much time going for perfect when we can have agents handle the edge cases."
+
+Applied as the host reads it:
+- A clear refusal, even of an unusual healthy layout, is at most a suggestion.
+- A must-fix is silent harm: deleting uncommitted work or anything outside the worktree, false success, or refusing an ordinary layout.
+
+Earlier findings (Local Review ac4c8d0c):
+- Must-fix (an inside link to a target under a folder with no search permission was taken as gone): fixed. With the link on the path and with the link as the entry, both are now refused, naming the folder inside the worktree, and the change is kept.
+- Suggestion (wrong link message): fixed. An entry that links to an inside folder that cannot be entered now gets "cannot enter <that folder>".
+
+Attack on `_entry_state`: refused, change kept, for all of these:
+- a link loop, and links to `..` at the top;
+- a file in the middle of the path;
+- a manifest `.../pkg_a/..`.
+
+Present, with the uncommitted change caught on the physical path, for all of these:
+- an absolute manifest path (treated as relative to the worktree);
+- empty and `.` segments;
+- a link to `.`;
+- an absolute link to the worktree itself;
+- a name with a leading dash and a space;
+- a folder that can be searched but not read;
+- an entry that can be read but not written.
+
+From the decision to the removal, the code uses only the vetted physical path: `ENTRY_DESTS[i]` is replaced, and the dirty check, the chmod and `git worktree remove` all read it.
+
+Ordinary layouts are all removed: a package worktree with one entry or with two, an entry removed by hand, a whole layer removed by hand, and a read-only install tree. The plain single worktree is covered by the suite. A link that names the worktree by a non-physical path is refused with a clear message; that is acceptable under the owner's direction.
+
+The function is lines 430-501, about one and a half screens. Its header is true except for the `..` case below.
+
+Verified:
+- shellcheck at warning severity is clean on `worktree_remove.sh` and its test.
+- `test_worktree_remove.sh`: 135 passed, 0 failed.
+
+Reviewers:
+- Gemini ran, EXIT 0. Dropped from its review:
+  - Its must-fix that `$2` is unchecked: false. `$2` is always `WORKTREE_DIR` or `WORKTREE_DIR/<rel>` (lines 382-384), and `WORKTREE_DIR` is physical and was entered at line 354.
+  - The `git status` message wording: a refusal with a message.
+  - Plan drift, the wait-end wording and `none` on a local-only triage: dropped in earlier rounds.
+- Codex ran, EXIT 0. It found must-fix 2, and the suggestion as a must-fix; its plan-drift point was dropped.
+- The Claude adversarial reviewer ran, with a fresh agent. It found must-fix 1, independently, and the suggestion.
+
+### Findings
+- [ ] (must-fix) A manifest path with `..` after a missing name is judged ABSENT at that missing name, and the rest of the path is never checked. The function's contract is "refuse unless proven", and this breaks it. Example: manifest `gone/../layer_ws/src/sub/pkg_a`, with a real checkout there holding an uncommitted change. Reproduced: exit 0, "removed successfully", the change deleted. Main's script loses it the same way. The scripts never write `..`, so this needs a hand-edited manifest. Fix: refuse any `..` segment in a manifest path, or return ABSENT only when nothing remains of the path. Found by the lead (reproduced) and the Claude adversarial reviewer. — `.agent/scripts/worktree_remove.sh:477`
+- [ ] (must-fix) The unread-review check runs only before the merge checkpoint is presented. A hosted review that lands while the owner is deciding is merged past unread: step 11 runs `merge_pr.sh` with no fetch, and `merge_pr.sh` holds only on a running check-run. The text "so no review is merged past unread" is then false. The documented late reviews, at 17 and 30 minutes, and the 900 s "never arrived" exit make this reachable. Fix: in step 11, after the owner's yes and before `merge_pr.sh`, fetch once more and apply the same check. Any review not yet read goes to triage, and the merge checkpoint is presented again. Found by Codex. — `.claude/skills/run-issue/SKILL.md:1019`
+- [ ] (suggestion) A bind mount of an outside folder from the same filesystem, inside the tree, is walked by the chmod (same device). Its read-only folders are opened, and `rm -rf` then deletes them as well. Main's `rm -rf` already deleted the writable parts, the comment states the behaviour, and making such a mount needs root. Cheap closure: refuse when `/proc/self/mountinfo` lists a mount point under the worktree. Found by Codex as a must-fix, downgraded: documented, root-only, mostly pre-existing. — `.agent/scripts/worktree_remove.sh:628`
