@@ -544,3 +544,15 @@ None.
 
 ### False positives
 None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 13:26 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+"Merge"
+
+Asked at the merge checkpoint for pull request 541 after the Integrated Review at 2193ba5f with no open findings. The dialog gave: what the change adds; three pre-push review rounds and two narrow re-reviews of fixes made on the pull request; all 10 CI checks passing on head f8387579, merge state CLEAN; the outside reviewers (Codex and Gemini ran on pre-push rounds 1 and 2 and their points were fixed, Copilot left no review, the narrow re-reviews had none); what is not built (the URL and git-ref forms of the manifest location, so the pull request says "Part of #499" and the issue stays open; paths in the general error printer still unescaped); and the host's decisions open to his veto. The other choices offered were hold and stop.
