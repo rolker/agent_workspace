@@ -711,3 +711,48 @@ A review in any state but PENDING with an empty or unreadable `submitted_at` (le
 **Decision**: publish
 
 Read: the Local Review (Pre-Push) at ed9e28df, round 6, approved, Ship recommended, no must-fix and no suggestions. After it, main was merged into the branch once more (a2a8b3ab): it brought in the one-line test fix of pull request 540 (part 1 of issue 539), which the owner asked to land on main before this branch is published, and that issue's work-plan records. The host's full pass (pre-commit over the branch's files against origin/main, no SKIP) then passed on that head: every hook Passed or had no files, the script test suites hook included. Part 1 of two: the pull request says Part of #428.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-20 13:20 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #542 at `47a1ea83`
+**Depth**: Deep (reason: 11 files and 758 changed lines, skill and knowledge files included; the first PR-mode review, classified on the whole diff, with cross-model)
+**Must-fix**: 1 | **Suggestions**: 3
+
+Scope check first. The host's account holds:
+- `git diff ed9e28df HEAD -- . ':!.agent/work-plans'` is one line in `test_ros2_colcon.sh`. That line is main's own change: commit 1164e166, pull request 540.
+- The pull request's patch against main, without work plans and `index` lines, is byte-identical to the round-6 approved patch against its own base (916aab50).
+- Main's merge changed no file this pull request touches.
+
+So this review covers the same code round 6 approved. The skill still classifies a first PR-mode review on the whole diff. Rounds 3 to 6 were narrow checks with no outside models, so this review read the whole diff again, Gemini and Codex included.
+
+Static analysis: shellcheck at warning severity is clean on all seven changed shell files. It was run from the workspace `.venv`, because shellcheck is not on PATH.
+
+Hosted reviews: `fetch_pr_reviews.sh --pr 542` shows no reviews, no comments and no `copilot-pull-request-reviewer` check-run.
+
+Plan drift: the `notice_only` mark is not in the diff. The pull request text records that it was built and then removed. Not a finding.
+
+The must-fix was reproduced in a sandbox:
+- Setup: a package worktree with an uncommitted change in `layer_ws/src/pkg_a`, and `layer_ws/src` set to mode 600.
+- This branch: exit 0, "Worktree removed successfully", the change deleted, and the package repository's worktree record left `prunable`.
+- Main's `worktree_remove.sh`: exit 1, `rm: cannot remove ... Permission denied`, the entry and its change kept.
+
+Reviewers:
+- Gemini ran, EXIT 0. It found the must-fix, plus suggestion 2 and suggestion 3.
+- Codex ran, EXIT 0. It found the must-fix, plus suggestion 1 and suggestion 3.
+- Claude adversarial ran with a fresh agent. It made no must-fix and found suggestion 3. `test_worktree_remove.sh`: 46 passed, 0 failed. `test_merge_pr_gate.sh`: 213 passed, 0 failed. `test_dispatch_phase.sh`: 244 passed, 0 failed. `test_script_tests_hook_scope.sh`: 347 passed, 0 failed.
+
+Dropped:
+- Gemini's plan-drift item: the pull request text records the change.
+- Gemini's claim that `WORKTREE_DIR` is not canonical: false, it is resolved with `pwd -P` at line 354.
+- Gemini's claim that a human review ends the wait: the text says "a hosted review".
+- Gemini's point about GNU `date` portability: the examples are marked "e.g.", and the workspace runs on Linux.
+
+### Findings
+- [ ] (must-fix) A package entry under a folder with no search permission is treated as already gone. `[ ! -d "$_dest" ]` is false on EACCES as well as on ENOENT, so the entry gets no owner, the link check is skipped, and the dirty preflight (line 460) is skipped too. `_make_dirs_writable "$WORKTREE_DIR"` (line 510) then opens the folder, and `rm -rf` (line 534) deletes the checkout, uncommitted work included, without `--force`. Main fails safe here. The "cannot enter ... or on a folder above it" message at line 412 cannot be reached for a folder above the entry. Fix: tell an unreachable entry from a missing one before any repair. For example, refuse when a folder between `WORKTREE_DIR` and the entry cannot be entered. Add a test: a dirty entry under a mode 600 `layer_ws/src`, plain removal, refused, change kept. Found by the lead (reproduced), Codex and Gemini. — `.agent/scripts/worktree_remove.sh:399`
+- [ ] (suggestion) `find -xdev` still tests and chmods the top folder of a mount of another filesystem; it only stops descending into it. Giving that folder u+rwx lets the later `rm -rf` unlink the mount's top-level entries, and `rm -rf` already crosses mounts, before this change too. Consider skipping mount-point folders in the chmod, or `rm -rf --one-file-system`. Found by Codex, downgraded from must-fix: the setup is contrived, and the crossing predates this change. — `.agent/scripts/worktree_remove.sh:500`
+- [ ] (suggestion) "Its cost is an occasional second triage" understates it. The review that ends the wait is handed to triage within a minute or two. A `**Fetched**` noted that soon, taken back to the start of its minute and then by 60 s more, will often be at or before that review's `submitted_at`, so a second triage before the merge checkpoint is likely on many pull requests. State the cost as it is, or key "read" on the review ids that triage records. Found by Gemini, downgraded from must-fix: it errs in the safe direction. — `.claude/skills/run-issue/SKILL.md:1019-1024`
+- [ ] (suggestion) A non-PENDING review with an empty or unreadable `submitted_at` is sent to triage before every checkpoint, with no end. Round 6 judged this acceptable, because it needs GitHub to break its own contract. Three reviewers raised it independently this round. A one-line cap would make the rule provably end: at most one more triage for the same review id, then report it to the owner. Found by Codex, Gemini and the Claude adversarial reviewer. — `.claude/skills/run-issue/SKILL.md:1025-1028`
