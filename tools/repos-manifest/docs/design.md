@@ -521,9 +521,10 @@ it was given. Every other one is printed as an absolute path with links followed
 manifests it builds on, and, with no manifest given, the one `config.yaml` records, whose
 recorded path is taken from the system directory and not from the current one. A path is
 printed on one line: a control or invisible character in it (a newline, a tab, a
-bidirectional override) is written as an escape, `\xXX` below 0x100, `\uXXXX` up to U+FFFF
-and `\UXXXXXXXX` above, so that the escape's end is never in doubt, a byte that is not UTF-8 as
-`\xXX`, and a backslash is doubled. `init` prints the system directory in
+bidirectional override) is written as an escape, `\xXX` below 0x80, `\uXXXX` up to U+FFFF
+and `\UXXXXXXXX` above, so that the escape's end is never in doubt. A byte that is not UTF-8 is
+written `\xXX`; it is always 0x80 or above, so it never prints as a character of the same value
+does: byte 0x85 is `\x85`, the character U+0085 `\u0085`. A backslash is doubled. `init` prints the system directory in
 its question the same way.
 
 It lists the repos that are left out with the reason, in the manifest's order: "group X is

@@ -217,6 +217,9 @@ def test_a_url_with_a_password_prints_masked():
         ("pua\ue00011", "pua\\ue00011"),
         ("back\\slash", "back\\\\slash"),
         ("not-utf8-\udcff", "not-utf8-\\xff"),
+        # A character from U+0080 to U+00FF and the byte of the same value print differently.
+        ("a\x85b", "a\\u0085b"),
+        ("a\udc85b", "a\\x85b"),
     ],
 )
 def test_a_path_is_printed_on_one_line_with_control_characters_escaped(path, shown):

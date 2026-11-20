@@ -25,10 +25,11 @@ GAP = "   "  # between the columns of a repo's line
 def shown_path(path: str) -> str:
     """A path as `show` and `init` print it, on one line: a url's user name and password
     masked, then each character a line cannot show as itself written as an escape. A control
-    or invisible character (a newline, a tab, a bidirectional override) is `\\xXX` below 0x100,
-    `\\uXXXX` up to U+FFFF and `\\UXXXXXXXX` above, so its end is never in doubt, a byte that
-    is not UTF-8 (held as a lone surrogate) is `\\xXX`, and a backslash in the path is doubled,
-    so an escape is never mistaken for one."""
+    or invisible character (a newline, a tab, a bidirectional override) is `\\xXX` below 0x80,
+    `\\uXXXX` up to U+FFFF and `\\UXXXXXXXX` above, so its end is never in doubt. A byte that
+    is not UTF-8 (held as a lone surrogate) is `\\xXX`, always 0x80 or above, so a byte and a
+    character of the same value never print alike. A backslash in the path is doubled, so an
+    escape is never mistaken for one."""
     out = []
     for ch in mask_urls(path):
         code = ord(ch)
@@ -37,7 +38,7 @@ def shown_path(path: str) -> str:
         elif ch == "\\":
             out.append("\\\\")
         elif has_unsafe_char(ch):
-            if code < 0x100:
+            if code < 0x80:
                 out.append(f"\\x{code:02x}")
             elif code <= 0xFFFF:
                 out.append(f"\\u{code:04x}")
