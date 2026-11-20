@@ -581,3 +581,35 @@ The paragraph agrees with the rest of step 9. The flaw is the reference time (be
 **Decision**: address
 
 Read: the Local Review (Pre-Push) at a28f0757, round 4, verdict changes-requested, Ship recommended, one must-fix: run-issue step 9 compares a review's time with the Integrated Review's When, which is written when triage finishes, minutes after triage fetched the reviews, so a review that lands in between counts as read when it was not. This is the third finding in how that paragraph tells a read review from an unread one (fields that are not written, then the wrong reference time), so the mechanism changes rather than the wording: triage-reviews records in its entry the time it fetched the reviews, and the rule compares against that. No full pass was run: publish was not the chosen answer.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 12:22 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a9184401bb6c30a1f, resume 3 of 3)
+
+**Branch**: feature/issue-428 at `c458e132`
+**Addressed**: Local Review (Pre-Push) at `fdee5c9a` (2026-11-20 12:08 -05:00)
+**Commits**: c458e132
+
+Round 4 fix pass for part 1, answering the Checkpoint (address) at 2f45f595: the mechanism changes, and the entry now records the fact the rule needs. No part 2 file touched; `plan.md` unchanged.
+
+Readers of `## Integrated Review` entries, checked before adding the field. None needs a change:
+- `progress_read.py` parses every `**Key**: value` header line into a generic `fields` map and has no allowlist. A sample entry with `**Fetched**` parsed with its correlation and findings unchanged.
+- `review_progress.sh`, `dispatch_phase.sh` and `merge_pr.sh`'s gate read only the type, status, correlation, findings and `**Verdict**`.
+- `_progress_entry.sh` validates the heading type only.
+- ADR-0013 lists required header and correlation fields only, no per-type field list. The progress tests (`test_progress_read.*`, `test_triage_reviews_integration.sh`) assert no closed field set.
+- So the change is the template line, triage-reviews step 3, and run-issue step 9, with no field list or test to extend.
+
+### Actions
+- [x] (must-fix) reference time now taken before the fetch — `.claude/skills/triage-reviews/SKILL.md` step 3 and template; `.claude/skills/run-issue/SKILL.md` step 9 (c458e132)
+  - triage-reviews step 3 notes the local time just before running `fetch_pr_reviews.sh`, and the template writes it as `**Fetched**: <YYYY-MM-DD HH:MM ±HH:MM>`.
+  - A run with only the local timeline as a source still writes the field.
+  - run-issue step 9: a review counts as not read when its `submitted_at` is at or after the start of the `**Fetched**` minute, when its time is empty or cannot be read (empty is tested first, since `date -d ''` gives midnight), or when the entry has no `**Fetched**` line. All three err toward triaging again.
+
+Suites run, each on its own with `bash` (last result line):
+- `test_skill_paths.sh`: test_skill_paths: 164 passed, 0 failed
+- `test_triage_reviews_integration.sh`: test_triage_reviews_integration: 69 passed, 0 failed
+- `test_checkpoint_269.sh` (names `triage-reviews/SKILL.md`): test_checkpoint_269: 43 passed, 0 failed
+
+The full pre-commit pass and the full run of every suite are left to the host.
