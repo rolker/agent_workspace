@@ -69,3 +69,11 @@ issue: 499
 **Decision**: proceed
 
 Read the Issue Review at b5a7f3cc: verdict proceed to plan-task, no question for the owner. Its open actions (the manifest as a positional path like `init`, the URL and git-ref location forms left to another issue because the reader takes a local path only, the no-argument form, the resolver carrying where each entry came from and what was left out, whether `init` switches to `show`'s output in this pull request, the acceptance run on the in-repo project11 fixture rather than ~/project11) go to the plan, and the owner sees the plan's answers at the plan checkpoint.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-20 11:29 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-499/plan.md` at `fc5e1c6c`
+
+Six steps in one pull request: the resolver carries each entry's source and the left-out repos with reasons (tested first), a pure renderer following the design's sketch, the `show` command with the no-argument system form, `init` switching to the same output, the acceptance run on the in-repo project11 fixture, and the design, roadmap and README updates. The eight decisions for the owner's veto are listed in the plan.
