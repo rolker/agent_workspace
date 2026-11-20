@@ -16,6 +16,7 @@ submodule is never moved by it.
 
 from __future__ import annotations
 
+import fnmatch
 import os
 import re
 import shlex
@@ -536,14 +537,57 @@ def ask_origin(git: Git, *patterns: str) -> Tuple[Optional[Dict[str, str]], str]
     return theirs, ""
 
 
+Asker = Callable[..., Tuple[Optional[Dict[str, str]], str]]
+
+
+def ask_local(git: Git, *patterns: str) -> Tuple[Optional[Dict[str, str]], str]:
+    """What origin had when the clone last fetched it, read from the refs here and in the shape
+    `ask_origin` gives, asking nothing over the network: each remote-tracking ref of origin as
+    origin's branch (`refs/heads/<name>`), and each tag here as origin's tag, a peeled tag's
+    commit under `<tag>^{}`; only the refs the `patterns` match, as `ls-remote` matches them.
+    A tag made here and a remote-tracking ref left from a branch origin deleted count as
+    origin's: offline they cannot be told apart."""
+    status, printed, error = git.run(
+        "for-each-ref", "--format=%(refname) %(objectname) %(*objectname)",
+        "refs/remotes/origin/", "refs/tags/",
+    )  # fmt: skip
+    if status != 0:
+        return None, f"`git for-each-ref` exited {status}:\n{error.rstrip()}"
+    found: Dict[str, str] = {}
+    prefix = "refs/remotes/origin/"
+    for line in printed.splitlines():
+        ref, _, rest = line.partition(" ")
+        oid, _, peeled = rest.partition(" ")
+        if ref.startswith(prefix):
+            if ref == f"{prefix}HEAD":
+                continue
+            ref = "refs/heads/" + ref[len(prefix) :]
+        found[ref] = oid
+        if peeled:
+            found[f"{ref}^{{}}"] = peeled
+
+    def asked(ref: str) -> bool:
+        plain = ref[: -len("^{}")] if ref.endswith("^{}") else ref
+        return any(fnmatch.fnmatchcase(plain, pattern) for pattern in patterns)
+
+    return {ref: oid for ref, oid in found.items() if not patterns or asked(ref)}, ""
+
+
 def find_version(
-    git: Git, version: Optional[str], record: Optional[RepoRecord] = None
+    git: Git,
+    version: Optional[str],
+    record: Optional[RepoRecord] = None,
+    ask: Optional[Asker] = None,
 ) -> Tuple[Optional[Version], Optional[str], bool]:
     """The manifest's version on origin, after a fetch: (version, problem, fetch). Origin is
     asked for the branch or tag itself (`ls-remote`), since `sync` prunes nothing and a
     remote-tracking ref may be left from a branch origin has deleted. A tag counts only when
     origin has it and the tag here is the same object; a commit when it is there and is named
-    by 7 to 40 hex digits (whether origin holds it is `commit_on_origin`)."""
+    by 7 to 40 hex digits (whether origin holds it is `commit_on_origin`). `ask` is how origin
+    is asked: `ask_origin` when it is not given (looked up at the call, so a test can replace
+    it), or `ask_local`, which reads the refs here and asks nothing over the network."""
+    if ask is None:
+        ask = ask_origin
     if version is None:
         ref = git.out("symbolic-ref", "-q", "refs/remotes/origin/HEAD")
         prefix = "refs/remotes/origin/"
@@ -556,7 +600,7 @@ def find_version(
                 False,
             )
         name = ref[len(prefix) :]
-        theirs, problem = ask_origin(git, f"refs/heads/{name}")
+        theirs, problem = ask(git, f"refs/heads/{name}")
         if theirs is None:
             return None, problem, True
         if f"refs/heads/{name}" not in theirs:
@@ -574,7 +618,7 @@ def find_version(
         patterns.append(f"refs/heads/{name}")
     if kind != BRANCH:
         patterns.append(f"refs/tags/{name}")
-    theirs, problem = ask_origin(git, *patterns)
+    theirs, problem = ask(git, *patterns)
     if theirs is None:
         return None, problem, True
     on_branch = theirs.get(f"refs/heads/{name}")
@@ -663,11 +707,15 @@ def _tag_clash(git: Git, version: str, theirs: Dict[str, str], record: Optional[
     )
 
 
-def commit_on_origin(git: Git, commit: str) -> Tuple[Optional[bool], str]:
+def commit_on_origin(
+    git: Git, commit: str, ask: Optional[Asker] = None
+) -> Tuple[Optional[bool], str]:
     """Whether `commit` is reachable, in the history the clone has, from a branch or a tag that
     origin has now: a ref here that holds it, which origin lists at the same object (a
     remote-tracking ref left from a branch origin deleted does not count); with git's message
-    when that cannot be told."""
+    when that cannot be told. `ask` as for `find_version`."""
+    if ask is None:
+        ask = ask_origin
     status, printed, error = git.run(
         "for-each-ref", "--contains", commit, "--format=%(refname) %(objectname)",
         "refs/remotes/origin/", "refs/tags/",
@@ -683,7 +731,7 @@ def commit_on_origin(git: Git, commit: str) -> Tuple[Optional[bool], str]:
             holders[ref] = oid
     if not holders:
         return False, ""
-    theirs, problem = ask_origin(git, "refs/heads/*", "refs/tags/*")
+    theirs, problem = ask(git, "refs/heads/*", "refs/tags/*")
     if theirs is None:
         return None, problem
     return any(theirs.get(ref) == oid for ref, oid in holders.items()), ""
@@ -868,6 +916,80 @@ class _Turn:
         return Done(CURRENT, said, self.notes, commit=head)
 
 
+# Why a repo that is there is left at the first checks (`Blocked.kind`): `sync` says each in
+# its own words and leaves the repo; `status` maps the kind to a state.
+NOT_GIT, NO_COMMIT = "not-git", "no-commit"
+OPERATION, INDEX_LOCK, SPARSE = "in-progress", "index-lock", "sparse"
+NO_ORIGIN, SEVERAL_ORIGINS = "no-origin", "several-origins"
+
+
+@dataclass
+class Blocked:
+    """A first check that stops `sync` at a repo: what kind of check, and what `sync` says."""
+
+    kind: str
+    text: str
+
+
+def stopped_move(record: Optional[RepoRecord], head: str) -> Optional[str]:
+    """The text for a `sync` stopped while moving the repo, when the record's `moving` line
+    names the commit the repo is on; None otherwise."""
+    if record is None or record.moving is None or head not in record.moving:
+        return None
+    return (
+        f"a sync was stopped while moving this repo from {record.moving[0][:12]} to"
+        f" {record.moving[1][:12]}; `git status` shows what it left"
+    )
+
+
+def blocked_early(git: Git) -> Tuple[Optional[Blocked], Optional[Path], Optional[str]]:
+    """The first two checks, in order: the place is a git repository of its own, and it has a
+    commit checked out. Returns what stops at them, if anything, with the git directory and
+    `HEAD`'s commit as far as they were read."""
+    status, printed, _ = git.run("rev-parse", "--show-toplevel")
+    if status != 0 or os.path.realpath(printed.strip()) != os.path.realpath(git.place):
+        return Blocked(NOT_GIT, "is not a git repository of its own"), None, None
+    git_dir = Path(git.out("rev-parse", "--absolute-git-dir") or git.place / ".git")
+    head = git.out("rev-parse", "--verify", "-q", "HEAD")
+    if head is None:
+        return Blocked(NO_COMMIT, "has no commit checked out"), git_dir, None
+    return None, git_dir, head
+
+
+def blocked_late(
+    git: Git, git_dir: Path, record: Optional[RepoRecord], head: str
+) -> Tuple[Optional[Blocked], Optional[str]]:
+    """The checks after `blocked_early` (and after `sync` drops a `moving` line that no longer
+    describes the repo), in order: no operation in progress, no `index.lock`, not a sparse
+    checkout, exactly one `origin` url. Returns what stops at them, if anything, and the url of
+    `origin` when there is one. The in-progress and `index.lock` texts carry the stopped-move
+    text (`stopped_move`). Reads only."""
+    stopped = stopped_move(record, head)
+    also = f"; {stopped}" if stopped else ""
+    for name, what in IN_PROGRESS:
+        if os.path.lexists(git_dir / name):
+            return Blocked(OPERATION, f"{what} is in progress{also}"), None
+    if os.path.lexists(git_dir / "index.lock"):
+        text = f"index.lock exists; another git may be running here{also}"
+        return Blocked(INDEX_LOCK, text), None
+    status, printed, _ = git.run("config", "--type=bool", "--get", "core.sparseCheckout")
+    if status == 0 and printed.strip() == "true":
+        return (
+            Blocked(
+                SPARSE,
+                "is a sparse checkout; sync does not update one (its skip-worktree files are"
+                " not changes): update it by hand",
+            ),
+            None,
+        )
+    status, printed, _ = git.run("config", "--get-all", "remote.origin.url")
+    urls = printed.splitlines() if status == 0 else []
+    if len(urls) != 1:
+        kind = NO_ORIGIN if not urls else SEVERAL_ORIGINS
+        return Blocked(kind, "has no single origin"), None
+    return None, urls[0]
+
+
 def update_repo(
     place: Path,
     repo: Selected,
@@ -883,42 +1005,20 @@ def update_repo(
     if repo.type != "git":
         return Done(LEFT, f"type {repo.type}: sync updates git repos only")
     git = Git(place, env, lock)
-    status, printed, error = git.run("rev-parse", "--show-toplevel")
-    if status != 0 or os.path.realpath(printed.strip()) != os.path.realpath(place):
-        return Done(LEFT, "is not a git repository of its own")
-    git_dir = Path(git.out("rev-parse", "--absolute-git-dir") or place / ".git")
-    head = git.out("rev-parse", "--verify", "-q", "HEAD")
-    if head is None:
-        return Done(LEFT, "has no commit checked out")
-    stopped = None
-    if record is not None and record.moving is not None and head in record.moving:
-        stopped = (
-            f"a sync was stopped while moving this repo from {record.moving[0][:12]} to"
-            f" {record.moving[1][:12]}; `git status` shows what it left"
-        )
-    elif record is not None and record.moving is not None:
+    blocked, git_dir, head = blocked_early(git)
+    if blocked is not None:
+        return Done(LEFT, blocked.text)
+    assert git_dir is not None and head is not None
+    stopped = stopped_move(record, head)
+    if stopped is None and record is not None and record.moving is not None:
         # The line no longer describes the repo (a person moved it since): it goes.
         record = replace(record, moving=None)
         write(record)
     also = f"; {stopped}" if stopped else ""
-    for name, what in IN_PROGRESS:
-        if os.path.lexists(git_dir / name):
-            return Done(LEFT, f"{what} is in progress{also}")
-    if os.path.lexists(git_dir / "index.lock"):
-        return Done(LEFT, f"index.lock exists; another git may be running here{also}")
-    status, printed, _ = git.run("config", "--type=bool", "--get", "core.sparseCheckout")
-    if status == 0 and printed.strip() == "true":
-        return Done(
-            LEFT,
-            "is a sparse checkout; sync does not update one (its skip-worktree files are not"
-            " changes): update it by hand",
-        )
-
-    status, printed, _ = git.run("config", "--get-all", "remote.origin.url")
-    urls = printed.splitlines() if status == 0 else []
-    if len(urls) != 1:
-        return Done(LEFT, "has no single origin")
-    origin = urls[0]
+    blocked, origin = blocked_late(git, git_dir, record, head)
+    if blocked is not None:
+        return Done(LEFT, blocked.text)
+    assert origin is not None
     for known in (origin, repo.url, record.url if record is not None else None):
         remember_url(known)
     taken = probe_taken(git)

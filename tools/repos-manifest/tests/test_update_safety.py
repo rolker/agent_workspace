@@ -37,7 +37,7 @@ from repos_manifest import update
 UPDATE = Path(update.__file__)
 
 
-GIT_CALLS = ("run", "out", "ok", "count", "ask_origin")
+GIT_CALLS = ("run", "out", "ok", "count", "ask_origin", "ask", "ask_local")
 # The names a git call may spread with `*`: each is a function's own parameter (`args`,
 # `patterns`, whose callers the scan reads as git calls too), a
 # step taken from a list literal (`step`, `back`), or a list literal or `GIT_OPTIONS` bound in
@@ -52,9 +52,10 @@ def _called(call: ast.Call) -> str:
 
 def git_argument_texts(source: str):
     """The git arguments a module's source can run, each list as one text: the constant
-    arguments of every `run`, `out`, `ok`, `count` and `ask_origin` call (the last two pass
-    theirs to git), every list literal (a step's arguments) and `GIT_OPTIONS`. Tuples elsewhere
-    are names and messages, not arguments.
+    arguments of every `run`, `out`, `ok`, `count`, `ask_origin`, `ask` and `ask_local` call
+    (the last four pass theirs to git; `ask` is the parameter `find_version` and
+    `commit_on_origin` call through), every list literal (a step's arguments) and
+    `GIT_OPTIONS`. Tuples elsewhere are names and messages, not arguments.
 
     What it cannot see: an argument held in a variable that is not a list literal (a tuple,
     a string built at run time). `update.py` is written so that this does not matter: every
