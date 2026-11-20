@@ -387,3 +387,20 @@ Read the Local Review (Pre-Push) at c6fb2f5f (round 2, approved, no must-fix, fi
 - Whole tool suite (`PYTHONPATH=src .venv/bin/python -m pytest tests`, at b911e926): 1821 passed in 550.69s (0:09:10).
 - Every commit with `SKIP=validate-script-tests` (issue #465 rule); every other hook ran, flake8 and black included. No `.agent/scripts/` file changed, so no script suite applies. The full pre-commit pass is left to the host. Nothing under ~/project11 was read, written or run.
 - `cli.py` edits are limited to `_show_in_system` and the `show` import; `system.read_manifest` gained an optional argument whose default keeps every other caller as it was.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-20 12:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-499 at `f310d62b`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff; whole diff stays Deep)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Cross-model: skipped (round-3 convergence check, per handoff). All five round-2 findings are fixed in the code (96e003c4, a5b121f2, 001ae690, 47c346ec, b911e926). Checked by hand on scratch manifests and systems: a later manifest repeating `https://example.org/nav.git` keeps the base as source; `nav.git/` and `nav` move the source to the later manifest, and that manifest's spelling is the url printed, so the design's "the one that gave the URL printed" holds (merge compares the text exactly; `update.same_url` treats them as one place, but the printed url did change). Escapes: U+0085 -> `\u0085`, byte 0x85 -> `\x85`, U+E000+`1` -> `1`, U+E0001 -> `\U000e0001`, `\` doubled; each form decodes one way, and it matches the design's words. `read_manifest`'s new `shown` defaults to the old label; `sync` (sync.py:714), `init` (init.py:258) and `build`/`show <manifest>` (cli.py:78, cli.py:230) call it unchanged, and `Repo.source` is read only by `show`. The general `ERROR:` printer (cli.py:412) and `init`'s path refusals are unchanged from main; the reason given holds (that printer gets two-part refusals and git text, so escaping there is a per-message change, not one line), and a follow-up issue is still to be filed. Targeted tests (test_show, test_show_system, test_base_merge, test_init, test_cli): 116 passed; flake8 clean on the changed lines.
+
+### Findings
+- [ ] (suggestion) "a refusal names the path as recorded" is true only for a path that does not exist: `opens` tests `os.path.exists`, so a recorded path that exists but cannot be read (a directory) or does not parse (through a link) is named canonical by `show` and as recorded by `sync`. Narrow the sentence and the comment to "a path that does not exist", or name every refusal as recorded — `tools/repos-manifest/docs/design.md:524`, `tools/repos-manifest/src/repos_manifest/cli.py:212`
