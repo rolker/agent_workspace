@@ -1937,3 +1937,34 @@ Changed from the round 5 entry's text: the masking item and the masking lines un
   - The never-run list does not cover `+refs/...` forced refspecs, `reset --merge`/`--keep`, `checkout -B` or `update-ref -d`; `update.py` runs none of them.
   - Masking is a guard, not a guarantee. Not masked: a `file://` url whose password holds a `/` (it cannot be told from a path; git's file transport ignores it); the scp-like `user:password@host:path`; values the earlier format's reader still prints as they are (`docs/prototype.md` lists them); every `WARNING:` line; the earlier format's "unknown role" error, a signal's stop line and sync's setup-file line; messages outside the manifest readers that echo a value typed on the command line or read from the tool's record files, unless the filter covers their line; and a url reaching a message by a way the source scan cannot see (another name, a helper, a join, a list or mapping formatted whole, keyword arguments, `+=`, logging, an exception formatted whole) on a line the filter does not cover, or one the tool did not read with white space in its user information.
 - **Tests:** 1713 pass with `REPOS_MANIFEST_REQUIRE_COLCON=1`.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-19 20:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a586f9fcf3beb71f1, resume 2 of 3)
+
+**Branch**: feature/issue-500 at `b9302842`
+**Base**: origin/main
+**Depth**: Deep (reason: round 7 convergence check per handoff)
+**Must-fix**: 2 | **Suggestions**: 3
+**Round**: 7 | **Ship**: recommended — round 7: 2 mechanical must-fix (prev 2), not rising — fix and ship rather than another full round
+
+Scope: the round 6 findings and `git diff b8e35602..b9302842 -- tools/`. Cross-model: skipped (round-7 convergence check, per handoff). A fresh Claude adversarial specialist ran with the same scope and must-fix rule. Whole suite at b9302842: `1713 passed in 521.99s` (REPOS_MANIFEST_REQUIRE_COLCON=1).
+
+Both round 6 must-fix are resolved:
+- **The error-line sentences:** the design's "As some lines are printed" bullet is true line by line. `Refusal` subclasses `ManifestError` (`system.py:61`), so every refusal reaches `cli.py:331`. `sync.py:628` and `:635` are filtered. `signals.py:52`, `sync.py:612` and `:614`, and `WARNING:` lines are printed as given. The earlier format's unknown role is printed as given. The README is the exception (below).
+- **The `file://` rule:** it matches `_file_userinfo` and `_kept`. No path is masked: `file://localhost/srv/a:b/w@x`, `…/a:b@x` and `file:///srv/a:b@c` print as they are. A `user:password` in the authority is masked through `mask_url`, `quoted_url` and the fallback; this was checked with `FILE://`, with a port, and with no path. The new end-to-end test runs the printed `set-url` command, and it fails on the old `masking.py`.
+
+Other checks:
+- The "What is not masked" list is true item by item.
+- The prune-tags test fails when `--prune-tags` is removed from `NEVER`.
+- `update.py`, `sync.py`, `build.py`, `cli.py` and `signals.py` are unchanged.
+
+### Findings
+- [ ] (must-fix) The README's "Other lines, such as an error that echoes a value typed on the command line, are printed as given" is false for the current format. There, an unknown role or distro is a `ManifestError`, and its line passes the filter: `validate --manifest tests/fixtures/project11/project11.manifest.yaml --role 'https://alice:s3cret@h/x'` prints `has no role 'https://***@h/x'`. Only the earlier format prints it as given; the design says so correctly. Match the design. — `README.md:121-122`
+- [ ] (must-fix) The new docstring says "nothing in `update.py` runs these today: a forced refspec (`+refs/...`), … and `update-ref -d`". But `update.py:737` and `:1085` fetch with `+refs/heads/*:refs/remotes/…`, and `update.py:230` runs `update-ref -d` on probe refs. They touch only remote-tracking and probe refs, so the sentence should say that. — `tests/test_update_safety.py:6-8`
+- [ ] (suggestion) "Each line `sync` prints for a repo" is not quite true: `cloning <path>` (`sync.py:242`) and "holds the manifest" (`sync.py:524`) are not filtered. They cannot carry a `scheme://` url, since a repo key cannot hold `//`. — `docs/design.md:916-918`
+- [ ] (suggestion) "Other lines are printed as given:" reads as a complete list. It leaves out the earlier format's `--out` error (`cli.py:136`), the earlier format's `validate` table and violation lines (`cli.py:165-170`), and build's NOTE and report lines. Limits item 5 covers these; "among them:" would read truer. — `docs/design.md:924-927`
+- [ ] (suggestion) The `_say` docstring still says the user name and password "are never printed", which the limits list now contradicts. That line is outside this range. — `sync.py:325`
