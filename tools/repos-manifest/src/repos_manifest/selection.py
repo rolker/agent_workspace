@@ -5,6 +5,10 @@ selected when any of them is on; the groups on are the role's and the extra ones
 `version` is its default and a distro's entry can replace it; `absent: true` on a distro's entry
 leaves the repo out on that distro, and `absent: true` on the repo leaves it out on every distro
 that has no entry for it. Layers come in order, the unnamed first layer before every named one.
+
+A repo that is not selected is kept as `LeftOut` with the reason, for `show` to print: a group
+that is off hides it before the distro is asked, so when both would leave it out the group is
+the reason given.
 """
 
 from __future__ import annotations
@@ -25,6 +29,24 @@ class Selected:
     url: str
     version: Optional[str]
     optional: bool
+    source: str = ""  # the manifest where the repo's key first appears (`Repo.source`)
+
+
+# Why a repo is left out (`LeftOut.reason`).
+GROUP_OFF = "group_off"  # it has groups and none of them is on
+NOT_ON_DISTRO = "not_on_distro"  # the distro's entry, or the repo's `absent: true`, leaves it out
+ABSENT_NO_DISTRO = "absent_no_distro"  # `absent: true` and the manifest has no `distros:`
+
+
+@dataclass
+class LeftOut:
+    """A repo of the manifest that this machine does not get, and why."""
+
+    key: str
+    layer: str  # UNNAMED_LAYER for the unnamed first layer
+    reason: str  # GROUP_OFF, NOT_ON_DISTRO or ABSENT_NO_DISTRO
+    groups: List[str] = field(default_factory=list)  # GROUP_OFF: the repo's groups, all off
+    distro: Optional[str] = None  # NOT_ON_DISTRO: the distro
 
 
 @dataclass
@@ -44,10 +66,17 @@ class Resolved:
     extra_groups: List[str]
     layers: List[Layer]
     bases: List[str] = field(default_factory=list)  # the manifests it builds on, reading order
+    groups_on: List[str] = field(default_factory=list)  # the role's groups and the extra ones
+    left_out: List[LeftOut] = field(default_factory=list)  # in manifest order
 
     @property
     def optional(self) -> List[str]:
         return [repo.key for layer in self.layers for repo in layer.repos if repo.optional]
+
+    @property
+    def chain(self) -> List[str]:
+        """The manifests read, in reading order: the bases, then the manifest itself."""
+        return [*self.bases, self.source]
 
 
 def check_role_and_distro(
@@ -111,16 +140,34 @@ def resolve(
 ) -> Resolved:
     on = check_role_and_distro(manifest, role, distro, extra_groups)
     by_layer = {name: [] for name in [None] + manifest.layers}
+    left_out: List[LeftOut] = []
     for repo in manifest.repositories.values():
+        layer = UNNAMED_LAYER if repo.layer is None else repo.layer
         if repo.groups and not any(group in on for group in repo.groups):
+            left_out.append(LeftOut(repo.key, layer, GROUP_OFF, groups=list(repo.groups)))
             continue
         present, version = _version_on(repo, distro)
         if not present:
+            if distro is None:
+                left_out.append(LeftOut(repo.key, layer, ABSENT_NO_DISTRO))
+            else:
+                left_out.append(LeftOut(repo.key, layer, NOT_ON_DISTRO, distro=distro))
             continue
-        by_layer[repo.layer].append(Selected(repo.key, repo.type, repo.url, version, repo.optional))
+        by_layer[repo.layer].append(
+            Selected(repo.key, repo.type, repo.url, version, repo.optional, repo.source)
+        )
     layers = [
         Layer(UNNAMED_LAYER if name is None else name, repos)
         for name, repos in by_layer.items()
         if repos
     ]
-    return Resolved(manifest.source, role, distro, list(extra_groups), layers, list(manifest.bases))
+    return Resolved(
+        manifest.source,
+        role,
+        distro,
+        list(extra_groups),
+        layers,
+        list(manifest.bases),
+        groups_on=on,
+        left_out=left_out,
+    )

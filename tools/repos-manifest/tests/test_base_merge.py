@@ -276,6 +276,62 @@ def test_what_a_changes_in_c_stays_changed_unless_b_changes_it_again(tmp_path):
     assert m.repositories["viz"].version == "from_b"
 
 
+# --- Where each repo came from ----------------------------------------------------------------
+
+
+def _sources(resolved):
+    return {r.key: r.source for layer in resolved.layers for r in layer.repos}
+
+
+def test_each_repo_names_the_manifest_where_its_key_first_appears(tmp_path):
+    leaf = _chain(
+        tmp_path,
+        PUBLISHED,
+        """\
+        repositories:
+          nav:
+            version: from_leaf
+          new:
+            type: git
+            url: https://example.org/new.git
+        """,
+    )
+    m = load_manifest(leaf)
+    first = os.path.realpath(tmp_path / "m0.yaml")
+    # nav is re-versioned by the leaf, and still came from the base: the base gave its url.
+    assert m.repositories["nav"].source == first
+    assert m.repositories["nav"].version == "from_leaf"
+    assert m.repositories["viz"].source == first
+    assert m.repositories["new"].source == str(leaf)
+    resolved = resolve(m, "dev", "jazzy")
+    assert _sources(resolved) == {"nav": first, "site": first, "viz": first, "new": str(leaf)}
+    assert resolved.chain == [first, str(leaf)]
+
+
+def test_the_chain_is_the_bases_in_reading_order_then_the_manifest(tmp_path):
+    (tmp_path / "c.yaml").write_text(PUBLISHED)
+    (tmp_path / "a.yaml").write_text("base: c.yaml\n")
+    (tmp_path / "b.yaml").write_text("base: c.yaml\n")
+    leaf = tmp_path / "m.yaml"
+    leaf.write_text("base: [a.yaml, b.yaml]\n")
+    resolved = resolve(load_manifest(leaf), "robot", "jazzy")
+    real = [os.path.realpath(tmp_path / name) for name in ("c.yaml", "a.yaml", "b.yaml")]
+    assert resolved.chain == real + [str(leaf)]
+
+
+def test_a_repo_a_later_manifest_leaves_out_on_a_distro_is_listed_as_left_out(tmp_path):
+    leaf = _chain(
+        tmp_path,
+        PUBLISHED,
+        "repositories:\n  viz:\n    distros:\n      jazzy:\n        absent: true\n",
+    )
+    resolved = resolve(load_manifest(leaf), "robot", "jazzy")
+    assert [(o.key, o.reason, o.distro) for o in resolved.left_out] == [
+        ("nav", "group_off", None),
+        ("viz", "not_on_distro", "jazzy"),
+    ]
+
+
 # --- The checks on the combination -----------------------------------------------------------
 
 
