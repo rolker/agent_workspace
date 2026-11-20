@@ -3,12 +3,19 @@ acts on (``docs/design.md``, "status").
 
 It reads only. It takes no lock, writes no resolved file, no record and no setup file, and
 makes no network call: every git it runs goes through `update.Git`, which passes
-`--no-optional-locks` (so `git status` does not refresh the index), and the manifest's version
-is looked up with `update.ask_local`, in the refs the clone had when it was last fetched. The
-checks are `sync`'s own, shared with it (`update.blocked_early`, `update.blocked_late`,
-`update.find_version`, `update.standing`), so the two read a repo the same way; the calls this
-module may make into `update` and `sync` are listed in `tests/test_update_safety.py`, which
-fails on any other.
+`--no-optional-locks` (so `git status` does not refresh the index), with the clone's own
+helpers turned off (`_reading_git`), and the manifest's version is looked up with
+`update.ask_local`, in the refs the clone had when it was last fetched.
+
+Some checks are `sync`'s own code, called by both: `sync.resolve_all`, `sync.layer_moved`,
+`system.place_problem_kind`, `update.blocked_early`, `update.blocked_late`,
+`update.stopped_move`, `update.tracked_changes`, `update.count`, `update.find_version`,
+`update.commit_on_origin` and `update.probe_taken`. The rest is a second copy of `sync`'s
+reading, not shared code: `update.standing` (its rules 9 to 12) and, here, the checks on the
+place itself (not there, not a directory, a link) and the order in which `sync` stops at the
+url and at uncommitted changes before its rules 9 to 12. The copies are held in
+step by `tests/test_status_agrees_with_sync.py`. The calls this module may make into `update`
+and `sync` are listed in `tests/test_update_safety.py`, which fails on any other.
 """
 
 from __future__ import annotations

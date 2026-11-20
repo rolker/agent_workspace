@@ -1985,8 +1985,20 @@ go on. Each of those errors ends by saying that the manifest's path is the one r
 treats as one are not checked yet on the real destination.
 
 `status` is built as "status" describes, for a manifest given as a path on the local disk. It
-reads only, makes no network call, and shares its checks with `sync`'s, so the two read a repo
-the same way; the cases where they differ, because `sync` fetches first, are listed there.
+reads only and makes no network call, with the limits "status" lists. Some of its checks are
+`sync`'s own code, called by both: resolving the manifest, the record's layer and the check on the
+real destination, the first checks on a repo (a git repository of its own, a commit checked out, no
+operation in progress, no `index.lock`, not sparse, one `origin` url, a stopped move), counting
+changes and commits not on `origin`, finding the manifest's version and whether a commit is on
+`origin`, and whether a remote has the probe's name. The rest is a second copy: what `sync` does
+once it has the version (its rules 9 to 12, `standing` in `update.py`), and, in `status.py`, the
+checks on the place itself (not there, not a directory, a link) and the order in which `sync` stops
+at the url and at uncommitted changes before its rules 9 to 12. The two copies are held in
+step by a test that runs `status` and then `sync` on each case and checks both the state and every
+sentence of `status`'s text that says what `sync` does against what `sync` then did. Routing `sync`
+through `standing` would change the control flow of the code that protects local work, so it is not
+done. The cases where the two read a repo differently, because `sync` fetches first, are listed in
+"status".
 
 `build` is built as "build" describes, for one distro at a time, stopping at the first layer
 that fails unless `--keep-going` is given. It reads the resolved files `sync` wrote and needs `colcon` on `PATH` or beside the
