@@ -551,7 +551,8 @@ def ask_local(git: Git, *patterns: str) -> Tuple[Optional[Dict[str, str]], str]:
     A tag made here and a remote-tracking ref left from a branch origin deleted count as
     origin's: offline they cannot be told apart. A tag of a tag is peeled to the end, as
     `ls-remote` peels it (a git that peels `%(*objectname)` one level only leaves a tag there,
-    and `rev-parse <tag>^{}` peels the rest). The lines are split at `\n` only: a ref name holds
+    and `rev-parse <tag>^{}` peels the rest); only a tag the `patterns` match is peeled so. The
+    lines are split at `\n` only: a ref name holds
     no control character and no space, but may hold U+2028 and the like, which `splitlines`
     would split at."""
     status, printed, error = git.run(
@@ -565,26 +566,26 @@ def ask_local(git: Git, *patterns: str) -> Tuple[Optional[Dict[str, str]], str]:
     for line in printed.split("\n"):
         if not line:
             continue
-        ref, _, rest = line.partition(" ")
+        local, _, rest = line.partition(" ")
         oid, _, rest = rest.partition(" ")
         peeled, _, peeled_type = rest.partition(" ")
-        if peeled_type == "tag":
-            peeled = git.out("rev-parse", "--verify", "-q", f"{ref}^{{}}") or ""
-            if not peeled:
-                return None, f"tag {ref} cannot be peeled to the object it names"
+        ref = local
         if ref.startswith(prefix):
             if ref == f"{prefix}HEAD":
                 continue
             ref = "refs/heads/" + ref[len(prefix) :]
+        # Only the refs asked for are peeled further, so a tag nobody asked about that cannot
+        # be peeled does not stop the answer.
+        if patterns and not any(fnmatch.fnmatchcase(ref, pattern) for pattern in patterns):
+            continue
+        if peeled_type == "tag":
+            peeled = git.out("rev-parse", "--verify", "-q", f"{local}^{{}}") or ""
+            if not peeled:
+                return None, f"tag {local} cannot be peeled to the object it names"
         found[ref] = oid
         if peeled:
             found[f"{ref}^{{}}"] = peeled
-
-    def asked(ref: str) -> bool:
-        plain = ref[: -len("^{}")] if ref.endswith("^{}") else ref
-        return any(fnmatch.fnmatchcase(plain, pattern) for pattern in patterns)
-
-    return {ref: oid for ref, oid in found.items() if not patterns or asked(ref)}, ""
+    return found, ""
 
 
 def find_version(

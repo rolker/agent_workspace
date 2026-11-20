@@ -525,6 +525,30 @@ def test_ask_local_peels_a_tag_of_a_tag_to_the_end(vcs, tmp_path, monkeypatch):
     assert theirs["refs/tags/outer^{}"] == head(case.clone)
 
 
+def test_ask_local_peels_only_the_tags_asked_for(vcs, tmp_path, capsys, monkeypatch):
+    """A tag nobody asked about that cannot be peeled leaves the answer, and the repo, as they
+    are; a tag asked for that cannot be peeled is reported. The tag is a tag of a tag, as an
+    older git that peels `%(*objectname)` one level only prints it, whose `^{}` git cannot
+    give (its ref is not there)."""
+    case = make_case(tmp_path)
+    broken = "1" * 40
+    real = update.Git.run
+
+    def with_a_broken_tag(self, *args, **kwargs):
+        status_, printed, error = real(self, *args, **kwargs)
+        if args and args[0] == "for-each-ref":
+            printed += f"refs/tags/broken {broken} {broken} tag\n"
+        return status_, printed, error
+
+    monkeypatch.setattr(update.Git, "run", with_a_broken_tag)
+    git_ = update.Git(case.clone, dict(os.environ), None)
+    theirs, problem = update.ask_local(git_, "refs/heads/main", "refs/tags/main")
+    assert problem == "" and theirs == {"refs/heads/main": head(case.clone)}
+    theirs, problem = update.ask_local(git_, "refs/tags/*")
+    assert theirs is None and "refs/tags/broken cannot be peeled" in problem
+    assert repo_a(status(case.system, capsys, expect=0)[1])["state"] == "expected"
+
+
 def test_ask_local_keeps_a_ref_name_with_a_line_separator_whole(vcs, tmp_path):
     case = make_case(tmp_path)
     name = "a\u2028b"
