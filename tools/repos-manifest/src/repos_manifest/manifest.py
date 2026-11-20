@@ -96,8 +96,9 @@ class Repo:
     groups: List[str] = field(default_factory=list)
     distros: Optional[Dict[str, DistroEntry]] = None  # None: no `distros:` key
     optional: bool = False
-    # The manifest where the key first appears in reading order, which gave `type` and `url`;
-    # a later manifest that changes the entry does not change it.
+    # The manifest that gave the `url` in effect: where the key first appears in reading order,
+    # or the last manifest that changed the url. One that changes only other keys (`type`,
+    # `version`, ...) does not change it.
     source: str = ""
 
 

@@ -73,7 +73,7 @@ def merge_parts(parts: Sequence[Part], bases: Sequence[str] = ()) -> Manifest:
     repositories: Dict[str, Repo] = {}
     for key, given in repos.items():
         _check_complete(key, brought[key], parts[first[key]].source, first[key] > 0)
-        repositories[key] = _repo(key, given, parts[first[key]].source)
+        repositories[key] = _repo(key, given)
         _check_repo(key, given, distros, layer_list, group_list, len(parts) > 1)
     _check_no_key_inside_another(repos, first, parts)
 
@@ -129,9 +129,10 @@ def _check_complete(key: str, brought: List[str], source: str, has_earlier: bool
             raise _error(source, f"repositories.{key}", f"has no `{required}`{hint}")
 
 
-def _repo(key: str, given: Dict[str, _Given], source: str) -> Repo:
+def _repo(key: str, given: Dict[str, _Given]) -> Repo:
     """The merged entry as a `Repo`; `_check_complete` has passed, and a later manifest cannot
-    take a key away. `source` is the manifest where the key first appears."""
+    take a key away. Its `source` is the manifest that gave the `url` in effect: where the key
+    first appears, or the last manifest in reading order that changed the url."""
     values = {name: g.value for name, g in given.items()}
     return Repo(
         key=key,
@@ -143,7 +144,7 @@ def _repo(key: str, given: Dict[str, _Given], source: str) -> Repo:
         groups=list(values.get("groups", [])),
         distros=values.get("distros"),
         optional=values.get("optional", False),
-        source=source,
+        source=given["url"].source,
     )
 
 

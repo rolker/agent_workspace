@@ -508,9 +508,11 @@ left out
 For each repo it shows the layer, the version and the URL it will be fetched from, the URL's
 user name and password masked as "sync" describes. A repo with no version shows
 `(its default branch)`. It says which manifest an entry came from when that is not the first
-in the chain, the manifest the chain's reading starts from; the manifest an entry came from is
-the one where its key first appears, which gave its `type` and `url`, and a later manifest
-that only changes its version does not change that. It lists the repos that are left out with
+in the chain, the manifest the chain's reading starts from. The manifest an entry came from is
+the one that gave the URL printed: the one where its key first appears, or the last manifest in
+the order of reading that changed its `url`, as one that points a repo at a fork does. A later
+manifest that changes the entry's other keys, its `version` or its `type`, does not change
+that, so the version printed may come from a later manifest than the one named. It lists the repos that are left out with
 the reason, in the manifest's order: "group X is off" for a repo in one group that is off,
 "none of its groups (X, Y) is on" for a repo in several, "not on D" for a repo that distro D's
 entry or the repo's own `absent: true` leaves out, and "absent, and no distro adds it" for a

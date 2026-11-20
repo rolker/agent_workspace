@@ -106,6 +106,22 @@ left out
     assert render(_resolved()) == expected
 
 
+def test_a_repo_the_leaf_points_at_a_fork_is_marked_with_the_leaf(chain, tmp_path):
+    # The leaf changes the url of a repo the base brings: the url printed is the leaf's, and so
+    # is the `from` line. A repo the leaf only re-versions keeps no `from` line.
+    (tmp_path / "project11.manifest.yaml").write_text(
+        PROJECT11
+        + "  unh_marine_autonomy:\n    url: https://github.com/fork/unh_marine_autonomy.git\n"
+    )
+    lines = render(_resolved()).splitlines()
+    at = lines.index(
+        "  unh_marine_autonomy   jazzy        https://github.com/fork/unh_marine_autonomy.git"
+    )
+    assert lines[at + 1] == "                                     from project11.manifest.yaml"
+    geo = next(i for i, line in enumerate(lines) if line.startswith("  geographic_info "))
+    assert lines[geo + 1] == "core"
+
+
 def test_a_repo_with_no_version_prints_its_default_branch_and_a_distro_brings_it_back(chain):
     out = render(_resolved("developer", "rolling", ()))
     assert "  new_planner           main" in out

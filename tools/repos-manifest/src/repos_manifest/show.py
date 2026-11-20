@@ -55,8 +55,8 @@ def _version(version: Optional[str]) -> str:
 
 
 def render_body(resolved: Resolved) -> str:
-    """Each layer with its repos (key, version, url, `optional`, and the manifest the entry
-    came from when that is not the first in the chain), then the repos left out and why."""
+    """Each layer with its repos (key, version, url, `optional`, and the manifest that gave the
+    url printed when that is not the first in the chain), then the repos left out and why."""
     repos = [repo for layer in resolved.layers for repo in layer.repos]
     keys = [repo.key for repo in repos] + [left.key for left in resolved.left_out]
     key_width = max((len(key) for key in keys), default=0)

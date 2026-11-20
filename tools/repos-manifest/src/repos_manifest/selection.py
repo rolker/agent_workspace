@@ -29,7 +29,7 @@ class Selected:
     url: str
     version: Optional[str]
     optional: bool
-    source: str = ""  # the manifest where the repo's key first appears (`Repo.source`)
+    source: str = ""  # the manifest that gave the url in effect (`Repo.source`)
 
 
 # Why a repo is left out (`LeftOut.reason`).

@@ -308,6 +308,55 @@ def test_each_repo_names_the_manifest_where_its_key_first_appears(tmp_path):
     assert resolved.chain == [first, str(leaf)]
 
 
+def test_a_repo_whose_url_a_later_manifest_changes_names_that_manifest(tmp_path):
+    # m1 points nav at a fork; m2 only re-versions it, and changes viz's type to the same value.
+    leaf = _chain(
+        tmp_path,
+        PUBLISHED,
+        "repositories:\n  nav:\n    url: https://example.org/fork/nav.git\n",
+        "repositories:\n  nav:\n    version: from_leaf\n  viz:\n    type: git\n",
+    )
+    m = load_manifest(leaf)
+    first, fork = (os.path.realpath(tmp_path / f"m{i}.yaml") for i in (0, 1))
+    nav = m.repositories["nav"]
+    assert (nav.url, nav.version, nav.source) == (
+        "https://example.org/fork/nav.git",
+        "from_leaf",
+        fork,
+    )
+    # A later manifest that gives `type` without changing the url leaves the source.
+    assert m.repositories["viz"].source == first
+    resolved = resolve(m, "dev", "jazzy")
+    assert _sources(resolved) == {"nav": fork, "site": first, "viz": first}
+
+
+def test_in_a_diamond_the_last_manifest_read_that_changed_the_url_is_named(tmp_path):
+    (tmp_path / "c.yaml").write_text(PUBLISHED)
+    (tmp_path / "a.yaml").write_text(
+        "base: c.yaml\nrepositories:\n  nav:\n    url: https://example.org/a/nav.git\n"
+        "  viz:\n    url: https://example.org/a/viz.git\n"
+    )
+    (tmp_path / "b.yaml").write_text(
+        "base: c.yaml\nrepositories:\n  viz:\n    url: https://example.org/b/viz.git\n"
+        "  site:\n    version: from_b\n"
+    )
+    leaf = tmp_path / "m.yaml"
+    leaf.write_text("base: [a.yaml, b.yaml]\n")
+    m = load_manifest(leaf)
+    c, a, b = (os.path.realpath(tmp_path / name) for name in ("c.yaml", "a.yaml", "b.yaml"))
+    # A's url for nav stays, since B does not change it; B, read after A, gives viz's url.
+    assert (m.repositories["nav"].url, m.repositories["nav"].source) == (
+        "https://example.org/a/nav.git",
+        a,
+    )
+    assert (m.repositories["viz"].url, m.repositories["viz"].source) == (
+        "https://example.org/b/viz.git",
+        b,
+    )
+    # B changes only site's version: the url, and so the source, is still C's.
+    assert m.repositories["site"].source == c
+
+
 def test_the_chain_is_the_bases_in_reading_order_then_the_manifest(tmp_path):
     (tmp_path / "c.yaml").write_text(PUBLISHED)
     (tmp_path / "a.yaml").write_text("base: c.yaml\n")
