@@ -675,3 +675,29 @@ Suites run, each on its own with `bash` (last result line):
 - `test_skill_paths.sh`: test_skill_paths: 164 passed, 0 failed
 
 The full pre-commit pass and the full run of every suite are left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-20 12:18 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a8838d81e2a8db33f, resume 1 of 3)
+
+**Branch**: feature/issue-428 at `5d58e7d9`
+**Base**: origin/main
+**Depth**: Deep (reason: round 6 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 6 | **Ship**: recommended — no must-fix findings
+
+Scope: the round-5 findings and commit e668b698, with 5bac9083 and 5d58e7d9 (records only). Cross-model: skipped (round-6 convergence check, per handoff).
+
+Round-5 findings:
+- F1 (a PENDING review loops the rule): fixed. Step 9 skips a review whose `state` is `PENDING` before any time test, and the empty-or-unreadable clause now reads "in any state but `PENDING`". `fetch_pr_reviews.sh` carries `state` from GitHub's `.state` (line 107).
+- F2 (one-minute margin): fixed. The comparison is against `$(( $(date -d '<Fetched>' +%s) - 60 ))`. Checked: `2026-11-20 12:06 -05:00` gives 1795194360, minus 60 gives 1795194300, the same as `2026-11-20T17:05:00Z`. The reason and the cost are stated.
+
+The fix diff introduces no defect. Termination holds: `submitted_at` is fixed and each triage notes a later `**Fetched**`, so a review stops counting as not read after at most a few triages. triage-reviews step 3 still reads true: a review landing during or after its run is at or after the `**Fetched**` minute, so it is also after the earlier reference time.
+
+A review in any state but PENDING with an empty or unreadable `submitted_at` (left alone by the fix pass, judged here): acceptable as written, not a finding. GitHub stamps `submitted_at` when a review is submitted, and every state but PENDING is a submitted review (DISMISSED keeps its time). `fetch_pr_reviews.sh` exits 1 when the reviews call fails rather than emitting partial records (lines 95-98). GitHub writes ISO 8601 UTC, which `date -d` reads. So the case needs GitHub to break its own contract. If it did, the result is a visible repeated triage dispatch, never a merge past an unread review, which is the side the rule is meant to err on.
+
+### Findings
+- [ ] No issues found. LGTM.
