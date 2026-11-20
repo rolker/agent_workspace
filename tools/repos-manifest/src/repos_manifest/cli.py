@@ -25,7 +25,7 @@ from .merge import merge_chain
 from .masking import mask_urls
 from .schema import ManifestError
 from .selectors import select_repos
-from .show import render
+from .show import render, shown_path
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
 from .sync import recorded_manifest, run_sync
 from .system import (
@@ -192,8 +192,8 @@ def _show_in_system(args: argparse.Namespace, cwd: Path) -> selection.Resolved:
     system = find_system(cwd)
     if system is None:
         raise Refusal(
-            f"no manifest given, and no system directory in {cwd} or above it (no"
-            f" {SYSTEM_DIR}/ found)",
+            f"no manifest given, and no system directory in {shown_path(str(cwd))} or above it"
+            f" (no {SYSTEM_DIR}/ found)",
             "Give the manifest's path, or run show inside a system directory",
         )
     if args.role is not None or args.with_groups:

@@ -189,3 +189,15 @@ def test_a_recorded_path_that_resolves_only_once_canonicalised_is_refused_as_syn
     assert main(["sync"]) == 1
     synced = capsys.readouterr().err
     assert "missing/../m.yaml" in synced and recorded in synced
+
+
+def test_the_no_system_refusal_prints_the_current_directory_on_one_line(
+    tmp_path, capsys, monkeypatch
+):
+    odd = tmp_path / "a\nERROR: fake"
+    odd.mkdir()
+    monkeypatch.chdir(odd)
+    assert main(["show"]) == 1
+    err = capsys.readouterr().err
+    assert err.count("\n") == 1
+    assert f"no system directory in {tmp_path}/a\\x0aERROR: fake or above it" in err

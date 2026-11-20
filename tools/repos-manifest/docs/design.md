@@ -541,7 +541,8 @@ With no manifest given, `show` must be run inside a system directory: it uses wh
 `config.yaml` records and that distro's manifest. Showing the effect of `fetch_from` there is
 planned, not built: today it prints the manifest's own URLs.
 `--role` and `--with` are refused there, since the system records them; giving the manifest
-tries another role. Outside a system directory, a manifest is given.
+tries another role. Outside a system directory, a manifest is given; without one, `show`
+refuses and names the current directory, printed on one line as a path is above.
 
 `show` does not clone the system's repos. It does read every manifest in the chain, which
 for one in a git repo means fetching it, and with a `fetch_from` fallback it asks the other

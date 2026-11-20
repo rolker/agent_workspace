@@ -354,7 +354,7 @@ All six round-1 findings are fixed, checked by hand on scratch manifests: a chai
 - [x] (suggestion) `shown_path` writes a code point above U+FFFF with five hex digits (`1`), which reads the same as U+E000 followed by `1`; use `\UXXXXXXXX` there and fix the design's "`\uXXXX` above" — `tools/repos-manifest/src/repos_manifest/show.py:39`, `tools/repos-manifest/docs/design.md:523`
 - [x] (suggestion) An unsafe character U+0080–U+00FF and the undecodable byte of the same value print alike (`a\x85b` for U+0085 and for byte 0x85), so two different paths can look the same; give bytes and characters different forms (e.g. `\u0085` for the character) — `tools/repos-manifest/src/repos_manifest/show.py:34`
 - [x] (suggestion) In a system directory `show` opens the realpath of the recorded manifest, not the recorded path `sync` opens: a recorded `missing/../pub/m.yaml` reads in `show` and is "not found" in `sync`. Open the recorded path and print the canonical one; use `system.is_url` instead of the bare `"://"` test — `tools/repos-manifest/src/repos_manifest/cli.py:210`
-- [ ] (suggestion) The new no-system refusal prints `cwd` unescaped, so a directory name with a newline splits the message; pass it through `shown_path` (the tool's general `ERROR:` path, unchanged from main, has the same gap) — `tools/repos-manifest/src/repos_manifest/cli.py:194`
+- [x] (suggestion) The new no-system refusal prints `cwd` unescaped, so a directory name with a newline splits the message; pass it through `shown_path` (the tool's general `ERROR:` path, unchanged from main, has the same gap) — `tools/repos-manifest/src/repos_manifest/cli.py:194`
 
 ## Checkpoint
 **Status**: complete
