@@ -1556,17 +1556,35 @@ what `origin` had when each was last fetched (by `sync`, or by hand). Every `git
 
 `status` writes nothing in the system directory and makes no network call of its own. It runs
 the clean filters a clone's own configuration names (a Git LFS filter is one), as `git status`
-does, so `status`, `git status` and `sync`'s git count the same files as changed; a filter that
-writes or fetches is outside what `status` can promise. Two other helpers a clone's configuration
-could have git start are turned off for `status`'s own git calls, because neither can change the
-answer (`sync` runs its git as before):
+does, so `status`, `git status` and `sync`'s git count the same files as changed (in a partial
+clone, a staged rename aside: see below); a filter that writes or fetches is outside what
+`status` can promise. Two other helpers a clone's configuration could have git start are turned
+off for `status`'s own git calls, because neither can change the answer (`sync` runs its git as
+before):
 
 - an fsmonitor hook (`core.fsmonitor`) is not started: every call passes `-c core.fsmonitor=false`.
   The hook only tells git which files it need not look at again; with none, git looks at every
   file, which is what a working hook stands in for;
 - a partial clone does not fetch a missing object: every call runs with `GIT_NO_LAZY_FETCH=1`.
-  The objects `status`'s git reads are the commits and tags of the clone's refs, what those tags
-  name, and the trees and files of what is checked out, and a partial clone has each of them.
+  Git 2.45 and later honour the variable, and older git ignores it, so it is a second guard; the
+  first is the next paragraph.
+
+In a partial clone, and only there, `status` counts changes without rename detection (every call
+passes `-c status.renames=false`), so that it never needs a file the clone does not hold, on any
+git version. `status` tells a partial clone by reading its configuration (a promisor remote, or
+`extensions.partialClone`), which writes nothing. With rename detection on, git pairs a file
+staged under a new name with the one `HEAD` has by reading `HEAD`'s copy, and a partial clone
+does not hold that copy when `HEAD` was moved without a checkout (`git reset --soft`, for one):
+git before 2.45 fetches it, and later git with the variable set fails. With it off, the objects
+`status`'s git reads are the commits and tags of the clone's refs, what those tags name, and
+`HEAD`'s trees, and a clone filtered on file contents (`--filter=blob:none`, the usual partial
+clone) holds each of them. The cost: in a partial clone a staged rename counts as two files where
+`sync` and `git status` say one. A clone that is not partial keeps rename detection, so there the
+three counts agree. One case is left: a clone filtered on trees (`--filter=tree:0`) does not hold
+the trees of a commit it fetched and never checked out, so after `HEAD` was moved onto one without
+a checkout `status`'s `git status` needs them. With git 2.45 or later it does not fetch them and
+the repo is `unusable` ("`git status` fails here"); with an older git it fetches them, the one
+network call `status` can cause.
 
 Git runs no hook for the commands `status` runs. `sync` fetches first,
 so a repo can read differently after a fetch: a version that was not fetched yet is `unusable`

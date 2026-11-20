@@ -51,7 +51,9 @@ DIFFER = {
 }
 
 # Cases whose text is not checked against `sync`, and why: the ones `status` cannot know
-# offline (the design lists them).
+# offline (the design lists them). The one count that differs, a staged rename in a partial
+# clone (two files to `status`, one to `sync`), needs no entry: no case is a partial clone, and
+# the claim patterns match any count; `test_status.py` tests that count.
 CLAIMS_DIFFER = {
     # `status` reads the local tag as origin's, so it says `sync` would try to move there;
     # `sync` asks origin, which lacks it, and fails.
