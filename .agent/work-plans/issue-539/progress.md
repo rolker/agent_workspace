@@ -78,3 +78,57 @@ Read: the Issue Review at 2665c097. Its actions go into the plan: part 1 is the 
 **Plan**: `.agent/work-plans/issue-539/plan.md` at `38fcf8de`
 
 Two parts. Part 1: the one expected string becomes the tool's "up to date (2)", verified by running the suite here with vcs present. Part 2: CI installs vcstool 0.3.0 by pip, a missing vcs fails where CI is set, and the Results line counts the real-tool skip (no parser of it found); the workflow change is Ask First and named in the part 2 pull request.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-20 12:21 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #539 — test_ros2_colcon.sh expects the manifest tool's old sync report; CI skips that case and reports 0 skipped
+**Plan**: `.agent/work-plans/issue-539/plan.md` at `38fcf8de`
+**Branch**: `feature/issue-539`
+
+Part 1 is ready as written and can merge alone. Part 2 needs two changes before it is implemented (findings 1 and 2).
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Two pull requests on one issue; part 1 is one string, part 2 one workflow step and a suite change. |
+| Issue alignment | Good | Covers the issue's three items and the Issue Review's actions. Serves: "Quality of the work, and "A safeguard has to earn its cost": `docs/design.md#merge-gate`" — the goal is under `README.md#quality-of-the-work` (line 37 holds the safeguard bullet) and `docs/design.md#merge-gate` exists (line 844). |
+| File targeting | Needs work | Part 2 names `validate.yml`'s `validate-adapter-contract` job only; the suite also runs with `CI` set in the `validate-scripts` (Lint) job (finding 1). |
+| Consequences | Concern | The consequence "a missing vcs fails where CI is set" reaches the Lint job, which is not in the table (finding 1). The skipped-count consumer check holds: nothing parses it. |
+| Principle alignment | Needs work | "Look for prior art": the workflow already installs `vcs2l` (repos-manifest's `[test]` extra) and gates on an explicit `REPOS_MANIFEST_REQUIRE_COLCON`; neither is named (findings 2, 4). "Test what breaks": step 6's test is optional though a cheap pattern exists (finding 3). |
+| ADR compliance | Good | ADR-0011 not triggered (no adapter contract change). No other ADR is triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Checks run
+
+- Part 1, by reading: `report()` (`tools/repos-manifest/src/repos_manifest/sync.py:626`) prints `up to date (<n>)` for CURRENT; `_Turn.current()` in `update.py` returns CURRENT when the clone is already on the manifest's version, which is the state `init` leaves both repos in with unchanged remotes.
+- Part 1, by running: `bash .agent/scripts/tests/test_ros2_colcon.sh` on this branch, unmodified (`vcs` 0.3.0 at `/usr/bin/vcs`), 2m27s: `1374 passed, 1 failed, 0 skipped`, exit 1. The one failure is `adapter sync: the tool's own report`, and its haystack is exactly `distro fakefox:` then `  up to date (2)`: no `updated` line. Every other assertion of the real-tool test passes (validate, repo_pin, setup's `cloned (1)`, the clone on its pin). So the plan's needle is right and is the only change part 1 needs.
+- `vcstool==0.3.0` exists on PyPI (latest; pure-python `py3-none-any` wheel; `Requires-Dist: PyYAML, setuptools`, unpinned).
+- In a fresh venv (Python 3.12, which pulled setuptools 84.2.1): `pip install vcstool==0.3.0` then `vcs --version` crashes with `ModuleNotFoundError: No module named 'pkg_resources'` (`vcstool/commands/help.py:4`, imported by every `vcs` command). Not run on Python 3.10.
+- In a fresh venv: `pip install "vcs2l>=1.1.7"` gave vcs2l 1.1.7, which installs a `vcs` command; `vcs --version` printed `vcs 1.1.7`, exit 0, with no setuptools installed.
+- `ls .agent/scripts/ | grep -i test` gives `tests` and `test.sh`. The runner exists at `.agent/scripts/tests/run_script_tests.sh` and globs every `tests/test_*.sh` (line 350). It is the entry of the pre-commit hook `validate-script-tests`. It has no skipped-count parsing (`grep -i "skip\|Results:"` finds only comments about SKIP=). No other file parses a `skipped` number.
+- `make lint` = `pre-commit run --all-files` (Makefile line 123); the `validate-scripts` job runs it on CI, and the hook comment says CI therefore "runs every suite". That job does not install `vcs`.
+
+### Findings
+
+1. **[Consequences / must-fix]** Step 4 (missing `vcs` FAILs when `CI` is set) would make the Lint (pre-commit) job fail on every push. That job runs `make lint`; the `validate-script-tests` hook runs `run_script_tests.sh`, which runs `test_ros2_colcon.sh` with `CI=true` and no `vcs` on PATH. Today the real-tool case skips there; after step 4 it fails. The plan must take one of two routes: install `vcs` in the `validate-scripts` job too, or gate the failure on an explicit variable set only on the adapter-contract step (as `REPOS_MANIFEST_REQUIRE_COLCON: '1'` is gated in this same workflow). That choice is a mechanism decision; list it for veto. Either route keeps the skip counted in the summary line (step 5).
+2. **[Principle alignment, prior art / must-fix]** `pip install vcstool==0.3.0` does not pin what the plan says it pins. vcstool 0.3.0 imports `pkg_resources` in every `vcs` command, and current setuptools (84.2.1 here) no longer has it: `vcs --version` crashes in a fresh venv. Whether CI's Python 3.10 works depends on the setuptools that the runner image ships, which is the drift the pin was meant to stop. Use `vcs2l` instead, pinned (for example `vcs2l==1.1.7`). It is the successor of vcstool, it provides the same `vcs` command, `sync.py:81` already names it, and it is already in `tools/repos-manifest`'s `[test]` extra, so the `validate-repos-manifest` job installs it. `pip install -e tools/repos-manifest[test]` in place of the current install line would also work. Keep the `vcs --version` check.
+3. **[Principle alignment, test what breaks / suggestion]** Step 6 makes the (b)/(c) test conditional on a stub PATH "if it can be made cheaply". It can: `test_setup_requires_vcs` (suite line 1120) already builds an isolated PATH with no `vcs`. Make the test required, covering `CI` (or the chosen variable) unset → counted skip, and set → FAIL.
+4. **[Prior art / suggestion]** The Prior Art section should name what is reused: the `REPOS_MANIFEST_REQUIRE_COLCON` gate and the `vcs2l` install already in `validate.yml`, besides the resolver rule at suite line 2317.
+5. **[Split / note]** Part 1 can merge alone. It touches one assertion. On CI that test skips today (no `vcs`), so part 1 changes nothing there, and here it turns the one failure into a pass. Part 2 touches neither part 1's line nor anything part 1 needs.
+
+### Summary
+
+Part 1 is right and its check is real: the tool prints `up to date (2)` and nothing else for this setup, confirmed by a run of the suite. Part 2 needs work before it is implemented. As written, it would break the Lint job, and it installs a `vcs` that crashes under current setuptools. Both have simple fixes already in this workflow: an explicit require-variable, or `vcs` in both jobs, and `vcs2l`.
+
+### Recommended Actions
+
+- [ ] Part 1: implement as planned (no change).
+- [ ] Part 2: pick and list for veto how the Lint job is handled: install `vcs` there too, or fail only under an explicit variable set on the adapter-contract step.
+- [ ] Part 2: install `vcs2l` (pinned), not `vcstool==0.3.0`, and keep `vcs --version`.
+- [ ] Part 2: add the isolated-PATH test for skip vs fail, modelled on `test_setup_requires_vcs`.
+- [ ] Part 2: name the reused prior art (`REPOS_MANIFEST_REQUIRE_COLCON`, `vcs2l` in the `[test]` extra) in the plan or the pull request.
