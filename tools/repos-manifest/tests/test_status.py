@@ -80,7 +80,6 @@ def test_each_state(vcs, tmp_path, capsys, name, optional):
     fails = state in FAILING and not optional
     assert code == (1 if fails else 0)
     assert doc["ok"] is (not fails) and doc["distros"][0]["ok"] is (not fails)
-    assert doc["ok"] is (not fails)
 
 
 def test_the_facts_of_a_repo_on_its_branch(vcs, tmp_path, capsys):
