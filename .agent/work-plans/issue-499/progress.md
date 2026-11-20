@@ -304,3 +304,33 @@ left out
 - [x] (suggestion) Manifest and base path labels are printed with control characters and newlines left as they are (masking does not escape them); escape them on display — `tools/repos-manifest/src/repos_manifest/show.py:471`
 - [x] (suggestion) No test covers the refusal of `--distro ""` — `tools/repos-manifest/src/repos_manifest/cli.py:197`
 - [x] (suggestion) The "show" section says no-argument `show` "also shows the effect of `fetch_from`", which is not built; mark it as planned there — `tools/repos-manifest/docs/design.md:521`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 12:24 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-499 at `a9ef9586`
+**Addressed**: Local Review (Pre-Push) at `67fcacd7` (2026-11-20 12:09 -05:00)
+**Commits**: e1799037, bde7beb1, c8645784, 2252e647, 9230e6b7, ad2fd187, a9ef9586
+
+### Actions
+- [x] (must-fix) A repo's `source` is now the manifest that gave the `url` in effect: where the key first appears, or the last manifest in reading order that changed the url. A later manifest that changes only `version` or `type` (the spec lets a later manifest change any key) leaves it, and the design's "show" section says so, including that the version printed may come from a later manifest than the one named. Tests on a chain where a later manifest points a repo at a fork, on a diamond, and on show's `from` line — `tools/repos-manifest/src/repos_manifest/combine.py:132`, `tools/repos-manifest/tests/test_base_merge.py`, `tools/repos-manifest/tests/test_show.py` (e1799037)
+- [x] (suggestion) `show` with no manifest checks for the system directory first, so `--role`/`--with` outside one get "no manifest given, and no system directory"; tested — `tools/repos-manifest/src/repos_manifest/cli.py:188`, `tools/repos-manifest/tests/test_show_system.py` (bde7beb1)
+- [x] (suggestion) Paths: inside a system directory with no argument, the recorded manifest is printed as an absolute path with links followed, as the bases are; a manifest given on the command line is printed as given. Each manifest prints the same way on every line that names it. The design says which, and a test runs show from a directory below the system with a base elsewhere — `tools/repos-manifest/src/repos_manifest/cli.py`, `tools/repos-manifest/docs/design.md` "show", `tools/repos-manifest/tests/test_show_system.py` (9230e6b7)
+- [x] (suggestion) Control characters: `show.shown_path` escapes a control or invisible character (`\xXX`/`\uXXXX`), a non-UTF-8 byte (`\xXX`) and a backslash (doubled) on the manifest, base and from lines, and `init` uses it for the system directory in its question. A manifest path with such a character is already refused by `init` before it prints (the resolved files' head comment check), so `init`'s only such path is the question's. Tests on `shown_path`, on show with a base in an oddly named directory, and on init's question — `tools/repos-manifest/src/repos_manifest/show.py`, `tools/repos-manifest/src/repos_manifest/init.py`, `tools/repos-manifest/tests/test_show.py`, `tools/repos-manifest/tests/test_init_refusals.py` (ad2fd187)
+- [x] (suggestion) Test that `show --distro ""` is refused, with and without a manifest — `tools/repos-manifest/tests/test_cli.py` (c8645784)
+- [x] (suggestion) The design's "show" section says showing the effect of `fetch_from` is planned, not built — `tools/repos-manifest/docs/design.md` (2252e647)
+
+### Host decisions (recorded as the host's; the owner may veto)
+1. Fix the must-fix by tracking the manifest that gave the url, not by narrowing the claim; check the spec on `type`/`version` and claim only what the code does; test a chain and a diamond.
+2. Print each manifest path one way; inside a system directory print paths that open from where the person is; the design and a test say which (chosen: absolute, links followed).
+3. Escape control characters where `show` and `init` print a path, with a test.
+4. `show --role X` outside a system directory gets the no-system refusal; test `--distro ""`; the design marks `fetch_from` in show as planned.
+
+### Checks
+- `tests/test_base_merge.py tests/test_show.py tests/test_selection.py`: 78 passed (after the must-fix)
+- `tests/test_show.py tests/test_show_system.py tests/test_init.py tests/test_init_refusals.py tests/test_cli.py tests/test_url_messages.py`: 160 passed
+- Whole tool suite (`PYTHONPATH=src .venv/bin/python -m pytest tests`, at ad2fd187; a9ef9586 after it only rewraps design text): 1812 passed in 547.49s (0:09:07)
+- Every commit with `SKIP=validate-script-tests` (issue #465 rule); every other hook ran. The full pre-commit pass is left to the host. Nothing under ~/project11 was read, written or run.
+- a9ef9586 also rewraps one long line of the "show" section left by the must-fix edit.
