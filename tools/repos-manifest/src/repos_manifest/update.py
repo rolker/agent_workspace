@@ -1195,6 +1195,120 @@ def update_repo(
     return turn.left(detail)
 
 
+@dataclass
+class Standing:
+    """Where a repo stands against the manifest's version, by the rules `sync` follows after
+    its first checks (rules 9 to 12 of "sync"): on it or not, the text, and, on the manifest's
+    branch, how many commits of origin's branch it lacks."""
+
+    on_version: bool
+    text: str
+    behind: Optional[int] = None
+
+
+def standing(
+    git: Git,
+    repo: Selected,
+    record: Optional[RepoRecord],
+    found: Version,
+    head: str,
+    branch: Optional[str],
+    unpushed: Optional[int],
+    changes: int,
+) -> Standing:
+    """`status`'s reading of `update_repo`'s rules after the fetch, for a repo whose version
+    `found` was found: it acts on nothing. `update_repo` reaches its rules for the manifest's
+    branch only with no commits that are not on origin (it leaves the repo at rule 9 first);
+    this answers those cases too, as `sync` treats them: a branch with commits only here is on
+    the manifest's version, and one that origin's branch does not contain while it has none
+    only here was rewritten upstream. For the recorded version that the manifest changed, the
+    text says whether `sync` would try to move it, in the order `sync` checks: uncommitted
+    changes, commits not on origin, the new branch held by another work tree or a local branch
+    of it with commits not on origin. Reads only."""
+    wanted = repo.version if repo.version is not None else f"origin's default branch {found.name}"
+    if found.kind == BRANCH and branch == found.name:
+        if head == found.target:
+            return Standing(True, f"on {found.name}, as origin's was when last fetched", 0)
+        if ancestor(git, head, found.target):
+            behind = count(git, f"{head}..{found.target}")
+            text = f"on {found.name}, behind origin's as last fetched (sync fast-forwards it)"
+            holder = worktree_holding(git, branch)
+            if holder is not None:
+                text = (
+                    f"on {found.name}, behind origin's as last fetched; branch {branch} is held"
+                    f" by {holder}, so sync does not fast-forward it"
+                )
+            return Standing(True, text, behind)
+        if unpushed:
+            text = f"on {found.name}, with {counted(unpushed, 'commit')} not on origin"
+            if not ancestor(git, found.target, head):
+                text += (
+                    f"; to bring origin's in by hand: git -C {quoted(git.place)} pull --rebase"
+                    f" origin {quoted(found.name)}"
+                )
+            else:
+                text += (
+                    f"; origin's {found.name} has nothing this clone lacks, so the commits are"
+                    f" only here; to publish them (sync never pushes): git -C {quoted(git.place)}"
+                    f" push origin {quoted(branch)}"
+                )
+            return Standing(True, text)
+        return Standing(
+            False, f"origin's {found.name} no longer contains this commit (rewritten upstream)"
+        )
+    if found.kind != BRANCH and branch is None and head == found.target:
+        return Standing(True, f"pinned at {found.name}")
+    where = f"branch {branch}" if branch is not None else f"a detached HEAD at {head[:12]}"
+    if record is not None and _on_recorded(git, record, head, branch):
+        was = recorded_kind(git, record, branch)
+        if not same_version(record.version, repo.version, was, found.kind):
+            return Standing(
+                False,
+                f"it is on {where}, the version recorded ({record.version or 'no version'});"
+                f" the manifest now names {wanted}; " + _would_move(git, found, changes, unpushed),
+            )
+        if found.kind == TAG and branch is None:
+            return Standing(
+                False,
+                f"tag {found.name} here is now at {found.target[:12]}, and the repo is at"
+                f" {head[:12]}, where sync followed it; "
+                + _would_move(git, found, changes, unpushed),
+            )
+        name = version_ref(record.version or "")[1]
+        tag = git.out("rev-parse", "--verify", "-q", f"refs/tags/{name}^{{commit}}")
+        if was is None and tag is not None and tag == record.commit:
+            also = "" if branch is not None else f", and so is the branch {name}"
+            return Standing(
+                False,
+                f"it is on {where}, and the record ({record.version}) does not say whether sync"
+                f" followed the branch or the tag {name}: the tag {name} here is at the recorded"
+                f" commit {(record.commit or '')[:12]}{also}; the manifest names {wanted}; sync"
+                " does not move it",
+            )
+    detail = f"it is on {where}; the manifest names {wanted}"
+    if record is not None and not same_version(record.version, repo.version, None, found.kind):
+        detail += f" (recorded: {record.version or 'no version'})"
+    return Standing(False, detail + "; sync leaves it as it is")
+
+
+def _would_move(git: Git, found: Version, changes: int, unpushed: Optional[int]) -> str:
+    """Whether `sync` would try to move a repo from the recorded version to `found`, by the
+    checks it makes first; `_change` can still stop a move (a path or a submodule in the
+    way), so the most it says is that it would try."""
+    if changes:
+        return f"sync leaves it while it has uncommitted changes ({counted(changes, 'file')})"
+    if unpushed:
+        return f"sync leaves it while it has {counted(unpushed, 'commit')} not on origin"
+    if found.kind == BRANCH:
+        holder = worktree_holding(git, found.name)
+        if holder is not None:
+            return f"sync leaves it: branch {found.name} is held by {holder}"
+        local = git.out("rev-parse", "--verify", "-q", f"refs/heads/{found.name}")
+        if local is not None and not ancestor(git, local, found.target):
+            return f"sync leaves it: a local branch {found.name} has commits not on origin"
+    return "sync would try to move it to that version"
+
+
 def _on_recorded(git: Git, record: RepoRecord, head: str, branch: Optional[str]) -> bool:
     """Whether the repo is where `sync` last put it: on the recorded branch, or detached at the
     recorded commit (a tag or a commit); for a recorded version not given, on origin's

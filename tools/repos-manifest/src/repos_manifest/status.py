@@ -1,0 +1,346 @@
+"""`status`: what the system directory holds against what the manifest says, for each distro it
+acts on (``docs/design.md``, "status").
+
+It reads only. It takes no lock, writes no resolved file, no record and no setup file, and
+makes no network call: every git it runs goes through `update.Git`, which passes
+`--no-optional-locks` (so `git status` does not refresh the index), and the manifest's version
+is looked up with `update.ask_local`, in the refs the clone had when it was last fetched. The
+checks are `sync`'s own, shared with it (`update.blocked_early`, `update.blocked_late`,
+`update.find_version`, `update.standing`), so the two read a repo the same way; the calls this
+module may make into `update` and `sync` are listed in `tests/test_update_safety.py`, which
+fails on any other.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Dict, List, Optional, Sequence
+
+from . import sync, update
+from .masking import mask_url, mask_urls
+from .selection import Selected
+from .system import (
+    SYSTEM_DIR,
+    BLOCKED_PLACE,
+    Config,
+    NOT_A_DIRECTORY,
+    RepoRecord,
+    current_directory,
+    distros_for,
+    find_system,
+    layer_src_parts,
+    place_problem_kind,
+    read_config,
+    read_state,
+    reporting_oserror,
+)
+from .yamlload import ManifestError
+
+FORMAT = 1
+
+EXPECTED, DIFFERENT = "expected", "different"
+LEFT_ALONE, UNUSABLE = "left-alone", "unusable"
+MISSING, SKIPPED = "missing", "skipped"
+IN_OTHER_LAYER = "in-other-layer"
+
+# Not at its place: `sync` reports each as an error for a repo that is not optional (a missing
+# one when it cannot clone it), and `build` refuses the layer.
+NOT_AT_PLACE = (MISSING, NOT_A_DIRECTORY, BLOCKED_PLACE, IN_OTHER_LAYER)
+# The states that make the exit status 1 for a repo that is not optional.
+FAILING = NOT_AT_PLACE + (UNUSABLE,)
+
+# The first checks `sync` stops at, and the state each gives: a repo `status` cannot use as a
+# clone of the manifest's version is unusable; work in progress or a lasting setup `sync`
+# leaves alone is left-alone. With no `origin` url at all there is nothing to find the
+# version in; with several, the clone is a setup a person made.
+BLOCKED_STATE = {
+    update.NOT_GIT: UNUSABLE,
+    update.NO_COMMIT: UNUSABLE,
+    update.OPERATION: LEFT_ALONE,
+    update.INDEX_LOCK: LEFT_ALONE,
+    update.SPARSE: LEFT_ALONE,
+    update.NO_ORIGIN: UNUSABLE,
+    update.SEVERAL_ORIGINS: LEFT_ALONE,
+}
+
+AS_FETCHED = (
+    "as origin was when this clone was last fetched; a sync, which fetches first, may find it"
+)
+
+
+@dataclass
+class RepoStatus:
+    key: str
+    path: str  # relative to the system directory
+    layer: str
+    optional: bool
+    state: str = ""
+    detail: str = ""
+    version: Optional[str] = None  # what the manifest names
+    head: Optional[str] = None
+    changes: Optional[int] = None
+    unpushed: Optional[int] = None
+    behind: Optional[int] = None
+    stopped_move: bool = False
+    url: str = ""
+    fetched_from: Optional[str] = None
+
+    def fails(self) -> bool:
+        return not self.optional and self.state in FAILING
+
+
+@dataclass
+class DistroStatus:
+    distro: Optional[str]
+    ok: bool = True
+    problem: Optional[str] = None
+    repos: List[RepoStatus] = field(default_factory=list)
+    not_in_manifest: List[Dict[str, str]] = field(default_factory=list)
+
+
+def run_status(named_distros: Sequence[str], as_json: bool) -> int:
+    """The command: 1 when a repo that is not optional is not at its place or is unusable, or
+    a distro cannot be read or resolved; 0 otherwise. A system directory that cannot be found
+    or read is a `ManifestError`, which the caller reports (exit status 1)."""
+    cwd = current_directory()
+    with reporting_oserror():
+        system = find_system(cwd)
+        if system is None:
+            raise ManifestError(
+                f"no system directory in {cwd} or above it (no {SYSTEM_DIR}/ found); set one up"
+                " with `repos-manifest init`"
+            )
+        config = read_config(system)
+        distros = distros_for(system, config, named_distros, cwd)
+        env = sync.require_tools()
+        plan = _plan(system, config, distros)
+        results = [distro_status(system, config, each, env) for each in plan]
+    ok = all(result.ok and not any(r.fails() for r in result.repos) for result in results)
+    if as_json:
+        print(json.dumps(_document(system, config, results, ok), indent=2))
+    else:
+        _print(system, config, distros, results)
+    return 0 if ok else 1
+
+
+def _plan(system: Path, config: Config, distros: Sequence[Optional[str]]):
+    """Each distro resolved in memory, as `sync` resolves it; a manifest that cannot be read
+    is reported for every distro."""
+    try:
+        return sync.resolve_all(system, config, distros)
+    except ManifestError as exc:
+        return [sync.Reported(distro, str(exc)) for distro in distros]
+
+
+def distro_status(system: Path, config: Config, planned, env: Dict[str, str]) -> DistroStatus:
+    if isinstance(planned, sync.Reported):
+        return DistroStatus(planned.distro, ok=False, problem=mask_urls(planned.problem))
+    resolved = planned.resolved
+    distro = resolved.distro
+    state = read_state(system, distro)
+    result = DistroStatus(distro)
+    for layer in resolved.layers:
+        src = layer_src_parts(config.layout, distro, layer.name)
+        for repo in layer.repos:
+            parts = src + tuple(repo.key.split("/"))
+            found = RepoStatus(
+                key=repo.key,
+                path="/".join(parts),
+                layer=layer.name,
+                optional=repo.optional,
+                version=repo.version,
+                url=mask_url(repo.url),
+            )
+            _place(system, config, distro, repo, layer.name, parts, state.repos, env, found)
+            found.detail = mask_urls(found.detail)
+            result.repos.append(found)
+    keys = {repo.key for layer in resolved.layers for repo in layer.repos}
+    for key, record in state.repos.items():
+        if key in keys:
+            continue
+        parts = layer_src_parts(config.layout, distro, record.layer) + tuple(key.split("/"))
+        if os.path.lexists(system.joinpath(*parts)):
+            result.not_in_manifest.append({"key": key, "path": "/".join(parts)})
+    return result
+
+
+def _place(
+    system: Path,
+    config: Config,
+    distro: Optional[str],
+    repo: Selected,
+    layer: str,
+    parts,
+    records: Dict[str, RepoRecord],
+    env: Dict[str, str],
+    found: RepoStatus,
+) -> None:
+    """The checks on the repo's place, in `sync`'s order: the layer the record gives, then the
+    place itself (the check on the real destination, not a directory, a link), then the repo."""
+    had = records.get(repo.key)
+    if had is not None and had.layer != layer:
+        moved = sync.layer_moved(system, config, distro, repo, layer, had.layer)
+        if moved is not None:
+            found.state, found.detail = IN_OTHER_LAYER, moved.detail
+            return
+    place = system.joinpath(*parts)
+    kind, problem = place_problem_kind(system, parts)
+    if kind is not None:
+        found.state, found.detail = kind, problem
+        return
+    if not os.path.lexists(place):
+        found.state = SKIPPED if repo.optional else MISSING
+        found.detail = "is not there; sync clones it"
+        return
+    if not place.is_dir():
+        found.state, found.detail = NOT_A_DIRECTORY, "is there and is not a directory"
+        return
+    if os.path.islink(place):
+        found.state = LEFT_ALONE
+        found.detail = (
+            f"is a link to {os.readlink(place)}; sync does not update a repo through a link"
+        )
+        return
+    _repo(place, repo, had, env, found)
+
+
+def _repo(
+    place: Path,
+    repo: Selected,
+    record: Optional[RepoRecord],
+    env: Dict[str, str],
+    found: RepoStatus,
+) -> None:
+    git = update.Git(place, env, None)
+    blocked, git_dir, head = update.blocked_early(git)
+    if blocked is not None:
+        found.state, found.detail = BLOCKED_STATE[blocked.kind], blocked.text
+        return
+    found.head = head
+    # A `moving` line that does not name HEAD no longer describes the repo; `sync` drops it,
+    # `status` only does not use it.
+    stopped = update.stopped_move(record, head)
+    found.stopped_move = stopped is not None
+    blocked, origin = update.blocked_late(git, git_dir, record, head)
+    if blocked is not None:
+        found.state, found.detail = BLOCKED_STATE[blocked.kind], blocked.text
+        if blocked.kind in (update.OPERATION, update.INDEX_LOCK):
+            return  # `sync`'s text for these carries the stopped move already
+    else:
+        found.state, found.detail = _version(git, place, repo, record, head, origin, found)
+    if stopped is not None:
+        found.detail += f"; {stopped}"
+
+
+def _version(git, place, repo, record, head, origin, found):
+    """The state and text of a repo that is a git repository with a commit, nothing in
+    progress, and one `origin` url."""
+    found.fetched_from = mask_url(origin)
+    url_note = _url_note(origin, repo, record)
+    changes = update.tracked_changes(git)
+    if changes is None:
+        return UNUSABLE, "`git status` fails here"
+    symbolic = git.out("symbolic-ref", "-q", "HEAD")
+    branch = None
+    if symbolic is not None and symbolic.startswith("refs/heads/"):
+        branch = symbolic[len("refs/heads/") :]
+    unpushed = None
+    if branch is not None:
+        unpushed = update.count(git, "HEAD", "--not", "--remotes=origin")
+        if unpushed is None:
+            return UNUSABLE, "the commits not on origin cannot be counted"
+    version, problem, _ = update.find_version(git, repo.version, record, ask=update.ask_local)
+    if version is None:
+        problem = (problem or "").replace("<place>", update.quoted(place))
+        return UNUSABLE, f"{problem} ({AS_FETCHED}){url_note}"
+    found.changes, found.unpushed = changes, unpushed
+    if version.kind == update.COMMIT:
+        on_origin, said = update.commit_on_origin(git, version.target, ask=update.ask_local)
+        if on_origin is None:
+            found.changes = found.unpushed = None
+            return UNUSABLE, said
+        if not on_origin:
+            return (
+                DIFFERENT,
+                f"version {repo.version} is a commit here that no branch of origin, and no tag"
+                f" origin has, holds; sync does not follow it{url_note}",
+            )
+    standing = update.standing(git, repo, record, version, head, branch, unpushed, changes)
+    found.behind = standing.behind
+    return (EXPECTED if standing.on_version else DIFFERENT), standing.text + url_note
+
+
+def _url_note(origin: str, repo: Selected, record: Optional[RepoRecord]) -> str:
+    """When `origin` is not the manifest's url: whether `sync` would repoint it."""
+    if update.same_url(origin, repo.url):
+        return ""
+    if record is not None and record.url is not None and update.same_url(origin, record.url):
+        return (
+            f"; fetched from {mask_url(origin)}, the url recorded; the manifest now says"
+            f" {mask_url(repo.url)}, and sync repoints origin to it"
+        )
+    return (
+        f"; fetched from {mask_url(origin)}, set by hand; the manifest says {mask_url(repo.url)},"
+        " and sync leaves origin as it is"
+    )
+
+
+def _document(system: Path, config: Config, results: Sequence[DistroStatus], ok: bool) -> dict:
+    distros = []
+    for result in results:
+        entry = {"distro": result.distro, "ok": result.ok, "problem": result.problem}
+        if result.ok:
+            entry["repos"] = [asdict(r) for r in result.repos]
+            entry["not_in_manifest"] = list(result.not_in_manifest)
+        distros.append(entry)
+    return {
+        "format": FORMAT,
+        "ok": ok,
+        "system": str(system),
+        "manifest": config.manifest,
+        "role": config.role,
+        "groups": list(config.groups),
+        "layout": config.layout,
+        "recorded_distros": list(config.distros) if config.distros is not None else None,
+        "distros": distros,
+    }
+
+
+def _facts(repo: RepoStatus) -> str:
+    said = []
+    if repo.changes:
+        said.append(f"{update.counted(repo.changes, 'file')} changed")
+    if repo.unpushed:
+        said.append(f"{update.counted(repo.unpushed, 'commit')} not on origin")
+    if repo.behind:
+        said.append(f"{repo.behind} behind origin")
+    return f" [{', '.join(said)}]" if said else ""
+
+
+def _print(
+    system: Path,
+    config: Config,
+    acted_on: Sequence[Optional[str]],
+    results: Sequence[DistroStatus],
+) -> None:
+    print(f"system {system}")
+    print(f"manifest {config.manifest}")
+    print(f"role {config.role if config.role is not None else '(none)'}")
+    print(f"groups {', '.join(config.groups) if config.groups else '(none)'}")
+    if config.distros is not None:
+        marked = [f"{d} (shown)" if d in acted_on else d for d in config.distros]
+        print(f"distros set up {', '.join(marked)}")
+    for result in results:
+        name = result.distro if result.distro is not None else "(no distro)"
+        print(f"distro {name}:")
+        if not result.ok:
+            print(f"  ERROR: {result.problem}")
+            continue
+        for repo in result.repos:
+            optional = " (optional)" if repo.optional else ""
+            print(f"  {repo.path}  {repo.state}{optional}: {repo.detail}{_facts(repo)}")
+        for gone in result.not_in_manifest:
+            print(f"  {gone['path']}  not-in-manifest: recorded by sync, still on disk")
