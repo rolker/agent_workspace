@@ -337,6 +337,46 @@ def test_status_needs_git_and_not_vcs(vcs, tmp_path, capsys, monkeypatch):
     assert "`vcs` is not found on PATH" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("driver", ["mark", "a.b=c"], ids=["plain", "with-equals"])
+def test_no_fsmonitor_hook_and_no_filter_of_the_clone_runs(vcs, tmp_path, capsys, driver):
+    """A clone's own `core.fsmonitor` hook and clean filter each leave a marker file when they
+    run. A plain `git status` runs both; `status` runs neither."""
+    case = make_case(tmp_path)
+    hook = tmp_path / "fsmonitor"
+    hook.write_text(f"#!/bin/sh\ntouch {tmp_path / 'fsmonitor-ran'}\nexit 1\n")
+    hook.chmod(0o755)
+    clean = f"sh -c 'touch {tmp_path / 'filter-ran'}; cat'"
+    git("config", "core.fsmonitor", str(hook), cwd=case.clone)
+    git("config", f"filter.{driver}.clean", clean, cwd=case.clone)
+    git("config", f"filter.{driver}.required", "true", cwd=case.clone)
+    (case.clone / ".git/info/attributes").write_text(f"README filter={driver}\n")
+    later = time.time() + 5  # so that git reads README's content, through its filter
+    os.utime(case.clone / "README", (later, later))
+    capsys.readouterr()
+    # Not the `status` helper of this file: its snapshot runs a plain `git status`.
+    assert run(case.system, "status", "--json") == 0
+    found = repo_a(json.loads(capsys.readouterr().out))
+    assert not (tmp_path / "fsmonitor-ran").exists()
+    assert not (tmp_path / "filter-ran").exists()
+    assert found["state"] == "expected"
+    git("status", "--porcelain", cwd=case.clone)  # the markers do show a helper that runs
+    assert (tmp_path / "fsmonitor-ran").exists() and (tmp_path / "filter-ran").exists()
+
+
+def test_status_asks_git_for_no_lazy_fetch(vcs, tmp_path, capsys, monkeypatch):
+    case = make_case(tmp_path)
+    seen = []
+    real = update.Git.run
+
+    def watching(self, *args, **kwargs):
+        seen.append((self.env.get("GIT_NO_LAZY_FETCH"), self.options[:2]))
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(update.Git, "run", watching)
+    status(case.system, capsys, expect=0)
+    assert seen and set(seen) == {("1", ("-c", "core.fsmonitor=false"))}
+
+
 def test_find_version_looks_up_ask_origin_when_it_is_called(vcs, tmp_path, monkeypatch):
     """`ask` is resolved at the call, so a test that replaces `ask_origin` reaches it."""
     case = make_case(tmp_path)

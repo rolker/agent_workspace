@@ -66,6 +66,16 @@ BLOCKED_STATE = {
     update.SEVERAL_ORIGINS: LEFT_ALONE,
 }
 
+# What keeps a clone's own configuration from running a helper under `status`'s git calls
+# (``docs/design.md``, "status"): a partial clone does not fetch a missing object (git 2.45 and
+# later know the variable), no fsmonitor hook is started, and every filter driver the clone's
+# configuration names is emptied, so `git status` runs no clean filter (git runs none for a
+# driver with no command) and a required one does not fail it.
+NO_LAZY_FETCH = {"GIT_NO_LAZY_FETCH": "1"}
+NO_FSMONITOR = ("-c", "core.fsmonitor=false")
+FILTER_KEYS = r"^filter\..*\.(clean|smudge|process|required)$"
+FILTER_OFF = (("clean", ""), ("smudge", ""), ("process", ""), ("required", "false"))
+
 # `sync` fetches only when nothing stops it first (uncommitted changes, a remote of the probe's
 # name with the url changed), so this says a fetch, not a sync, may find it.
 AS_FETCHED = "as origin was when this clone was last fetched; a fetch may find it"
@@ -119,7 +129,7 @@ def run_status(named_distros: Sequence[str], as_json: bool) -> int:
             )
         config = read_config(system)
         distros = distros_for(system, config, named_distros, cwd)
-        env = sync.require_git()  # `status` runs git, never `vcs`
+        env = {**sync.require_git(), **NO_LAZY_FETCH}  # `status` runs git, never `vcs`
         plan = _plan(system, config, distros)
         results = [distro_status(system, config, each, env) for each in plan]
     ok = all(result.ok for result in results)
@@ -219,7 +229,7 @@ def _repo(
     env: Dict[str, str],
     found: RepoStatus,
 ) -> None:
-    git = update.Git(place, env, None)
+    git = _reading_git(place, env)
     blocked, git_dir, head = update.blocked_early(git)
     if blocked is not None:
         found.state, found.detail = BLOCKED_STATE[blocked.kind], blocked.text
@@ -238,6 +248,35 @@ def _repo(
         found.state, found.detail = _version(git, place, repo, record, head, origin, found)
     if stopped is not None:
         found.detail += f"; {stopped}"
+
+
+def _reading_git(place: Path, env: Dict[str, str]) -> update.Git:
+    """`update.Git` for `status`: with no fsmonitor hook, and every filter driver the clone's
+    configuration names turned off, by `-c` on the command line, which comes after the
+    configuration git reads from files and from the environment, so it wins. A driver whose
+    name holds `=`, which `-c` would split there, is turned off through `GIT_CONFIG_COUNT`
+    instead. Git hands both on to the `git status` it runs in a submodule; a driver that only a
+    submodule's own configuration names is not turned off."""
+    git = update.Git(place, env, None, options=NO_FSMONITOR)
+    status, printed, _ = git.run("config", "--null", "--name-only", "--get-regexp", FILTER_KEYS)
+    names = set()
+    for key in printed.split("\0") if status == 0 else []:
+        if key.startswith("filter.") and key.count(".") >= 2:
+            names.add(key[len("filter.") : key.rindex(".")])
+    options, env = list(NO_FSMONITOR), dict(env)
+    for name in sorted(names):
+        for setting, value in FILTER_OFF:
+            key = f"filter.{name}.{setting}"
+            if "=" not in name:
+                options += ["-c", f"{key}={value}"]
+                continue
+            try:
+                index = int(env.get("GIT_CONFIG_COUNT") or 0)
+            except ValueError:
+                continue  # git refuses such a count: no git of `status` runs here at all
+            env[f"GIT_CONFIG_KEY_{index}"], env[f"GIT_CONFIG_VALUE_{index}"] = key, value
+            env["GIT_CONFIG_COUNT"] = str(index + 1)
+    return update.Git(place, env, None, options=options)
 
 
 def _version(git, place, repo, record, head, origin, found):

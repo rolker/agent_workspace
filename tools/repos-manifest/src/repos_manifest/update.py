@@ -113,10 +113,13 @@ Env = Dict[str, str]
 
 class Git:
     """`git -C <place>` with the run's environment and options; `lock` is the descriptor of the
-    distro's lock, passed to every `git` that changes the work tree or the configuration."""
+    distro's lock, passed to every `git` that changes the work tree or the configuration.
+    `options` are given to every call after `GIT_OPTIONS` (`status` turns a clone's helpers off
+    with them; `sync` gives none)."""
 
-    def __init__(self, place: Path, env: Env, lock: Optional[int]):
+    def __init__(self, place: Path, env: Env, lock: Optional[int], options: Sequence[str] = ()):
         self.place = place
+        self.options = tuple(options)
         # Output this module reads runs in the C locale, so git's words are the ones the code
         # looks for; output that is only shown keeps the person's language (`shown`).
         self.shown_env = {**env, "GIT_EDITOR": "true"}
@@ -141,7 +144,7 @@ class Git:
         Ctrl-C stops a fetch that hangs or asks for a password. Only a fetch may prompt. A
         call whose output is only shown, never read, runs in the person's locale (`shown`);
         every other in the C locale."""
-        argv = ["git", "-C", str(self.place), *GIT_OPTIONS, *args]
+        argv = ["git", "-C", str(self.place), *GIT_OPTIONS, *self.options, *args]
         kwargs = dict(
             input=stdin,
             capture_output=True,

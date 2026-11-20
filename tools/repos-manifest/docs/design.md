@@ -1515,7 +1515,24 @@ Shows, for each distro it acts on, what the system directory holds against what 
 It changes nothing on disk and makes no network call. It takes no lock, writes no resolved files,
 no record and no setup file, and it does not fetch: every answer is about the clones as they are, with
 what `origin` had when each was last fetched (by `sync`, or by hand). Every `git` it runs passes
-`--no-optional-locks`, so even `git status` does not rewrite a clone's index. `sync` fetches first,
+`--no-optional-locks`, so even `git status` does not rewrite a clone's index.
+
+A clone's own configuration could still make `git status` run a helper, and `status` turns each
+one off for its own git calls (`sync` runs its git as before):
+
+- an fsmonitor hook (`core.fsmonitor`) is not started: every call passes `-c core.fsmonitor=false`;
+- a partial clone does not fetch a missing object: every call runs with `GIT_NO_LAZY_FETCH=1`.
+  Git before 2.45 does not know the variable, and there a partial clone may still fetch;
+- no clean or smudge filter runs: every filter driver the clone's configuration names is given an
+  empty `clean`, `smudge` and `process` and `required` false on the command line, which wins over
+  the configuration files and the environment, and git runs no filter for a driver with no command.
+  This one changes the answer: a file under a filter whose time or size no longer matches the
+  index is read as it is on disk, not as the filter would give it, so `status` can count it as
+  changed where `sync`, which runs the filter, does not. A Git LFS file touched since its checkout
+  is one. A driver that only a submodule's own configuration names is not turned off, and `git
+  status`, which looks into a populated submodule, may run it there.
+
+Git runs no hook for the commands `status` runs. `sync` fetches first,
 so a repo can read differently after a fetch: a version that was not fetched yet is `unusable`
 until then, and a branch behind `origin`'s counts only the commits fetched. Three cases differ
 even after a fetch:

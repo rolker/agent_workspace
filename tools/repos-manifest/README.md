@@ -142,7 +142,9 @@ says: for each repo one state (expected, different, left alone, unusable, missin
 not at its place), with its uncommitted changes, its commits not on `origin`, how far it is
 behind `origin`'s branch, and where it was fetched from; and the repos `sync` recorded that are
 no longer in the manifest. It changes nothing on disk and makes no network call: it answers
-from what each clone had when it was last fetched. `status --json` prints the same as one
+from what each clone had when it was last fetched, and turns off the helpers a clone's own
+configuration would have `git status` run (an fsmonitor hook, clean filters, a partial clone's
+fetch of a missing object); the design says the few places that falls short. `status --json` prints the same as one
 document a script can read, and the exit status is 1 when a repo that is not optional is
 missing, not at its place or unusable. It needs `git` 2.23 or later on `PATH`, and not `vcs`.
 [docs/design.md](docs/design.md#status) gives the states
