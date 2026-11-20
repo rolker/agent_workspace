@@ -32,6 +32,7 @@ from helpers import (
     snapshot_repo,
     state_of,
 )
+from repos_manifest import status as status_module
 from repos_manifest import update
 
 UPDATE = Path(update.__file__)
@@ -383,3 +384,88 @@ def test_every_fetch_passes_no_recurse_submodules_and_no_prune():
     for text in fetches:
         words = text.split()
         assert "--no-recurse-submodules" in words and "--no-prune" in words, text
+
+
+# --- `status` reads only -----------------------------------------------------------------
+
+STATUS = Path(status_module.__file__)
+
+# The git commands `status.py` may run itself, and the functions of `update` and `sync` it may
+# call: each reads only. A call to any other (`_move`, `_change`, `_repoint`,
+# `delete_probe_refs`, `update_repo`, `left_the_manifest`, ...) fails the scan.
+READ_ONLY_GIT = {"rev-parse", "symbolic-ref", "config", "for-each-ref", "rev-list", "merge-base"}
+STATUS_MAY_CALL = {
+    "update": {
+        "Git",
+        "blocked_early",
+        "blocked_late",
+        "stopped_move",
+        "tracked_changes",
+        "count",
+        "find_version",
+        "commit_on_origin",
+        "ask_local",
+        "standing",
+        "same_url",
+        "quoted",
+        "counted",
+    },
+    "sync": {"require_tools", "resolve_all", "layer_moved", "Reported"},
+}
+# What a function `status` reaches in `update.py` may not pass or call: a git that changes the
+# work tree or the configuration (`change`), holds the lock (`hold`) or may prompt (`prompt`,
+# only a fetch or `ls-remote`), or a function that writes or asks origin.
+WRITES = {"change", "hold", "prompt"}
+NEVER_REACHED = {"_move", "_change", "_repoint", "delete_probe_refs", "ask_origin", "update_repo"}
+
+
+def _module_attributes(tree, module):
+    return {
+        node.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == module
+    }
+
+
+def test_status_calls_only_reading_functions_of_update_and_sync():
+    tree = ast.parse(STATUS.read_text())
+    constants = {name for name in dir(update) if name.isupper()}
+    for module, allowed in STATUS_MAY_CALL.items():
+        used = _module_attributes(tree, module) - constants
+        assert used <= allowed, (module, used - allowed)
+
+
+def test_status_runs_only_reading_git_commands_itself():
+    tree = ast.parse(STATUS.read_text())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and _called(node) in ("run", "out", "ok"):
+            words = [a.value for a in node.args if isinstance(a, ast.Constant)]
+            assert words and words[0] in READ_ONLY_GIT, words
+            assert not {k.arg for k in node.keywords} & WRITES
+
+
+def test_what_status_reaches_in_update_neither_writes_nor_asks_origin():
+    tree = ast.parse(UPDATE.read_text())
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    reached, todo = set(), sorted(STATUS_MAY_CALL["update"] & set(functions))
+    while todo:
+        name = todo.pop()
+        if name in reached:
+            continue
+        reached.add(name)
+        for node in ast.walk(functions[name]):
+            if isinstance(node, ast.Call):
+                called = _called(node)
+                if called in functions and called not in reached:
+                    todo.append(called)
+                assert not {k.arg for k in node.keywords} & WRITES, (name, ast.dump(node))
+    assert "standing" in reached and "worktree_holding" in reached  # the walk follows calls
+    assert not reached & NEVER_REACHED, reached & NEVER_REACHED
+
+
+def test_the_scan_of_status_catches_a_writing_call():
+    tree = ast.parse("update._move(turn, head, found)\nsync.left_the_manifest(a, b, c, d, e)\n")
+    assert _module_attributes(tree, "update") - STATUS_MAY_CALL["update"] == {"_move"}
+    assert _module_attributes(tree, "sync") - STATUS_MAY_CALL["sync"] == {"left_the_manifest"}
