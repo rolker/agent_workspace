@@ -227,3 +227,66 @@ Read: the Plan Review at 21ffdc89. Second host revise in a row at this checkpoin
 **Plan**: `.agent/work-plans/issue-428/plan.md` (second revision, after the Plan Review at 21ffdc89)
 
 Revised for the three must-fix items and both suggestions. Item 5: `notice_only` keyed on the phrase "unable to review this pull request" (hosted reviewer's account, COMMENTED, no inline comments); an unknown wording is not flagged; tests carry the three notice wordings and real short reviews as negatives. Host wait for a review that never starts is about 900 s, with the standing rule and the measurement cited in the section 9 text. Item 4: a project with no GitHub slug (non-GitHub origin or no origin) gets no issue lookup and no pull-request check, like the not-a-git-repository branch, with its own notes and a workspace-folder test. Item 2: leave-out list is the reviewer's two paths plus dependabot and pages; code scanning is counted; two gaps recorded. Split taken up front: Part 1 is items 1, 2, 3, 5 (`Part of #428`); Part 2 is item 4 alone (`Closes #428`). Files per part are listed in the plan.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-20 09:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #428 — Loop defects from the GeoZui4D drives: parallel-build job count, CI wait with no CI, read-only cleanup, slug host check, quota-notice wait
+**Plan**: `.agent/work-plans/issue-428/plan.md` at `6b241e5d`
+**Branch**: `feature/issue-428`
+
+Third review, a convergence check on the second revision, after the Plan Review at 21ffdc89.
+
+### Second review, point by point
+
+- Must-fix 1 (`notice_only` marks real short reviews): answered. The key is now the phrase "unable to review this pull request" together with the hosted reviewer's account, COMMENTED and no inline comments. The three notice wordings are positive fixtures. The short real review with a finding (the shape of review 5741265646) is a negative one. The skill text no longer tells the host to drop flagged reviews as a source; it says they hold no findings. `fetch_pr_reviews.sh` already carries `user_login`, `state`, `body` and per-review `comments` (~109, ~180-190), so the flag needs no new call.
+- Must-fix 2 (1800 s bound): answered. The host bound is about 900 s. The text cites `host_standing_rules.md` line 31 (checked: "a timeout of about twice the expected duration") and the measurement. `merge_pr.sh`'s 1800 s review-pending hold is left as it is.
+- Must-fix 3 (`gh pr view` with no `--repo`): answered. For a project with no GitHub slug, the issue lookup, the `issue view` fallback (~710) and the PR check (~716-725) are all skipped, the same as the `ROOT_NOT_GIT` branch. The test asserts that no `pr view` call is made, from a workspace-folder session where the stub answers a pull request numbered N. Placement note: suggestion 3.
+- Suggestion 4 (the `dynamic/` exclusion): answered. The leave-out list is the reviewer's two paths plus the dependabot and pages prefixes. Code scanning is counted (case f). Fixture (a) carries both reviewer paths. Two gaps are recorded. See the evidence below and suggestion 1.
+- Suggestion 5 (creation-note wording, no origin): answered. The note is worded as a supported case, with no warning sign. It replaces the "offline or issue does not exist" line, and the no-origin case has its own wording and its own test.
+
+### What this revision introduced, tested
+
+**The dependabot and pages leave-outs.** The evidence supports them, but the plan does not cite it. Read-only API check over every repository of this owner: dynamic workflows found are `dynamic/dependabot/dependabot-updates` (ros2_agent_workspace), `dynamic/dependabot/update-graph` (unh_marine_autonomy, marine_tools, marine_ais, rqt_sonardyne, imagenex_deltat) and `dynamic/pages/pages-build-deployment` (daddy_camp). Their runs were read from `actions/workflows/<id>/runs`: 123 runs, every one `event: dynamic` on the repository's default branch (`jazzy`, `main`, `noetic`), and none with a linked pull request. That fits how both work: Pages builds on a push to its publishing branch, and Dependabot's jobs run on its own schedule against the default branch. Neither runs on a pull request's head commit. The worst case is also small. The leave-out matters only in the `none` state (no check-run on the head yet), because `merge_pr.sh` (~2052-2068) takes `no-ci` only when nothing is registered. A check that has registered is waited for as before. Both entries also matter in practice: marine_tools (reviewer + `update-graph`) and daddy_camp (reviewer + pages) would otherwise still get the 120 s wait and the `--no-wait` hint.
+
+**The split.** The boundary is clean. Part 1 can be finished with its tests passing and no change from Part 2. Checked:
+- No Part 1 file calls `extract_gh_slug`. Its callers are `_issue_helpers.sh`, `worktree_create.sh`, `worktree_enter.sh`, `merge_pr.sh` and `sitrep_checks.sh`, and Part 1's `merge_pr.sh` edit is the workflow count only.
+- The gate suite's CI cases use origin `${sb}.remote.git` (~159). That path has no `github.com` segment, so it gives an empty slug under both the old parser and the new one. `workflows_path()` (`repos//actions/workflows`) does not move when Part 2 lands.
+- The only other suite with a workflows stub (`test_package_issue_loop.sh` ~112, `*/actions/workflows`, which would not match `?per_page=100`) runs `merge_pr.sh` only with `--no-wait`. It never reaches the lookup.
+
+The two shared files are edited in different places: workflow fixtures against hang-3 fixtures and `serve_shim`, and four rows of `script_reference.md` against two others. "Part 2 starts from main after Part 1 merges" is what run-issue step 13 already does: a fresh `/run-issue 428` recreates `feature/issue-428` from the base. So it is enough.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Two parts, grouped by shared files: Part 1 is about 12 files, Part 2 about 8. |
+| Issue alignment | Good | Serves: "README 'Workspace goals', 'Quality of the work': 'A safeguard has to earn its cost …' … and 'Trust, control and information' … Under `docs/design.md#rules`." Already checked in the second review. Unchanged. |
+| File targeting | Good | Each part's table matches its items. Shared files are named with the region each part edits. |
+| Consequences | Good | The second review's three consequence findings are answered. No new one rises to a must-fix. |
+| Principle alignment | Good | "Verify before claiming": the leave-out list rests on reads the plan does not cite (suggestion 1). |
+| ADR compliance | Good | ADR-0013 and ADR-0016 as before. ADR-0022 not triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+No must-fix. Suggestions for the implementer:
+
+1. **[Principle alignment] Item 2: record the evidence for the dependabot and pages leave-outs** in the `merge_pr.sh` header next to the list: runs read across this owner's repositories, all on the default branch, none linked to a pull request. Also say that a leave-out acts only before any check registers. Without this, a later reader cannot tell the list from a guess.
+2. **[Issue alignment] Item 2: name the hosted coding agent as a third known gap.** `dynamic/copilot-swe-agent/copilot` is active in udp_bridge, unh_marine_radar, carp, drix_description, unh_marine_autonomy and ros2_agent_workspace. Its runs are on its own `copilot/*` pull-request branches, so it can register checks, and counting it is right. As a result, a repository with only the reviewer and the coding agent still gets the 120 s wait and the `--no-wait` hint. That is the issue's complaint, left for that shape. Record it with the other two gaps.
+3. **[Consequences] Item 4: put the no-slug skip after the qualified-ref branch.** It belongs with the `ROOT_NOT_GIT` `elif` (~694-698), not in front of `[ -n "$ISSUE_OWNER_REPO" ]`. A qualified `--issue owner/repo#N` names its own repository, and the header comment there allows a package's owning repository to differ from the project's remote, so it must still be looked up. Add that case to the `test_worktree_create.sh` table.
+4. **[Scope] Part 1 must leave `plan.md` unchanged.** At the post-merge plan checkpoint, step 13 offers `proceed` for Part 2 only when `plan.md` is unchanged since this review's commit. Any plan edit made during Part 1 sends Part 2 back through `plan-task` and `review-plan`.
+
+### Summary
+
+The second revision answers all three must-fix items and both suggestions. The new leave-out list is backed by the API record, though the plan does not cite it, and the split's boundary holds. Ready for Part 1, with four suggestions for the implementer.
+
+### Recommended Actions
+
+- [ ] Item 2: cite the dependabot and pages run evidence in the `merge_pr.sh` header, and say that a leave-out acts only before a check registers (suggestion 1).
+- [ ] Item 2: record the coding-agent workflow as a third known gap (suggestion 2).
+- [ ] Item 4: keep the qualified-ref lookup ahead of the no-slug skip, and test it (suggestion 3).
+- [ ] Part 1: leave `plan.md` unchanged, so Part 2 can `proceed` (suggestion 4).
