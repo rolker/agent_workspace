@@ -219,3 +219,11 @@ The revision answers every point of the first review except two that it answers 
 **Decision**: revise
 
 Read: the Plan Review at 21ffdc89. Second host revise in a row at this checkpoint; the next answer here is the owner's. The must-fix items go back as written there: the notice_only flag keyed on shape would mark real short reviews that carry a finding (key it on the phrase "unable to review this pull request"; a new wording is missed, which is today's behaviour); the 1800 s bound on a review that never starts is longer than the wait the issue calls the defect (about 900 s by the standing rule of twice the expected duration); for a project with no GitHub slug the pull-request check still runs without --repo and can refuse creation (handle it as the existing not-a-git-repository branch does). Suggestions 4 and 5 are taken. The split is taken up front, grouped by shared files: items 1, 2, 3 and 5 in the first pull request (Part of #428), item 4 alone in the second (Closes #428).
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-20 11:20 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-428/plan.md` (second revision, after the Plan Review at 21ffdc89)
+
+Revised for the three must-fix items and both suggestions. Item 5: `notice_only` keyed on the phrase "unable to review this pull request" (hosted reviewer's account, COMMENTED, no inline comments); an unknown wording is not flagged; tests carry the three notice wordings and real short reviews as negatives. Host wait for a review that never starts is about 900 s, with the standing rule and the measurement cited in the section 9 text. Item 4: a project with no GitHub slug (non-GitHub origin or no origin) gets no issue lookup and no pull-request check, like the not-a-git-repository branch, with its own notes and a workspace-folder test. Item 2: leave-out list is the reviewer's two paths plus dependabot and pages; code scanning is counted; two gaps recorded. Split taken up front: Part 1 is items 1, 2, 3, 5 (`Part of #428`); Part 2 is item 4 alone (`Closes #428`). Files per part are listed in the plan.
