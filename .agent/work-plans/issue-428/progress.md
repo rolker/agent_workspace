@@ -406,3 +406,39 @@ Suites run, each on its own with `bash` (last result line):
 - `test_ros2_colcon.sh` (names `worktree_remove.sh`; part 2 file, run only): === Results: 1374 passed, 1 failed, 0 skipped === — FAILED, not from this pass: "adapter sync: the tool's own report" expects `present, not touched (2)`, but the in-repo `repos-manifest` sync now prints `up to date (2)` (`tools/repos-manifest/src/repos_manifest/sync.py:644`, changed on main by PR 535's commits for issue 500 and brought in by the merge 5a857f7e). Those files are identical to origin/main, so main is expected to fail the same way. Not fixed here: `test_ros2_colcon.sh` is a part 2 file and the cause is outside this issue.
 
 The full pre-commit pass and the full run of every suite are left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-20 11:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a17e31622226f8c63, resume 1 of 3)
+
+**Branch**: feature/issue-428 at `54c28fe3`
+**Base**: origin/main
+**Depth**: Deep (reason: 12 files and about 610 changed lines outside the work plan, plus skill and knowledge files; a fix round is classified on the whole diff)
+**Must-fix**: 2 | **Suggestions**: 5
+**Round**: 2 | **Ship**: recommended — round 2: 2 mechanical must-fix (prev 2), not rising — fix and ship rather than another full round
+
+Round 2, after the fix pass e4a9e5f1. The round-1 findings are settled as follows.
+
+- The `notice_only` mark is removed, and the reasoning holds against step 9 as now written. The wait ends when the hosted reviewer's check-run completes, which happens within seconds of a could-not-review notice, and triage reads the notice's body. `fetch_pr_reviews.sh` and its `script_reference.md` row are back to main's text. `git grep notice_only` finds nothing outside the work plans.
+- The `total_count` fix and the neutral comment are correct.
+- The `\;` change is correct: the adversarial reviewer ran it, and it reaches a read-only directory under a directory with no search permission.
+- The new refusal of an entry that leads outside the worktree is right. It handles relative links, a link to a sibling entry, a dangling link and a lookalike prefix path, and it refuses no real package layout. The one gap is the cd-failure message (must-fix 2).
+
+Shellcheck at warning severity is clean. No real project name appears in mechanism text or fixtures; the one mention is the evidence column of `host_standing_rules.md`. The failure in `test_ros2_colcon.sh` does not come from this branch: the branch changes nothing under `tools/repos-manifest` or `.agent/project_types`, and the expected string and the new `sync.py` text are both on main as they are.
+
+Reviewers:
+- Gemini ran.
+- Codex ran.
+- Claude adversarial ran, with a fresh agent. `test_worktree_remove.sh` passed 37 and failed 0; `test_merge_pr_gate.sh` passed 213 and failed 0.
+
+### Findings
+- [ ] (must-fix) The pre-merge re-fetch is written only inside the bullet for a running check-run. Two cases miss it. After the 900 s "never arrived" exit, a hosted review that starts late reaches the merge checkpoint unread. When a bookkeeping push has moved the head, a review that lands on an earlier commit of this round is not "on the head" and is missed too. Fix: before every merge checkpoint, fetch again, and send any hosted review the `## Integrated Review` has not read, whatever its `commit_id`, to `triage-reviews` first. Found by the lead and the adversarial reviewer. — `.claude/skills/run-issue/SKILL.md:954-972`
+- [ ] (must-fix) When `cd` into an entry fails (a directory with no search permission), `_real` is empty. The script then says the entry "leads outside this worktree through a symbolic link" and tells the user to delete a link that does not exist. Fix: when `_real` is empty and the entry is not a link, say the entry cannot be entered (permissions). Found by Gemini, the adversarial reviewer and the lead. — `.agent/scripts/worktree_remove.sh:406-410`
+- [ ] (suggestion) Say that a concluded `copilot-pull-request-reviewer` check-run ends the wait even when no review lands on the head, so that "only a review on the head counts" is not read as requiring one. Found by Gemini. — `.claude/skills/run-issue/SKILL.md:945-950`
+- [ ] (suggestion) Call `_make_dirs_writable "$WORKTREE_DIR"` once before the entry loop. Today a read-only container directory between the worktree and an entry makes `git worktree remove` fail part way. Found by Gemini. — `.agent/scripts/worktree_remove.sh:492-514`
+- [ ] (suggestion) "Mounts never crossed" overstates `-xdev`. A bind mount from the same filesystem has the same device and is crossed. `rm -rf` crossed it before this change too. Say "a mount of another filesystem is not crossed" here and in the `script_reference.md` row. Found by Codex, downgraded from its must-fix. — `.agent/scripts/worktree_remove.sh:31,480`
+- [ ] (suggestion) `plan.md` item 5 still describes the `notice_only` mark. Record the change in the plan or the pull request text. Found by Gemini, downgraded from its must-fix: plan drift is a suggestion, and the removal is reasoned in the Implementation entry. — `.agent/work-plans/issue-428/plan.md:50-55`
+- [ ] (suggestion) The trap's `chmod -R u+w` cannot descend into the test's `chmod 600` directory. If the test fails before the repair, the sandbox leaks. Use `u+rwx`. Found by Gemini. — `.agent/scripts/tests/test_worktree_remove.sh:47`
