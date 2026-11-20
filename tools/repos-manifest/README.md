@@ -104,29 +104,31 @@ as paths on the local disk; a `base` at a URL or in a git repo is not read yet.
 `init` sets up a system directory from a manifest given as a path on the local disk and clones
 its repos; `sync` clones the ones that are missing and updates the ones that are there, with
 `git`. A clean clone on the manifest's branch is fast-forwarded, and one `sync` left on the
-version the manifest named before is moved to the one it names now. A clone a person has
-changed is left as it is and reported: one with uncommitted changes, commits not on `origin`,
-another branch checked out, an operation in progress, or a file git does not track (untracked
-or ignored) where an incoming file goes. Untracked files elsewhere do not stop an update. So
-is a clone where the update would remove or replace a checked-out submodule, or move the
-commit of one a person has moved; submodules are never updated, so a repo with submodules
-follows one change of a submodule's commit and stops at the next, until that submodule is
-updated by hand (the report gives the `git submodule update` command), and a sparse checkout is left as
-it is. A version given as a commit is followed only when `origin` holds it. An
-`origin` a person set is left as set; the manifest's new url replaces `origin` only when the
-clone still has the url `sync` recorded and no local branch has commits it lacks. Where `sync`,
-`init`, `resolve` and `validate` put a url into a message, a `scheme://` url's user name and
-password are masked as `***`, and a value of the wrong type is described, not shown; the lines
-`sync` prints for a repo's outcome, and the error of a manifest that cannot be read or is
-refused, are masked again as they are printed. Other lines are printed as given: for example,
-the "unknown role" error of an earlier-format manifest, which echoes the role typed on the
-command line (in the current format that error passes the filter). That is a guard against
-accidents, not a guarantee: a user name and password belong in a credential helper or an ssh
-key, not in a manifest url ([docs/design.md](docs/design.md#sync) says what is masked and what
-is not). A repo the manifest moves to another layer is not moved: `sync` prints the `mv`
-command. A clone with
-commits not on `origin` is not rebased yet; `sync` prints the `git pull --rebase` command for a
-person to run. Both need `git`, and `vcs` from vcs2l or vcstool, on `PATH`.
+version the manifest named before is moved to the one it names now. A clone a person has changed
+is left as it is and reported: one with uncommitted changes, commits not on `origin`, another
+branch checked out, an operation in progress, or a file git does not track (untracked or
+ignored) where an incoming file goes. Untracked files elsewhere do not stop an update. So is a
+clone where the update would remove or replace a checked-out submodule, or move the commit of
+one a person has moved; submodules are never updated, so a repo with submodules follows one
+change of a submodule's commit and stops at the next, until that submodule is updated by hand
+(the report gives the `git submodule update` command), and a sparse checkout is left as it is. A
+version given as a commit is followed only when `origin` holds it. An `origin` a person set is
+left as set; the manifest's new url replaces `origin` only when the clone still has the url
+`sync` recorded and no local branch, and no work tree's `HEAD`, has commits it lacks. A branch
+that is also checked out in another work tree is not moved, and a linked work tree on another
+branch is unaffected. Where `sync`, `init`, `resolve` and `validate` put a url into a message, a
+`scheme://` url's user name and password are masked as `***`, and a value of the wrong type is
+described, not shown; the lines `sync` prints for a repo's outcome, and the error of a manifest
+that cannot be read or is refused, are masked again as they are printed. Other lines are printed
+as given: for example, the "unknown role" error of an earlier-format manifest, which echoes the
+role typed on the command line (in the current format that error passes the filter). That is a
+guard against accidents, not a guarantee: a user name and password belong in a credential helper
+or an ssh key, not in a manifest url ([docs/design.md](docs/design.md#sync) says what is masked
+and what is not). A repo the manifest moves to another layer is not moved: `sync` prints the
+`mv` command. A clone with commits not on `origin` is not rebased yet: when `origin`'s branch
+has commits the clone lacks, `sync` prints the `git pull --rebase` command for a person to run,
+and when it has none, the `git push` command that publishes the clone's commits (`sync` never
+pushes). Both need `git` 2.23 or later, and `vcs` from vcs2l or vcstool, on `PATH`.
 [docs/design.md](docs/design.md#sync) gives the rules and
 [docs/design.md](docs/design.md#what-is-built) says how far they go.
 
