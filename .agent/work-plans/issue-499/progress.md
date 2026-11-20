@@ -365,3 +365,25 @@ All six round-1 findings are fixed, checked by hand on scratch manifests: a chai
 **Decision**: address
 
 Read the Local Review (Pre-Push) at c6fb2f5f (round 2, approved, no must-fix, five suggestions, each reproduced by the reviewer). All five are addressed before publishing: a manifest that repeats a repo's url unchanged must not move its source (keep the source when the value is equal, and test it); a character above U+FFFF is written so it cannot be read as another path, and the design's sentence corrected; an unsafe character and a raw byte of the same value print differently; inside a system directory `show` opens the recorded manifest path as `sync` does and prints the canonical one, using `system.is_url`; and the no-system refusal prints the current directory escaped. No full pass was run: the publish checkpoint was answered `address`, so the full pass runs when publish is raised again.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 12:46 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-499 at `b911e926`
+**Addressed**: Local Review (Pre-Push) at `c21b92cb` (2026-11-20 12:31 -05:00)
+**Commits**: 96e003c4, a5b121f2, 001ae690, 47c346ec, b911e926
+
+### Actions
+- [x] (suggestion) A later manifest that repeats a repo's url unchanged keeps the source: the merge skips a `url` equal to the one in effect. The design's "show" section says a manifest that repeats the url unchanged does not change the manifest named. Tests: a url repeated twice (once with a new version) keeps the first manifest; a url changed to a fork and back names the manifest that changed it back — `tools/repos-manifest/src/repos_manifest/combine.py`, `tools/repos-manifest/docs/design.md`, `tools/repos-manifest/tests/test_base_merge.py` (96e003c4)
+- [x] (suggestion) `shown_path` writes a character above U+FFFF as `\UXXXXXXXX`; the design and docstring say `\uXXXX` up to U+FFFF and `\UXXXXXXXX` above. Tests: U+E0001 then `1`, and U+E000 then `11` — `tools/repos-manifest/src/repos_manifest/show.py`, `tools/repos-manifest/docs/design.md`, `tools/repos-manifest/tests/test_show.py` (a5b121f2)
+- [x] (suggestion) Scheme chosen: `\xXX` is a character only below 0x80 and a non-UTF-8 byte otherwise (bytes are always 0x80 or above); a character from U+0080 up is `\uXXXX`. So byte 0x85 prints `\x85` and U+0085 prints `\u0085`. The design says so with that example; tests on both — `tools/repos-manifest/src/repos_manifest/show.py`, `tools/repos-manifest/docs/design.md`, `tools/repos-manifest/tests/test_show.py` (001ae690)
+- [x] (suggestion) Inside a system directory `show` opens the recorded manifest path as `sync` does (`read_manifest(config.manifest, system, ...)`), naming it by its canonical path when that path opens and by the recorded one when it does not, so a refusal reads as sync's; `system.is_url` replaces the bare `"://"` test. `read_manifest` gained an optional `shown` label (default unchanged). The design says the recorded path is opened as `sync` opens it. Tests: a recorded `sub/../m.yaml` reads and prints canonical; a recorded `missing/../m.yaml` is refused by both `show` and `sync`, each naming it as recorded (this test fails on the code before the fix) — `tools/repos-manifest/src/repos_manifest/cli.py`, `tools/repos-manifest/src/repos_manifest/system.py`, `tools/repos-manifest/tests/test_show_system.py`, `tools/repos-manifest/docs/design.md` (47c346ec)
+- [x] (suggestion) The no-system refusal prints the current directory through `shown_path`; the design says the refusal names it on one line. Test: a directory named `a\nERROR: fake` gives one stderr line with `\x0a`. The tool's general `ERROR:` printer and `init`'s path refusals are left as they are: messages reaching that printer carry text built from git's output and other parts whose line breaks were not audited, and escaping there without doubling backslashes would not be unambiguous, so it is not one small shared change that leaves every message without a control character unchanged. A follow-up issue can be proposed for it — `tools/repos-manifest/src/repos_manifest/cli.py`, `tools/repos-manifest/tests/test_show_system.py`, `tools/repos-manifest/docs/design.md` (b911e926)
+
+### Checks
+- Targeted: `tests/test_base_merge.py tests/test_show.py` 55 passed; `tests/test_show_system.py tests/test_sync.py tests/test_init.py tests/test_cli.py` 92 passed; `tests/test_show.py tests/test_show_system.py tests/test_init_refusals.py tests/test_init.py` 78 passed.
+- Whole tool suite (`PYTHONPATH=src .venv/bin/python -m pytest tests`, at b911e926): 1821 passed in 550.69s (0:09:10).
+- Every commit with `SKIP=validate-script-tests` (issue #465 rule); every other hook ran, flake8 and black included. No `.agent/scripts/` file changed, so no script suite applies. The full pre-commit pass is left to the host. Nothing under ~/project11 was read, written or run.
+- `cli.py` edits are limited to `_show_in_system` and the `show` import; `system.read_manifest` gained an optional argument whose default keeps every other caller as it was.
