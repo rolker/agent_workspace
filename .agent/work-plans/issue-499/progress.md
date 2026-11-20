@@ -126,3 +126,13 @@ The plan answers every issue-review action and its claims about the code hold. I
 - [ ] Place doc paragraphs to reduce conflict with #502 and expect the shared list-line conflicts
 - [ ] Drop stale `build` from `docs/manifest/design.md` line 234, or note it
 - [ ] State that `source` fields go last with defaults, and keep `render` free of the system lookup
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 11:31 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review's verdict is needs-work and each of its nine findings is a mechanism fix to the plan)
+**After**: plan
+**Decision**: revise
+
+Read the Plan Review at f15db74e (verdict needs-work, no question for the owner). All nine findings go back to plan-task. Host decision on finding 3, listed for the owner's veto: `init` keeps printing each layer's `src/` directory. It prints what `show` prints, then the directories it will create, so nothing a person sees today is lost; the manifest, base and role lines are printed once, not once per distro; the design paragraph on `init`'s summary is rewritten whole. Undoing it is a change to `init`'s printed text and its tests.
