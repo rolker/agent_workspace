@@ -244,3 +244,73 @@ The eight findings of the review go back to plan-task with this.
 **Plan**: `.agent/work-plans/issue-502/plan.md` at `bed304e4`
 
 Third version, after the second plan review (needs-work, eight findings, all checked against the code and held) and the owner's answer "Only unusable repos (Recommended)". The old unknown state is split into unusable (exit 1) and left-alone (exit 0); a stopped move is a fact beside the state; the validate row and line 313 of docs/manifest/design.md are reworded in the same change.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-20 11:47 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #502 — repos-manifest: `status` shows what differs from the manifest
+**Plan**: `.agent/work-plans/issue-502/plan.md` at `bed304e4`
+**Branch**: `feature/issue-502`
+
+Third review, of the revision after the second review's eight findings and the owner's exit rule ("Only unusable repos (Recommended)"). Checked against `tools/repos-manifest/src/repos_manifest/update.py` (`update_repo` 871-1095, `find_version` 539-626, `commit_on_origin`), `sync.py` (`clone_repo` 241-255, `layer_moved` 376-401, `present_repo` 404-461, `closing` 680), `system.py` (`place_problem` 308-324), `tests/test_update_safety.py` (`GIT_CALLS`), the tool's design (sync rules 1 to 8, `### status`), `docs/manifest/design.md` (lines 185, 211, 234, 300, 313-316, 335-338, 381) and `merge_pr.sh`'s fast-forward of the owning checkout (`pull --ff-only origin <base>`, which updates `origin/<base>`, so the adapter's case reads expected). The owner's two answers are not re-argued. Nothing in `~/project11` was read or run.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One PR, six commits: design, characterisation tests, extraction, command, tests, docs. |
+| Issue alignment | Good | Serves: "Easy to use, and Trust, control and information (README "Workspace goals"); `tools/repos-manifest/docs/design.md#status`, within `docs/manifest/design.md` ("What the tool has to give")." Unchanged from the second review, goals and anchor exist. The owner's exit rule is decision 6 in his words. |
+| File targeting | Good | All root-design lines that become false are listed (185, 211, 234, 300, 313, 335). |
+| Consequences | Good | The second review's two `standing` sub-cases and the stopped move now match `sync`; one wrong premise in decision 16 (finding 1) changes no code. |
+| Principle alignment | Good | "Verify before claiming": a few sentences of the design text still overstate (findings 2-5), each a wording fix. "Ask about what matters": decision 16 is listed for veto, but on a false comparison with `sync` (finding 1). |
+| ADR compliance | Good | ADR-0017, ADR-0022, ADR-0013 as before. |
+| ROS conventions | N/A | Workspace tool. |
+
+### Second review's findings, as the revision answers them
+
+1. Answered: not an ancestor of `origin`'s branch with `unpushed == 0` is `different` in `sync`'s words, which matches line 1044 for `HEAD` ahead too; fixture added.
+2. Answered in the table and the detail ("tries", with the conditions); agreement cases added. `standing`'s signature has no `changes` argument, which the rule 11 detail needs (finding 6).
+3. Answered: decision 15, `stopped_move(record, head)` extracted. See finding 7 for a doubled text.
+4. Partly: the test list now matches the table, and `place_problem_kind` is added, but the table row for `blocked-place` still says "a link on the way leads outside the system directory" (finding 2).
+5. Answered: the plain closing paragraph, rewritten for the owner's rule; it omits two `unusable` causes (finding 3).
+6. Answered: counted on a branch only, null when detached, as line 1018.
+7. Answered: line 313 reworded.
+8. Answered: allowlist of `update` functions in the scan.
+
+### The `unknown` split
+
+Every cause the owner named is on his side: `unusable` = not a git repo of its own, no commit checked out, version not found; `left-alone` = rebase, merge, bisect (and cherry-pick, revert, per `IN_PROGRESS`), `index.lock`, sparse, link at the place; not at its place (`missing`, `not-a-directory`, `blocked-place`, `in-other-layer`) exits 1. The unnamed causes: `git status` failing and the count failing as `unusable` is defensible (the clone's state cannot be read, the same test as "cannot be found"). "Not exactly one `origin`" as `left-alone` is defensible for two urls (a deliberate setup `sync` leaves); for no `origin` url at all it is closer to the owner's "its version cannot be found", since `ask_local` then has no `refs/remotes/origin/*` to look in (finding 8, owner's veto).
+
+### Optional repos
+
+The plan's premise is wrong, so there is no difference to defend. `sync` never fails the exit status for an optional repo: `present_repo` turns any `FAILED` from `update_repo` into `SKIPPED` for an optional repo (sync.py 459-460), including a version that cannot be found and a failed fetch; `clone_repo` (253) and `layer_moved` (400) and the place checks (417) do the same, and `closing` counts only `FAILED`. So `status`'s "an optional repo never fails the exit status" is the same rule as `sync`'s, and the design sentence "A repo that is optional is listed in any state and does not fail the exit status" is true. Decision 16's last bullet and its open question should be corrected (finding 1).
+
+### Findings
+
+1. **[Decisions] low** — Decision 16's last bullet says `sync` "fails an optional repo whose version cannot be found"; it does not (sync.py 459-460: `FAILED` becomes `SKIPPED` for any optional repo). Reword: `status` follows `sync`, which skips an optional repo whatever stops it; drop it from the owner's veto list as a difference. The agreement test's pairing must accept `skipped` from `sync` for every optional fixture (`unusable`, `not-a-directory`, `blocked-place`, `in-other-layer` with `optional: true`), or it will fail on correct code.
+2. **[Design text] low** — The `blocked-place` row still says "a link on the way leads outside the system directory". `place_problem` (system.py 316) fails for any link on the way whose real path is not the expected one, inside the system directory too. Write "a link on the way to the place (a layer directory or a directory of the repo's key) leads somewhere else", as rule 2 does.
+3. **[Design text] low** — The `unusable` row says the version cause is "not among the refs `origin` had when last fetched"; with `ask_local`, `find_version` also gives nothing for a version that is both a branch and a tag, a tag of a tree or blob, a commit missing from a shallow clone, and no version with no `refs/remotes/origin/HEAD` (lines 547-616). Say "the manifest's version cannot be found among the refs `origin` had when last fetched, or names no single commit there; the text says why". The closing paragraph ("A repo that fails the exit status is ...") and the `validate` row's parenthetical also omit `git status` or the count failing; add "or whose state git cannot read", or mark the list as examples.
+4. **[Design text] low** — "`missing`, `not-a-directory`, `blocked-place` and `in-other-layer` ... `sync` reports each as an error for a repo that is not optional" is not true of `missing`: `sync` clones it, and reports an error only when the clone fails. Likewise `skipped`, "listed every time, as `sync` lists it": `sync` clones a missing optional repo when it can and lists it as skipped only when it cannot. Say so.
+5. **[Root design] low** — The reworded `validate` row names only repo states. `status` also exits 1 when a distro's manifest cannot be read or resolved, or the system directory cannot be found; the current row's "or cannot say" covered that. Write the row as "Fail when `repos-manifest status` exits 1: a repo the manifest calls for is missing, not at its place or unusable, or a distro cannot be resolved; work in progress and lasting setups are reported and do not fail it", so #503 builds on the exit status, not on a list of states. The same applies to the design text's "This is the rule the workspace's `validate` follows" sentence.
+6. **[Approach] low** — `standing(git, repo, record, found, head, branch, unpushed)` has no `changes`, but its rule 11 detail ("tries to move it only when the repo has no changes and no commits only here") needs it. Add the argument, or have `status.py` add that clause.
+7. **[Approach] low** — For an in-progress operation or `index.lock`, `blocked_late`'s text already carries the stopped-move suffix, and step 3 adds the `stopped_move` text to the detail again for any state. Add it once (take `blocked_late`'s text as is and only set the fact there).
+8. **[Exit status] low, owner's veto** — "Not exactly one `origin`" is `left-alone` (decision 16). For two urls that fits; for no `origin` url at all, the version cannot be looked up offline or by `sync`, which is the owner's "its version cannot be found". Either split it (no url: `unusable`; several: `left-alone`) or keep it and say in decision 16 that a repo with no `origin` passes `validate`.
+9. **[Design text] low** — "the distros the system directory was set up for (`config.yaml`'s `distros`, whichever are acted on)" reads as both "all" and "the acted-on ones"; the JSON has both (`recorded_distros`, `distros`). Say the human form prints the recorded list and marks which are acted on, or whatever the implementation does. The JSON note also leaves `unpushed` for `left-alone` and `unusable` unsaid; say null, as for `changes` and `behind`.
+
+The rest of the proposed `### status` text is true on the points checked: no network and no write with `ask_local` and `--no-optional-locks`; the three listed differences with `sync`; which distros; the `expected`, `different`, `left-alone` and `not-in-manifest` rows against `update_repo`, `present_repo` and `left_the_manifest`; the merge_pr.sh case; `unpushed` on a branch only; the stopped move as a fact; the exit rule against the owner's words. It is in plain sentences with no bold lead-ins.
+
+### Summary
+
+The plan answers the second review and puts every cause the owner named on the side his words give it; the unnamed causes are placed defensibly, with one (no `origin` at all) left for his veto. The optional-repo "difference" from `sync` does not exist: both skip an optional repo whatever stops it, and the design sentence is true. What remains is wording in the design text and two small implementation notes, all fixable from this entry during implementation.
+
+### Recommended Actions
+
+- [ ] Decision 16: correct the `sync` comparison for optional repos; agreement test accepts `skipped` for optional fixtures.
+- [ ] Design text: `blocked-place` row; `unusable` row's version causes; closing paragraph and `validate` row include "state git cannot read"; `missing`/`skipped` rows say `sync` clones when it can.
+- [ ] `validate` row and the "rule `validate` follows" sentence: fail when `status` exits 1, including an unresolvable distro.
+- [ ] `standing` takes `changes` (or `status.py` adds the clause); the stopped-move text appears once.
+- [ ] Owner (veto): a repo with no `origin` url at all — `left-alone` (exit 0) as planned, or `unusable` (exit 1)?
+- [ ] Design text: the recorded/acted-on distros sentence; `unpushed` null for `left-alone` and `unusable`.
