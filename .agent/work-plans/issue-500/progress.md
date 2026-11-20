@@ -2365,3 +2365,15 @@ GitHub side: 0 reviews, 0 inline comments, 0 conversation comments (Copilot left
 - [ ] (suggestion, Local Review (Pre-Push) @ `00f2ea1c`) "they show only the repo's path, its key" equates the shown path with the key; the path is the distro and layer directories, `src`, then the key (`sync.py:269-272`). The conclusion (no `scheme://` can appear) still holds, since those names are single words; reword to "its path, made of single-word names and its key" — `tools/repos-manifest/docs/design.md:1005-1006`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 09:12 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+"Fix it first"
+
+Asked with the one open finding of the Integrated Review at 948659e6 in the dialog: the design's sentence that sync's two unfiltered lines "show only the repo's path, its key", where the printed path is the distro and layer directories, then src, then the key. The other choices offered were to merge with it deferred, or hold. An earlier dialog in this session asked him to merge before the triage had run; his "Merge" there was not acted on.
