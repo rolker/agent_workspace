@@ -174,48 +174,51 @@ Key takeaways:
 
 ## Model Context Protocol (MCP) — Industry Standard
 
-**Added**: 2026-02-27 | **Last verified**: 2026-10-15 | **Sources**: [MCP spec](https://spec.modelcontextprotocol.io/), [Agentic AI Foundation](https://www.linuxfoundation.org/press/linux-foundation-launches-the-agentic-ai-foundation)
+**Added**: 2026-02-27 | **Last verified**: 2026-11-20 | **Sources**: [MCP spec](https://modelcontextprotocol.io/specification/latest), [2026-07-28 changelog](https://modelcontextprotocol.io/specification/2026-07-28/changelog), [A More Predictable Release Cycle for MCP (2026-11-11)](https://blog.modelcontextprotocol.io/posts/mcp-release-cycle/), [Agentic AI Foundation](https://www.linuxfoundation.org/press/linux-foundation-announces-the-formation-of-the-agentic-ai-foundation)
 
 Key takeaways:
 - Donated to the Linux Foundation's Agentic AI Foundation (Dec 2025) — now the cross-vendor standard adopted by OpenAI, Google, Anthropic, and others
-- **Current spec revision is 2026-07-28** (previous 2025-11-25; [changelog](https://modelcontextprotocol.io/specification/2026-07-28/changelog)). Major changes: protocol sessions and `Mcp-Session-Id` removed; no `initialize` handshake (each request carries version and capabilities in `_meta`); new required `server/discover`; Tasks moved to an official extension; required `resultType` on results. Deprecated: Roots, Sampling, Logging, the HTTP+SSE transport, and Dynamic Client Registration (in favor of Client ID Metadata Documents), under a new 12-month minimum deprecation policy. Extensions listed: Tasks, Skills over MCP, MCP Apps. Servers written to the 2025 spec need a compatibility review
+- **Current spec revision is still 2026-07-28** (previous 2025-11-25; no newer revision as of 2026-11-20). Major changes: protocol sessions and `Mcp-Session-Id` removed; no `initialize` handshake (each request carries version and capabilities in `_meta`); new required `server/discover`; Tasks moved to an official extension; required `resultType` on results. Deprecated: Roots, Sampling, Logging, the HTTP+SSE transport, and Dynamic Client Registration (in favor of Client ID Metadata Documents), under a 12-month minimum deprecation policy. Extensions listed: Tasks, Skills over MCP, MCP Apps. Servers written to the 2025 spec need a compatibility review
+- **Release cycle is now fixed** (blog post 2026-11-11): a revision every six months, generally the last Tuesday of March and September. Next is `2027-03-30`, with a soft freeze about 2.5 months before, Tier 1 SDK betas about 1.5 months before and a hard freeze about one month before. The post gives no removal dates for the deprecated features
+- Since October (MCP blog index): the Ruby SDK reached Tier 1 with full 2026-07-28 support (2026-10-30); a file upload/download extension is in early testing (2026-11-10)
 - Thousands of community servers; universal protocol for connecting agents to tools and data
-- **ROS 2-specific MCP servers** emerging: ROSBag MCP Server (natural language queries over bag files, [arXiv:2511.03497](https://arxiv.org/abs/2511.03497), verified; no code repo found), plus [robotmcp/ros-mcp-server](https://github.com/robotmcp/ros-mcp-server) (~1.5k stars, active) and [wise-vision/ros2_mcp](https://github.com/wise-vision/ros2_mcp)
-- Beyond tool connection, MCP adds a **validation layer** — can enforce contracts that soft instruction rules cannot
+- **ROS 2-specific MCP servers**: [robotmcp/ros-mcp-server](https://github.com/robotmcp/ros-mcp-server) (~1.5k stars, v3.1.2 on 2026-09-23, pushed 2026-11-19) and [wise-vision/ros2_mcp](https://github.com/wise-vision/ros2_mcp) (~100 stars, release 2610 on 2026-09-29, pushed 2026-10-21); ROSBag MCP Server (natural language queries over bag files, [arXiv:2511.03497](https://arxiv.org/abs/2511.03497)) was not re-checked on 2026-11-20
+- Beyond tool connection, MCP adds a **validation layer**, but enforcement is partly client-side (see the Multi-Agent Engineering Patterns entry), so treat it as best-effort
 
-**Relevance**: Strategic for this workspace. `just-mcp` could expose workspace commands to any agent. ROS 2 MCP servers could enable runtime system inspection during development. MCP enforcement is the cross-agent equivalent of Claude Code hooks.
+**Relevance**: Strategic for this workspace. `just-mcp` could expose workspace commands to any agent. ROS 2 MCP servers could enable runtime system inspection during development. MCP enforcement is the cross-agent equivalent of Claude Code hooks. With a March/September cadence, re-check this entry after each release date rather than monthly.
 
 ---
 
 ## ROS 2 Agent Frameworks
 
-**Added**: 2026-02-27 | **Last verified**: 2026-10-15 (reference only — no ROS project currently managed) | **Sources**: [ROSA (NASA JPL)](https://github.com/nasa-jpl/rosa), [RAI (RobotecAI)](https://github.com/RobotecAI/rai), [ROS-LLM (Auromix)](https://github.com/Auromix/ROS-LLM), [EmbodiedAgents (Automatika)](https://automatika-robotics.github.io/embodied-agents/)
+**Added**: 2026-02-27 | **Last verified**: 2026-11-20 (reference only — no ROS project currently managed) | **Sources**: [ROSA (NASA JPL)](https://github.com/nasa-jpl/rosa), [ROSA v1.0.11 release](https://github.com/nasa-jpl/rosa/releases/tag/v1.0.11), [RAI (RobotecAI)](https://github.com/RobotecAI/rai), [EmbodiedAgents (Automatika)](https://automatika-robotics.github.io/embodied-agents/)
 
 Key takeaways:
-- **ROSA** (NASA JPL): natural language interaction with ROS 1/2 systems — inspect nodes, query topics, diagnose issues; published at IROS 2024. v1.0.10 (2026-03-17), no pushes since: quiet for 7 months
-- **RAI** (RobotecAI): vendor-agnostic agentic framework for Physical AI; integrates with ROS 2 navigation, manipulation, perception. Most active: 2.12.4 (2026-09-08), pushed 2026-10-12
-- ~~ROS-LLM~~ (Auromix): pruned 2026-10-15; last push 2023-07, no releases, effectively abandoned
-- **EmbodiedAgents**: production-grade deployment of Physical AI on real robots via ROS 2. 0.5.1 (2026-02-16), pushed 2026-10-15
+- **ROSA** (NASA JPL, ~1.7k stars): natural language interaction with ROS 1/2 systems — inspect nodes, query topics, diagnose issues; published at IROS 2024. Active again: v1.0.11 (2026-11-18) is a security release fixing two High shell command injections (ROS 2 tool arguments, affecting 1.0.0-1.0.10; ROS 1 `roslaunch` arguments, affecting 1.0.5-1.0.10) and a Medium path traversal in `read_log` (1.0.0-1.0.10). It also moves the ROS 2 tools from the subprocess CLI to the native rclpy API, and `read_log` now reads only ROS log directories (extend with `ROSA_LOG_DIRS`). Do not run anything older than 1.0.11
+- **RAI** (RobotecAI, ~620 stars): vendor-agnostic agentic framework for Physical AI; integrates with ROS 2 navigation, manipulation, perception. 2.12.4 (2026-09-08) is still the latest release; pushed 2026-11-11
+- ROS-LLM (Auromix) was pruned 2026-10-15 as abandoned (last push 2023-07, unchanged on 2026-11-20)
+- **EmbodiedAgents** (~75 stars): deployment of Physical AI on real robots via ROS 2. 0.5.1 (2026-02-16), no release in 9 months; pushed 2026-10-21
 - These operate at **runtime** (inspect, diagnose, operate robots) vs. our workspace which operates at **development-time** (write code, manage PRs) — complementary, not competing
 - ROS 2 MCP servers (see the MCP entry) now offer a lighter route to runtime inspection than a dedicated framework
 - MCP bridges the gap: a development agent could invoke a ROSA MCP server to inspect a running system while debugging
 
-**Relevance**: ROSA is the most immediately relevant for diagnosing integration issues by querying a running simulation from within a coding session. Others are worth monitoring.
+**Relevance**: ROSA is the most immediately relevant for diagnosing integration issues by querying a running simulation from within a coding session. Its advisories are a reminder that an LLM-driven tool that shells out to ROS commands is an injection surface; prefer versions that call rclpy directly. Others are worth monitoring.
 
 ---
 
 ## Agentic Coding Market and Tool Landscape
 
-**Added**: 2026-02-27 | **Last verified**: 2026-10-15 | **Sources**: [GitHub blog](https://github.blog/ai-and-ml/generative-ai/multi-agent-workflows-often-fail-heres-how-to-engineer-ones-that-dont/), [Anthropic engineering](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents)
+**Added**: 2026-02-27 | **Last verified**: 2026-11-20 | **Sources**: [GitHub blog](https://github.blog/ai-and-ml/generative-ai/multi-agent-workflows-often-fail-heres-how-to-engineer-ones-that-dont/), [Anthropic engineering](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents), [GitHub Agentic Workflows generally available (2026-10-28)](https://github.blog/changelog/2026-10-28-github-agentic-workflows-generally-available), [DORA — Impact of Generative AI in Software Development](https://dora.dev/dora-report-gen-ai), [DORA — ROI of AI-assisted Software Development](https://dora.dev/ai/roi/report)
 
 Key takeaways:
 - Market-size, adoption and analyst-inquiry statistics (previously: $550M to $4B growth, 57% of companies running agents in production, Gartner's 1,445% multi-agent inquiry surge) could not be traced to a primary source on 2026-10-15 and are removed as unverified
-- Quality concern: 40% quality deficit projected — more code enters pipelines than reviewers can validate; Google DORA 2025 found (no 2026 DORA edition found as of 2026-10-15; the 2025 AI-assisted-development figures below are carried over, not re-verified) 90% AI adoption increase correlates with 9% higher bug rates, 91% more review time, 154% larger PRs
-- **Worktree isolation is converging as an industry standard** (convergence claim not independently re-verified in this refresh): ccswarm, agentree, git-worktree-runner, Cursor 2.0, OpenAI Codex all independently adopted it
-- **mini-swe-agent** ([SWE-agent/mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent), ~8.5k stars, active; scores on the [SWE-bench Bash Only leaderboard](https://www.swebench.com/bash-only.html); the earlier 65–74% figure was not re-verified) validates radical simplicity — a minimal harness with good context engineering outperforms complex frameworks
-- **GitHub Agentic Workflows** (technical preview announced 2026-02-13; no GA announcement found; `github/gh-aw` at v0.92.0, still pre-1.0): define CI automation in Markdown instead of YAML; AI agents figure out execution
+- Quality concern: more code enters pipelines than reviewers can validate. DORA's gen-AI report (page updated 2026-04-13) associates a 25% increase in AI adoption with a 1.5% drop in delivery throughput and a 7.2% drop in delivery stability; 39% of developers trust AI output "a little" or "not at all". The figures this entry carried earlier (40% quality deficit, 9% higher bug rates, 91% more review time, 154% larger PRs) were not found on a DORA page on 2026-11-20 and are unverified
+- No 2026 annual DORA report as of 2026-11-20 (the research archive on dora.dev ends at 2025). DORA published a separate "ROI of AI-assisted Software Development" report (page updated 2026-04-22): a framework and calculator for the return on AI adoption that covers the productivity dip after a rollout. Per InfoQ and search summaries (the report itself was not read), it argues that AI amplifies existing strengths and weaknesses, that adoption brings more delivery instability, and that buying licences alone does not produce a return
+- **Worktree isolation is converging as an industry standard** (not independently re-verified since 2026-04): ccswarm, agentree, git-worktree-runner, Cursor 2.0, OpenAI Codex all independently adopted it
+- **mini-swe-agent** ([SWE-agent/mini-swe-agent](https://github.com/SWE-agent/mini-swe-agent), ~9.9k stars, v2.4.6 on 2026-07-23, active) is the harness behind SWE-bench's Bash Only leaderboard; it supports the case that a minimal harness with good context engineering competes with complex frameworks. The leaderboard page (`swebench.com/bash-only.html`) returned HTTP 404 on 2026-11-20, so current scores are unverified
+- **GitHub Agentic Workflows is generally available** (2026-10-28; technical preview 2026-02-13): automation written in Markdown, compiled to GitHub Actions YAML, run by coding agents. Available on github.com for Free, Team and Enterprise; the default Copilot CLI engine needs a Copilot licence. Agents run read-only by default in a sandboxed container behind a firewall, outputs go through "safe outputs" and a threat-detection job scans proposed changes. GA adds self-hosted ARC runners with Docker-in-Docker, per-workflow provider choice, model routing by task type and difficulty, micro-VM isolation, and a non-experimental `gh aw forecast`. `github/gh-aw` latest stable is v1.2.2 (2026-11-10)
 
-**Relevance**: The convergence on worktree isolation validates our architecture. The quality deficit numbers reinforce the importance of the harness (lints, CI, structural enforcement) over raw agent throughput. GitHub Agentic Workflows are worth monitoring for issue triage and CI failure investigation automation.
+**Relevance**: The convergence on worktree isolation validates our architecture. The stability figures reinforce the importance of the harness (lints, CI, structural enforcement) over raw agent throughput. GitHub Agentic Workflows is now a supported product rather than a preview, so it is a real option for issue triage and CI failure investigation automation.
 
 ---
 
