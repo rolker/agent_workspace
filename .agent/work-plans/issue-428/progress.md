@@ -613,3 +613,27 @@ Suites run, each on its own with `bash` (last result line):
 - `test_checkpoint_269.sh` (names `triage-reviews/SKILL.md`): test_checkpoint_269: 43 passed, 0 failed
 
 The full pre-commit pass and the full run of every suite are left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-20 12:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-428 at `a8a95eb9`
+**Base**: origin/main
+**Depth**: Deep (reason: round 5 convergence check per handoff)
+**Must-fix**: 1 | **Suggestions**: 1
+**Round**: 5 | **Ship**: recommended — round 5: 1 mechanical must-fix (prev 1), not rising — fix and ship rather than another full round
+
+Scope: the round-4 must-fix and commit c458e132, with bd6937f4 and a8a95eb9 (records only). Cross-model: skipped (round-5 convergence check, per handoff).
+
+Round-4 must-fix (reference time later than the fetch): fixed. `**Fetched**` is the first act of triage-reviews step 3, before `fetch_pr_reviews.sh`, and the text says a run whose only source is the local timeline still notes it and writes the field. triage-reviews fetches the reviews itself; nothing hands it the host's earlier JSON, and any later read in the same run only makes the noted time more conservative. A review read in the `**Fetched**` minute is triaged once more, and the next triage notes a later minute, so a review with a real `submitted_at` reaches "read" and the rule ends. The no-`**Fetched**` case ends the same way: the re-triage writes a new entry that has the line.
+
+Readers of `## Integrated Review`, spot-checked: the claim holds. `progress_read.py` builds `fields` from every `**Key**: value` header line (no allowlist) and looks fields up by name; `dispatch_phase.sh` routes this type on its open boxes only; `_progress_entry.sh` names the type only; `merge_pr.sh` reads status, correlation and boxes; sitrep reads type and boxes.
+
+The one defect left is a case the rule never ends (below), present since 5509c1ac and kept by c458e132.
+
+### Findings
+- [ ] (must-fix) A review in state `PENDING` (a draft its author has started and not submitted) has no `submitted_at`. GitHub's list-reviews endpoint returns the authenticated user's own draft, and `fetch_pr_reviews.sh` keeps every review with no state filter (lines 101-111), so a draft by the account the loop runs as comes out with `submitted_at: null`. Step 9 counts that as "empty or cannot be read", sends it to triage-reviews, and on the next re-fetch it is still null, so it is never read and the merge checkpoint is never reached. Fix: skip a review whose `state` is `PENDING` (not submitted, nobody's review yet); an empty time on any other review still counts as not read. — `.claude/skills/run-issue/SKILL.md:1015-1018`
+- [ ] (suggestion) The margin between `**Fetched**` and the real fetch is only the part of the minute already gone, 0 to 59 s. A local clock running ahead of GitHub's, or a review GitHub stamps just before a minute boundary but lists a moment later, can fall before the `**Fetched**` minute without having been read. Comparing against one minute before `**Fetched**` closes both at the cost of an occasional second triage, which the rule already accepts. — `.claude/skills/run-issue/SKILL.md:1015-1016`
