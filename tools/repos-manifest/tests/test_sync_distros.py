@@ -4,6 +4,7 @@ is said to be behind; a stop or a kill while a repo is updated leaves it in a st
 sync puts right or reports."""
 
 import os
+import shlex
 import shutil
 import signal
 import subprocess
@@ -149,6 +150,27 @@ def test_a_sync_whose_process_ended_while_its_git_runs_names_fuser(two, capsys):
         " with the pid `fuser` names); then run this again"
     ) in out, out
     assert "still running" not in out
+
+
+@pytest.mark.parametrize("written", ["sync {dead}", "build {dead}"])
+def test_the_fuser_command_of_a_lock_refusal_quotes_the_path_for_the_shell(tmp_path, written):
+    """Pull request 535's second review, must-fix 3: a system whose path holds a space and a
+    quote. The `fuser -v` command the refusal prints, split as a shell splits it, names the
+    lock file itself."""
+    system = tmp_path / "Robot's sys"
+    (system / ".repos-manifest").mkdir(parents=True)
+    fd = hold_build_lock(system, "jazzy", holder="sync")
+    try:
+        os.pwrite(fd, (written.format(dead=dead_pid()) + "\n").encode(), 0)
+        with pytest.raises(Refusal) as refused:
+            hold_build_lock(system, "jazzy")
+    finally:
+        os.close(fd)
+    lock = build_lock_file(system, "jazzy")
+    message = str(refused.value)
+    command = message.split("`fuser -v ", 1)[1].split("`", 1)[0]
+    assert shlex.split(command) == [str(lock)], message
+    assert f"`fuser -v {lock}`" not in message
 
 
 def test_init_takes_the_lock_for_its_first_sync(vcs, tmp_path, monkeypatch):
@@ -447,9 +469,9 @@ def test_a_switch_that_leaves_a_half_change_says_what_it_left(two, tmp_path, cap
     assert (
         "ERROR: jazzy/core/src/a: the move left the repo half-changed. What ran, in order: 1."
         f" `git switch` (exit 128): HEAD stayed main at {was[:12]}. HEAD is now main at"
-        f" {was[:12]}; staged: A BRANCH. These changes were made during the move, by git, a hook"
-        " it ran, or something else (the"
-        " repo had no tracked changes before); sync does not put them back"
+        f" {was[:12]}; staged: A BRANCH. sync's last check, just before the move, found no"
+        " tracked changes, so these were made since: by git, a hook it ran, or a person; sync"
+        " does not put them back"
     ) in done.stdout, done.stdout
     # The branch the switch made has no upstream, and the report says so with the commands.
     assert (
@@ -487,8 +509,9 @@ def test_a_switch_back_that_a_hook_changes_is_reported_in_order(two, tmp_path, c
         "the move left the repo half-changed. What ran, in order: 1. `git switch` (exit 0): HEAD"
         f" from main at {was[:12]} to dev at {local[:12]}; 2. `git merge` (exit 1): HEAD stayed"
         f" dev at {local[:12]}; 3. `git switch` (exit 0): HEAD from dev at {local[:12]} to main"
-        f" at {was[:12]}. HEAD is now main at {was[:12]}; changed, not staged: M README. These"
-        " changes were made during the move, by git, a hook it ran,"
+        f" at {was[:12]}. HEAD is now main at {was[:12]}; changed, not staged: M README. sync's"
+        " last check, just before the move, found no tracked changes, so these were made since:"
+        " by git, a hook it ran,"
     ) in done.stdout, done.stdout
     assert "nothing after the steps above was run here" in done.stdout
     assert branch(clone) == "main" and git("rev-parse", "dev", cwd=clone) == local

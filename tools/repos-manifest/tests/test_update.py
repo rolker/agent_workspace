@@ -4,8 +4,10 @@ one; anything a person did (changes, commits, another branch, an operation in pr
 `origin` of their own) is left as it is and reported, and the repo compares equal, whole, before
 and after (`snapshot_repo`)."""
 
+import hashlib
 import os
 import subprocess
+from pathlib import Path
 
 import pytest
 import yaml
@@ -536,7 +538,11 @@ def test_a_branch_checked_out_in_a_linked_work_tree_is_not_switched_to(system, t
     git("worktree", "add", "-q", str(tmp_path / "wt-dev"), "-b", "dev", "origin/dev", cwd=clone)
     _pin(manifest, "dev")
     _left_alone(
-        sys_dir, clone, capsys, f"branch dev is checked out in {tmp_path / 'wt-dev'}; not switched"
+        sys_dir,
+        clone,
+        capsys,
+        f"branch dev is held by the work tree {tmp_path / 'wt-dev'} (it is checked out there);"
+        " not switched",
     )
 
 
@@ -1165,8 +1171,8 @@ def test_a_hook_that_edits_a_tracked_file_stops_a_two_step_move_after_its_switch
     assert (
         "the move left the repo half-changed. What ran, in order: 1. `git switch` (exit 0): HEAD"
         f" from main at {was[:12]} to dev at {local[:12]}. HEAD is now dev at {local[:12]};"
-        " changed, not staged: M README. These changes were made during the move, by git, a hook"
-        " it ran,"
+        " changed, not staged: M README. sync's last check, just before the move, found no"
+        " tracked changes, so these were made since: by git, a hook it ran,"
     ) in out, out
     assert head(clone) == local  # not fast-forwarded on a tree a hook changed
     assert "moving" not in state_of(sys_dir)["a"]
@@ -1190,8 +1196,8 @@ def test_a_post_merge_hook_that_edits_a_file_is_reported_with_the_fast_forward(s
         "the move left the repo half-changed. What ran, in order: 1. `git switch` (exit 0): HEAD"
         f" from main at {was[:12]} to dev at {local[:12]}; 2. `git merge --ff-only` (exit 0)"
         f" fast-forwarded dev from {local[:12]} to {new[:12]}. HEAD is now dev at {new[:12]};"
-        " changed, not staged: M README. These changes were made during the move, by git, a hook"
-        " it ran,"
+        " changed, not staged: M README. sync's last check, just before the move, found no"
+        " tracked changes, so these were made since: by git, a hook it ran,"
     ) in out, out
     assert branch(clone) == "dev" and head(clone) == new
     assert git("diff", "--name-only", "main", "--", "README", cwd=clone) == "README"
@@ -1331,7 +1337,8 @@ def test_a_branch_also_checked_out_in_another_work_tree_is_not_fast_forwarded(
     out = _sync(sys_dir, capsys)
     assert (snapshot_repo(clone, fetched=True), snapshot_repo(other, fetched=True)) == before
     assert (
-        f"src/a: left alone: branch main is also checked out in {other}; not fast-forwarded" in out
+        f"src/a: left alone: branch main is held by the work tree {other} (it is checked out"
+        " there); not fast-forwarded" in out
     )
     assert git("status", "--porcelain", cwd=other) == ""
     assert state_of(sys_dir)["a"] == recorded
@@ -1367,7 +1374,10 @@ def test_a_local_branch_held_by_another_work_tree_is_not_switched_to(system, tmp
     before = snapshot_repo(clone, fetched=True), snapshot_repo(other, fetched=True)
     out = _sync(sys_dir, capsys)
     assert (snapshot_repo(clone, fetched=True), snapshot_repo(other, fetched=True)) == before
-    assert f"branch dev is checked out in {other}; not switched" in out
+    assert (
+        f"branch dev is held by the work tree {other} (it is checked out there); not switched"
+        in out
+    )
 
 
 @pytest.mark.parametrize("written", ["heads/main", "main"])
@@ -1403,7 +1413,7 @@ def test_a_tags_version_is_the_tag_and_never_a_branch_of_its_name(vcs, tmp_path,
     assert head(clone) == git("rev-parse", "refs/tags/v1^{commit}", cwd=remote)
     assert _sync(sys_dir, capsys) == "distro (no distro):\n  up to date (1)\n"
     _pin(manifest, "heads/v1")
-    assert "to v1" in _sync(sys_dir, capsys)
+    assert "src/a: moved from tag v1 to branch v1" in _sync(sys_dir, capsys)
     assert git("symbolic-ref", "HEAD", cwd=clone) == "refs/heads/v1"
 
 
@@ -1475,12 +1485,35 @@ def test_a_stale_remote_tracking_ref_in_the_way_is_named_with_its_command(system
     assert (
         "ERROR: src/a: the fetch cannot write origin's branches: refs/remotes/origin/release"
         " here, left from a branch origin no longer has, is in the way of origin's branch"
-        " release/next. sync removes no remote-tracking ref, and another sync will not change"
-        f" this; to clear it: git -C {clone} update-ref -d refs/remotes/origin/release, then"
-        " sync again"
+        " release/next. sync removes no remote-tracking ref of origin, and another sync will"
+        " not change this. Removing it may remove the only ref here to commits origin has since"
+        " deleted; to keep them, make a local branch at it first (git -C"
+        f" {clone} branch <a new name> refs/remotes/origin/release). To clear it: git -C"
+        f" {clone} update-ref -d refs/remotes/origin/release, then sync again"
     ) in out, out
     assert "once they can be fetched" not in out
     assert "another sync will not change that" in out
+
+
+def test_the_stale_ref_commands_keep_commits_origin_deleted_when_run_in_order(system, capsys):
+    """Pull request 535's second review: origin deleted `release`, whose last commit only the
+    clone's `origin/release` still holds. The two printed commands, run as printed (a name in
+    place of `<a new name>`), keep that commit on a local branch and clear the way; the next
+    sync then fetches."""
+    sys_dir, _, remote, clone = system
+    git("checkout", "-q", "-b", "release", "main", cwd=remote)
+    only = commit_file(remote, "only", "only on release\n", "only on release")
+    git("checkout", "-q", "main", cwd=remote)
+    git("fetch", "-q", "origin", cwd=clone)
+    git("branch", "-D", "release", cwd=remote)
+    git("branch", "release/next", "main", cwd=remote)
+    out = _sync(sys_dir, capsys, 1)
+    keep = out.split("make a local branch at it first (", 1)[1].split(")", 1)[0]
+    clear = out.split("To clear it: ", 1)[1].split(", then sync again", 1)[0]
+    for command in (keep.replace("<a new name>", "kept"), clear):
+        subprocess.run(command, shell=True, check=True)
+    assert git("rev-parse", "kept", cwd=clone) == only
+    assert "src/a: " not in _sync(sys_dir, capsys)
 
 
 @pytest.mark.parametrize("what", ["tree", "blob"])
@@ -1563,6 +1596,37 @@ def test_head_moved_during_the_checks_leaves_the_repo_alone(system, capsys, monk
     assert "moving" not in state_of(sys_dir)["a"]
 
 
+@pytest.mark.parametrize("move", ["fast-forward", "switch"])
+def test_a_tracked_edit_during_the_checks_leaves_the_repo_alone(system, capsys, monkeypatch, move):
+    """Pull request 535's second review: a tracked file a person edits while the checks run
+    is theirs. The tracked files are read again right before the first call; the repo is
+    left alone, whole, and the report does not call the edit a half-change of the move."""
+    sys_dir, manifest, remote, clone = system
+    push_commit(remote, "one", "1\n")
+    if move == "switch":
+        _pin(manifest, "v1")
+    real = update.in_the_way
+    edited = {}
+
+    def meanwhile(git_, head_, targets):
+        found = real(git_, head_, targets)
+        (clone / "README").write_text("a person's edit\n")
+        edited["state"] = snapshot_repo(clone, fetched=True)
+        return found
+
+    monkeypatch.setattr(update, "in_the_way", meanwhile)
+    git("fetch", "-q", "--tags", "origin", cwd=clone)
+    recorded = state_of(sys_dir)["a"]
+    out = _sync(sys_dir, capsys)
+    assert snapshot_repo(clone, fetched=True) == edited["state"]
+    assert (
+        "src/a: left alone: a tracked file was changed while sync was checking the repo; not"
+        " moved (sync again once it is committed or put back)"
+    ) in out, out
+    assert "half-changed" not in out
+    assert state_of(sys_dir)["a"] == recorded
+
+
 def test_a_clone_already_on_the_new_version_says_its_record_was_updated(system, capsys):
     """The owner's case: the pin changed, and the clone was switched there by hand already;
     one line names the repo, and the record follows."""
@@ -1583,3 +1647,349 @@ def test_a_clone_a_person_fast_forwarded_says_its_record_was_updated(system, cap
     out = _sync(sys_dir, capsys)
     assert f"src/a: already on main at {new[:12]}; record updated\n" in out, out
     assert state_of(sys_dir)["a"]["commit"] == new
+
+
+# --- Pull request 535's second review ------------------------------------------------------
+
+
+def _git_dir_files(work_tree):
+    """Every file of a linked work tree's own git directory (`.git/worktrees/<id>`): its HEAD,
+    index and the state of an operation in progress there, by content."""
+    git_dir = Path(git("rev-parse", "--absolute-git-dir", cwd=work_tree))
+    return {
+        str(path.relative_to(git_dir)): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(git_dir.rglob("*"))
+        if path.is_file()
+    }
+
+
+def _whole(*trees):
+    """Every work tree, whole, and each linked one's git directory: to compare before and
+    after. Remote-tracking refs and tags are left out, as the fetch may change them."""
+    found = [snapshot_repo(tree, fetched=True) for tree in trees]
+    found += [_git_dir_files(tree) for tree in trees[1:]]
+    return found
+
+
+def _sequence_editor(*lines):
+    """A GIT_SEQUENCE_EDITOR that puts `lines` before the rebase's own to-do list."""
+    text = "".join(f"{line}\\n" for line in lines)
+    return f'sh -c \'printf "{text}" | cat - "$1" >"$1.new" && mv "$1.new" "$1"\' --'
+
+
+def _rebase(work_tree, *args, editor=None):
+    env = dict(os.environ)
+    if editor is not None:
+        env["GIT_SEQUENCE_EDITOR"] = editor
+    return subprocess.run(
+        ["git", "rebase", *args], cwd=work_tree, env=env, capture_output=True, text=True
+    )
+
+
+def _main_held(sys_dir, clone, other, remote, capsys, why):
+    """origin's main gains a commit; the clone's main, held by the work tree `other`, is not
+    fast-forwarded; every work tree is the same, whole, after; the record is unchanged."""
+    push_commit(remote, "new", "new\n")
+    git("fetch", "-q", "--tags", "origin", cwd=clone)
+    before = _whole(clone, other)
+    recorded = state_of(sys_dir)["a"]
+    out = _sync(sys_dir, capsys)
+    assert _whole(clone, other) == before
+    assert state_of(sys_dir)["a"] == recorded
+    assert (
+        f"src/a: left alone: branch main is held by the work tree {other} ({why}); not"
+        " fast-forwarded"
+    ) in out, out
+    return out
+
+
+def test_a_branch_under_an_interactive_rebase_in_another_work_tree_is_not_fast_forwarded(
+    system, tmp_path, capsys
+):
+    """Must-fix 1, the reviewer's case: `git worktree add -f` on main, then `rebase -i`
+    stopped at `break` and a commit made there. git lists that work tree as detached; its
+    `rebase-merge/head-name` names main, which the rebase sets when it ends. The rebase then
+    ends as the person meant, with their commit on main."""
+    sys_dir, _, remote, clone = system
+    other = tmp_path / "wt main"
+    git("worktree", "add", "-q", "-f", str(other), "main", cwd=clone)
+    stopped = _rebase(other, "-i", "HEAD", editor=_sequence_editor("break"))
+    assert stopped.returncode == 0, stopped.stderr
+    mine = commit_file(other, "mine.txt", "made during the rebase\n")
+    assert "detached" in git("worktree", "list", "--porcelain", cwd=clone)
+    _main_held(sys_dir, clone, other, remote, capsys, "a rebase of main is stopped there")
+    assert _rebase(other, "--continue").returncode == 0
+    assert git("rev-parse", "main", cwd=clone) == mine
+
+
+def test_a_branch_whose_rebase_stopped_on_a_conflict_in_another_work_tree_is_not_moved(
+    system, tmp_path, capsys
+):
+    """Must-fix 1: a rebase of main stopped on a conflict in another work tree."""
+    sys_dir, _, remote, clone = system
+    commit_file(tmp_path / "wt-a", ".gitignore", "other\n")  # on the fixture's `feature`
+    other = tmp_path / "wt-main"
+    git("worktree", "add", "-q", "-f", str(other), "main", cwd=clone)
+    stopped = _rebase(other, "--onto", "feature", "main~1")
+    assert stopped.returncode != 0 and "CONFLICT" in stopped.stdout + stopped.stderr
+    _main_held(sys_dir, clone, other, remote, capsys, "a rebase of main is stopped there")
+
+
+def test_a_branch_a_bisect_started_on_in_another_work_tree_is_not_moved(system, tmp_path, capsys):
+    """Must-fix 1: a bisect started on main in another work tree, which has checked out a
+    commit to test (detached); `BISECT_START` names main, where `bisect reset` returns."""
+    sys_dir, _, remote, clone = system
+    for n in range(3):
+        push_commit(remote, f"c{n}", f"{n}\n")
+    git("pull", "-q", "--ff-only", "origin", "main", cwd=clone)
+    other = tmp_path / "wt-main"
+    git("worktree", "add", "-q", "-f", str(other), "main", cwd=clone)
+    root = git("rev-list", "--max-parents=0", "main", cwd=clone)
+    git("bisect", "start", "main", root, cwd=other)
+    assert branch(other) == "HEAD"
+    why = "a bisect started on main is in progress there"
+    _main_held(sys_dir, clone, other, remote, capsys, why)
+
+
+def test_a_branch_a_rebase_will_update_in_another_work_tree_is_not_switched_to(
+    system, tmp_path, capsys
+):
+    """Must-fix 1: `rebase --update-refs` of a branch built on the local branch dev, stopped:
+    dev is in its `update-refs` list (git itself then refuses `git branch -f dev`). The
+    manifest moves to dev: not switched, and every work tree is the same after."""
+    sys_dir, manifest, remote, clone = system
+    git("branch", "dev", "origin/dev", cwd=clone)
+    other = tmp_path / "wt-topic"
+    git("worktree", "add", "-q", "-b", "topic", str(other), "dev", cwd=clone)
+    commit_file(other, "topic.txt", "on topic\n")
+    stopped = _rebase(other, "-i", "--update-refs", "dev~1", editor=_sequence_editor("break"))
+    assert stopped.returncode == 0, stopped.stderr
+    git_dir = Path(git("rev-parse", "--absolute-git-dir", cwd=other))
+    assert "refs/heads/dev" in (git_dir / "rebase-merge" / "update-refs").read_text()
+    push_commit(remote, "more", "x\n", "dev")
+    _pin(manifest, "dev")
+    git("fetch", "-q", "--tags", "origin", cwd=clone)
+    before = _whole(clone, other)
+    out = _sync(sys_dir, capsys)
+    assert _whole(clone, other) == before
+    assert (
+        f"src/a: left alone: branch dev is held by the work tree {other} (a rebase there will"
+        " set dev when it ends (`--update-refs`)); not switched"
+    ) in out, out
+
+
+def test_an_operation_whose_branch_cannot_be_read_holds_every_branch(system, tmp_path, capsys):
+    """Must-fix 1: a detached work tree with a rebase in progress whose `head-name` is missing:
+    which branch it returns to cannot be told, so no branch is moved."""
+    sys_dir, _, remote, clone = system
+    other = tmp_path / "wt-detached"
+    git("worktree", "add", "-q", "--detach", str(other), "main", cwd=clone)
+    (Path(git("rev-parse", "--absolute-git-dir", cwd=other)) / "rebase-merge").mkdir()
+    _main_held(
+        sys_dir, clone, other, remote, capsys,
+        "a rebase is in progress there and the branch it returns to cannot be read",
+    )  # fmt: skip
+
+
+@pytest.mark.parametrize("operation", ["rebase", "am"])
+def test_an_operation_on_a_detached_head_in_another_work_tree_holds_no_branch(
+    system, tmp_path, capsys, operation
+):
+    """The neighbours of must-fix 1: a rebase of a detached HEAD (`head-name` is `detached
+    HEAD`) and a `git am` on one return to no branch, so the clone's main is fast-forwarded,
+    and that work tree is the same after."""
+    sys_dir, _, remote, clone = system
+    linked = tmp_path / "wt-a"
+    commit_file(linked, ".gitignore", "other\n")  # on the fixture's `feature`
+    other = tmp_path / "wt-detached"
+    if operation == "rebase":
+        git("worktree", "add", "-q", "--detach", str(other), "main", cwd=clone)
+        assert _rebase(other, "--onto", "feature", "main~1").returncode != 0
+    else:
+        git("worktree", "add", "-q", "--detach", str(other), "main~1", cwd=clone)
+        patch = git("format-patch", "-1", "--stdout", "feature", cwd=clone) + "\n"
+        done = subprocess.run(["git", "am"], cwd=other, input=patch, capture_output=True, text=True)
+        assert done.returncode != 0
+    git_dir = Path(git("rev-parse", "--absolute-git-dir", cwd=other))
+    assert (git_dir / ("rebase-merge" if operation == "rebase" else "rebase-apply")).exists()
+    new = push_commit(remote, "new", "new\n")
+    before = _whole(other)[0], _git_dir_files(other)
+    assert "src/a: fast-forwarded 1 commit" in _sync(sys_dir, capsys)
+    assert head(clone) == new
+    after = snapshot_repo(other, fetched=True)
+    for key in ("head", "symbolic", "index", "status", "files", "in progress"):
+        assert after[key] == before[0][key], key
+    assert _git_dir_files(other) == before[1]
+
+
+def test_a_local_branch_under_a_rebase_in_another_work_tree_is_not_switched_to(
+    system, tmp_path, capsys
+):
+    """Must-fix 1, the two-step move: the manifest moves to dev, a local branch that another
+    work tree is rebasing; neither the switch nor the fast-forward of dev runs."""
+    sys_dir, manifest, remote, clone = system
+    other = tmp_path / "wt-dev"
+    git("worktree", "add", "-q", "-b", "dev", str(other), "origin/dev", cwd=clone)
+    stopped = _rebase(other, "-i", "HEAD", editor=_sequence_editor("break"))
+    assert stopped.returncode == 0, stopped.stderr
+    push_commit(remote, "more", "x\n", "dev")
+    _pin(manifest, "dev")
+    git("fetch", "-q", "--tags", "origin", cwd=clone)
+    before = _whole(clone, other)
+    out = _sync(sys_dir, capsys)
+    assert _whole(clone, other) == before
+    assert (
+        f"src/a: left alone: branch dev is held by the work tree {other} (a rebase of dev is"
+        " stopped there); not switched"
+    ) in out, out
+
+
+def test_a_work_tree_whose_directory_is_gone_is_named_with_the_prune_command(
+    system, tmp_path, capsys
+):
+    """A work tree holding main whose directory was deleted: the line says the directory is
+    gone and gives `git worktree prune`; run as printed, the next sync fast-forwards."""
+    sys_dir, _, remote, clone = system
+    other = tmp_path / "wt-main"
+    git("worktree", "add", "-q", "-f", str(other), "main", cwd=clone)
+    subprocess.run(["rm", "-rf", str(other)], check=True)
+    new = push_commit(remote, "new", "new\n")
+    git("fetch", "-q", "--tags", "origin", cwd=clone)
+    before = snapshot_repo(clone, fetched=True)
+    out = _sync(sys_dir, capsys)
+    assert snapshot_repo(clone, fetched=True) == before
+    assert (
+        f"branch main is held by the work tree {other} (it is checked out there); that"
+        " directory no longer exists: if it is gone for good, not on a drive that is not"
+        f" mounted, git -C {clone} worktree prune removes git's entries for work trees whose"
+        " directories are gone; not fast-forwarded"
+    ) in out, out
+    command = out.split("not mounted, ", 1)[1].split(" removes git's", 1)[0]
+    subprocess.run(command, shell=True, check=True)
+    assert "src/a: fast-forwarded 1 commit" in _sync(sys_dir, capsys)
+    assert head(clone) == new
+
+
+def test_a_work_tree_on_a_branch_with_no_commit_does_not_stop_a_repoint(system, tmp_path, capsys):
+    """`git worktree add --orphan` lists HEAD as the null id: it has no commit to count, and
+    the url is repointed; that work tree is the same after."""
+    sys_dir, manifest, remote, clone = system
+    lonely = tmp_path / "wt-lonely"
+    made = subprocess.run(
+        ["git", "worktree", "add", "-q", "--orphan", "-b", "lonely", str(lonely)],
+        cwd=clone, capture_output=True, text=True,
+    )  # fmt: skip
+    if made.returncode != 0:
+        pytest.skip(f"this git has no `worktree add --orphan`: {made.stderr.strip()}")
+    moved = _bare_copy(remote, "a-moved.git")
+    _url(manifest, moved)
+    before = _git_dir_files(lonely), snapshot_repo(lonely)["files"]
+    out = _sync(sys_dir, capsys)
+    assert f"src/a: origin repointed from {remote} to {moved}" in out, out
+    assert git("remote", "get-url", "origin", cwd=clone) == str(moved)
+    assert (_git_dir_files(lonely), snapshot_repo(lonely)["files"]) == before
+
+
+# Must-fix 2: a version's kind counts in the comparison with the record.
+
+
+def _one(tmp_path, version, **remote):
+    origin = make_remote(tmp_path / "remotes", "a", **remote)
+    sys_dir, manifest = make_system(tmp_path, {"a": repo(origin, version)})
+    return sys_dir, manifest, origin, sys_dir / "src/a"
+
+
+def _commit_on(origin, name, branch="main"):
+    """A commit on a new branch of `origin` from `branch`, which stays checked out there."""
+    git("checkout", "-q", "-b", name, branch, cwd=origin)
+    commit = commit_file(origin, f"{name}.txt", f"{name}\n", f"on {name}")
+    git("checkout", "-q", "main", cwd=origin)
+    return commit
+
+
+def test_a_branch_pin_changed_to_the_tag_of_its_name_is_moved_to_the_tag(vcs, tmp_path, capsys):
+    """The reviewer's case: on branch release, origin gains a tag release elsewhere, and the
+    pin becomes `tags/release`: moved to the tag, not "moved by a person". With both on
+    origin, plain `release` stays the error it was, and `heads/release` is the branch."""
+    sys_dir, manifest, origin, clone = _one(tmp_path, "main")
+    tip = _commit_on(origin, "release")
+    _pin(manifest, "release")
+    assert "src/a: moved from main to release" in _sync(sys_dir, capsys)
+    assert git("symbolic-ref", "HEAD", cwd=clone) == "refs/heads/release" and head(clone) == tip
+    git("tag", "release", "main", cwd=origin)
+    _pin(manifest, "tags/release")
+    out = _sync(sys_dir, capsys)
+    assert "src/a: moved from branch release to tag release" in out, out
+    assert head(clone) == git("rev-parse", "main", cwd=origin) and branch(clone) == "HEAD"
+    assert git("rev-parse", "refs/heads/release", cwd=clone) == tip  # the branch is kept
+    assert state_of(sys_dir)["a"]["version"] == "tags/release"
+    assert _sync(sys_dir, capsys) == "distro (no distro):\n  up to date (1)\n"
+    _pin(manifest, "heads/release")
+    assert "src/a: moved from tag release to branch release" in _sync(sys_dir, capsys)
+    assert git("symbolic-ref", "HEAD", cwd=clone) == "refs/heads/release" and head(clone) == tip
+    _pin(manifest, "release")
+    out = _sync(sys_dir, capsys, 1)
+    assert "ERROR: src/a: version release is both a branch and a tag on origin" in out, out
+
+
+def test_a_tag_recorded_as_a_plain_name_then_pinned_as_the_branch_is_moved(vcs, tmp_path, capsys):
+    """The other way round: `v2` was the tag (origin had no branch v2); origin gains a branch
+    v2, and the pin becomes `heads/v2`: moved to the branch."""
+    sys_dir, manifest, origin, clone = _one(tmp_path, "main", tags=["v2"])
+    _pin(manifest, "v2")
+    assert "src/a: moved from main to v2" in _sync(sys_dir, capsys)
+    assert branch(clone) == "HEAD"
+    tip = _commit_on(origin, "v2")
+    _pin(manifest, "heads/v2")
+    out = _sync(sys_dir, capsys)
+    assert "src/a: moved from tag v2 to branch v2" in out, out
+    assert git("symbolic-ref", "HEAD", cwd=clone) == "refs/heads/v2" and head(clone) == tip
+
+
+def test_a_tags_version_then_a_plain_name_that_is_now_a_branch_is_moved(vcs, tmp_path, capsys):
+    """`tags/v3` recorded; origin deletes the tag and has a branch v3, and the pin becomes
+    plain `v3`, which is now the branch: moved to it."""
+    sys_dir, manifest, origin, clone = _one(tmp_path, "tags/v3", tags=["v3"])
+    assert branch(clone) == "HEAD"
+    git("tag", "-d", "v3", cwd=origin)
+    tip = _commit_on(origin, "v3")
+    _pin(manifest, "v3")
+    out = _sync(sys_dir, capsys)
+    assert "src/a: moved from tag v3 to branch v3" in out, out
+    assert git("symbolic-ref", "HEAD", cwd=clone) == "refs/heads/v3" and head(clone) == tip
+
+
+def test_a_branch_and_a_tag_both_at_the_recorded_commit_leave_the_repo_alone(vcs, tmp_path, capsys):
+    """The record keeps `rel` as written. When origin's new tag rel is at the very commit the
+    branch rel was recorded at, which of the two sync followed cannot be told: the repo is
+    left as it is, and the report says why, not "moved by a person"."""
+    sys_dir, manifest, origin, clone = _one(tmp_path, "main")
+    tip = _commit_on(origin, "rel")
+    _pin(manifest, "rel")
+    _sync(sys_dir, capsys)
+    git("tag", "rel", tip, cwd=origin)
+    _pin(manifest, "tags/rel")
+    git("fetch", "-q", "--tags", "origin", cwd=clone)
+    before = snapshot_repo(clone, fetched=True)
+    out = _sync(sys_dir, capsys)
+    assert snapshot_repo(clone, fetched=True) == before
+    assert (
+        "src/a: left alone: it is on branch rel, and the record (rel) does not say whether sync"
+        f" followed the branch or the tag rel: the tag rel here is at the recorded commit"
+        f" {tip[:12]}; the manifest names tags/rel; not moved"
+    ) in out, out
+    assert "moved by a person" not in out
+
+
+def test_a_recorded_branch_a_person_detached_is_still_theirs(vcs, tmp_path, capsys):
+    """The neighbour: a person detaches HEAD at the recorded commit of branch rel, and the
+    manifest does not change: left alone as moved by a person, as before."""
+    sys_dir, manifest, origin, clone = _one(tmp_path, "main")
+    tip = _commit_on(origin, "rel")
+    _pin(manifest, "rel")
+    _sync(sys_dir, capsys)
+    git("switch", "-q", "--detach", "rel", cwd=clone)
+    before = snapshot_repo(clone, fetched=True)
+    out = _sync(sys_dir, capsys)
+    assert snapshot_repo(clone, fetched=True) == before
+    assert f"moved by a person: it is on a detached HEAD at {tip[:12]}" in out, out

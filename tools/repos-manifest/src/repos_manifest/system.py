@@ -15,6 +15,7 @@ from __future__ import annotations
 import fcntl
 import os
 import re
+import shlex
 import sys
 import tempfile
 from contextlib import contextmanager
@@ -475,6 +476,7 @@ def hold_build_lock(system: Path, distro: Optional[str], holder: str = "build") 
             holders = []
         os.close(fd)
         of = f"of distro {distro} " if distro is not None else ""
+        fuser = f"fuser -v {shlex.quote(str(path))}"  # quoted for the shell, as it is shown
         held_by = holders[0] if holders and holders[0] in ("build", "sync") else "build"
         pids = [int(each) for each in holders if each.isdigit()]
         tool, colcon = (pids + [None, None])[:2]
@@ -483,7 +485,7 @@ def hold_build_lock(system: Path, distro: Optional[str], holder: str = "build") 
         if tool_holds:
             who = f" (process {tool})"
         elif held_by != "build":  # a sync notes no second process
-            who = f"; `fuser -v {path}` names the process that holds its lock"
+            who = f"; `{fuser}` names the process that holds its lock"
         elif colcon_holds and tool_holds is None:
             who = f": its colcon (process {colcon}) still runs"
         elif colcon_holds:
@@ -501,10 +503,10 @@ def hold_build_lock(system: Path, distro: Optional[str], holder: str = "build") 
             ]
             who = (
                 f"; its lock file names process {' and '.join(named)}, which this tool cannot"
-                f" check; `fuser -v {path}` names the process that holds its lock"
+                f" check; `{fuser}` names the process that holds its lock"
             )
         else:
-            who = f"; `fuser -v {path}` names the process that holds its lock"
+            who = f"; `{fuser}` names the process that holds its lock"
         then = "nothing was run" if holder == "build" else "nothing was changed for it"
         if held_by == "sync" and tool_holds is None:
             # The process runs, but its open files cannot be read (no /proc, or another user's
@@ -513,7 +515,7 @@ def hold_build_lock(system: Path, distro: Optional[str], holder: str = "build") 
                 f"a sync {of}holds its lock; its lock file names process {tool}, which runs but"
                 " whose open files this tool cannot read (no /proc here, or a process of"
                 f" another user), so whether it is that sync cannot be told; {then}",
-                f"`ps -p {tool} -o user,args` shows what that process is, and `fuser -v {path}`"
+                f"`ps -p {tool} -o user,args` shows what that process is, and `{fuser}`"
                 " names what holds the lock; when the sync has ended, run this again",
             ) from None
         if held_by == "sync" and not tool_holds:
@@ -523,7 +525,7 @@ def hold_build_lock(system: Path, distro: Optional[str], holder: str = "build") 
             raise Refusal(
                 f"a sync {of}has ended{named}, and a git it started, such as a fetch, may still"
                 f" hold its lock: a fetch goes on after the sync that started it is killed;"
-                f" `fuser -v {path}` names it; {then}",
+                f" `{fuser}` names it; {then}",
                 "The fetch ends on its own, or, when it waits at a password prompt, only when"
                 " it is killed (`kill <pid>` with the pid `fuser` names); then run this again",
             ) from None

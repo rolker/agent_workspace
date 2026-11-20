@@ -370,3 +370,15 @@ def test_untracked_files_elsewhere_do_not_stop_a_fast_forward(system, capsys):
     assert (clone / "notes.txt").read_text() == "mine\n"
     assert (clone / "build.log").read_text() == "ignored\n"
     assert "src/a: fast-forwarded 1 commit" in capsys.readouterr().out
+
+
+def test_every_fetch_passes_no_recurse_submodules_and_no_prune():
+    """Pull request 535's second review: the url probe's fetch, like the main one, passes
+    `--no-recurse-submodules` and `--no-prune`, so the person's `fetch.recurseSubmodules` and
+    `fetch.prune` never apply to it (the main fetch spreads `fetch_args`, which hold both)."""
+    texts = git_argument_texts(UPDATE.read_text())
+    fetches = [t for t in texts if "fetch" in t.split() and "--refmap=" in t.split()]
+    assert any(t.startswith("-c") for t in fetches), fetches  # the probe's is among them
+    for text in fetches:
+        words = text.split()
+        assert "--no-recurse-submodules" in words and "--no-prune" in words, text

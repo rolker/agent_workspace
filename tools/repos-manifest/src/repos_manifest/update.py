@@ -473,16 +473,54 @@ class Version:
     target: str  # the commit
 
 
-def same_version(one: Optional[str], other: Optional[str]) -> bool:
+def same_version(
+    one: Optional[str],
+    other: Optional[str],
+    plain_one: Optional[str] = None,
+    plain_other: Optional[str] = None,
+) -> bool:
     """Two manifest versions name the same branch, tag or commit, read as vcstool reads them:
-    `heads/main` and `main` are the same; `heads/v1` and `tags/v1` are not."""
+    `heads/v1` and `tags/v1` are not the same. A version written without `heads/` or `tags/`
+    is of the kind given for it (`plain_one`, `plain_other`: BRANCH, TAG or COMMIT, what it
+    named when it was looked up), so `main` that named a branch is `heads/main` and not
+    `tags/main`; one whose kind is not given is taken as the same as either kind."""
     if one is None or other is None:
         return one is other
     kind_one, name_one = version_ref(one)
     kind_other, name_other = version_ref(other)
+    kind_one = kind_one or plain_one
+    kind_other = kind_other or plain_other
     return name_one == name_other and (
         kind_one is None or kind_other is None or kind_one == kind_other
     )
+
+
+def recorded_kind(git: Git, record: RepoRecord, branch: Optional[str]) -> Optional[str]:
+    """What the recorded version named, for a repo where `sync` last put it (`_on_recorded`),
+    or None when that cannot be told. The record keeps the version as written, so a version
+    without `heads/` or `tags/` is read from where the repo is: on the branch of its name, a
+    branch; detached at the recorded commit, a commit when the version is hex digits that
+    commit starts with, a tag when the tag of its name here is at that commit and the local
+    branch of its name is not, and a branch when the branch is and the tag is not. Otherwise
+    it cannot be told: both are at the recorded commit (or, on the branch, the tag is too),
+    or neither is (a tag origin moved since, or a branch that moved on after a person
+    detached it); the caller then reads the record as the manifest's version when the names
+    are the same, as before this rule, so a repo is never moved for a kind it cannot tell."""
+    if record.version is None:
+        return BRANCH
+    kind, name = version_ref(record.version)
+    if kind is not None:
+        return kind
+    commit = record.commit or ""
+    tag_there = git.out("rev-parse", "--verify", "-q", f"refs/tags/{name}^{{commit}}") == commit
+    if branch is not None:
+        return None if tag_there else BRANCH
+    if HEX.fullmatch(name) and commit.startswith(name):
+        return COMMIT
+    branch_there = git.out("rev-parse", "--verify", "-q", f"refs/heads/{name}") == commit
+    if tag_there != branch_there:
+        return TAG if tag_there else BRANCH
+    return None
 
 
 def ask_origin(git: Git, *patterns: str) -> Tuple[Optional[Dict[str, str]], str]:
@@ -684,18 +722,110 @@ def work_trees(git: Git) -> Optional[List[WorkTree]]:
     return found
 
 
+def _text(path: Path) -> Optional[str]:
+    """A file's text, or None when it cannot be read."""
+    try:
+        return path.read_text(encoding="utf-8", errors="surrogateescape")
+    except OSError:
+        return None
+
+
+def _git_dirs(git: Git, trees: Sequence[WorkTree]) -> Optional[List[Tuple[str, Path]]]:
+    """The git directory of every work tree, with the path of its files: the main one (the
+    common directory, at the first path `git worktree list` gives) and each linked one under
+    `worktrees/` (at the path its `gitdir` file names); None when they cannot be read."""
+    common = git.out("rev-parse", "--git-common-dir")
+    if common is None:
+        return None
+    common_dir = Path(os.path.realpath(git.place / common))
+    found = [(trees[0].path if trees else str(common_dir), common_dir)]
+    linked = common_dir / "worktrees"
+    try:
+        entries = sorted(linked.iterdir()) if linked.is_dir() else []
+    except OSError:
+        return None
+    for admin in entries:
+        if not admin.is_dir():
+            continue
+        gitdir = _text(admin / "gitdir")
+        path = str(Path(gitdir.strip()).parent) if gitdir and gitdir.strip() else str(admin)
+        found.append((path, admin))
+    return found
+
+
+def _operation_holding(admin: Path, branch: str) -> Optional[str]:
+    """Why the work tree whose git directory is `admin` holds `branch` through an operation in
+    progress there, as git itself counts it (`git branch -f` refuses such a branch): a rebase
+    whose `head-name` is that branch, which it returns to; a rebase with `--update-refs` that
+    will set it; a bisect started on it (`BISECT_START` holds the branch's name, or a commit
+    for one started detached). When an operation is there and what it returns to cannot be
+    read, every branch is held. A `git am`, merge, cherry-pick or revert works on `HEAD` as
+    it is: on a branch, `git worktree list` names it; detached, it holds none."""
+    ref = f"refs/heads/{branch}"
+    for name in ("rebase-merge", "rebase-apply"):
+        if not os.path.lexists(admin / name):
+            continue
+        head_name = _text(admin / name / "head-name")
+        if head_name is not None:
+            if head_name.strip() == ref:
+                return f"a rebase of {branch} is stopped there"
+        elif name == "rebase-apply" and os.path.lexists(admin / name / "applying"):
+            pass  # `git am`: on HEAD as it is
+        else:
+            return "a rebase is in progress there and the branch it returns to cannot be read"
+        updates = admin / name / "update-refs"
+        if os.path.lexists(updates):
+            listed = _text(updates)
+            if listed is None:
+                return "a rebase there updates branches (`--update-refs`) that cannot be read"
+            if ref in listed.splitlines()[0::3]:
+                return f"a rebase there will set {branch} when it ends (`--update-refs`)"
+    if os.path.lexists(admin / "BISECT_START"):
+        started = _text(admin / "BISECT_START")
+        if started is None:
+            return "a bisect is in progress there and the branch it returns to cannot be read"
+        if started.strip() in (branch, ref):
+            return f"a bisect started on {branch} is in progress there"
+    return None
+
+
 def worktree_holding(git: Git, branch: str) -> Optional[str]:
-    """Another work tree that has `branch` checked out, if one has (a linked work tree made
-    with `git worktree add -f` can share the branch of this one); when the work trees cannot
-    be listed, that is said, so the caller leaves the repo alone too."""
+    """Another work tree that holds `branch`, and how, if one does: it has the branch checked
+    out (a linked work tree made with `git worktree add -f` can share the branch of this one),
+    or an operation in progress there will return to it or set it (`_operation_holding`).
+    When the work trees cannot be listed or read, that is said, so the caller leaves the repo
+    alone too."""
     trees = work_trees(git)
     if trees is None:
         return "a work tree git cannot list (`git worktree list` fails)"
     here = os.path.realpath(git.place)
     for tree in trees:
         if tree.branch == branch and os.path.realpath(tree.path) != here:
-            return tree.path
+            return _held_in(git, tree.path, "it is checked out there")
+    admins = _git_dirs(git, trees)
+    own = git.out("rev-parse", "--absolute-git-dir")
+    if admins is None or own is None:
+        return "work trees whose git directories cannot be read"
+    for path, admin in admins:
+        if os.path.realpath(admin) == os.path.realpath(own):
+            continue
+        why = _operation_holding(admin, branch)
+        if why is not None:
+            return _held_in(git, path, why)
     return None
+
+
+def _held_in(git: Git, path: str, why: str) -> str:
+    """The work tree at `path` that holds a branch, and why; when its directory is gone, the
+    command that removes git's entry for it."""
+    held = f"the work tree {path} ({why})"
+    if not os.path.lexists(path):
+        held += (
+            f"; that directory no longer exists: if it is gone for good, not on a drive that is"
+            f" not mounted, git -C {quoted(git.place)} worktree prune removes git's entries for"
+            " work trees whose directories are gone"
+        )
+    return held
 
 
 class _Turn:
@@ -722,14 +852,14 @@ class _Turn:
             self.put(replace(record, url=self.repo.url))
         return Done(LEFT, detail, self.notes)
 
-    def current(self, head: str, said: str, where: str) -> Done:
+    def current(self, head: str, said: str, where: str, kind: str) -> Done:
         """On the manifest's version already. When only the record was behind (the manifest
         changed to where the clone already is, or a person moved it there), one line says so;
         a record that gains only the manifest's url, or a first record, says nothing."""
         new = self.new_record(head)
         if self.record != new:
             old = self.record
-            if old is not None and not same_version(old.version, self.repo.version):
+            if old is not None and not same_version(old.version, self.repo.version, None, kind):
                 was = old.version or "no version"
                 self.notes.append(f"already on {where}; record updated (was {was})")
             elif old is not None and old.commit != head:
@@ -910,7 +1040,7 @@ def update_repo(
     # On the manifest's version.
     if found.kind == BRANCH and branch == found.name:
         if head == found.target:
-            return turn.current(head, "up to date", found.name)
+            return turn.current(head, "up to date", found.name, found.kind)
         if not ancestor(git, head, found.target):
             return turn.left(
                 f"origin's {found.name} no longer contains this commit (rewritten upstream)"
@@ -919,7 +1049,7 @@ def update_repo(
         if holder is not None:
             # A fast-forward moves the branch under that work tree, whose files would stay
             # where they were: git would show its new commits there as staged changes.
-            return turn.left(f"branch {branch} is also checked out in {holder}; not fast-forwarded")
+            return turn.left(f"branch {branch} is held by {holder}; not fast-forwarded")
         moved = count(git, f"{head}..{found.target}") or 0
         steps = [
             (["merge", "--ff-only", "--no-overwrite-ignore", "-q", found.target], found.target)
@@ -927,21 +1057,40 @@ def update_repo(
         said = f"fast-forwarded {counted(moved, 'commit')}"
         return _change(turn, head, [found.target], steps, symbolic, said)
     if found.kind != BRANCH and branch is None and head == found.target:
-        return turn.current(head, f"pinned at {found.name}", found.name)
+        return turn.current(head, f"pinned at {found.name}", found.name, found.kind)
 
     # On the recorded version, which the manifest has changed: moved to the new one.
     if record is not None and _on_recorded(git, record, head, branch):
-        if not same_version(record.version, repo.version):
-            return _move(turn, head, found)
+        # The kinds count: a recorded branch `x` and a pin `tags/x` are two versions.
+        was = recorded_kind(git, record, branch)
+        if not same_version(record.version, repo.version, was, found.kind):
+            said = None
+            if record.version is not None and version_ref(record.version)[1] == found.name:
+                said = f"moved from {was} {found.name} to {found.kind} {found.name}"
+            return _move(turn, head, found, said)
         # The same tag, detached where sync put it, and origin's tag now names another commit
         # (the person deleted the stale local tag, as the failed fetch said): followed.
         if found.kind == TAG and branch is None:
             said = f"tag {found.name} was moved on origin: moved from {head[:12]} to it"
             return _move(turn, head, found, said)
+        name = version_ref(record.version or "")[1]
+        tag = git.out("rev-parse", "--verify", "-q", f"refs/tags/{name}^{{commit}}")
+        if was is None and tag is not None and tag == record.commit:
+            # The tag of the recorded name is at the recorded commit, and so is the branch:
+            # which one sync followed cannot be told, so the repo is not moved, and the report
+            # says why rather than calling it a person's move.
+            where = f"branch {branch}" if branch is not None else f"a detached HEAD at {head[:12]}"
+            also = "" if branch is not None else f", and so is the branch {name}"
+            return turn.left(
+                f"it is on {where}, and the record ({record.version}) does not say whether sync"
+                f" followed the branch or the tag {name}: the tag {name} here is at the recorded"
+                f" commit {(record.commit or '')[:12]}{also}; the manifest names {wanted}; not"
+                " moved"
+            )
 
     where = branch if branch is not None else f"a detached HEAD at {head[:12]}"
     detail = f"moved by a person: it is on {where}; the manifest names {wanted}"
-    if record is not None and not same_version(record.version, repo.version):
+    if record is not None and not same_version(record.version, repo.version, None, found.kind):
         detail += f" (recorded: {record.version or 'no version'})"
     return turn.left(detail)
 
@@ -971,6 +1120,12 @@ def _move(turn: _Turn, head: str, found: Version, said: Optional[str] = None) ->
         ]
         return _change(turn, head, [found.target], steps, None, said)
     want = f"refs/heads/{found.name}"
+    # Before the switch, and before the fast-forward of a local branch: another work tree
+    # holds the branch when it has it checked out, or a rebase or bisect there will return to
+    # it (a rebase sets it at its end, even when it does not exist now).
+    holder = worktree_holding(git, found.name)
+    if holder is not None:
+        return turn.left(f"branch {found.name} is held by {holder}; not switched")
     local = git.out("rev-parse", "--verify", "-q", want)
     if local is None:
         # The branch is made at origin's commit with no tracking, so the switch either does it
@@ -985,9 +1140,6 @@ def _move(turn: _Turn, head: str, found: Version, said: Optional[str] = None) ->
         return _change(turn, head, [found.target], steps, want, said, upstream=found.name)
     if not ancestor(git, local, found.target):
         return turn.left(f"a local branch {found.name} has commits not on origin; not switched")
-    holder = worktree_holding(git, found.name)
-    if holder is not None:
-        return turn.left(f"branch {found.name} is checked out in {holder}; not switched")
     steps = [(["switch", "-q", "--no-overwrite-ignore", found.name], local)]
     if local != found.target:
         steps.append(
@@ -1030,6 +1182,13 @@ def _change(
     # checks ran keeps that, and the repo is left as it is.
     if _position(git) != (head, turn.symbolic):
         return turn.left("HEAD moved while sync was checking the repo; not moved (sync again)")
+    # And the tracked files: one a person changed while the checks ran is theirs, not the
+    # move's, and the repo is left as it is.
+    if tracked_changes(git) != 0:
+        return turn.left(
+            "a tracked file was changed while sync was checking the repo; not moved (sync"
+            " again once it is committed or put back)"
+        )
     base = turn.record if turn.record is not None else turn.new_record(head)
     try:
         turn.put(RepoRecord(base.layer, base.version, base.commit, base.url, (head, target)))
@@ -1119,7 +1278,7 @@ def _what_ran(
 def _half_changed(git: Git, ran: Sequence[str], after: Before, said: str) -> str:
     """The error for a move that did not get where it was to go and did not leave the repo as
     it was: what ran, in order, where `HEAD` is, and the files that now differ from it, staged
-    or not, which git or a hook it ran made (the repo had no tracked changes before)."""
+    or not, made since the check just before the first step found none."""
     steps = "; ".join(f"{n}. {what}" for n, what in enumerate(ran, 1))
     staged = (git.out("diff", "--cached", "--name-status", "HEAD") or "").splitlines()
     changed = (git.out("diff", "--name-status") or "").splitlines()
@@ -1132,8 +1291,8 @@ def _half_changed(git: Git, ran: Sequence[str], after: Before, said: str) -> str
     where = _shown((after.head, after.symbolic))
     if files:
         changes = (
-            f"{files}. These changes were made during the move, by git, a hook it ran, or"
-            " something else (the repo had no tracked changes before); sync does not put them"
+            f"{files}. sync's last check, just before the move, found no tracked changes, so"
+            " these were made since: by git, a hook it ran, or a person; sync does not put them"
             " back, as it runs no reset or forced"
             f" checkout: `git -C {quoted(git.place)} status` shows them"
         )
@@ -1209,6 +1368,8 @@ def _repoint(git: Git, origin: str, url: str) -> Optional[Done]:
             f"remote.{PROBE}.url={url}",  # url-text: a git argument, not a message
             "fetch",
             "--no-tags",
+            "--no-prune",
+            "--no-recurse-submodules",
             "--refmap=",
             PROBE,
             f"+refs/heads/*:refs/remotes/{PROBE}/*",
@@ -1230,8 +1391,14 @@ def _repoint(git: Git, origin: str, url: str) -> Optional[Done]:
                 f"url changed to {mask_url(url)}; the work trees cannot be listed; origin stays"
                 f" {mask_url(origin)}",
             )
-        # The HEAD of every work tree, a detached one included, counts with the branches.
-        heads = [t.head for t in trees if t.head is not None and OBJECT_ID.fullmatch(t.head)]
+        # The HEAD of every work tree, a detached one included, counts with the branches; a
+        # work tree on a branch with no commit yet (`worktree add --orphan`) lists the null id
+        # and has nothing to count.
+        heads = [
+            t.head
+            for t in trees
+            if t.head is not None and OBJECT_ID.fullmatch(t.head) and t.head.strip("0")
+        ]
         local = count(git, "--branches", "HEAD", *heads, "--not", f"--remotes={PROBE}")
         if local is None:
             return Done(LEFT, f"url changed to {mask_url(url)}; its commits cannot be counted")
@@ -1287,11 +1454,12 @@ def _conflicts_note(git: Git, conflicts: Sequence[Tuple[str, str]]) -> str:
         f" branch {new}"
         for old, new in conflicts
     ]
-    commands = " && ".join(
-        f"git -C {place} update-ref -d {quoted(old)}" for old in sorted({o for o, _ in conflicts})
-    )
+    olds = sorted({o for o, _ in conflicts})
+    commands = " && ".join(f"git -C {place} update-ref -d {quoted(old)}" for old in olds)
+    keep = " && ".join(f"git -C {place} branch <a new name> {quoted(old)}" for old in olds)
     return (
         f"the fetch cannot write origin's branches: {'; '.join(parts)}. sync removes no"
-        f" remote-tracking ref, and another sync will not change this; to clear it: {commands},"
-        " then sync again"
+        " remote-tracking ref of origin, and another sync will not change this. Removing it"
+        " may remove the only ref here to commits origin has since deleted; to keep them, make"
+        f" a local branch at it first ({keep}). To clear it: {commands}, then sync again"
     )

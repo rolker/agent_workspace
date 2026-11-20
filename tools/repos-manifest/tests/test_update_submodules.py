@@ -229,3 +229,32 @@ def test_the_fetch_never_goes_into_a_submodule(vcs, tmp_path, capsys, monkeypatc
     out = _sync(sys_dir, capsys)
     assert "src/top: fast-forwarded 1 commit" in out
     assert snapshot_repo(clone)["nested repositories"] == before
+
+
+@pytest.mark.parametrize("setting", ["fetch.recurseSubmodules=true", "submodule.recurse=true"])
+def test_the_url_probe_fetch_never_goes_into_a_submodule(
+    vcs, tmp_path, capsys, monkeypatch, setting
+):
+    """Pull request 535's second review: the url probe's fetch passes
+    `--no-recurse-submodules`, as the main fetch does. The manifest's url for `top` changes to
+    a copy holding a commit that moves the submodule's pointer; the clone is repointed and
+    fast-forwarded, and the submodule's refs, HEAD and status are the same after. (git 2.53
+    did not go into the submodule here even without that flag: every git runs with `-c
+    submodule.recurse=false`, and with it a `git fetch` by hand did not recurse under
+    `fetch.recurseSubmodules=true` either. The flag is held by a source scan in
+    `test_update_safety.py`; this test guards the behaviour.)"""
+    monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "file")
+    sub, top = _top_with_submodule(tmp_path)
+    sys_dir, manifest, clone = _system(tmp_path, top)
+    _check_out(clone, sub, "init")
+    key, value = setting.split("=")
+    git("config", key, value, cwd=clone)
+    _move_pointer(sub, top)
+    moved = tmp_path / "remotes" / "top-moved.git"
+    git("clone", "-q", "--bare", str(top), str(moved))
+    rewrite_manifest(manifest, lambda d: d["repositories"]["top"].update(url=str(moved)))
+    before = snapshot_repo(clone)["nested repositories"]
+    out = _sync(sys_dir, capsys)
+    assert f"src/top: origin repointed from {top} to {moved}" in out, out
+    assert "src/top: fast-forwarded 1 commit" in out, out
+    assert snapshot_repo(clone)["nested repositories"] == before
