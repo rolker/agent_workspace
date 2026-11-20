@@ -1968,3 +1968,13 @@ Other checks:
 - [ ] (suggestion) "Each line `sync` prints for a repo" is not quite true: `cloning <path>` (`sync.py:242`) and "holds the manifest" (`sync.py:524`) are not filtered. They cannot carry a `scheme://` url, since a repo key cannot hold `//`. — `docs/design.md:916-918`
 - [ ] (suggestion) "Other lines are printed as given:" reads as a complete list. It leaves out the earlier format's `--out` error (`cli.py:136`), the earlier format's `validate` table and violation lines (`cli.py:165-170`), and build's NOTE and report lines. Limits item 5 covers these; "among them:" would read truer. — `docs/design.md:924-927`
 - [ ] (suggestion) The `_say` docstring still says the user name and password "are never printed", which the limits list now contradicts. That line is outside this range. — `sync.py:325`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-19 20:32 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 7 found two one-sentence wording must-fix and three wording suggestions, no behaviour; the owner's answer at the previous rounds checkpoint was to fix and then publish, and these are fixed in that same spirit; the previous answer here was the owner's, so this is the host's first in a row)
+**After**: rounds
+**Decision**: address
+
+All five are sentences, fixed as the review states them: the README's example of a line printed as given is made true for the current format (it names the earlier format's unknown-role error, as the design does); the docstring of tests/test_update_safety.py says which forced refspec and which update-ref -d the update module does run (remote-tracking refs and its own probe refs only) and what the scan does not look for; the design's "each line sync prints for a repo" names the two lines that are not filtered and why they cannot hold a scheme url; "Other lines are printed as given" reads "among them"; the _say docstring in sync.py no longer says credentials are never printed. No code behaviour changes.
