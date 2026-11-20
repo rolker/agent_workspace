@@ -393,10 +393,49 @@ done <<< "$MANIFEST_ENTRIES"
 # removal (issue #265 part 4: there is no project/ to fall back on), so an
 # aggregate worktree is never half removed. ENTRY_OWNERS stays index-aligned
 # with ENTRY_DESTS; an entry already gone has an empty owner.
+#
+# "Already gone" must mean gone, never "could not be looked at" (issue 428
+# review): `[ -d ]` is false on a permission denial as on a missing path,
+# and an entry taken as gone gets no dirty check, after which the chmod and
+# `rm -rf` below would delete it with its uncommitted work. So the path is
+# walked down from the worktree, which was entered above: a name is looked
+# up only in a folder already entered, where a failed lookup can only mean
+# it is not there, and a folder on the way that cannot be entered is
+# reported. Returns 0 when the entry is a folder, as before; 1 when it is
+# not (missing, a non-folder, or a link whose target cannot be reached:
+# `rm -rf` then removes only the name, never a link's target); 2 when a
+# folder on the way cannot be entered, printing that folder.
+_entry_reach() {  # <worktree_dir> <dest>
+    local cur="$1" rel part
+    [ "$2" = "$1" ] && return 0
+    rel="${2#"$1"/}"
+    while :; do
+        part="${rel%%/*}"
+        if [ "$part" = "$rel" ]; then
+            [ -d "$cur/$part" ]
+            return
+        fi
+        cur="$cur/$part"
+        rel="${rel#*/}"
+        [ -d "$cur" ] || return 1
+        if ! (cd "$cur" 2>/dev/null); then
+            printf '%s' "$cur"
+            return 2
+        fi
+    done
+}
+
 declare -a ENTRY_OWNERS=()
 for _i in "${!ENTRY_DESTS[@]}"; do
     _dest="${ENTRY_DESTS[$_i]}"
-    if [ ! -d "$_dest" ]; then
+    _reach_rc=0
+    _blocked="$(_entry_reach "$WORKTREE_DIR" "$_dest")" || _reach_rc=$?
+    if [ "$_reach_rc" -eq 2 ]; then
+        echo "Error: cannot enter ${_blocked}: no search permission on it, so this script cannot tell whether ${_dest} is there or what removing it would lose; nothing was removed."
+        echo "Check what it holds, give it back its owner permission by hand (chmod u+rwx $(printf '%q' "$_blocked")), then run this command again."
+        exit 1
+    fi
+    if [ "$_reach_rc" -ne 0 ]; then
         ENTRY_OWNERS+=("")
         continue
     fi
@@ -405,11 +444,12 @@ for _i in "${!ENTRY_DESTS[@]}"; do
     # checkout elsewhere would have `git worktree remove` delete that other
     # checkout's files. Refused before anything is removed.
     _real="$(cd "$_dest" 2>/dev/null && pwd -P || true)"
-    # An entry that cannot be entered at all (no search permission on it or
-    # on a folder above it) is not a link and leads nowhere: say so, never
-    # the link message below, which would name a link that does not exist.
+    # An entry that cannot be entered itself (a folder above it that cannot
+    # be entered was refused just above) is not a link and leads nowhere:
+    # say so, never the link message below, which would name a link that
+    # does not exist.
     if [ -z "$_real" ] && [ ! -L "$_dest" ]; then
-        echo "Error: cannot enter ${_dest}: no search permission on it or on a folder above it in this worktree; nothing was removed."
+        echo "Error: cannot enter ${_dest}: no search permission on it; nothing was removed."
         echo "Check what it holds, give it back its owner permission by hand (chmod u+rwx on that folder), then run this command again."
         exit 1
     fi
@@ -455,12 +495,39 @@ for _i in "${!ENTRY_DESTS[@]}"; do
 done
 
 # --- Preflight every entry before removing any (unless --force) ---
+# Only the entries found above (an owner): those taken as gone were proven
+# gone, not merely unreadable. "Clean" must mean git looked at everything:
+# git status skips a folder it cannot open with a warning and exit 0, which
+# would hide untracked work in it until the chmod below had opened it. A
+# failed status, or one that names a permission denial (C locale, so the
+# text is git's own English), counts as "cannot tell" and is refused like a
+# dirty entry.
 declare -a DIRTY_DESTS=()
-for _dest in "${ENTRY_DESTS[@]}"; do
-    [ -d "$_dest" ] || continue
-    _porcelain="$(git -C "$_dest" status --porcelain 2>/dev/null || true)"
-    [ -n "$_porcelain" ] && DIRTY_DESTS+=("$_dest")
+declare -a UNREAD_DESTS=()
+declare -a UNREAD_WHY=()
+_status_err="$(mktemp)"
+for _i in "${!ENTRY_DESTS[@]}"; do
+    [ -n "${ENTRY_OWNERS[$_i]}" ] || continue
+    _dest="${ENTRY_DESTS[$_i]}"
+    _status_rc=0
+    _porcelain="$(LC_ALL=C git -C "$_dest" status --porcelain 2>"$_status_err")" || _status_rc=$?
+    if [ "$_status_rc" -ne 0 ] || grep -q 'Permission denied' "$_status_err"; then
+        UNREAD_DESTS+=("$_dest")
+        UNREAD_WHY+=("$(grep -m1 . "$_status_err" || echo "git status exited $_status_rc")")
+    elif [ -n "$_porcelain" ]; then
+        DIRTY_DESTS+=("$_dest")
+    fi
 done
+rm -f "$_status_err"
+
+if [ "${#UNREAD_DESTS[@]}" -gt 0 ] && [ "$FORCE" != true ]; then
+    for _i in "${!UNREAD_DESTS[@]}"; do
+        echo "Error: cannot read all of ${UNREAD_DESTS[$_i]}, so this script cannot tell whether it holds uncommitted work; nothing was removed."
+        echo "  git status: ${UNREAD_WHY[$_i]}"
+    done
+    echo "Give the folder it names back its owner permission by hand (chmod u+rwx on it) and run this command again, or use --force to remove anyway."
+    exit 1
+fi
 
 if [ "${#DIRTY_DESTS[@]}" -gt 0 ] && [ "$FORCE" != true ]; then
     echo "⚠️  Warning: worktree has uncommitted changes in:"

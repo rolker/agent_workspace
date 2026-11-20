@@ -244,6 +244,73 @@ check "no search: does not speak of a symbolic link" bash -c '! grep -q "symboli
 check "no search: the entry is still there" test -f "$c/layer_ws/src/pkg_a/package.xml"
 check "no search: the package repository still lists the entry" bash -c 'git -C "$1" worktree list | grep -qF "$2"' _ "$pkg" "$c/layer_ws/src/pkg_a"
 
+# A folder above the entry with no search permission makes the entry look
+# absent ([ -d ] fails on EACCES as on ENOENT). It must be refused as
+# unreachable before anything is removed or any mode changed, plain and
+# --force: taken as gone, the entry got no dirty check, and the chmod and
+# rm -rf of the container then deleted it with its uncommitted work.
+for mode in plain --force; do
+    echo "TEST: an entry under a folder that cannot be entered is refused, not taken as gone ($mode)"
+    sb="$(make_sandbox)"; c="$sb/worktrees/workspace/issue-workspace-7"
+    pkg="$(make_pkg_repo)"
+    make_aggregate "$sb" layer_ws/src/pkg_a "$pkg"
+    printf 'uncommitted\n' > "$c/layer_ws/src/pkg_a/package.xml"
+    chmod 600 "$c/layer_ws/src"
+    check "unreachable fixture ($mode): the entry looks absent" test ! -d "$c/layer_ws/src/pkg_a"
+    if [ "$mode" = plain ]; then set --; else set -- --force; fi
+    rc=0; out="$(run_remove "$sb" "$@" 2>&1)" || rc=$?
+    mode_after="$(stat -c %a "$c/layer_ws/src" 2>/dev/null || echo gone)"
+    chmod 700 "$c/layer_ws/src" 2>/dev/null || true
+    check "unreachable ($mode): exit 1" test "$rc" -eq 1
+    check "unreachable ($mode): names the folder that cannot be entered" grep -qF "cannot enter $c/layer_ws/src:" <<<"$out"
+    check "unreachable ($mode): says how to fix it" grep -q "chmod u+rwx" <<<"$out"
+    check "unreachable ($mode): does not say it was removed" bash -c '! grep -q "Worktree removed successfully" <<<"$1"' _ "$out"
+    check "unreachable ($mode): the folder keeps its mode (600)" test "$mode_after" = 600
+    check "unreachable ($mode): the uncommitted change is kept" grep -q uncommitted "$c/layer_ws/src/pkg_a/package.xml"
+    check "unreachable ($mode): the package repository still lists the entry" bash -c 'git -C "$1" worktree list | grep -F "$2" | grep -vq prunable' _ "$pkg" "$c/layer_ws/src/pkg_a"
+done
+set --
+
+# The dirty check itself must not read "cannot look" as "clean": git status
+# skips a folder it cannot open with a warning and exit 0, so untracked work
+# in it went unseen and the folder was opened by the chmod before git's own
+# check refused. Refused before any mode is changed, as a dirty entry is.
+echo "TEST: a folder git status cannot open is refused without --force, mode and contents kept"
+sb="$(make_sandbox)"; wt="$sb/worktrees/workspace/issue-workspace-7"
+mkdir -p "$wt/notes"
+printf 'draft\n' > "$wt/notes/draft.txt"
+chmod 000 "$wt/notes"
+rc=0; out="$(run_remove "$sb" 2>&1)" || rc=$?
+mode_after="$(stat -c %a "$wt/notes" 2>/dev/null || echo gone)"
+chmod 700 "$wt/notes" 2>/dev/null || true
+check "unreadable: exit 1" test "$rc" -eq 1
+check "unreadable: says what it cannot read" grep -qF "cannot read all of $wt" <<<"$out"
+check "unreadable: the folder keeps its mode (000)" test "$mode_after" = 0
+check "unreadable: the untracked file is kept" test -f "$wt/notes/draft.txt"
+
+echo "TEST: the same folder with --force is removed"
+sb="$(make_sandbox)"; wt="$sb/worktrees/workspace/issue-workspace-7"
+mkdir -p "$wt/notes"
+printf 'draft\n' > "$wt/notes/draft.txt"
+chmod 000 "$wt/notes"
+rc=0; out="$(run_remove "$sb" --force 2>&1)" || rc=$?
+check "unreadable --force: exit 0" test "$rc" -eq 0
+check "unreadable --force: the worktree directory is gone" test ! -e "$wt"
+
+echo "TEST: an entry that is genuinely absent is skipped, the rest removed"
+sb="$(make_sandbox)"; c="$sb/worktrees/workspace/issue-workspace-7"
+pkg="$(make_pkg_repo)"
+make_aggregate "$sb" layer_ws/src/pkg_a "$pkg"
+pkg_b="$(make_pkg_repo)"
+# pkg_b's entry is gone, and so is gone_ws, the folder above pkg_c's entry.
+printf '%s\t%s\tfeature/issue-7\n' "$pkg_b" layer_ws/src/pkg_b >> "$c/.worktree-repos"
+printf '%s\t%s\tfeature/issue-7\n' "$pkg_b" gone_ws/src/pkg_c >> "$c/.worktree-repos"
+rc=0; out="$(run_remove "$sb" 2>&1)" || rc=$?
+check "absent: exit 0" test "$rc" -eq 0
+check "absent: the container is gone" test ! -e "$c"
+check "absent: says it was removed" grep -q "Worktree removed successfully" <<<"$out"
+check "absent: the present entry's repository no longer lists it" bash -c '! git -C "$1" worktree list | grep -qF "$2"' _ "$pkg" "$c/layer_ws/src/pkg_a"
+
 echo ""
 echo "test_worktree_remove: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
