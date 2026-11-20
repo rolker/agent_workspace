@@ -94,6 +94,12 @@ def require_tools() -> Env:
         works = False
     if not works:
         raise Refusal(f"`{vcs} --version` does not run", "Repair or reinstall vcs2l or vcstool")
+    return require_git()
+
+
+def require_git() -> Env:
+    """`git` is on PATH, runs, and is new enough: the git half of `require_tools`, for a command
+    that runs git and never `vcs` (`status`). Returns the environment `require_tools` returns."""
     git = shutil.which("git")
     if git is None:
         raise Refusal("`git` is not found on PATH", "Install git")

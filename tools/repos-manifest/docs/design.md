@@ -711,8 +711,8 @@ has updated it. A parent in another git repo or at a URL is fetched afresh.
 Sync does not discard work, and it tells a change in the manifest from a change a person
 made. It records the version and the commit it last put each repo on, in
 `.repos-manifest/state.yaml`, for each distro. The version is
-what the rules below compare against; the commit lets `status` show what has changed since
-the last sync. A repo it has no
+what the rules below compare against; the commit tells `sync`, and `status`, whether a repo
+detached at a tag or a commit is where `sync` last put it. A repo it has no
 record for is recorded and followed if it is on the manifest's version, and treated as one a
 person has moved if it is not.
 
@@ -1544,9 +1544,168 @@ the manifest. It stays with `colcon`:
 
 ### status
 
-Shows, for each distro it acts on, the manifest in use, the role and the distro, and for each
-repo whether it matches the manifest: on the expected version, on a different one, with local
-changes, missing, skipped as optional, or present but no longer in the manifest.
+```
+repos-manifest status [--distro <name>] [--json]
+```
+
+Shows, for each distro it acts on, what the system directory holds against what the manifest says.
+It changes nothing on disk and makes no network call of its own. It takes no lock, writes no resolved files,
+no record and no setup file, and it does not fetch: every answer is about the clones as they are, with
+what `origin` had when each was last fetched (by `sync`, or by hand). Every `git` it runs passes
+`--no-optional-locks`, so even `git status` does not rewrite a clone's index.
+
+`status` writes nothing in the system directory and makes no network call of its own. It runs
+the clean filters a clone's own configuration names (a Git LFS filter is one), as `git status`
+does, so `status`, `git status` and `sync`'s git count the same files as changed (in a partial
+clone, a staged rename aside: see below); a filter that writes or fetches is outside what
+`status` can promise. Two other helpers a clone's configuration could have git start are turned
+off for `status`'s own git calls, because neither can change the answer (`sync` runs its git as
+before):
+
+- an fsmonitor hook (`core.fsmonitor`) is not started: every call passes `-c core.fsmonitor=false`.
+  The hook only tells git which files it need not look at again; with none, git looks at every
+  file, which is what a working hook stands in for;
+- a partial clone does not fetch a missing object: every call runs with `GIT_NO_LAZY_FETCH=1`.
+  Git 2.45 and later honour the variable, and older git ignores it, so it is a second guard; the
+  first is the next paragraph.
+
+In a partial clone, and only there, `status` counts changes without rename detection (every call
+passes `-c status.renames=false`), so that it never needs a file the clone does not hold, on any
+git version. `status` tells a partial clone by reading its configuration (a promisor remote, or
+`extensions.partialClone`), which writes nothing. With rename detection on, git pairs a file
+staged under a new name with the one `HEAD` has by reading `HEAD`'s copy, and a partial clone
+does not hold that copy when `HEAD` was moved without a checkout (`git reset --soft`, for one):
+git before 2.45 fetches it, and later git with the variable set fails. With it off, the objects
+`status`'s git reads are the commits and tags of the clone's refs, what those tags name, and
+`HEAD`'s trees, and a clone filtered on file contents (`--filter=blob:none`, the usual partial
+clone) holds each of them. The cost: in a partial clone a staged rename counts as two files where
+`sync` and `git status` say one. A clone that is not partial keeps rename detection, so there the
+three counts agree. One case is left: a clone filtered on trees (`--filter=tree:0`) does not hold
+the trees of a commit it fetched and never checked out, so after `HEAD` was moved onto one without
+a checkout `status`'s `git status` needs them. With git 2.45 or later it does not fetch them and
+the repo is `unusable` ("`git status` fails here"); with an older git it fetches them, the one
+network call `status` can cause.
+
+Git runs no hook for the commands `status` runs. `sync` fetches first,
+so a repo can read differently after a fetch: a version that was not fetched yet is `unusable`
+until then, and a branch behind `origin`'s counts only the commits fetched. Four cases differ
+even after a fetch:
+
+- a remote-tracking ref left from a branch `origin` deleted: `sync` never prunes, so `status`, which
+  reads the refs, calls the branch expected while `sync`, which asks `origin`, says it is not there;
+- a commit pin that only such a branch held: `status` finds the commit on the stale ref and calls
+  the repo expected, while `sync` finds no branch or tag of `origin` that holds it and does not
+  follow it;
+- a tag here that `origin` lacks: offline it cannot be told from `origin`'s tag, so `status` counts it;
+- a url that the manifest changed while the record still matches `origin`: `sync` tries to repoint
+  `origin` and then fetches from the new url, `status` answers from the refs of the old one.
+
+A `--remote` that asks `origin` itself is not built.
+
+Which distros: as for `sync` (see "Which distro a command uses"): every distro at the top of a system
+with a directory per distro, in the order of `distros`; the one whose directory the current directory
+is inside; or the ones `--distro` names.
+
+It prints the system directory, the manifest in use (as `config.yaml` records it), the role and the
+groups that are on, and, for a manifest with distros, every distro the system directory was set up
+for (`config.yaml`'s `distros`), with the ones shown marked. The manifest is read and resolved as
+`sync` reads it, from where it is now: a manifest in a clone that `sync` has not updated yet is read
+as it is.
+
+For each repo of the manifest, in layer order, one state, and facts that go with it:
+
+| State | Meaning |
+|---|---|
+| expected | on the manifest's version, by the rules `sync` follows: on the branch it names, or detached at its tag or commit. A branch behind `origin`'s is still expected; `behind` says how far, and the text says whether `sync` tries to fast-forward it or what stops it first: uncommitted changes, a remote of the name `sync` keeps for checking a new url (`repos-manifest-probe`) while the manifest changed the url, or another work tree holding the branch. A fast-forward `sync` tries can still be stopped by a path or a submodule in the way, which `status` does not check. A branch with commits only here (`sync` leaves it as it is) and a branch another work tree holds are expected, with the commits or the work tree named. A clone `merge_pr.sh` fast-forwarded past the recorded commit is expected. |
+| different | there, and on another branch, tag or commit; on the manifest's branch but not contained in `origin`'s with no commits only here (rewritten upstream, as `sync` says); on the version it was recorded on while the manifest now names another (`sync` tries to move it when nothing stops it first; it leaves it for a remote of the probe's name with the url changed, uncommitted changes, commits only here, the new branch held by another work tree, or a local new branch with commits not on `origin`: the text says which, in that order); or the manifest's version is a commit no branch or tag of `origin` holds. The text says where it is and what the manifest names. |
+| left-alone | there, and `sync` leaves it as it is, so `status` does not compare its version: a link at the place, a rebase, merge, bisect or other operation in progress, `index.lock`, a sparse checkout, or an `origin` with more than one url. The text says which. |
+| unusable | there, but `status` cannot use it as a clone of the manifest's version: not a git repo of its own, no commit checked out, no `origin` url at all or one set to an empty value (which `sync` takes for a url, and its fetch from it fails), the manifest's version cannot be found among the refs `origin` had when last fetched or names no single commit there (a branch and a tag of the same name, a tag of something that is not a commit, a commit missing from a shallow clone, no version and no recorded default branch), or `git` cannot read its state (`git status` or the count of commits not on `origin` fails). The text says which. |
+| missing | not there. `sync` clones it, and reports an error only when the clone fails. |
+| skipped | not there and optional: listed every time, as `sync` lists an optional repo it could not clone. `sync` clones it when it can. |
+| not-a-directory | a file or other non-directory is at the repo's place, or on the way to it (`sync`: "is there and is not a directory", "is on the way and is not a directory"). |
+| blocked-place | the check on the real destination fails: a link on the way to the place (a layer directory or a directory of the repo's key) leads somewhere else (`sync`'s rule 2). |
+| in-other-layer | the manifest gives the repo another layer than the record and the old place is there; the text gives the old place and the commands that move it (`sync`'s rule 1). |
+| not-in-manifest | recorded by `sync`, still on disk, and no longer in the manifest. Only repos in `state.yaml` can be found; a directory `sync` never recorded is not looked for. |
+
+`not-a-directory`, `blocked-place` and `in-other-layer` mean the repo is not at its place: `sync`
+reports each as an error for a repo that is not optional, and `build` refuses the layer. A
+`missing` repo is not at its place either, until `sync` clones it. An optional repo is listed in
+any state and does not fail the exit status; `sync` follows the same rule, as it turns whatever
+stops an optional repo into "skipped".
+
+The two states for a repo that is there and cannot be compared differ in what a script does:
+`unusable` exits 1, `left-alone` exits 0. A `sync` stopped while moving a repo is not a state: when
+the record's `moving` line names the commit the repo is on, the text and the `stopped_move` fact say
+so beside whichever state the repo has, as `sync` adds it to another message and goes on. A `moving`
+line that names another commit is not used (`sync` drops it; `status` leaves it).
+
+Facts, for a repo that is there: `changes` (tracked files changed, counted as `sync` counts them),
+`unpushed` (commits reachable from `HEAD` and from no remote-tracking ref of `origin`, counted as
+`sync` counts them: on a branch only, null when `HEAD` is detached), `behind` (commits of `origin`'s
+branch the clone lacks, on the manifest's branch), and `fetched_from`, the url of `origin`, with any
+user name and password masked; it is given also for a repo left alone for an operation in progress,
+an `index.lock` or a sparse checkout, and is null where there is no single `origin` url (none, more
+than one, or a place that is not a git clone with a commit) and for a link at the place, which
+`status` does not look into. As `sync` does, `status` registers every url it reads (each repo's url
+in the manifest, each recorded url, each `origin`) before it prints anything, so the user name and
+password of each is masked wherever it appears, in the JSON, in the lines a person reads and in error
+texts, and the manifest's location is masked too. When it is not the manifest's url the text says which: it is the url recorded,
+so `sync` tries to repoint it (fetching from the new url first, and leaving `origin` and the repo as
+they are when that fetch fails or a local commit is not on the new url), or `sync` leaves it because a
+remote named `repos-manifest-probe` is set here; or it was set by hand and is left. A repo can be expected and have
+changes and unpushed commits at once, as `sync` leaves such a repo as it is; the state is the
+version, the facts are separate.
+
+A human line is `<path>  <state>: <text>`, with `(optional)` after the state for an optional repo,
+and the facts that are not zero in brackets at the end. With `--json` the one document on standard
+output is the same information:
+
+```
+{ "format": 1, "ok": true, "system": "<absolute path>", "manifest": "...", "role": "...",
+  "groups": [...], "layout": "flat|distro-dirs", "recorded_distros": ["jazzy", "rolling"] | null,
+  "distros": [ {
+    "distro": "jazzy" | null, "ok": true, "problem": null,
+    "repos": [ { "key": "...", "path": "jazzy/core/src/a", "layer": "core", "optional": false,
+                 "state": "expected", "detail": "...", "version": "...", "head": "<commit>",
+                 "changes": 0, "unpushed": 0, "behind": 0, "stopped_move": false,
+                 "url": "...", "fetched_from": "..." } ],
+    "not_in_manifest": [ { "key": "...", "path": "..." } ] } ] }
+```
+
+`version` is what the manifest names; `path` is relative to the system directory; `layer` is the
+layer's name, `_unnamed` for the unnamed first layer, as the resolved files name it; `changes`,
+`unpushed` and `behind` are null where the repo is not there, `status` cannot count, or
+(`unpushed`) `HEAD` is detached, and all three are null for `left-alone` and `unusable`, which
+`status` does not compare; `behind` is null off the manifest's branch; `stopped_move` is false where
+it does not apply. `recorded_distros` is every distro the system was set up for, null when the
+manifest has none; `distros` holds the ones acted on.
+
+`ok` is given at two levels. A distro's `ok` is true exactly when that distro would not fail the
+exit status on its own: it was read and resolved, and no repo of it that is not optional is in a
+failing state (`missing`, `not-a-directory`, `blocked-place`, `in-other-layer` or `unusable`). A
+distro's `problem` is null when it resolved, and otherwise says why it could not be read or
+resolved; a manifest that cannot be read is the problem of every distro. A distro with a problem
+has `ok: false`, and its `repos` and `not_in_manifest` are left out of its entry, not given as
+empty lists, since nothing of it was compared. A distro that resolved and has a failing repo has
+`ok: false`, a null `problem`, and its `repos` and `not_in_manifest` as usual. The top `ok` is true
+exactly when the exit status is 0, that is when every distro's `ok` is true. Nothing else is printed on standard
+output with `--json`; warnings go to standard error. When the system directory cannot be found or
+read (or a `--distro` names one it does not record) there is no document: the error goes to
+standard error and the exit status is 1.
+
+Exit status: 1 when a repo of a distro asked for that is not optional is missing or not at its place
+(`missing`, `not-a-directory`, `blocked-place`, `in-other-layer`) or is `unusable`, when a distro's
+manifest cannot be read or resolved, or when the system directory cannot be found or read; 0
+otherwise. States `expected`, `different`, `left-alone` and `not-in-manifest`, local changes and
+unpushed commits do not change the exit status: `status` reports them, and a script reads `state`.
+(2 is the argument parser's, for a bad option.) The workspace's `validate` does not run `status`
+yet; it is to call it under the workspace's issue 503, and then to fail when `status` exits 1.
+
+In plain words, a repo fails the exit status when it is not there, or is there but is not a git
+clone with a commit and an `origin`, or its version cannot be found among the refs of its last
+fetch, or git cannot read its state. A rebase, merge or bisect in progress, an `index.lock`, a
+sparse checkout, a link at the place, an `origin` with two urls, a repo on another branch, local
+changes and unpushed commits are reported and do not fail it.
 
 ### freeze
 
@@ -1828,7 +1987,8 @@ Not every command needs all of these:
 | Command | Needs |
 |---|---|
 | `show`, `resolve`, `validate` | Python with PyYAML; `git` when a manifest is read from a git repo, or when `fetch_from` has a fallback |
-| `init`, `sync`, `status`, `freeze` | `vcs` and `git` as well |
+| `status` | `git` as well, 2.23 or later; not `vcs`, which it never runs |
+| `init`, `sync`, `freeze` | `vcs` and `git` as well |
 | `build` | `colcon` as well |
 
 `colcon` is the one build tool `build` supports. It was chosen because it builds a directory
@@ -1888,6 +2048,22 @@ go on. Each of those errors ends by saying that the manifest's path is the one r
 `config.yaml`, taken from the system directory. Two names that a disk which ignores case
 treats as one are not checked yet on the real destination.
 
+`status` is built as "status" describes, for a manifest given as a path on the local disk. It
+reads only and makes no network call, with the limits "status" lists. Some of its checks are
+`sync`'s own code, called by both: resolving the manifest, the record's layer and the check on the
+real destination, the first checks on a repo (a git repository of its own, a commit checked out, no
+operation in progress, no `index.lock`, not sparse, one `origin` url, a stopped move), counting
+changes and commits not on `origin`, finding the manifest's version and whether a commit is on
+`origin`, and whether a remote has the probe's name. The rest is a second copy: what `sync` does
+once it has the version (its rules 9 to 12, `standing` in `update.py`), and, in `status.py`, the
+checks on the place itself (not there, not a directory, a link) and the order in which `sync` stops
+at the url and at uncommitted changes before its rules 9 to 12. The two copies are held in
+step by a test that runs `status` and then `sync` on each case and checks both the state and every
+sentence of `status`'s text that says what `sync` does against what `sync` then did. Routing `sync`
+through `standing` would change the control flow of the code that protects local work, so it is not
+done. The cases where the two read a repo differently, because `sync` fetches first, are listed in
+"status".
+
 `show` is built for a manifest given as a path on the local disk, and with no manifest inside
 a system directory, as "show" describes. It prints a manifest's own URLs, since fetching from
 another place is not built.
@@ -1898,8 +2074,8 @@ Python running it.
 
 Not built yet: step 1 of "sync" (the manifest's own clone), the rebase of a repo with commits
 not on `origin`, `local_manifest`, the git and URL forms of a manifest's location with `--manifest-ref` and
-`--manifest-path`, arguments after `--` for `init` and `sync`, `add-distro`, `status`,
-`freeze`, fetching from another place and extra remotes.
+`--manifest-path`, arguments after `--` for `init` and `sync`, `add-distro`, `freeze`,
+fetching from another place and extra remotes.
 
 ## Open questions
 

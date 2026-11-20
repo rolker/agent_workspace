@@ -32,12 +32,14 @@ from helpers import (
     snapshot_repo,
     state_of,
 )
+from repos_manifest import status as status_module
+from repos_manifest import sync as sync_module
 from repos_manifest import update
 
 UPDATE = Path(update.__file__)
 
 
-GIT_CALLS = ("run", "out", "ok", "count", "ask_origin")
+GIT_CALLS = ("run", "out", "ok", "count", "ask_origin", "ask", "ask_local")
 # The names a git call may spread with `*`: each is a function's own parameter (`args`,
 # `patterns`, whose callers the scan reads as git calls too), a
 # step taken from a list literal (`step`, `back`), or a list literal or `GIT_OPTIONS` bound in
@@ -52,9 +54,10 @@ def _called(call: ast.Call) -> str:
 
 def git_argument_texts(source: str):
     """The git arguments a module's source can run, each list as one text: the constant
-    arguments of every `run`, `out`, `ok`, `count` and `ask_origin` call (the last two pass
-    theirs to git), every list literal (a step's arguments) and `GIT_OPTIONS`. Tuples elsewhere
-    are names and messages, not arguments.
+    arguments of every `run`, `out`, `ok`, `count`, `ask_origin`, `ask` and `ask_local` call
+    (the last four pass theirs to git; `ask` is the parameter `find_version` and
+    `commit_on_origin` call through), every list literal (a step's arguments) and
+    `GIT_OPTIONS`. Tuples elsewhere are names and messages, not arguments.
 
     What it cannot see: an argument held in a variable that is not a list literal (a tuple,
     a string built at run time). `update.py` is written so that this does not matter: every
@@ -382,3 +385,232 @@ def test_every_fetch_passes_no_recurse_submodules_and_no_prune():
     for text in fetches:
         words = text.split()
         assert "--no-recurse-submodules" in words and "--no-prune" in words, text
+
+
+# --- `status` reads only -----------------------------------------------------------------
+
+STATUS = Path(status_module.__file__)
+
+# The git commands `status.py` and the functions of `update` it reaches may run, and the
+# functions of `update` and `sync` it may call: each reads only. A call to any other (`_move`,
+# `_change`, `_repoint`, `delete_probe_refs`, `update_repo`, `left_the_manifest`, ...) fails the
+# scan. `config` reads only in the forms `CONFIG_READS` names, and `worktree` only as `list`.
+READ_ONLY_GIT = {
+    "rev-parse",
+    "symbolic-ref",
+    "config",
+    "for-each-ref",
+    "rev-list",
+    "merge-base",
+    "status",
+    "ls-files",
+    "ls-tree",
+    "cat-file",
+    "worktree",
+}
+CONFIG_READS = {"--get", "--get-all", "--get-regexp", "--list", "-l"}
+CONFIG_WRITES = {
+    "--add",
+    "--unset",
+    "--unset-all",
+    "--replace-all",
+    "--rename-section",
+    "--remove-section",
+    "--edit",
+    "-e",
+    "set",
+    "unset",
+    "rename-section",
+    "remove-section",
+    "edit",
+}
+STATUS_MAY_CALL = {
+    "update": {
+        "Git",
+        "blocked_early",
+        "blocked_late",
+        "stopped_move",
+        "tracked_changes",
+        "count",
+        "find_version",
+        "commit_on_origin",
+        "ask_local",
+        "standing",
+        "probe_taken",
+        "same_url",
+        "quoted",
+        "counted",
+    },
+    "sync": {"require_git", "resolve_all", "layer_moved", "Reported"},
+}
+# What a function `status` reaches in `update.py` may not pass or call: a git that changes the
+# work tree or the configuration (`change`), holds the lock (`hold`) or may prompt (`prompt`,
+# only a fetch or `ls-remote`), or a function that writes or asks origin.
+WRITES = {"change", "hold", "prompt"}
+NEVER_REACHED = {"_move", "_change", "_repoint", "delete_probe_refs", "ask_origin", "update_repo"}
+# What a function `status` reaches in `sync.py` may not call: a function that writes a file,
+# a directory, a record or a lock, clones, or updates a repo.
+SYNC_NEVER_CALLED = {
+    "write_output",
+    "put_distro_state",
+    "hold_build_lock",
+    "make_writable",
+    "write_text",
+    "write_bytes",
+    "mkdir",
+    "makedirs",
+    "mkdtemp",
+    "rename",
+    "unlink",
+    "rmtree",
+    "remove",
+    "rmdir",
+    "symlink_to",
+    "open",
+    "update_repo",
+    "present_repo",
+    "sync_distros",
+    "left_the_manifest",
+}
+# The commands `require_git` runs: `git rev-parse --local-env-vars` and `git --version`.
+SYNC_SUBPROCESS_WORDS = {"rev-parse", "--local-env-vars", "--version"}
+
+
+def _module_attributes(tree, module):
+    return {
+        node.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == module
+    }
+
+
+def _git_call_words(node):
+    """The constant arguments of a call `git.run`, `git.out` or `git.ok` (any receiver for
+    `status.py`'s own), or None when `node` is not one. Every argument must be a constant or a
+    spread `SPREAD` allows, and the first a constant: a subcommand the scan can read."""
+    if not (isinstance(node, ast.Call) and _called(node) in ("run", "out", "ok")):
+        return None
+    if (
+        not isinstance(node.func, ast.Attribute)
+        or getattr(node.func.value, "id", "") == "subprocess"
+    ):
+        return None
+    assert node.args and isinstance(node.args[0], ast.Constant), ast.dump(node)
+    for arg in node.args:
+        if isinstance(arg, ast.Starred):
+            assert getattr(arg.value, "id", "") in SPREAD, ast.dump(node)
+    return [a.value for a in node.args if isinstance(a, ast.Constant)]
+
+
+def _check_reading(words, where):
+    """`words` is a git command that reads only."""
+    assert words[0] in READ_ONLY_GIT, (where, words)
+    if words[0] == "config":
+        assert set(words) & CONFIG_READS, (where, words)
+        assert not set(words) & CONFIG_WRITES, (where, words)
+    if words[0] == "worktree":
+        assert words[1:2] == ["list"], (where, words)
+
+
+def test_status_calls_only_reading_functions_of_update_and_sync():
+    tree = ast.parse(STATUS.read_text())
+    constants = {name for name in dir(update) if name.isupper()}
+    for module, allowed in STATUS_MAY_CALL.items():
+        used = _module_attributes(tree, module) - constants
+        assert used <= allowed, (module, used - allowed)
+
+
+def test_status_runs_only_reading_git_commands_itself():
+    tree = ast.parse(STATUS.read_text())
+    seen = 0
+    for node in ast.walk(tree):
+        words = _git_call_words(node)
+        if words is None:
+            continue
+        seen += 1
+        _check_reading(words, "status.py")
+        assert not {k.arg for k in node.keywords} & WRITES
+    assert seen >= 1  # the scan sees `status.py`'s own calls
+
+
+def test_status_asks_the_local_refs_never_origin():
+    """`find_version` and `commit_on_origin` ask origin over the network unless they are given
+    `ask`; every call `status.py` makes passes `ask=update.ask_local`."""
+    tree = ast.parse(STATUS.read_text())
+    calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and _called(node) in ("find_version", "commit_on_origin")
+    ]
+    assert len(calls) == 2
+    for call in calls:
+        (ask,) = [k.value for k in call.keywords if k.arg == "ask"]
+        assert ast.unparse(ask) == "update.ask_local"
+
+
+def _walk(path, start):
+    """The functions of the module at `path` that `start` reach by calls, each with its node."""
+    tree = ast.parse(path.read_text())
+    functions = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    reached, todo = {}, sorted(set(start) & set(functions))
+    while todo:
+        name = todo.pop()
+        if name in reached:
+            continue
+        reached[name] = functions[name]
+        for node in ast.walk(functions[name]):
+            if isinstance(node, ast.Call) and _called(node) in functions:
+                todo.append(_called(node))
+    return reached
+
+
+def test_what_status_reaches_in_update_neither_writes_nor_asks_origin():
+    reached = _walk(UPDATE, STATUS_MAY_CALL["update"])
+    commands = 0
+    for name, function in reached.items():
+        for node in ast.walk(function):
+            if isinstance(node, ast.Call):
+                assert not {k.arg for k in node.keywords} & WRITES, (name, ast.dump(node))
+            words = _git_call_words(node)
+            if words is not None:
+                commands += 1
+                _check_reading(words, name)
+    assert "standing" in reached and "worktree_holding" in reached  # the walk follows calls
+    assert commands > 20  # and reads the git commands of what it reaches
+    assert not set(reached) & NEVER_REACHED, set(reached) & NEVER_REACHED
+
+
+def test_what_status_reaches_in_sync_writes_nothing():
+    reached = _walk(Path(sync_module.__file__), STATUS_MAY_CALL["sync"])
+    assert {"require_git", "resolve_all", "layer_moved", "plan_distros"} <= set(reached)
+    assert "require_tools" not in reached  # `vcs` is never run
+    commands = 0
+    for name, function in reached.items():
+        for node in ast.walk(function):
+            if not isinstance(node, ast.Call):
+                continue
+            assert _called(node) not in SYNC_NEVER_CALLED, (name, ast.dump(node))
+            if _called(node) == "run" and getattr(node.func.value, "id", "") == "subprocess":
+                commands += 1
+                words = {e.value for e in node.args[0].elts if isinstance(e, ast.Constant)}
+                assert words <= SYNC_SUBPROCESS_WORDS, (name, words)
+    assert commands == 2  # `git rev-parse --local-env-vars` and `git --version`
+
+
+def test_the_scan_of_a_git_command_catches_a_write():
+    for words in (["config", "remote.origin.url", "x"], ["config", "--unset", "a.b"]):
+        with pytest.raises(AssertionError):
+            _check_reading(words, "a test")
+    with pytest.raises(AssertionError):
+        _check_reading(["worktree", "prune"], "a test")
+    with pytest.raises(AssertionError):
+        _check_reading(["update-ref", "-d", "refs/x"], "a test")
+    _check_reading(["config", "--type=bool", "--get", "core.sparseCheckout"], "a test")
+
+
+def test_the_scan_of_status_catches_a_writing_call():
+    tree = ast.parse("update._move(turn, head, found)\nsync.left_the_manifest(a, b, c, d, e)\n")
+    assert _module_attributes(tree, "update") - STATUS_MAY_CALL["update"] == {"_move"}
+    assert _module_attributes(tree, "sync") - STATUS_MAY_CALL["sync"] == {"left_the_manifest"}

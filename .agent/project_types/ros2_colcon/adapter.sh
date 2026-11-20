@@ -1084,7 +1084,7 @@ _rc_tool_validate() {
             failed="${failed:+$failed, }$d"
             issues=$((issues + n))
         else
-            passed+=("✅ ros2_colcon checkout matches the tool's last resolve for distro $d ($mdir); the manifest itself was not read again (there is no repos-manifest status yet)")
+            passed+=("✅ ros2_colcon checkout matches the tool's last resolve for distro $d ($mdir); the manifest itself was not read again (the adapter does not call repos-manifest status yet; issue 503 makes it do so)")
         fi
     done
     [ "${#passed[@]}" -gt 0 ] && printf '%s\n' "${passed[@]}"

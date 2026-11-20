@@ -4491,7 +4491,7 @@ test_tool_validate() {
     out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
     assert_eq "validate: exit 0" "0" "$rc"
     assert_eq "validate: the success line names the distro, the files and the limit" \
-        "✅ ros2_colcon checkout matches the tool's last resolve for distro fakefox ($root/.repos-manifest/resolved/fakefox); the manifest itself was not read again (there is no repos-manifest status yet)" "$out"
+        "✅ ros2_colcon checkout matches the tool's last resolve for distro fakefox ($root/.repos-manifest/resolved/fakefox); the manifest itself was not read again (the adapter does not call repos-manifest status yet; issue 503 makes it do so)" "$out"
     # A leftover of another route is noted, without failing.
     mkdir -p "$root/configs/manifest"
     echo "file:///x/bootstrap.yaml" > "$root/configs/project_bootstrap.url"
