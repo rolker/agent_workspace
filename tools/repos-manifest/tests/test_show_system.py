@@ -191,6 +191,45 @@ def test_a_recorded_path_that_resolves_only_once_canonicalised_is_refused_as_syn
     assert "missing/../m.yaml" in synced and recorded in synced
 
 
+def _refusals(capsys):
+    """What `show` and then `sync` print to stderr, run in the current directory."""
+    assert main(["show"]) == 1
+    shown = capsys.readouterr()
+    assert shown.out == ""
+    assert main(["sync"]) == 1
+    return shown.err, capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "spoil",
+    [
+        # A directory where the manifest is recorded: it exists, and does not read.
+        pytest.param(lambda m: (m.unlink(), m.mkdir()), id="a-directory"),
+        # A file that reads and does not parse as YAML.
+        pytest.param(lambda m: m.write_text("repositories: [\n"), id="does-not-parse"),
+    ],
+)
+def test_a_recorded_path_that_exists_and_does_not_read_is_named_as_recorded_by_show_and_sync(
+    tmp_path, capsys, monkeypatch, spoil
+):
+    # `sub/../m.yaml` exists, so its canonical form differs from what is recorded: show names it
+    # as recorded, as sync does, and never by the canonical path.
+    system = _system(tmp_path, ["jazzy"])
+    (system / "sub").mkdir()
+    _record(system, "sub/../m.yaml")
+    spoil(system / "m.yaml")
+    monkeypatch.chdir(system)
+    shown, synced = _refusals(capsys)
+    for err in (shown, synced):
+        assert "sub/../m.yaml: " in err
+        assert f"(the manifest's path is `manifest` in {system / SYSTEM_DIR / CONFIG_FILE}" in err
+    canonical = os.path.realpath(system / "m.yaml")
+    assert canonical not in shown and canonical not in synced
+    # Both name the manifest by the same words, so the reason after the name is the same too.
+    reason = shown.split("sub/../m.yaml: ", 1)[1].split(" (the manifest's path", 1)[0]
+    assert reason and reason in synced
+
+
 def test_the_no_system_refusal_prints_the_current_directory_on_one_line(
     tmp_path, capsys, monkeypatch
 ):

@@ -520,8 +520,10 @@ opens from the directory `show` is run in. A manifest given on the command line 
 it was given. Every other one is printed as an absolute path with links followed: the
 manifests it builds on, and, with no manifest given, the one `config.yaml` records, whose
 recorded path is taken from the system directory and not from the current one. That recorded
-path is opened as `sync` opens it, so the two read the same manifest or refuse the same path,
-and a refusal names the path as recorded. A path is
+path is opened as `sync` opens it, so the two read the same manifest or refuse the same path.
+Until the manifest has been read and resolved, `show` names it as `sync` does, by the path as
+recorded: every refusal and warning about it does, whether the path is missing, is a
+directory, cannot be read or does not parse. A path is
 printed on one line: a control or invisible character in it (a newline, a tab, a
 bidirectional override) is written as an escape, `\xXX` below 0x80, `\uXXXX` up to U+FFFF
 and `\UXXXXXXXX` above, so that the escape's end is never in doubt. A byte that is not UTF-8 is

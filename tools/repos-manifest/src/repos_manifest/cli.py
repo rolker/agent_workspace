@@ -33,7 +33,6 @@ from .system import (
     Refusal,
     current_directory,
     find_system,
-    is_url,
     one_distro_for,
     read_config,
     read_manifest,
@@ -204,19 +203,23 @@ def _show_in_system(args: argparse.Namespace, cwd: Path) -> selection.Resolved:
         )
     config = read_config(system)
     distro = one_distro_for(system, config, [args.distro] if args.distro else [], cwd)
-    # The recorded path is opened as sync opens it, from the system directory, which need not
-    # be the current one. When it opens, it is shown, like the manifests it builds on, as an
-    # absolute path with links followed, so it opens from where show is run; when it does not,
-    # the message names it as recorded, as sync's does.
-    recorded = system / config.manifest
-    opens = not is_url(config.manifest, system) and os.path.exists(recorded)
+    # The recorded path is read and resolved as sync reads it, from the system directory, which
+    # need not be the current one, and under its recorded name, so every refusal and warning
+    # names it as sync's do. Only once it has read and resolved is it shown, like the
+    # manifests it builds on, as an absolute path with links followed, so that it opens from
+    # where show is run.
     try:
-        manifest = read_manifest(
-            config.manifest, system, os.path.realpath(recorded) if opens else None
-        )
-        return selection.resolve(manifest, config.role, distro, config.groups)
+        manifest = read_manifest(config.manifest, system)
+        resolved = selection.resolve(manifest, config.role, distro, config.groups)
     except ManifestError as exc:
         raise ManifestError(f"{exc} {recorded_manifest(system)}") from None
+    canonical = os.path.realpath(system / config.manifest)
+    for layer in resolved.layers:
+        for repo in layer.repos:
+            if repo.source == resolved.source:
+                repo.source = canonical
+    resolved.source = canonical
+    return resolved
 
 
 def cmd_show(args: argparse.Namespace) -> int:
