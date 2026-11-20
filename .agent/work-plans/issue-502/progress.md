@@ -600,3 +600,27 @@ LFS-like filter evidence (clean `base64 -w0`, smudge `base64 -d`, required): in 
 - Whole tool suite, `tools/repos-manifest`: `2103 passed in 675.77s (0:11:15)` (a first run had 1 failure, the design sentence naming the adapter, fixed in 0ee41b71 before this run).
 - `bash .agent/scripts/tests/test_ros2_colcon.sh` (the suite that names the changed message): `=== Results: 1375 passed, 0 failed, 0 skipped ===`.
 - The full pre-commit pass was left to the host. Nothing in ~/project11 was read, written or run.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-20 14:42 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-502 at `cee31314`
+**Base**: origin/main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 1 | **Suggestions**: 1
+**Round**: 3 | **Ship**: continue — round 3: 1 must-fix with a design choice in it (not mechanical); down from 2
+
+Checked: all eleven round-2 findings are in the code (filters on, FILTER_OFF and GIT_CONFIG_COUNT handling gone; design no longer says `validate` runs status; `ask_local` filters by pattern before it peels, and is otherwise the same as before, error text included; move order matches `_would_move`/`_move`; the deleted-branch commit pin is in the design, CASES and DIFFER; `fetched_from` is filled in for operation/index.lock/sparse and registered before masking; empty origin url is unusable; adapter line and its test reworded; duplicate assert gone). `sync.git_version` split: `require_git_version` runs the same `git --version` (LC_ALL=C), raises the same Refusal when it does not run, skips an unreadable version, and raises the same "older than 2.23" message; `require_git` calls it at the same point. The design's four cases that differ are each true and each in the agreement test ("a branch origin deleted", "a commit on a branch origin deleted", "a local tag origin lacks" in DIFFER; "a url changed" in CASES). Cross-model: skipped (round-3 convergence check, per handoff).
+
+By hand, filter `b64` (clean `base64 -w0`, smudge `base64 -d`, required; stored form differs from the checkout): fresh clone, `git status --porcelain` empty, `status --json` expected, changes 0, exit 0. Origin moved ahead, clone fetched, `a.bin` touched: `git status` empty, `status` said "on main, behind origin's as last fetched (sync tries to fast-forward it)", changes 0, behind 1; `sync` printed `src/a: fast-forwarded 1 commit`, and `status` after it said expected, behind 0.
+
+By hand, partial clone (blob:none, file:// origin with allowFilter): branch `later` renames a.txt to b.txt with a small edit; clone at main, fetch `later`, `git reset --soft FETCH_HEAD`. status's exact `git status` argv with `GIT_NO_LAZY_FETCH=1` fails (exit 128, "could not fetch ... from promisor remote"); without the variable (as on git before 2.45) it exits 0 and a third pack appears, trace2 shows a child `git fetch origin --filter=blob:none --stdin`. Cause: `status --porcelain=v2` detects renames between HEAD and the index by default, and reads a HEAD blob that was never checked out.
+
+Tests: 349 passed (test_status, test_status_agrees_with_sync, test_status_distros, test_update_safety, test_cli). Nothing in ~/project11 was read, written or run.
+
+### Findings
+- [ ] (must-fix) A partial clone with git before 2.45 (or an unreadable version) is `unusable`, exit 1, which is outside the owner's exit rule (missing, not at its place, not a git repo of its own, no commit, version not found) and fails every partial clone on Ubuntu 24.04's git 2.43. The host's reversal (report it in its ordinary state, state the limit in the design) is sound on the exit rule, but its stated ground is false: `status` reads only held objects except when HEAD was moved without a checkout (reset --soft, update-ref), where `git status`'s rename detection lazy-fetches on old git, and on 2.45+ makes `git status` fail so the repo is `unusable` "git status fails". Reverse it, and either have status's git skip rename detection (e.g. `-c status.renames=false`; a staged rename then counts 2 files where `sync` says 1, so say so) or state this case in the design; the test `test_no_lazy_fetch_does_not_change_the_answer` should gain the reset --soft case — `tools/repos-manifest/src/repos_manifest/status.py:287`, `tools/repos-manifest/docs/design.md:1569`, `:1607`, `:1690`, `tools/repos-manifest/README.md:152`
+- [ ] (suggestion) "a url changed" copies the remote, so the new url's refs equal the old ones and the case agrees trivially; the design's fourth difference (status answers from the old url's refs) is listed but not exercised. A copy that moves ahead before the sync would show it, as a DIFFER or CLAIMS_DIFFER entry — `tools/repos-manifest/tests/status_cases.py:94`
