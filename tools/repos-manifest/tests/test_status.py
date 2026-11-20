@@ -25,7 +25,7 @@ from helpers import (
     state_of,
 )
 from repos_manifest import update
-from status_cases import CASES, FAILING, make_case, set_moving
+from status_cases import CASES, FAILING, filtered_fresh_clone, make_case, set_moving
 
 
 def _repos_below(top):
@@ -394,30 +394,41 @@ def test_status_needs_git_and_not_vcs(vcs, tmp_path, capsys, monkeypatch):
     assert "`vcs` is not found on PATH" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize("driver", ["mark", "a.b=c"], ids=["plain", "with-equals"])
-def test_no_fsmonitor_hook_and_no_filter_of_the_clone_runs(vcs, tmp_path, capsys, driver):
-    """A clone's own `core.fsmonitor` hook and clean filter each leave a marker file when they
-    run. A plain `git status` runs both; `status` runs neither."""
+def test_no_fsmonitor_hook_of_the_clone_runs(vcs, tmp_path, capsys):
+    """A clone's own `core.fsmonitor` hook leaves a marker file when it runs. A plain `git
+    status` runs it; `status` does not."""
     case = make_case(tmp_path)
     hook = tmp_path / "fsmonitor"
     hook.write_text(f"#!/bin/sh\ntouch {tmp_path / 'fsmonitor-ran'}\nexit 1\n")
     hook.chmod(0o755)
-    clean = f"sh -c 'touch {tmp_path / 'filter-ran'}; cat'"
     git("config", "core.fsmonitor", str(hook), cwd=case.clone)
-    git("config", f"filter.{driver}.clean", clean, cwd=case.clone)
-    git("config", f"filter.{driver}.required", "true", cwd=case.clone)
-    (case.clone / ".git/info/attributes").write_text(f"README filter={driver}\n")
-    later = time.time() + 5  # so that git reads README's content, through its filter
-    os.utime(case.clone / "README", (later, later))
     capsys.readouterr()
     # Not the `status` helper of this file: its snapshot runs a plain `git status`.
     assert run(case.system, "status", "--json") == 0
     found = repo_a(json.loads(capsys.readouterr().out))
     assert not (tmp_path / "fsmonitor-ran").exists()
-    assert not (tmp_path / "filter-ran").exists()
     assert found["state"] == "expected"
-    git("status", "--porcelain", cwd=case.clone)  # the markers do show a helper that runs
-    assert (tmp_path / "fsmonitor-ran").exists() and (tmp_path / "filter-ran").exists()
+    git("status", "--porcelain", cwd=case.clone)  # the marker does show a hook that runs
+    assert (tmp_path / "fsmonitor-ran").exists()
+
+
+def test_the_clean_filter_of_the_clone_runs_as_for_git_status(vcs, tmp_path, capsys):
+    """A file under a clean filter that changes its stored form, touched but unchanged: only
+    the filter tells git it is unchanged. `status` runs the filter, as `git status` does, and
+    counts no change where `git status` shows none."""
+    case = make_case(tmp_path)
+    filtered_fresh_clone(case)
+    later = time.time() + 5  # so that git reads the file's content, through its filter
+    os.utime(case.clone / "data", (later, later))
+    marker = tmp_path / "filter-ran"
+    if marker.exists():
+        marker.unlink()
+    capsys.readouterr()
+    assert run(case.system, "status", "--json") == 0
+    found = repo_a(json.loads(capsys.readouterr().out))
+    assert marker.exists()  # `status`'s git ran the clone's filter
+    assert found["state"] == "expected" and found["changes"] == 0, found
+    assert git("status", "--porcelain", cwd=case.clone) == ""
 
 
 def test_status_asks_git_for_no_lazy_fetch(vcs, tmp_path, capsys, monkeypatch):
@@ -432,6 +443,27 @@ def test_status_asks_git_for_no_lazy_fetch(vcs, tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(update.Git, "run", watching)
     status(case.system, capsys, expect=0)
     assert seen and set(seen) == {("1", ("-c", "core.fsmonitor=false"))}
+
+
+@pytest.mark.parametrize("name", ["behind origin", "pinned at a tag", "a moved tag"])
+def test_no_lazy_fetch_does_not_change_the_answer(vcs, tmp_path, capsys, monkeypatch, name):
+    """A partial clone with no file contents of its own past what is checked out: with the
+    remote gone, a lazy fetch could only fail, and `status` gives the same answer with lazy
+    fetch allowed as with it turned off, so it reads no object the clone lacks."""
+    case = make_case(tmp_path)
+    git("config", "uploadpack.allowFilter", "true", cwd=case.remote)
+    shutil.rmtree(case.clone)
+    git("clone", "-q", "--filter=blob:none", f"file://{case.remote}", str(case.clone))
+    git("remote", "set-url", "origin", str(case.remote), cwd=case.clone)
+    CASES[name][0](case)
+    assert git("config", "remote.origin.promisor", cwd=case.clone) == "true"
+    shutil.move(str(case.remote), str(tmp_path / "gone"))
+    _, off, _ = status(case.system, capsys)
+    monkeypatch.setattr("repos_manifest.status.NO_LAZY_FETCH", {})
+    monkeypatch.delenv("GIT_NO_LAZY_FETCH", raising=False)
+    _, allowed, _ = status(case.system, capsys)
+    assert repo_a(off) == repo_a(allowed)
+    assert repo_a(off)["state"] == CASES[name][1], repo_a(off)
 
 
 def test_find_version_looks_up_ask_origin_when_it_is_called(vcs, tmp_path, monkeypatch):

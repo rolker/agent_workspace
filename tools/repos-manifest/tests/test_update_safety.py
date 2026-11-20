@@ -532,7 +532,7 @@ def test_status_runs_only_reading_git_commands_itself():
         seen += 1
         _check_reading(words, "status.py")
         assert not {k.arg for k in node.keywords} & WRITES
-    assert seen >= 2  # the scan sees `status.py`'s own calls
+    assert seen >= 1  # the scan sees `status.py`'s own calls
 
 
 def test_status_asks_the_local_refs_never_origin():

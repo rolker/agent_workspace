@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -145,6 +146,39 @@ def tag_on_no_branch(case):
 
 def stopped_move_clean(case):
     set_moving(case, {"from": "1" * 40, "to": head(case.clone)})
+
+
+def filtered_fresh_clone(case):
+    """A fresh clone with a file under a required clean filter that changes its stored form (the
+    clone stores it in capitals and checks it out in small letters), as Git LFS's filter does:
+    the clone's own configuration names the filter, and the filter leaves a marker file each
+    time it runs. Clean: `git status`, `status` and `sync` all run the filter and see no
+    change."""
+    (case.remote / ".gitattributes").write_text("data filter=up\n")
+    (case.remote / "data").write_text("STORED\n")
+    git("add", ".gitattributes", "data", cwd=case.remote)
+    git("commit", "-q", "-m", "filtered", cwd=case.remote)
+    sync(case)
+    shutil.rmtree(case.clone)
+    marker = case.tmp / "filter-ran"
+    git(
+        "clone", "-q",
+        "-c", f"filter.up.clean=sh -c 'touch {marker}; tr a-z A-Z'",
+        "-c", "filter.up.smudge=tr A-Z a-z",
+        "-c", "filter.up.required=true",
+        str(case.remote), str(case.clone),
+    )  # fmt: skip
+    assert (case.clone / "data").read_text() == "stored\n"
+
+
+def filtered_touched_behind(case):
+    """The fresh filtered clone, behind origin after a fetch by hand, with the filtered file
+    touched but unchanged: only its filter tells git it is unchanged, and `sync`
+    fast-forwards."""
+    filtered_fresh_clone(case)
+    behind(case)
+    later = time.time() + 5
+    os.utime(case.clone / "data", (later, later))
 
 
 def deleted_branch(case):
@@ -349,6 +383,12 @@ CASES = {
     "fast-forwarded by hand": (fast_forwarded_by_hand, "expected", "on main"),
     "a tag on no branch": (tag_on_no_branch, "expected", "pinned at v9"),
     "a stopped move, clean": (stopped_move_clean, "expected", "a sync was stopped"),
+    "a filtered fresh clone": (filtered_fresh_clone, "expected", "on main"),
+    "a filtered file touched, behind": (
+        filtered_touched_behind,
+        "expected",
+        "sync tries to fast-forward it",
+    ),
     "a branch origin deleted": (deleted_branch, "expected", "on dev"),
     "another branch": (other_branch, "different", "it is on branch other"),
     "detached elsewhere": (detached_elsewhere, "different", "a detached HEAD"),

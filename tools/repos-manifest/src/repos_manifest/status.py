@@ -2,10 +2,11 @@
 acts on (``docs/design.md``, "status").
 
 It reads only. It takes no lock, writes no resolved file, no record and no setup file, and
-makes no network call: every git it runs goes through `update.Git`, which passes
-`--no-optional-locks` (so `git status` does not refresh the index), with the clone's own
-helpers turned off (`_reading_git`), and the manifest's version is looked up with
-`update.ask_local`, in the refs the clone had when it was last fetched.
+makes no network call of its own: every git it runs goes through `update.Git`, which passes
+`--no-optional-locks` (so `git status` does not refresh the index), with no fsmonitor hook and
+no lazy fetch (`_reading_git`), and the manifest's version is looked up with
+`update.ask_local`, in the refs the clone had when it was last fetched. The clean filters a
+clone's configuration names run, as they do for `git status`.
 
 Some checks are `sync`'s own code, called by both: `sync.resolve_all`, `sync.layer_moved`,
 `system.place_problem_kind`, `update.blocked_early`, `update.blocked_late`,
@@ -73,15 +74,15 @@ BLOCKED_STATE = {
     update.SEVERAL_ORIGINS: LEFT_ALONE,
 }
 
-# What keeps a clone's own configuration from running a helper under `status`'s git calls
-# (``docs/design.md``, "status"): a partial clone does not fetch a missing object (git 2.45 and
-# later know the variable), no fsmonitor hook is started, and every filter driver the clone's
-# configuration names is emptied, so `git status` runs no clean filter (git runs none for a
-# driver with no command) and a required one does not fail it.
+# Two helpers a clone's own configuration could have `status`'s git start, turned off because
+# neither can change the answer (``docs/design.md``, "status"): an fsmonitor hook only tells
+# git which files it need not look at, and with none git looks at every file; and a partial
+# clone does not fetch a missing object (git 2.45 and later know the variable), where every
+# object `status`'s git reads (the commits and tags of the refs, `HEAD`'s trees and blobs) is
+# already in the clone. The clone's clean filters do run, as they run for `git status` and for
+# `sync`'s git, so the three count the same files as changed.
 NO_LAZY_FETCH = {"GIT_NO_LAZY_FETCH": "1"}
 NO_FSMONITOR = ("-c", "core.fsmonitor=false")
-FILTER_KEYS = r"^filter\..*\.(clean|smudge|process|required)$"
-FILTER_OFF = (("clean", ""), ("smudge", ""), ("process", ""), ("required", "false"))
 
 # `sync` fetches only when nothing stops it first (uncommitted changes, a remote of the probe's
 # name with the url changed), so this says a fetch, not a sync, may find it.
@@ -267,32 +268,10 @@ def _repo(
 
 
 def _reading_git(place: Path, env: Dict[str, str]) -> update.Git:
-    """`update.Git` for `status`: with no fsmonitor hook, and every filter driver the clone's
-    configuration names turned off, by `-c` on the command line, which comes after the
-    configuration git reads from files and from the environment, so it wins. A driver whose
-    name holds `=`, which `-c` would split there, is turned off through `GIT_CONFIG_COUNT`
-    instead. Git hands both on to the `git status` it runs in a submodule; a driver that only a
-    submodule's own configuration names is not turned off."""
-    git = update.Git(place, env, None, options=NO_FSMONITOR)
-    status, printed, _ = git.run("config", "--null", "--name-only", "--get-regexp", FILTER_KEYS)
-    names = set()
-    for key in printed.split("\0") if status == 0 else []:
-        if key.startswith("filter.") and key.count(".") >= 2:
-            names.add(key[len("filter.") : key.rindex(".")])
-    options, env = list(NO_FSMONITOR), dict(env)
-    for name in sorted(names):
-        for setting, value in FILTER_OFF:
-            key = f"filter.{name}.{setting}"
-            if "=" not in name:
-                options += ["-c", f"{key}={value}"]
-                continue
-            try:
-                index = int(env.get("GIT_CONFIG_COUNT") or 0)
-            except ValueError:
-                continue  # git refuses such a count: no git of `status` runs here at all
-            env[f"GIT_CONFIG_KEY_{index}"], env[f"GIT_CONFIG_VALUE_{index}"] = key, value
-            env["GIT_CONFIG_COUNT"] = str(index + 1)
-    return update.Git(place, env, None, options=options)
+    """`update.Git` for `status`: with no fsmonitor hook (`-c` on the command line comes after
+    the configuration git reads from files and from the environment, so it wins), and the
+    clone's filter drivers as they are, as `git status` and `sync` run them."""
+    return update.Git(place, env, None, options=NO_FSMONITOR)
 
 
 def _version(git, place, repo, record, head, origin, found):
