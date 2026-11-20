@@ -2413,3 +2413,19 @@ Round 4, narrow: the one finding of the Integrated Review at `948659e6` and `git
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-20 09:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #535 at `25e6719e`
+**Sources**: 2 (Local Review @ `4348acf8` (covers 25e6719e via bookkeeping), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+GitHub side: 0 reviews, 0 inline comments, 0 conversation comments. CI at `25e6719e`: all 10 check runs pending when read (Lint, Validate Documentation, Validate Adapter Contract, repos-manifest tests on Python 3.10 and 3.14, each twice); not waited for. Local Review @ `4348acf8` (round 4, approved, no findings) covers the head: `25e6719e` adds only `progress.md`. The `sources` helper returned no open local findings. It still lists Local Review (Pre-Push) @ `00f2ea1c` as stale with one open suggestion; that suggestion was carried forward by the Integrated Review at `948659e6`, fixed in fc1923bf, and is confirmed fixed at the head: `tools/repos-manifest/docs/design.md:1005-1009` now says the path is the distro's and layer's directories where the system has them, then `src`, then the key, and why it cannot hold a `scheme://` url. The only change under `tools/` since round 3 (`f01f6336`) is that sentence.
+
+### Findings
+
+### False positives
