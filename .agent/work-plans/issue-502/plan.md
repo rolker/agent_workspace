@@ -18,6 +18,10 @@ hold. The plan writes both into the design first (Part 1, text below), then buil
 The workspace's `validate` and the thin adapter (#503, the adapter that calls the tool's commands) need
 "a status a script can read with an exit status" (`docs/manifest/design.md`, "What the tool has to give").
 
+This is the second version of the plan. The first was reviewed (verdict needs-work, twelve findings) and
+the checkpoint after the review answered `revise` with four decisions of the host; both are built in below
+(decisions 6 to 9, and the answers to the findings under "Review findings answered").
+
 Another drive, #499 (`show` prints what a manifest comes to for a machine), edits `cli.py`, the tool's
 `docs/design.md`, README and roadmap at the same time. Edits to shared files stay small and inside
 `status`'s own places (listed under Files to Change).
@@ -29,43 +33,78 @@ Parts, in this order, as separate commits.
 1. **Design first** — write the `### status` section (text below), the "What is built" paragraph and the
    Commands-table wording into `tools/repos-manifest/docs/design.md`; the owner reads this at the plan
    checkpoint. No code before it is accepted.
-2. **Make the sync ladder readable without acting** (`update.py`, `sync.py` untouched in behaviour) — so
-   `status` and `sync` cannot disagree on what "expected" is, extract instead of copying:
-   - `find_version(git, version, record, ask=ask_origin)` and `commit_on_origin(git, commit, ask=ask_origin)`
-     gain an `ask` parameter. `sync` passes nothing and behaves as now (`git ls-remote origin`). `status`
-     passes `ask_local`, a new function with the same return shape that lists `refs/remotes/origin/*`
-     and `refs/tags/*` with `git for-each-ref` (peeled tags from `%(*objectname)`), filtered by the same
-     patterns. The rest of `find_version` (the `heads/` and `tags/` reading, tag clashes, the hex commit,
-     the stale remote-tracking ref message) is shared.
-   - A pure function `standing(git, repo, record, found, head, branch)` returning expected / different with
-     the same wording `sync` uses (rules 10 to 12 of the design: on the branch, pinned, on the recorded
-     version that the manifest has moved, moved by a person, the "record does not say whether the branch or
-     the tag was followed" case). `update_repo` calls it to choose its action, keeping its actions and every
-     message as they are; the existing `test_update*.py`, `test_sync*.py` suites are the guard and must pass
-     unchanged before `status` is added.
-   - A pure `blocked(git, git_dir, repo)` for the early "left as it is" checks (rules 3 to 5: not git, an
-     operation in progress, `index.lock`, sparse checkout, not exactly one `origin`), reused by both. The
-     one write in that stretch of `update_repo` (dropping a stale `moving` line) stays in `update_repo`.
+2. **Characterisation tests first, then make the sync ladder readable without acting.** Two commits.
+   - Commit 2a, tests only, written and passing against today's `update.py` before any code moves
+     (`tests/test_update_characterisation.py`, using `helpers.make_remote`, `make_system`, `commit_file`):
+     the stopped-move text (`; a sync was stopped while moving this repo from <a> to <b>`) appended to the
+     "is in progress" message (a merge, a rebase) and to the "index.lock exists" message, when the record's
+     `moving` names `HEAD`; the same fixture with a `moving` line that does not name `HEAD` drops the line
+     and gives no suffix (now also for an in-progress operation, not only `index.lock` as `test_update.py:429`
+     has); "has no commit checked out" (a remote with no commits), and that this answer comes before the
+     `moving` line is touched; the order of the early answers (not a git repo of its own, no commit, then
+     in progress, `index.lock`, sparse, no single `origin`). If one of these fails on today's code, the
+     test is corrected to what the code does and the difference is named in the commit, since 2b must not
+     change `sync`.
+   - Commit 2b, the extraction, `sync` unchanged in behaviour:
+     - `find_version(git, version, record, ask=None)` and `commit_on_origin(git, commit, ask=None)` gain
+       an `ask` parameter whose default is `None`, resolved inside the function to `ask_origin` at call
+       time (a default of `ask=ask_origin` binds the function when `find_version` is defined and cannot be
+       patched). `sync` passes nothing. `status` passes `ask_local`, a new function with the same return
+       shape that lists `refs/remotes/origin/*` and `refs/tags/*` with `git for-each-ref` (peeled tags
+       from `%(*objectname)`), filtered by the same patterns. The `heads/` and `tags/` reading, tag clashes,
+       the hex commit and the stale remote-tracking ref message are shared.
+     - `blocked(git, git_dir, repo, record)` for the early "left as it is" answers, in the order `update_repo`
+       has them: type other than `git`, not a git repo of its own, no commit checked out, then the in-progress
+       operation, `index.lock`, sparse checkout and not exactly one `origin`. It takes the record and builds
+       the stopped-move text itself (`stopped`, then `also`), and appends it to the in-progress and
+       `index.lock` messages as now. The write that drops a `moving` line that no longer describes the repo
+       stays in `update_repo`, between the no-commit check and the in-progress checks: `update_repo` calls a
+       first half of `blocked` (through "no commit"), does that write, then calls the second half. `status`
+       calls both halves in a row and never writes. (Two small functions, `blocked_early` and
+       `blocked_late`, with `blocked` as their joint for `status`.)
+     - `standing(git, repo, record, found, head, branch, unpushed)` returning a state and a text, with the
+       wording `sync` uses (rules 10 to 12). Because `sync` reaches rules 10 to 12 only after rule 9 (commits
+       not on `origin`) returned early and `status` calls it with unpushed commits too, `standing` answers
+       these sub-cases itself, and `update_repo` keeps its own order for acting:
+       on the manifest's branch, `origin`'s branch an ancestor of `HEAD`, equal, or containing `HEAD`: expected
+       (`behind` counted); neither contains the other, with `unpushed > 0` (a person's own commits, rule 9):
+       expected, the commits are the fact; neither, with `unpushed == 0` (the branch was rewritten upstream,
+       or `HEAD` is on another `origin` branch's history): different, "not on origin's <branch>"; the branch
+       held by another work tree (rule 10): expected, the detail names the work tree, since `sync` leaves it
+       and `status` does not move anything; on the recorded version that the manifest changed (rule 11): different
+       (the detail says `sync` would move it), and when the manifest's branch is already a local branch with
+       commits not on `origin`, or held by another work tree, still different with the detail saying `sync`
+       would leave it; anything else (rule 12): different.
+     - The existing `test_update*.py`, `test_sync*.py` suites and 2a's tests pass unchanged after 2b, and
+       `tests/test_update_safety.py`'s `GIT_CALLS` gains `ask` and `ask_local` so a call through the
+       parameter is scanned.
 3. **`status.py`** (new, about 250 lines) — `run_status(named_distros, as_json) -> int`:
    - find the system directory, `read_config`, `distros_for` (so the top of a system with several distros
      covers each, inside one distro's directory just that one, `--distro` names some), then the manifest
      read and `selection.resolve` per distro as `sync.resolve_all` does, in memory.
-   - per distro, `read_state`; per repo in layer order: `place_problem`, a link or non-directory, then
-     `blocked`, `tracked_changes`, `count(git, "HEAD", "--not", "--remotes=origin")` for commits not on
-     `origin`, `find_version` with `ask_local`, `standing`.
+   - per distro, `read_state`; per repo in layer order: the place (rule 1, a repo recorded in another layer
+     whose old place is there; rule 2, `place_problem` failing or a non-directory; a link; missing), then
+     `blocked_early`, `blocked_late`, `tracked_changes`, `count(git, "HEAD", "--not", "--remotes=origin")`
+     for commits not on `origin`, `find_version` with `ask_local`, `standing`. All git runs through
+     `update.Git`, which keeps `--no-optional-locks` from `update.GIT_OPTIONS`.
    - repos recorded in `state.yaml` that the manifest no longer lists and whose directory is there:
      `not-in-manifest` (the same test as `sync.left_the_manifest`, without its deleting of records).
    - output: human text, or one JSON document with `--json`; exit status as the design says.
-4. **CLI** — a `status` subcommand with `--distro` (repeatable, like `sync`) and `--json`; one function
+4. **CLI** — a `status` subcommand with `--distro` (repeatable, like `sync`) and `--json`; exit status from `run_status`; one function
    `cmd_status` and one parser block placed next to `sync`'s.
 5. **Tests** (`tests/test_status.py`, `tests/test_status_distros.py`, plus agreement tests) — local git
    repos built with `helpers.make_remote`, `make_system`, `push_commit`, `commit_file`. No `~/project11`.
    - one test per state: expected on a branch, expected pinned to a tag, expected pinned to a commit,
-     expected but behind origin (`behind` counted), different (other branch, detached elsewhere, manifest
-     changed version since the record and `sync` would move it), local changes, commits not on `origin`,
-     both changes and unpushed on one repo, missing, missing optional (skipped), a place that is a file or
-     a link, a non-git directory, rebase in progress, `index.lock`, no longer in the manifest, `origin`
-     different from the manifest url (fetched-from shown, credentials masked).
+     expected but behind origin (`behind` counted), expected with a branch held by another work tree,
+     expected with commits only here (rule 9), different (other branch, detached elsewhere, manifest
+     changed version since the record and `sync` would move it, rewritten upstream with zero unpushed,
+     a local branch of the new version with commits not on `origin`), local changes, commits not on
+     `origin`, both on one repo, missing, skipped (optional), `not-a-directory` (a file at the place),
+     `blocked-place` (a link on the way leads outside, a file on the way), `in-other-layer` (the manifest
+     gave another layer and the old place is there), a link at the place (unknown), a non-git directory,
+     a rebase in progress, `index.lock`, a sparse checkout, a stopped move, no commit checked out,
+     no longer in the manifest, `origin` different from the manifest url (fetched-from shown, credentials
+     masked). Each also with the repo optional, for the exit status.
    - the adapter's case: a clone fast-forwarded past the recorded commit by hand (what `merge_pr.sh`
      does) is `expected`.
    - several distros: top of a `--distro-dirs` system covers each in `distros` order; inside one distro's
@@ -74,14 +113,26 @@ Parts, in this order, as separate commits.
      still listed.
    - nothing changes: `helpers.snapshot` of the whole system directory and `snapshot_repo` of each clone
      (index bytes included) before and after, on every state above, with a file's mtime touched first so
-     that a plain `git status` would refresh and rewrite the index; `GIT_OPTIONAL_LOCKS=0` makes it not.
+     that a plain `git status` would refresh and rewrite the index; `--no-optional-locks`, in
+     `update.GIT_OPTIONS`, makes it not.
      No `.repos-manifest/*.lock`, no probe refs, no resolved files written.
    - no network: the remote directory is deleted or moved after `sync`, and `status` still answers; a
-     test also makes `update.ask_origin` raise and shows `status` never calls it.
+     test patches `update.Git.run` to refuse `ls-remote` and to refuse `fetch`, and shows `status` still
+     answers (so it fails if a call forgot `ask_local`).
+   - no write by construction: the scan of `test_update_safety.py` runs over `status.py` too, with an
+     allowlist of read-only git subcommands (`rev-parse`, `config --get`, `for-each-ref`, `rev-list`,
+     `merge-base`, `status`, `ls-files`, `worktree list`), so adding a writing call fails the scan.
    - agreement: a table-driven test that, for each fixture state, runs `status`, then `sync`, and checks
-     that `expected` pairs with an outcome of current or fast-forwarded, and `different` with left or
-     moved; this is the check that the two use one ladder.
-   - `--json` shape test (keys, `format: 1`), human output test, exit statuses 0, 1 and argparse's 2.
+     the pairing: `expected` with an outcome of current or fast-forwarded, and `different` with left or
+     moved. The pairs that legitimately differ are listed in the test, each with its reason: expected with
+     changes or unpushed commits (sync leaves it); expected on a branch held by another work tree (sync
+     leaves it); `different` that `sync` leaves because the new branch has commits not on `origin`; and
+     the three cases of the design text (a stale remote-tracking ref of a deleted branch, a local tag
+     `origin` lacks, a manifest url changed with the record matching `origin`). The deleted-branch case
+     has its own fixture: `sync` reports the branch not on `origin`, `status` says expected, and the
+     detail says the answer is as of the last fetch.
+   - `--json` shape test (keys, `format: 1`, `recorded_distros` inside one distro's directory), human
+     output test, exit statuses 0, 1 and argparse's 2, for each state, optional and not.
 6. **Consequences (ADR-0017), same change** — see Files to Change.
 
 ## Design text for part 1 (`### status` in `tools/repos-manifest/docs/design.md`)
@@ -94,28 +145,43 @@ repos-manifest status [--distro <name>] [--json]
 Shows, for each distro it acts on, what the system directory holds against what the manifest says.
 It changes nothing on disk and makes no network call. It takes no lock, writes no resolved files,
 no record and no setup file, and it does not fetch: every answer is about the clones as they are, with
-what `origin` had when each was last fetched (by `sync`, or by hand). `sync` fetches first, so after a
-fetch a repo can read differently; that is the only way the two can differ, and `status` says so in its
-closing line. A `--remote` that asks `origin` itself is not built.
+what `origin` had when each was last fetched (by `sync`, or by hand). `sync` fetches first, so a repo
+can read differently after a fetch. Three cases differ even after one:
+
+- a remote-tracking ref left from a branch `origin` deleted: `sync` never prunes, so `status`, which
+  reads the refs, calls the branch expected while `sync`, which asks `origin`, says it is not there;
+- a tag here that `origin` lacks: offline it cannot be told from `origin`'s tag, so `status` counts it;
+- a url that the manifest changed while the record still matches `origin`: `sync` repoints `origin` and
+  fetches from the new url, `status` answers from the refs of the old one.
+
+A `--remote` that asks `origin` itself is not built.
 
 Which distros: as for `sync` (see "Which distro a command uses"): every distro at the top of a system
 with a directory per distro, in the order of `distros`; the one whose directory the current directory
 is inside; or the ones `--distro` names.
 
-Per distro it prints the manifest in use (as `config.yaml` records it), the role, the groups that are on
-and the distro. The manifest is read from where it is now: a manifest in a clone that `sync` has not
+Per distro it prints the manifest in use (as `config.yaml` records it), the role, the groups that are on,
+the distro, and the distros the system directory was set up for (`config.yaml`'s `distros`, whichever
+are acted on). The manifest is read from where it is now: a manifest in a clone that `sync` has not
 updated yet is read as it is.
 
 For each repo of the manifest, in layer order, one state, and facts that go with it:
 
 | State | Meaning |
 |---|---|
-| expected | on the manifest's version, by the rules `sync` follows: on the branch it names, or detached at its tag or commit. A branch behind `origin`'s is still expected; the facts say how far behind (`sync` fast-forwards it). A clone `merge_pr.sh` fast-forwarded past the recorded commit is expected. |
-| different | there, and on another branch, tag or commit; or on the version it was recorded on while the manifest now names another (`sync` moves it); or the manifest's version is a commit no branch or tag of `origin` holds. The text says where it is and what the manifest names. |
-| unknown | there, and `status` cannot tell: not a git repo of its own, a link, a rebase or other operation in progress, `index.lock`, a sparse checkout, no single `origin`, a version `origin` does not have as last fetched, a `sync` stopped while moving it, a type other than `git`. The text says why. |
+| expected | on the manifest's version, by the rules `sync` follows: on the branch it names, or detached at its tag or commit. A branch behind `origin`'s is still expected; `behind` says how far (`sync` fast-forwards it). A branch with commits only here (`sync` leaves it as it is) and a branch another work tree holds are expected, with the commits or the work tree named. A clone `merge_pr.sh` fast-forwarded past the recorded commit is expected. |
+| different | there, and on another branch, tag or commit; on the manifest's branch but not on `origin`'s (rewritten upstream); on the version it was recorded on while the manifest now names another (`sync` moves it, or leaves it when the new branch is local with commits not on `origin`, or held by another work tree: the text says which); or the manifest's version is a commit no branch or tag of `origin` holds. The text says where it is and what the manifest names. |
+| unknown | there, and `status` cannot tell: not a git repo of its own, a link at the place, no commit checked out, a rebase or other operation in progress, `index.lock`, a sparse checkout, no single `origin`, a version `origin` does not have as last fetched, a `sync` stopped while moving it, `git status` failing, a type other than `git`. The text says why. |
 | missing | not there. |
 | skipped | not there and optional: listed every time, as `sync` lists it. |
+| not-a-directory | a file or other non-directory is at the repo's place, or on the way to it (`sync`: "is there and is not a directory"). |
+| blocked-place | the check on the real destination fails: a link on the way leads outside the system directory (`sync`'s rule 2). |
+| in-other-layer | the manifest gives the repo another layer than the record and the old place is there; the text gives the old place and the commands that move it (`sync`'s rule 1). |
 | not-in-manifest | recorded by `sync`, still on disk, and no longer in the manifest. Only repos in `state.yaml` can be found; a directory `sync` never recorded is not looked for. |
+
+`missing`, `not-a-directory`, `blocked-place` and `in-other-layer` mean the repo is not at its place:
+`sync` reports each as an error for a repo that is not optional, and `build` refuses the layer. A repo that
+is optional in any of these states is listed and does not fail the exit status.
 
 Facts, for a repo that is there: `changes` (tracked files changed, counted as `sync` counts them),
 `unpushed` (commits reachable from `HEAD` and from no remote-tracking ref of `origin`, counted as `sync`
@@ -129,7 +195,8 @@ A human line is `<path>  <state>` followed by the text and facts. With `--json` 
 standard output is the same information:
 
 { "format": 1, "ok": true, "system": "<absolute path>", "manifest": "...", "role": "...",
-  "groups": [...], "layout": "flat|distro-dirs", "distros": [ {
+  "groups": [...], "layout": "flat|distro-dirs", "recorded_distros": ["jazzy", "rolling"] | null,
+  "distros": [ {
     "distro": "jazzy" | null, "ok": true, "problem": null,
     "repos": [ { "key": "...", "path": "jazzy/core/src/a", "layer": "core", "optional": false,
                  "state": "expected", "detail": "...", "version": "...", "head": "<commit>",
@@ -137,15 +204,17 @@ standard output is the same information:
     "not_in_manifest": [ { "key": "...", "path": "..." } ] } ] }
 
 `version` is what the manifest names; `path` is relative to the system directory; `changes`, `unpushed`
-and `behind` are null where the repo is not there or `status` cannot count. A distro that cannot be
-resolved has `ok: false`, its `problem`, and no `repos`. Nothing else is printed on standard output with
-`--json`; warnings go to standard error.
+and `behind` are null where the repo is not there or `status` cannot count. `recorded_distros` is every
+distro the system was set up for, null when the manifest has none. A distro that cannot be resolved has
+`ok: false`, its `problem`, and no `repos`. The top `ok` is true exactly when the exit status is 0.
+Nothing else is printed on standard output with `--json`; warnings go to standard error.
 
-Exit status: 0 when every distro asked for was read and every repo of the manifest that is not optional
-is there; 1 when a repo that is not optional is missing, a distro's manifest cannot be read or
-resolved, or the system directory cannot be found or read. States `different` and `unknown`, local
-changes and unpushed commits do not change the exit status: `status` reports them; a script reads
-`state`. (2 is the argument parser's, for a bad option.) This is what the workspace's `validate` calls.
+Exit status: 1 when a repo of a distro asked for that is not optional is missing, is not at its place
+(`not-a-directory`, `blocked-place`, `in-other-layer`) or is `unknown`, when a distro's manifest cannot be
+read or resolved, or when the system directory cannot be found or read; 0 otherwise. States `different`
+and `not-in-manifest`, local changes and unpushed commits do not change the exit status: `status` reports
+them, and a script reads `state`. (2 is the argument parser's, for a bad option.) This is the rule the
+workspace's `validate` follows: it fails when a repo the manifest calls for is missing or `status` cannot say.
 ```
 
 Also in the same file: the Commands-table row for `status` keeps its words; "What is built" gains a
@@ -164,36 +233,53 @@ machine" bullet ("`status` shows repos with commits that are not on the remote y
 3. Commits not on `origin` and local changes are facts beside the version state, not states that hide it.
    Undoing means reshaping the JSON, so it is cheapest to veto before part 3.
 4. Behind `origin` counts as expected, and so does a clone ahead of its record that `origin` contains
-   (the `merge_pr.sh` case, which `docs/manifest/design.md` asks for).
+   (the `merge_pr.sh` case, which `docs/manifest/design.md` asks for). A branch with commits only here, and a
+   branch held by another work tree, are expected too, with the fact named; a branch rewritten upstream
+   is `different`.
 5. Default across several distros: every distro at the top, as the design's "Which distro a command uses"
    table already says for `status`; this plan adds nothing, it reuses `distros_for`.
-6. Exit status: 1 only for a missing repo that is not optional, a distro that cannot be read or resolved,
-   or no readable system. `different`, `unknown`, changes and unpushed commits give 0. Alternative: a
-   `--check` that gives 1 for any difference; not built (only what is needed). Undoing it (making them 1)
-   changes what `validate` fails on, so decide before #503.
-7. Script form is JSON with `--json`, `format: 1`; a version number lets #503 notice a change. YAML or
-   line-based forms were not chosen: the adapter is shell and Python, and Python and `jq` read JSON.
-8. `status` takes no lock, so it can run beside a `sync` or `build` and see a repo mid-move (the `moving`
-   record then makes it `unknown`). Taking the lock would create a lock file, which breaks "changes
-   nothing".
-9. Local tags count as origin's tags in `ask_local` (a tag origin lacks cannot be told apart offline).
-   The design states the limit.
-10. Extract and share the `sync` ladder (part 2) instead of a second copy in `status.py`. Costs a refactor of
-    `update.py`, guarded by the existing suites and the agreement test; the copy would drift.
+6. Exit rule (decided by the host at the checkpoint, following the `validate` row of
+   `docs/manifest/design.md`; replaces the first plan's decision 6): `status` exits 1 when a repo that is not
+   optional is missing, not at its place, or `unknown`, and when a distro cannot be read or resolved or the
+   system is not readable; `different`, `not-in-manifest`, changes and unpushed commits exit 0. Undo cost:
+   one rule and its tests here, and the adapter's `validate` once #503 (the thin adapter) builds on it, so
+   decide before #503. The `validate` row is not edited: it already says this.
+7. Three kinds of place get states of their own (host): `not-a-directory`, `blocked-place`,
+   `in-other-layer`, all counted as not at its place (exit 1 for a repo that is not optional), because
+   `sync` and `build` treat them as errors. Undo cost: names in the table, the JSON and the tests; cheapest
+   before part 3.
+8. The five-part row of `docs/manifest/roadmap.md` ("a status a script can read with an exit status,
+   protection against two runs at once, time limits on fetches, a resolve that changes nothing when it
+   fails, and a manifest named by a commit") stays open and is not split (host). This issue delivers the first
+   part only. Undo cost: none; a later issue ticks or splits the row.
+9. Characterisation tests for today's `update.py` (commit 2a) are written and passing before any refactor
+   (host). Undo cost: none; they stay as tests.
+10. Script form is JSON with `--json`, `format: 1`; a version number lets #503 notice a change. YAML or
+    line-based forms were not chosen: the adapter is shell and Python, and Python and `jq` read JSON.
+11. `status` takes no lock, so it can run beside a `sync` or `build` and see a repo mid-move (the `moving`
+    record then makes it `unknown`). Taking the lock would create a lock file, which breaks "changes
+    nothing".
+12. Local tags and stale remote-tracking refs count as `origin`'s in `ask_local` (offline they cannot be
+    told apart); the design lists the three cases where `status` and `sync` can differ.
+13. Extract and share the `sync` ladder (part 2) instead of a second copy in `status.py`. Costs a refactor
+    of `update.py`, guarded by decision 9's tests, the existing suites and the agreement test; the copy
+    would drift. `ask` defaults to `None` and is resolved inside, so it can be patched.
 
 ## Files to Change
 
 | File | Change |
 |------|--------|
 | `tools/repos-manifest/docs/design.md` | `### status` rewritten (text above); "What is built" paragraph; `status` out of the not-built list |
-| `tools/repos-manifest/src/repos_manifest/update.py` | `ask` parameter on `find_version` and `commit_on_origin`; `ask_local`; `standing`; `blocked`; `update_repo` calls them, behaviour unchanged |
+| `tools/repos-manifest/src/repos_manifest/update.py` | `ask` parameter (default `None`) on `find_version` and `commit_on_origin`; `ask_local`; `standing`; `blocked_early`, `blocked_late`; `update_repo` calls them, behaviour unchanged |
 | `tools/repos-manifest/src/repos_manifest/status.py` | new: `run_status`, text and JSON output |
 | `tools/repos-manifest/src/repos_manifest/cli.py` | `cmd_status` and the `status` parser block next to `sync`'s, one import |
+| `tools/repos-manifest/tests/test_update_characterisation.py` | new, first, passing on today's code (Approach 2a) |
+| `tools/repos-manifest/tests/test_update_safety.py` | `GIT_CALLS` gains `ask`, `ask_local`; the scan also runs over `status.py` with a read-only allowlist |
 | `tools/repos-manifest/tests/test_status.py`, `test_status_distros.py`, `test_status_agrees_with_sync.py` | new, per Approach 5; helpers added to `tests/helpers.py` only if needed |
 | `tools/repos-manifest/docs/roadmap.md` | the row "`status` shows what differs from the manifest" gets a check (`file-exists src/repos_manifest/status.py`, as the `build` row does) |
-| `tools/repos-manifest/README.md` | command list gains `status` (grep the file for the `sync` and `build` entries; add alongside) |
-| `docs/manifest/design.md` | "What the tool has to give": the status bullet now says the tool gives it and how; line about "there is no `repos-manifest status` yet" reworded to say the adapter does not call it yet (#503); "The tool's `status`, when it is built, should treat..." becomes present tense; `status` removed from the "not built yet" command list (one word, so a merge with #499's edit of the same line is trivial) |
-| `docs/manifest/roadmap.md` | the row asking for "a status a script can read with an exit status" gets a check in the file's own vocabulary; the "has the commands the adapter calls" row stays until `show` (#499) and `add-distro` land |
+| `tools/repos-manifest/README.md` | no command list exists; a paragraph on `status` in "What works today" (from line 98), next to what the `sync` and `build` paragraphs say |
+| `docs/manifest/design.md` | "What the tool has to give" status bullet (line 335) says the tool gives it and how; line 185 ("there is no `repos-manifest status` yet") says the adapter does not call it yet (#503); line 211 ("when it is built, should treat") in present tense; `status` out of the not-built list (line 234). The `validate` row (line 300) is not edited: it already says "missing, or cannot say", which is the exit rule. Lines 313 to 316 ("Until `status` is built, the test is the folder being there") describe #503's route test and stay. |
+| `docs/manifest/roadmap.md` | no edit: the five-part row stays open (decision 8) and the next row waits for `show` (#499) and `add-distro` |
 
 ## Prior Art
 
@@ -224,7 +310,7 @@ changes (a script-readable status with an exit status, now given); the root's `d
 | Test what breaks / Know whether it works | Test per state, agreement with `sync`, no-change snapshot, no-network |
 | Verify before claiming | Wording of rules taken from `update.py` and the design's sync section as read; design bullets checked against tests |
 | Put each thing at the level it applies to | Tool design owns the inside; the root files change only where the boundary does |
-| Ask about what matters | Decisions 1, 3 and 6 are the ones for the owner to look at |
+| Ask about what matters | Decisions 1, 3, 6 and 7 are the ones for the owner to look at |
 | Look for prior art | Above |
 
 ## ADR Compliance
@@ -239,18 +325,38 @@ changes (a script-readable status with an exit status, now given); the root's `d
 
 | If we change... | Also update... | Included? |
 |---|---|---|
-| `status` built | tool roadmap row, README, "not built yet" lines in both designs, `docs/manifest/roadmap.md` row | Yes |
-| `update.py` extraction | `test_update*.py` and `test_sync*.py` must pass unchanged | Yes |
-| Exit status rules | The thin adapter's `validate` (#503, the thin adapter issue) reads this contract | No, follow-up in #503 |
+| `status` built | tool roadmap row (check), README paragraph, "not built yet" lines in both designs | Yes |
+| `status` built | `docs/manifest/roadmap.md` five-part row: one of five parts delivered, the row stays open | Decided, no edit |
+| `update.py` extraction | characterisation tests (2a) first; `test_update*.py` and `test_sync*.py` pass unchanged; `test_update_safety.py` scans `ask` | Yes |
+| Exit status rules | The thin adapter's `validate` (#503, the thin adapter issue) reads this contract; the tool's rule now matches the `validate` row | No, follow-up in #503 |
+| Parallel drive #499 (`show`) | Both edit the "Not built yet" line of the tool's design, the not-built line of `docs/manifest/design.md`, "What is built" and "What works today"; whichever lands second resolves one-line conflicts | Noted |
 | Acceptance "by hand on project11" | Owner runs it on his machine; no agent runs anything in `~/project11` | Left to the owner |
+
+## Review findings answered
+
+All twelve were checked against the code in the worktree and held (none was wrong).
+
+1. Order in `update_repo` confirmed (no-commit check, then the `moving` write, then in-progress, `index.lock`):
+   characterisation tests first (2a), `blocked` split in two around the write, takes the record for the suffix.
+2. `standing` specified for rewritten upstream, held branch and rule 11 with local commits; agreement test lists the legitimate pairs.
+3. The "only way" sentence is replaced with the three cases (stale ref, local tag, changed url); deleted-branch fixture added.
+4. Rule 1 and 2 places get three states and count as not at its place (decision 7).
+5. The `validate` row already says "or cannot say"; the exit rule now matches it and the row is not edited (decision 6).
+6. `recorded_distros` added to the JSON.
+7. The five-part roadmap row stays open; this issue delivers one of the five (decision 8).
+8. `ask` and `ask_local` join `GIT_CALLS`; the scan also covers `status.py` with a read-only allowlist.
+9. `ask=None` resolved inside, plus a test patching `Git.run` to refuse `ls-remote` and `fetch`.
+10. `--no-optional-locks` is in `GIT_OPTIONS` (verified); the plan says so and keeps the mtime test.
+11. README has no command list (verified); the edit is a paragraph in "What works today".
+12. Overlap with #499 listed under Consequences; not a blocker.
 
 ## Open Questions
 
-- Only the owner can answer: veto or accept decisions 1, 3 and 6 above (offline-only, facts beside state,
-  exit 1 only for missing/unreadable). The rest follow from the design and principles.
+- Only the owner can answer: veto or accept decisions 1, 3, 6 and 7 (offline-only, facts beside state, the
+  exit rule, the three place states). Decisions 6 to 9 were set by the host at the checkpoint for his veto.
 - The by-hand project11 acceptance is the owner's, on a machine and time he chooses.
 
 ## Estimated Scope
 
-Single PR, in the commits above. About 150 changed lines in `update.py`, 250 in `status.py`, 40 in
-`cli.py`, 500 to 700 in tests, 150 in docs. Medium.
+Single PR, in the commits above (design, characterisation tests, extraction, command, tests, docs). About
+150 changed lines in `update.py`, 300 in `status.py`, 40 in `cli.py`, 700 to 900 in tests, 150 in docs. Medium.
