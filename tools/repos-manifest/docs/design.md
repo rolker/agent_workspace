@@ -1674,7 +1674,9 @@ Exit status: 1 when a repo of a distro asked for that is not optional is missing
 manifest cannot be read or resolved, or when the system directory cannot be found or read; 0
 otherwise. States `expected`, `different`, `left-alone` and `not-in-manifest`, local changes and
 unpushed commits do not change the exit status: `status` reports them, and a script reads `state`.
-(2 is the argument parser's, for a bad option.) The workspace's `validate` fails when `status` exits 1.
+(2 is the argument parser's, for a bad option.) The workspace's `validate` does not run `status`
+yet: the adapter will call it under issue 503, the issue where the adapter calls the tool's
+commands, and `validate` is then to fail when `status` exits 1.
 
 In plain words, a repo fails the exit status when it is not there, or is there but is not a git
 clone with a commit and an `origin`, or its version cannot be found among the refs of its last
