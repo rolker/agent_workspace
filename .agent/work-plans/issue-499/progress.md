@@ -334,3 +334,24 @@ left out
 - Whole tool suite (`PYTHONPATH=src .venv/bin/python -m pytest tests`, at ad2fd187; a9ef9586 after it only rewraps design text): 1812 passed in 547.49s (0:09:07)
 - Every commit with `SKIP=validate-script-tests` (issue #465 rule); every other hook ran. The full pre-commit pass is left to the host. Nothing under ~/project11 was read, written or run.
 - a9ef9586 also rewraps one long line of the "show" section left by the must-fix edit.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-20 12:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-499 at `c21b92cb`
+**Base**: main
+**Depth**: Deep (reason: about 1500 lines across 20 files, resolver data model and CLI; fix round classified on the whole diff)
+**Must-fix**: 0 | **Suggestions**: 5
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+All six round-1 findings are fixed, checked by hand on scratch manifests: a chain changing only the version (no `from`), only the url (`from` the fork's manifest), the url back to the original (`from` the manifest that restored it), and a diamond; `show` with no argument from a subdirectory reached through a symlink prints absolute real paths; `--role`/`--with` outside a system get the no-system refusal; `--distro ""` is refused with and without a manifest. Targeted tests (test_show, test_show_system, test_cli, test_base_merge, test_selection, test_init, test_init_refusals): 170 passed; flake8 clean on the changed Python files.
+
+### Findings
+- [ ] (suggestion) A later manifest that restates a repo's url unchanged moves its source (the merge loop records every manifest that gives `url`), so `show` prints `from <that manifest>`; the design and comments say "changed its url". Keep the source when the value is equal, or say "gave", and test a restated url — `tools/repos-manifest/src/repos_manifest/combine.py:66`, `tools/repos-manifest/docs/design.md:513`
+- [ ] (suggestion) `shown_path` writes a code point above U+FFFF with five hex digits (`1`), which reads the same as U+E000 followed by `1`; use `\UXXXXXXXX` there and fix the design's "`\uXXXX` above" — `tools/repos-manifest/src/repos_manifest/show.py:39`, `tools/repos-manifest/docs/design.md:523`
+- [ ] (suggestion) An unsafe character U+0080–U+00FF and the undecodable byte of the same value print alike (`a\x85b` for U+0085 and for byte 0x85), so two different paths can look the same; give bytes and characters different forms (e.g. `\u0085` for the character) — `tools/repos-manifest/src/repos_manifest/show.py:34`
+- [ ] (suggestion) In a system directory `show` opens the realpath of the recorded manifest, not the recorded path `sync` opens: a recorded `missing/../pub/m.yaml` reads in `show` and is "not found" in `sync`. Open the recorded path and print the canonical one; use `system.is_url` instead of the bare `"://"` test — `tools/repos-manifest/src/repos_manifest/cli.py:210`
+- [ ] (suggestion) The new no-system refusal prints `cwd` unescaped, so a directory name with a newline splits the message; pass it through `shown_path` (the tool's general `ERROR:` path, unchanged from main, has the same gap) — `tools/repos-manifest/src/repos_manifest/cli.py:194`
