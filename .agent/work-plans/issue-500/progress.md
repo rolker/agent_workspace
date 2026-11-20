@@ -2078,3 +2078,32 @@ Spot-checked leftover wording, all true: `manifest.py:186`, `schema.py:166`, `ma
 **Decision**: publish
 
 Round 8 approved the branch with one wording suggestion, which the pull request lists. The full pass ran on head fa98c208 with exit 0. The pull request says "Part of #500": parts 3 and 4 are not delivered, and the owner's by-hand acceptance on his real project is not done.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-19 20:46 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #535 at `75549803`
+**Depth**: Deep (reason: 7092+/254- lines over 31 files; safety-critical git mutation of a person's clones)
+**Must-fix**: 5 | **Suggestions**: 10
+
+Point 1 (real systems made with init from local remotes, record without urls): clone switched to rolling by hand: up to date, record now rolling with url, no clone change; clone on jazzy clean: moved to rolling (untracked and ignored files kept, upstream set); on rolling with 1 local commit: left alone, "has 1 commits not on origin", record stays jazzy; on jazzy with a tracked edit: left alone, "has uncommitted changes (1 files)". Second sync quiet each time. Hand-set origin: never repointed, one line per run. Lock both ways: refused and reported. Suite: 1713 passed (REPOS_MANIFEST_REQUIRE_COLCON=1). Cross-model: codex complete (7 findings, 2 reproduced); gemini failed twice (headless tool denial, empty response).
+
+### Findings
+- [ ] (must-fix) Fast-forward (rule 10) moves a branch also checked out in another work tree (`git worktree add -f`): that tree then shows the upstream commits reversed as staged changes; design says a linked work tree's branch is never moved; check `worktree_holding` before the merge — `tools/repos-manifest/src/repos_manifest/update.py:793`
+- [ ] (must-fix) `version: heads/<branch>` (spec-valid; init clones it) makes every sync exit 1 with the false "version heads/jazzy is not on origin"; strip `heads/`/`tags/` as the manifest reader does — `tools/repos-manifest/src/repos_manifest/update.py:491`
+- [ ] (must-fix) Probe cleanup `update-ref -d` follows a symbolic ref: a symref under refs/remotes/repos-manifest-probe/ to refs/heads/topic made sync delete branch topic; use `--no-deref` (precondition contrived, fix one word) — `tools/repos-manifest/src/repos_manifest/update.py:230`
+- [ ] (must-fix) False doc sentences: README and design say the report gives the `git pull --rebase` command for commits not on origin, but it is printed only when origin's branch has commits the clone lacks (not in the owner's case); design "the url rule counts its commits" is false for a detached linked work tree (repoint went ahead) — `tools/repos-manifest/README.md:128`, `tools/repos-manifest/docs/design.md:691`, `tools/repos-manifest/docs/design.md:853`
+- [ ] (must-fix) PR body: "A system made before the record held urls is never repointed" is false once its first sync records the url (reproduced: repointed); "nothing in rounds 4 to 8 touched [the update rules]" is false (3fa23a13 changed the undo condition in `_change`); "branch deletion" never run is false while the symref case stands; the pull --rebase line is conditional — PR #535 body
+- [ ] (suggestion) A stale origin/release blocks origin's new release/next: every sync fails, and the closing line says "once they can be fetched" though another sync will not change it — `tools/repos-manifest/src/repos_manifest/update.py:737`
+- [ ] (suggestion) An existing remote named repos-manifest-probe makes `-c remote.<probe>.url` append, so the probe fetches the person's remote, not the manifest url (codex; not reproduced) — `tools/repos-manifest/src/repos_manifest/update.py:1080`
+- [ ] (suggestion) Branch names unquoted in the printed `git config branch.<b>...` commands — `tools/repos-manifest/src/repos_manifest/update.py:1061`
+- [ ] (suggestion) A tag that peels to a tree or blob gives an empty target and ends as left alone with exit 0 (codex; not reproduced) — `tools/repos-manifest/src/repos_manifest/update.py:507`
+- [ ] (suggestion) `CLOBBERED_TAG` matches English git output only; set LC_ALL=C/LANGUAGE in `Git.env` — `tools/repos-manifest/src/repos_manifest/update.py:86`
+- [ ] (suggestion) No minimum git version is checked; tag non-clobbering needs >= 2.20, switch >= 2.23 — `tools/repos-manifest/docs/design.md:1686`
+- [ ] (suggestion) Detached HEAD is switched without re-reading HEAD right before the call (small race; a commit made there would be left to the reflog) — `tools/repos-manifest/src/repos_manifest/update.py:846`
+- [ ] (suggestion) `_half_changed` blames git or a hook for a tracked edit a person made during the move — `tools/repos-manifest/src/repos_manifest/update.py:1007`
+- [ ] (suggestion) "has 1 commits"; and the c1 case records rolling with only "up to date (2)" printed, naming no repo — `tools/repos-manifest/src/repos_manifest/update.py:781`
+- [ ] (suggestion) Acceptance block: the editable install runs from /home/roland/agent_workspace, so it has the change only once that checkout is pulled after the merge — PR #535 body
