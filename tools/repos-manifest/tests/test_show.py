@@ -212,6 +212,9 @@ def test_a_url_with_a_password_prints_masked():
         ("a\nmanifest  b.yaml", "a\\x0amanifest  b.yaml"),
         ("tab\there", "tab\\x09here"),
         ("m\u202eyaml.txt", "m\\u202eyaml.txt"),
+        # Above U+FFFF the escape has eight digits: U+E0001 then "1" is not U+E000 then "11".
+        ("tag\U000e00011", "tag\\U000e00011"),
+        ("pua\ue00011", "pua\\ue00011"),
         ("back\\slash", "back\\\\slash"),
         ("not-utf8-\udcff", "not-utf8-\\xff"),
     ],
