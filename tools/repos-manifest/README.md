@@ -149,7 +149,8 @@ not at its place), with its uncommitted changes, its commits not on `origin`, ho
 behind `origin`'s branch, and where it was fetched from; and the repos `sync` recorded that are
 no longer in the manifest. It changes nothing on disk and makes no network call of its own: it
 answers from what each clone had when it was last fetched, starts no fsmonitor hook and lets a
-partial clone fetch no missing object. It runs a clone's clean filters (Git LFS's, for one) as
+partial clone fetch no missing object (with a git older than 2.45 it does not read a
+partial clone, and says so). It runs a clone's clean filters (Git LFS's, for one) as
 `git status` does, so it counts the same files as changed as `git status` and `sync`; a filter
 that writes or fetches is outside what it can promise. `status --json` prints the same as one
 document a script can read, and the exit status is 1 when a repo that is not optional is

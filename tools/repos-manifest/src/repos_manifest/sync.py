@@ -129,9 +129,9 @@ GIT_MINIMUM = (2, 23)
 _GIT_VERSION = re.compile(r"git version (\d+)\.(\d+)")
 
 
-def require_git_version(git: str) -> None:
-    """Stop with a plain message when `git --version` names a version older than
-    `GIT_MINIMUM`. A version it does not print in the usual form is not judged."""
+def git_version(git: str) -> Optional[Tuple[int, int]]:
+    """The major and minor version `git --version` names, or None when it does not print one
+    in the usual form; a git that does not run is a `Refusal`."""
     try:
         printed = subprocess.run(
             [git, "--version"],
@@ -145,8 +145,16 @@ def require_git_version(git: str) -> None:
         raise Refusal(f"`{git} --version` does not run", "Repair or reinstall git") from None
     match = _GIT_VERSION.match(printed.strip())
     if match is None:
+        return None
+    return (int(match.group(1)), int(match.group(2)))
+
+
+def require_git_version(git: str) -> None:
+    """Stop with a plain message when `git --version` names a version older than
+    `GIT_MINIMUM`. A version it does not print in the usual form is not judged."""
+    found = git_version(git)
+    if found is None:
         return
-    found = (int(match.group(1)), int(match.group(2)))
     if found < GIT_MINIMUM:
         need = ".".join(str(n) for n in GIT_MINIMUM)
         raise Refusal(

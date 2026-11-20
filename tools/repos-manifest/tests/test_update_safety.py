@@ -441,7 +441,7 @@ STATUS_MAY_CALL = {
         "quoted",
         "counted",
     },
-    "sync": {"require_git", "resolve_all", "layer_moved", "Reported"},
+    "sync": {"require_git", "git_version", "resolve_all", "layer_moved", "Reported"},
 }
 # What a function `status` reaches in `update.py` may not pass or call: a git that changes the
 # work tree or the configuration (`change`), holds the lock (`hold`) or may prompt (`prompt`,

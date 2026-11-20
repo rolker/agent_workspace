@@ -1567,6 +1567,9 @@ answer (`sync` runs its git as before):
 - a partial clone does not fetch a missing object: every call runs with `GIT_NO_LAZY_FETCH=1`.
   The objects `status`'s git reads are the commits and tags of the clone's refs, what those tags
   name, and the trees and files of what is checked out, and a partial clone has each of them.
+  Git before 2.45 does not know the variable, so with such a git (or one whose version cannot be
+  read) `status` does not read a partial clone at all: the repo is `unusable`, and the text says
+  why.
 
 Git runs no hook for the commands `status` runs. `sync` fetches first,
 so a repo can read differently after a fetch: a version that was not fetched yet is `unusable`
@@ -1601,7 +1604,7 @@ For each repo of the manifest, in layer order, one state, and facts that go with
 | expected | on the manifest's version, by the rules `sync` follows: on the branch it names, or detached at its tag or commit. A branch behind `origin`'s is still expected; `behind` says how far, and the text says whether `sync` tries to fast-forward it or what stops it first: uncommitted changes, a remote of the name `sync` keeps for checking a new url (`repos-manifest-probe`) while the manifest changed the url, or another work tree holding the branch. A fast-forward `sync` tries can still be stopped by a path or a submodule in the way, which `status` does not check. A branch with commits only here (`sync` leaves it as it is) and a branch another work tree holds are expected, with the commits or the work tree named. A clone `merge_pr.sh` fast-forwarded past the recorded commit is expected. |
 | different | there, and on another branch, tag or commit; on the manifest's branch but not contained in `origin`'s with no commits only here (rewritten upstream, as `sync` says); on the version it was recorded on while the manifest now names another (`sync` tries to move it when nothing stops it first; it leaves it for a remote of the probe's name with the url changed, uncommitted changes, commits only here, the new branch held by another work tree, or a local new branch with commits not on `origin`: the text says which, in that order); or the manifest's version is a commit no branch or tag of `origin` holds. The text says where it is and what the manifest names. |
 | left-alone | there, and `sync` leaves it as it is, so `status` does not compare its version: a link at the place, a rebase, merge, bisect or other operation in progress, `index.lock`, a sparse checkout, or an `origin` with more than one url. The text says which. |
-| unusable | there, but `status` cannot use it as a clone of the manifest's version: not a git repo of its own, no commit checked out, no `origin` url at all, the manifest's version cannot be found among the refs `origin` had when last fetched or names no single commit there (a branch and a tag of the same name, a tag of something that is not a commit, a commit missing from a shallow clone, no version and no recorded default branch), or `git` cannot read its state (`git status` or the count of commits not on `origin` fails). The text says which. |
+| unusable | there, but `status` cannot use it as a clone of the manifest's version: not a git repo of its own, no commit checked out, no `origin` url at all, a partial clone with a git older than 2.45, the manifest's version cannot be found among the refs `origin` had when last fetched or names no single commit there (a branch and a tag of the same name, a tag of something that is not a commit, a commit missing from a shallow clone, no version and no recorded default branch), or `git` cannot read its state (`git status` or the count of commits not on `origin` fails). The text says which. |
 | missing | not there. `sync` clones it, and reports an error only when the clone fails. |
 | skipped | not there and optional: listed every time, as `sync` lists an optional repo it could not clone. `sync` clones it when it can. |
 | not-a-directory | a file or other non-directory is at the repo's place, or on the way to it (`sync`: "is there and is not a directory", "is on the way and is not a directory"). |
@@ -1685,8 +1688,9 @@ yet: the adapter will call it under issue 503, the issue where the adapter calls
 commands, and `validate` is then to fail when `status` exits 1.
 
 In plain words, a repo fails the exit status when it is not there, or is there but is not a git
-clone with a commit and an `origin`, or its version cannot be found among the refs of its last
-fetch, or git cannot read its state. A rebase, merge or bisect in progress, an `index.lock`, a
+clone with a commit and an `origin`, or is a partial clone and the git on `PATH` is older than
+2.45, or its version cannot be found among the refs of its last fetch, or git cannot read its
+state. A rebase, merge or bisect in progress, an `index.lock`, a
 sparse checkout, a link at the place, an `origin` with two urls, a repo on another branch, local
 changes and unpushed commits are reported and do not fail it.
 
