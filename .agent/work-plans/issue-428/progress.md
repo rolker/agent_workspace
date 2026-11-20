@@ -521,3 +521,28 @@ Verified:
 **Decision**: address
 
 Read: the Local Review (Pre-Push) at fc7eddcb, round 3, verdict changes-requested, Ship recommended, one must-fix and no suggestions: run-issue step 9's test for a review the latest Integrated Review has not read is keyed on a Reviews line that triage-reviews does not write into the entry and a Sources line that is a count, so the check can miss a late review. It goes back for one fix, keyed on fields that exist. No full pass was run: publish was not the chosen answer.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 12:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a9184401bb6c30a1f, resume 2 of 3)
+
+**Branch**: feature/issue-428 at `5509c1ac`
+**Addressed**: Local Review (Pre-Push) at `84e27963` (2026-11-20 12:06 -05:00)
+**Commits**: 5509c1ac
+
+Round 3 fix pass for part 1, answering the Checkpoint (address) at aa667cb2. Skill text only; no part 2 file touched; `plan.md` unchanged; nothing added to what `triage-reviews` writes.
+
+Fields checked against the code:
+- `submitted_at`: `fetch_pr_reviews.sh` prints it on each review (lines 105 and 176), copied from GitHub's reviews API. It is UTC, e.g. `2026-10-20T18:56:41Z` (read-only `gh api` of pull request 400 in round 1).
+- `**When**`: the `## Integrated Review` template in `triage-reviews/SKILL.md` (lines 396-412) writes `**When**: <YYYY-MM-DD HH:MM ±HH:MM>`. It has no `**Reviews**` line, and its `**Sources**` line is a count.
+- GNU `date -d` reads both forms: `2026-11-20 12:06 -05:00` gives `2026-11-20T17:06:00Z`.
+
+### Actions
+- [x] (must-fix) the not-yet-read test in "Fetch again before every merge checkpoint" now compares each review's `submitted_at` with the latest Integrated Review's `**When**`, both turned into the same instant (e.g. `date -d ... +%s`). A review submitted at or after the start of that minute counts as not read and goes to `triage-reviews` first, whatever its `commit_id`; so does one whose time is empty or unreadable. The text says the rule errs toward triaging again — `.claude/skills/run-issue/SKILL.md:1008` (5509c1ac)
+
+Suites run, each on its own with `bash` (last result line):
+- `test_skill_paths.sh`: test_skill_paths: 164 passed, 0 failed
+
+The full pre-commit pass and the full run of every suite are left to the host.
