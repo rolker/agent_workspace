@@ -121,7 +121,7 @@ def test_a_submodule_that_is_not_checked_out_is_no_obstacle(vcs, tmp_path, capsy
     assert not os.listdir(clone / "sm")
     _replace_upstream(top, what, "main")
     out = _sync(sys_dir, capsys)
-    assert "src/top: fast-forwarded 1 commits" in out
+    assert "src/top: fast-forwarded 1 commit" in out
     assert head(clone) == git("rev-parse", "main", cwd=top)
     assert (clone / "sm").is_file() if what == "a file" else not os.path.lexists(clone / "sm")
 
@@ -164,7 +164,7 @@ def test_a_submodule_on_its_recorded_commit_with_untracked_files_is_followed(vcs
     before = snapshot_repo(clone)["nested repositories"]
     _move_pointer(sub, top)
     out = _sync(sys_dir, capsys)
-    assert "src/top: fast-forwarded 1 commits" in out
+    assert "src/top: fast-forwarded 1 commit" in out
     assert "src/top: submodules not updated" in out
     assert snapshot_repo(clone)["nested repositories"] == before
     assert (clone / "sm" / "notes.txt").read_text() == "a person's untracked file\n"
@@ -180,12 +180,12 @@ def test_a_submodule_left_behind_by_an_earlier_sync_stops_the_next_pointer_move(
     _check_out(clone, sub, "init")
     old = head(clone / "sm")
     _move_pointer(sub, top)
-    assert "fast-forwarded 1 commits" in _sync(sys_dir, capsys)
+    assert "fast-forwarded 1 commit" in _sync(sys_dir, capsys)
     _move_pointer(sub, top)
     _left_alone(sys_dir, clone, capsys, f"submodule sm is on {old[:12]}, not on")
     # The command the report gives lets the next sync follow.
     git(*FILE_ALLOW, "submodule", "update", "-q", "--", "sm", cwd=clone)
-    assert "fast-forwarded 1 commits" in _sync(sys_dir, capsys)
+    assert "fast-forwarded 1 commit" in _sync(sys_dir, capsys)
 
 
 def test_a_tracked_file_replaced_by_a_submodule_is_followed(vcs, tmp_path, capsys):
@@ -197,7 +197,7 @@ def test_a_tracked_file_replaced_by_a_submodule_is_followed(vcs, tmp_path, capsy
     git(*FILE_ALLOW, "submodule", "add", "-q", str(sub), "sm", cwd=top)
     git("commit", "-q", "-m", "sm becomes a submodule", cwd=top)
     out = _sync(sys_dir, capsys)
-    assert "src/top: fast-forwarded 1 commits" in out
+    assert "src/top: fast-forwarded 1 commit" in out
     assert (clone / "sm").is_dir() and not os.listdir(clone / "sm")
 
 
@@ -227,5 +227,5 @@ def test_the_fetch_never_goes_into_a_submodule(vcs, tmp_path, capsys, monkeypatc
     before = snapshot_repo(clone)["nested repositories"]
     _move_pointer(sub, top)
     out = _sync(sys_dir, capsys)
-    assert "src/top: fast-forwarded 1 commits" in out
+    assert "src/top: fast-forwarded 1 commit" in out
     assert snapshot_repo(clone)["nested repositories"] == before

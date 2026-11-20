@@ -447,7 +447,8 @@ def test_a_switch_that_leaves_a_half_change_says_what_it_left(two, tmp_path, cap
     assert (
         "ERROR: jazzy/core/src/a: the move left the repo half-changed. What ran, in order: 1."
         f" `git switch` (exit 128): HEAD stayed main at {was[:12]}. HEAD is now main at"
-        f" {was[:12]}; staged: A BRANCH. These changes were made by git or a hook it ran (the"
+        f" {was[:12]}; staged: A BRANCH. These changes were made during the move, by git, a hook"
+        " it ran, or something else (the"
         " repo had no tracked changes before); sync does not put them back"
     ) in done.stdout, done.stdout
     # The branch the switch made has no upstream, and the report says so with the commands.
@@ -459,7 +460,7 @@ def test_a_switch_that_leaves_a_half_change_says_what_it_left(two, tmp_path, cap
     capsys.readouterr()
     assert run(system, "sync", "--distro", "jazzy") == 0
     out = capsys.readouterr().out
-    assert "left alone: has uncommitted changes (1 files)\n" in out, out
+    assert "left alone: has uncommitted changes (1 file)\n" in out, out
     assert "a sync was stopped" not in out
 
 
@@ -487,7 +488,7 @@ def test_a_switch_back_that_a_hook_changes_is_reported_in_order(two, tmp_path, c
         f" from main at {was[:12]} to dev at {local[:12]}; 2. `git merge` (exit 1): HEAD stayed"
         f" dev at {local[:12]}; 3. `git switch` (exit 0): HEAD from dev at {local[:12]} to main"
         f" at {was[:12]}. HEAD is now main at {was[:12]}; changed, not staged: M README. These"
-        " changes were made by git or a hook it ran"
+        " changes were made during the move, by git, a hook it ran,"
     ) in done.stdout, done.stdout
     assert "nothing after the steps above was run here" in done.stdout
     assert branch(clone) == "main" and git("rev-parse", "dev", cwd=clone) == local

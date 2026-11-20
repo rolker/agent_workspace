@@ -25,6 +25,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
+from .manifest import version_ref
 from .masking import mask_url, mask_urls, remember_url  # noqa: F401 (mask_urls: callers)
 from .output import signals_held
 from .selection import Selected
@@ -83,6 +84,7 @@ NEVER = (
 )
 
 HEX = re.compile(r"[0-9a-f]{7,40}")
+OBJECT_ID = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 CLOBBERED_TAG = re.compile(r"\[rejected\]\s+(\S+)\s+->\s+\S+\s+\(would clobber existing tag\)")
 
 UPDATED, CURRENT, LEFT, FAILED = "updated", "up to date", "left alone", "failed"
@@ -114,7 +116,11 @@ class Git:
 
     def __init__(self, place: Path, env: Env, lock: Optional[int]):
         self.place = place
-        self.env = {**env, "GIT_EDITOR": "true"}
+        # Output this module reads runs in the C locale, so git's words are the ones the code
+        # looks for; output that is only shown keeps the person's language (`shown`).
+        self.shown_env = {**env, "GIT_EDITOR": "true"}
+        self.env = {k: v for k, v in self.shown_env.items() if k != "LANGUAGE"}
+        self.env["LC_ALL"] = "C"
         self.lock = lock
 
     def run(
@@ -124,13 +130,16 @@ class Git:
         prompt: bool = False,
         stdin: Optional[str] = None,
         hold: bool = False,
+        shown: bool = False,
     ) -> Tuple[int, str, str]:
         """Exit status, stdout and stderr. A call that may change the work tree or the
         configuration runs with the stop signals held, so it is not cut short by one here
         (a held signal is delivered when it has ended, and `git` inherits it held), and with
         the lock passed to it. A fetch (`hold`) is given the lock too, so a `sync` killed while
         it writes refs does not free the lock before it ends, but not the signals held: a
-        Ctrl-C stops a fetch that hangs or asks for a password. Only a fetch may prompt."""
+        Ctrl-C stops a fetch that hangs or asks for a password. Only a fetch may prompt. A
+        call whose output is only shown, never read, runs in the person's locale (`shown`);
+        every other in the C locale."""
         argv = ["git", "-C", str(self.place), *GIT_OPTIONS, *args]
         kwargs = dict(
             input=stdin,
@@ -138,7 +147,7 @@ class Git:
             encoding="utf-8",
             errors="surrogateescape",
             check=False,
-            env=self.env,
+            env=self.shown_env if shown else self.env,
         )
         if stdin is None:
             kwargs["stdin"] = None if prompt else subprocess.DEVNULL
@@ -163,6 +172,11 @@ class Git:
 
 def quoted(text: object) -> str:
     return shlex.quote(str(text))
+
+
+def counted(number: int, word: str) -> str:
+    """`1 commit`, `2 commits`."""
+    return f"{number} {word}" if number == 1 else f"{number} {word}s"
 
 
 def set_url_command(place: Path, url: str, key: str) -> str:
@@ -225,9 +239,23 @@ def tracked_changes(git: Git) -> Optional[int]:
 
 
 def delete_probe_refs(git: Git) -> None:
-    refs = git.out("for-each-ref", "--format=%(refname)", f"refs/remotes/{PROBE}/")
+    """Remove the probe's refs: only refs under its own prefix, each as the ref itself
+    (`--no-deref`), so a symbolic ref there is removed and what it points to is never touched.
+    The one ref deletion of this module."""
+    prefix = f"refs/remotes/{PROBE}/"
+    refs = git.out("for-each-ref", "--format=%(refname)", prefix)
     for ref in (refs or "").splitlines():
-        git.run("update-ref", "-d", ref, change=True)
+        if ref.startswith(prefix):
+            git.run("update-ref", "--no-deref", "-d", ref, change=True)
+
+
+def probe_taken(git: Git) -> bool:
+    """Whether the clone has a remote of the probe's reserved name (or git cannot say): then
+    its refs are a person's, and `sync` neither probes nor removes them."""
+    status, printed, _ = git.run(
+        "config", "--get-regexp", rf"^remote\.{PROBE}\."
+    )  # the name holds no regex character but `-`
+    return status != 1 or bool(printed.strip())
 
 
 def gitlinks(git: Git, commit: str) -> Optional[Dict[str, str]]:
@@ -400,7 +428,8 @@ def paths_note(git: Git, paths: Sequence[str]) -> str:
     shown = [f"{p} (ignored)" if p in ignored else p for p in paths[:SHOWN_PATHS]]
     more = f" and {len(paths) - SHOWN_PATHS} more" if len(paths) > SHOWN_PATHS else ""
     return (
-        f"{len(paths)} paths not tracked here are in the way of incoming files: "
+        f"{counted(len(paths), 'path')} not tracked here {'is' if len(paths) == 1 else 'are'} in"
+        " the way of incoming files: "
         f"{', '.join(shown)}{more}; not updated (move them aside, then sync again)"
     )
 
@@ -442,6 +471,18 @@ class Version:
     kind: str  # BRANCH, TAG or COMMIT
     name: str  # the branch's name (for a version not given, origin's default branch)
     target: str  # the commit
+
+
+def same_version(one: Optional[str], other: Optional[str]) -> bool:
+    """Two manifest versions name the same branch, tag or commit, read as vcstool reads them:
+    `heads/main` and `main` are the same; `heads/v1` and `tags/v1` are not."""
+    if one is None or other is None:
+        return one is other
+    kind_one, name_one = version_ref(one)
+    kind_other, name_other = version_ref(other)
+    return name_one == name_other and (
+        kind_one is None or kind_other is None or kind_one == kind_other
+    )
 
 
 def ask_origin(git: Git, *patterns: str) -> Tuple[Optional[Dict[str, str]], str]:
@@ -488,26 +529,42 @@ def find_version(
                 False,
             )
         return _branch(git, name, theirs[f"refs/heads/{name}"])
-    theirs, problem = ask_origin(git, f"refs/heads/{version}", f"refs/tags/{version}")
+    # `heads/x` is the branch x and `tags/x` the tag x, as vcstool reads them.
+    kind, name = version_ref(version)
+    patterns = []
+    if kind != TAG:
+        patterns.append(f"refs/heads/{name}")
+    if kind != BRANCH:
+        patterns.append(f"refs/tags/{name}")
+    theirs, problem = ask_origin(git, *patterns)
     if theirs is None:
         return None, problem, True
-    on_branch = theirs.get(f"refs/heads/{version}")
-    on_tag = theirs.get(f"refs/tags/{version}")
+    on_branch = theirs.get(f"refs/heads/{name}")
+    on_tag = theirs.get(f"refs/tags/{name}")
     if on_branch is not None and on_tag is not None:
         return None, f"version {version} is both a branch and a tag on origin", False
     if on_branch is not None:
-        return _branch(git, version, on_branch)
-    local_tag = git.out("rev-parse", "--verify", "-q", f"refs/tags/{version}")
+        return _branch(git, name, on_branch)
+    local_tag = None
+    if kind != BRANCH:
+        local_tag = git.out("rev-parse", "--verify", "-q", f"refs/tags/{name}")
     if on_tag is not None:
         if local_tag is None:
-            return None, f"origin's tag {version} was not fetched here; sync again", True
+            return None, f"origin's tag {name} was not fetched here; sync again", True
         if local_tag != on_tag:
-            return None, _tag_clash(git, version, theirs, record), False
-        tag = git.out("rev-parse", "--verify", "-q", f"refs/tags/{version}^{{commit}}")
-        return Version(TAG, version, tag or ""), None, False
+            return None, _tag_clash(git, name, theirs, record), False
+        tag = git.out("rev-parse", "--verify", "-q", f"refs/tags/{name}^{{commit}}")
+        if tag is None:
+            what = git.out("cat-file", "-t", f"refs/tags/{name}^{{}}") or "object"
+            return (
+                None,
+                f"tag {name} names a {what}, not a commit; sync follows a tag only to a commit",
+                False,
+            )
+        return Version(TAG, name, tag), None, False
     if local_tag is not None:
         return None, f"version {version} is a tag here, and origin has no such tag", False
-    if HEX.fullmatch(version):
+    if kind is None and HEX.fullmatch(version):
         commit = git.out("rev-parse", "--verify", "-q", f"{version}^{{commit}}")
         if commit is not None and commit.startswith(version):
             return Version(COMMIT, version, commit), None, False
@@ -519,12 +576,13 @@ def find_version(
                 " whole)",
                 False,
             )
-    if git.out("rev-parse", "--verify", "-q", f"refs/remotes/origin/{version}") is not None:
+    stale = f"refs/remotes/origin/{name}"
+    if kind != TAG and git.out("rev-parse", "--verify", "-q", stale) is not None:
         return (
             None,
-            f"version {version} is not on origin: origin no longer has the branch {version}"
-            f" (refs/remotes/origin/{version} here is left from an earlier fetch; sync removes"
-            " no remote-tracking ref)",
+            f"version {version} is not on origin: origin no longer has the branch {name}"
+            f" ({stale} here is left from an earlier fetch; sync removes no remote-tracking"
+            " ref)",
             False,
         )
     return None, f"version {version} is not on origin", False
@@ -549,7 +607,12 @@ def _tag_clash(git: Git, version: str, theirs: Dict[str, str], record: Optional[
     deleting it the advice, since then origin had it and HEAD holds its commit."""
     here = git.out("rev-parse", "--verify", "-q", f"refs/tags/{version}^{{commit}}") or "?"
     origins = theirs.get(f"refs/tags/{version}^{{}}") or theirs.get(f"refs/tags/{version}", "?")
-    if record is not None and record.version == version and record.commit == here:
+    followed = record is not None and record.version is not None
+    if followed and version_ref(record.version) in ((None, version), (TAG, version)):
+        followed = record.commit == here
+    else:
+        followed = False
+    if followed:
         return (
             f"tag {version} was moved on origin, from {here[:12]}, where sync followed it, to"
             f" {origins[:12]}; sync never replaces a tag: to take origin's, git -C <place> tag"
@@ -597,17 +660,41 @@ def count(git: Git, *args: str) -> Optional[int]:
     return int(printed) if printed is not None and printed.isdigit() else None
 
 
-def worktree_holding(git: Git, branch: str) -> Optional[str]:
-    """The path of another work tree that has `branch` checked out, if one has."""
-    printed = git.out("worktree", "list", "--porcelain") or ""
-    here = os.path.realpath(git.place)
-    path = None
+@dataclass
+class WorkTree:
+    path: str
+    head: Optional[str]  # its HEAD's commit; None for a bare entry
+    branch: Optional[str]  # the branch checked out there; None when detached
+
+
+def work_trees(git: Git) -> Optional[List[WorkTree]]:
+    """Every work tree of the repo, this one included, as `git worktree list` gives them; None
+    when git cannot list them."""
+    status, printed, _ = git.run("worktree", "list", "--porcelain")
+    if status != 0:
+        return None
+    found: List[WorkTree] = []
     for line in printed.splitlines():
         if line.startswith("worktree "):
-            path = line[len("worktree ") :]
-        elif line == f"branch refs/heads/{branch}" and path is not None:
-            if os.path.realpath(path) != here:
-                return path
+            found.append(WorkTree(line[len("worktree ") :], None, None))
+        elif found and line.startswith("HEAD "):
+            found[-1].head = line[len("HEAD ") :]
+        elif found and line.startswith("branch refs/heads/"):
+            found[-1].branch = line[len("branch refs/heads/") :]
+    return found
+
+
+def worktree_holding(git: Git, branch: str) -> Optional[str]:
+    """Another work tree that has `branch` checked out, if one has (a linked work tree made
+    with `git worktree add -f` can share the branch of this one); when the work trees cannot
+    be listed, that is said, so the caller leaves the repo alone too."""
+    trees = work_trees(git)
+    if trees is None:
+        return "a work tree git cannot list (`git worktree list` fails)"
+    here = os.path.realpath(git.place)
+    for tree in trees:
+        if tree.branch == branch and os.path.realpath(tree.path) != here:
+            return tree.path
     return None
 
 
@@ -622,6 +709,7 @@ class _Turn:
         self.record: Optional[RepoRecord] = record
         self.put: Callable[[RepoRecord], None] = write
         self.notes: List[str] = notes
+        self.symbolic: Optional[str] = None  # HEAD's branch ref when the rules read it
 
     def new_record(self, commit: str, moving: Optional[Tuple[str, str]] = None) -> RepoRecord:
         return RepoRecord(self.layer, self.repo.version, commit, self.repo.url, moving)
@@ -634,9 +722,19 @@ class _Turn:
             self.put(replace(record, url=self.repo.url))
         return Done(LEFT, detail, self.notes)
 
-    def current(self, head: str, said: str) -> Done:
-        if self.record != self.new_record(head):
-            self.put(self.new_record(head))
+    def current(self, head: str, said: str, where: str) -> Done:
+        """On the manifest's version already. When only the record was behind (the manifest
+        changed to where the clone already is, or a person moved it there), one line says so;
+        a record that gains only the manifest's url, or a first record, says nothing."""
+        new = self.new_record(head)
+        if self.record != new:
+            old = self.record
+            if old is not None and not same_version(old.version, self.repo.version):
+                was = old.version or "no version"
+                self.notes.append(f"already on {where}; record updated (was {was})")
+            elif old is not None and old.commit != head:
+                self.notes.append(f"already on {where} at {head[:12]}; record updated")
+            self.put(new)
         return Done(CURRENT, said, self.notes, commit=head)
 
 
@@ -693,7 +791,9 @@ def update_repo(
     origin = urls[0]
     for known in (origin, repo.url, record.url if record is not None else None):
         remember_url(known)
-    delete_probe_refs(git)
+    taken = probe_taken(git)
+    if not taken:
+        delete_probe_refs(git)
     url = repo.url
     notes: List[str] = []
     by_hand = None
@@ -701,7 +801,14 @@ def update_repo(
         pass
     elif record is not None and record.url is not None and same_url(origin, record.url):
         # The manifest changed the url since the repo was recorded: repoint, unless a local
-        # branch has commits the new url does not have.
+        # branch, or the HEAD of a work tree, has commits the new url does not have.
+        if taken:
+            return Done(
+                LEFT,
+                f"url changed to {mask_url(url)}, and a remote named {PROBE} is set here, a name"
+                f" sync keeps for checking a new url; origin stays {mask_url(origin)} (to let"
+                f" sync check it: git -C {quoted(place)} remote rename {PROBE} <another name>)",
+            )
         done = _repoint(git, origin, url)
         if done is not None:
             return done
@@ -722,7 +829,7 @@ def update_repo(
     if changes is None:
         return turn.left("`git status` fails here")
     if changes:
-        return turn.left(f"has uncommitted changes ({changes} files){also}")
+        return turn.left(f"has uncommitted changes ({counted(changes, 'file')}){also}")
 
     # The refspec is sync's own, and --refmap= keeps git from also applying the person's
     # remote.origin.fetch; --no-prune and --no-prune-tags keep any fetch.prune or
@@ -742,13 +849,17 @@ def update_repo(
         # git updates each ref on its own and exits 1 for a tag it would not replace; the
         # branches are fetched again without tags, so the result rests on an exit status of 0.
         status, printed, error = git.run("fetch", "--no-tags", *fetch_args, prompt=True, hold=True)
+        version_kind, version_name = version_ref(repo.version or "")
         for tag in clashes:
-            if tag != repo.version:
+            if version_kind == BRANCH or tag != version_name:
                 notes.append(
                     f"tag {tag} here and origin's tag {tag} name other objects; sync never"
                     " replaces a tag, and this one is not the manifest's version"
                 )
     if status != 0:
+        conflicts = _ref_conflicts(git) if "local refs could not be updated" in error else []
+        if conflicts:
+            return Done(FAILED, _conflicts_note(git, conflicts), notes)
         detail = f"`git fetch origin` exited {status}:\n{(printed + error).rstrip()}"
         return Done(FAILED, detail, notes, fetch=True)
 
@@ -770,6 +881,7 @@ def update_repo(
             )
 
     symbolic = git.out("symbolic-ref", "-q", "HEAD")
+    turn.symbolic = symbolic
     branch = None
     if symbolic is not None and symbolic.startswith("refs/heads/"):
         branch = symbolic[len("refs/heads/") :]
@@ -778,12 +890,18 @@ def update_repo(
         if ahead is None:
             return turn.left("the commits not on origin cannot be counted")
         if ahead:
-            detail = f"has {ahead} commits not on origin"
+            detail = f"has {counted(ahead, 'commit')} not on origin"
             if found.kind == BRANCH and branch == found.name:
                 if not ancestor(git, found.target, head):
                     detail += (
                         f"; to bring origin's in by hand: git -C {quoted(place)} pull --rebase"
                         f" origin {quoted(found.name)}"
+                    )
+                else:
+                    detail += (
+                        f"; origin's {found.name} has nothing this clone lacks, so the commits"
+                        " are only here; to publish them (sync never pushes): git -C"
+                        f" {quoted(place)} push origin {quoted(branch)}"
                     )
             else:
                 detail += f"; the manifest names {wanted}; it is not switched"
@@ -792,23 +910,28 @@ def update_repo(
     # On the manifest's version.
     if found.kind == BRANCH and branch == found.name:
         if head == found.target:
-            return turn.current(head, "up to date")
+            return turn.current(head, "up to date", found.name)
         if not ancestor(git, head, found.target):
             return turn.left(
                 f"origin's {found.name} no longer contains this commit (rewritten upstream)"
             )
-        moved = count(git, f"{head}..{found.target}")
+        holder = worktree_holding(git, branch)
+        if holder is not None:
+            # A fast-forward moves the branch under that work tree, whose files would stay
+            # where they were: git would show its new commits there as staged changes.
+            return turn.left(f"branch {branch} is also checked out in {holder}; not fast-forwarded")
+        moved = count(git, f"{head}..{found.target}") or 0
         steps = [
             (["merge", "--ff-only", "--no-overwrite-ignore", "-q", found.target], found.target)
         ]
-        said = f"fast-forwarded {moved} commits"
+        said = f"fast-forwarded {counted(moved, 'commit')}"
         return _change(turn, head, [found.target], steps, symbolic, said)
     if found.kind != BRANCH and branch is None and head == found.target:
-        return turn.current(head, f"pinned at {found.name}")
+        return turn.current(head, f"pinned at {found.name}", found.name)
 
     # On the recorded version, which the manifest has changed: moved to the new one.
     if record is not None and _on_recorded(git, record, head, branch):
-        if record.version != repo.version:
+        if not same_version(record.version, repo.version):
             return _move(turn, head, found)
         # The same tag, detached where sync put it, and origin's tag now names another commit
         # (the person deleted the stale local tag, as the failed fetch said): followed.
@@ -818,7 +941,7 @@ def update_repo(
 
     where = branch if branch is not None else f"a detached HEAD at {head[:12]}"
     detail = f"moved by a person: it is on {where}; the manifest names {wanted}"
-    if record is not None and record.version != repo.version:
+    if record is not None and not same_version(record.version, repo.version):
         detail += f" (recorded: {record.version or 'no version'})"
     return turn.left(detail)
 
@@ -830,7 +953,8 @@ def _on_recorded(git: Git, record: RepoRecord, head: str, branch: Optional[str])
     if branch is None:
         return head == record.commit
     if record.version is not None:
-        return branch == record.version
+        kind, name = version_ref(record.version)
+        return kind != TAG and branch == name
     ref = git.out("symbolic-ref", "-q", "refs/remotes/origin/HEAD") or ""
     return ref == f"refs/remotes/origin/{branch}"
 
@@ -902,6 +1026,10 @@ def _change(
         return turn.left("the incoming files cannot be listed; not updated")
     if blocking:
         return turn.left(paths_note(git, blocking))
+    # Read again right before the first call: a person who moved HEAD or committed while the
+    # checks ran keeps that, and the repo is left as it is.
+    if _position(git) != (head, turn.symbolic):
+        return turn.left("HEAD moved while sync was checking the repo; not moved (sync again)")
     base = turn.record if turn.record is not None else turn.new_record(head)
     try:
         turn.put(RepoRecord(base.layer, base.version, base.commit, base.url, (head, target)))
@@ -911,7 +1039,7 @@ def _change(
     ran: List[str] = []  # what ran, in order, for a report of a move that did not finish
     for index, (step, end) in enumerate(steps):
         was = _position(git)
-        status, printed, error = git.run(*step, change=True)
+        status, printed, error = git.run(*step, change=True, shown=True)
         said_by_git = (printed + error).rstrip()
         ran.append(_what_ran(step, status, was, _position(git)))
         # Judged by the state the step leaves, whatever its exit status: a step that exited 0
@@ -932,7 +1060,7 @@ def _change(
                     before.symbolic[len("refs/heads/") :],
                 ]
             was = _position(git)
-            back_status, back_out, back_err = git.run(*back, change=True)
+            back_status, back_out, back_err = git.run(*back, change=True, shown=True)
             ran.append(_what_ran(back, back_status, was, _position(git)))
             said_by_git = "\n".join(t for t in (said_by_git, (back_out + back_err).rstrip()) if t)
         after = Before.read(git, turn.git_dir)
@@ -1004,8 +1132,9 @@ def _half_changed(git: Git, ran: Sequence[str], after: Before, said: str) -> str
     where = _shown((after.head, after.symbolic))
     if files:
         changes = (
-            f"{files}. These changes were made by git or a hook it ran (the repo had no tracked"
-            " changes before); sync does not put them back, as it runs no reset or forced"
+            f"{files}. These changes were made during the move, by git, a hook it ran, or"
+            " something else (the repo had no tracked changes before); sync does not put them"
+            " back, as it runs no reset or forced"
             f" checkout: `git -C {quoted(git.place)} status` shows them"
         )
     else:
@@ -1041,7 +1170,7 @@ def _set_upstream(git: Git, branch: str, notes: List[str]) -> None:
     """Set the new branch's upstream to origin's branch; a failure is a note, since the move is
     done and nothing else depends on it."""
     status, printed, error = git.run(
-        "branch", f"--set-upstream-to=refs/remotes/origin/{branch}", branch, change=True
+        "branch", f"--set-upstream-to=refs/remotes/origin/{branch}", branch, change=True, shown=True
     )
     if status == 0:
         return
@@ -1058,8 +1187,8 @@ def _no_upstream(git: Git, branch: str, why: str) -> str:
     place = quoted(git.place)
     return (
         f"branch {branch} has no upstream configured: {why}; to set one by hand: git -C {place}"
-        f" config branch.{branch}.remote origin && git -C {place} config branch.{branch}.merge"
-        f" refs/heads/{branch}"
+        f" config {quoted(f'branch.{branch}.remote')} origin && git -C {place} config"
+        f" {quoted(f'branch.{branch}.merge')} {quoted(f'refs/heads/{branch}')}"
     )
 
 
@@ -1094,24 +1223,75 @@ def _repoint(git: Git, origin: str, url: str) -> Optional[Done]:
                 f"\n{(printed + error).rstrip()}",
                 fetch=True,
             )
-        local = count(git, "--branches", "HEAD", "--not", f"--remotes={PROBE}")
+        trees = work_trees(git)
+        if trees is None:
+            return Done(
+                LEFT,
+                f"url changed to {mask_url(url)}; the work trees cannot be listed; origin stays"
+                f" {mask_url(origin)}",
+            )
+        # The HEAD of every work tree, a detached one included, counts with the branches.
+        heads = [t.head for t in trees if t.head is not None and OBJECT_ID.fullmatch(t.head)]
+        local = count(git, "--branches", "HEAD", *heads, "--not", f"--remotes={PROBE}")
         if local is None:
             return Done(LEFT, f"url changed to {mask_url(url)}; its commits cannot be counted")
         if local:
             names = []
-            heads = git.out("for-each-ref", "--format=%(refname:short)", "refs/heads/") or ""
-            for name in heads.splitlines():
+            refs = git.out("for-each-ref", "--format=%(refname:short)", "refs/heads/") or ""
+            for name in refs.splitlines():
                 if count(git, f"refs/heads/{name}", "--not", f"--remotes={PROBE}"):
-                    names.append(name)
-            which = f" (branches {', '.join(names)})" if names else " (on HEAD)"
+                    names.append(f"branch {name}")
+            for tree in trees:
+                if tree.branch is None and tree.head is not None and tree.head in heads:
+                    if count(git, tree.head, "--not", f"--remotes={PROBE}"):
+                        names.append(f"the detached HEAD of {tree.path}")
+            which = f" ({', '.join(names)})" if names else " (on HEAD)"
             return Done(
                 LEFT,
-                f"url changed to {mask_url(url)} but {local} local commits{which} are not on it;"
-                f" origin stays {mask_url(origin)}",
+                f"url changed to {mask_url(url)} but {counted(local, 'local commit')}{which}"
+                f" {'is' if local == 1 else 'are'} not on it; origin stays {mask_url(origin)}",
             )
-        status, _, error = git.run("remote", "set-url", "origin", url, change=True)
+        status, _, error = git.run("remote", "set-url", "origin", url, change=True, shown=True)
         if status != 0:
             return Done(FAILED, f"`git remote set-url origin` exited {status}: {error.strip()}")
         return None
     finally:
         delete_probe_refs(git)
+
+
+def _ref_conflicts(git: Git) -> List[Tuple[str, str]]:
+    """Remote-tracking refs here, of branches origin no longer has, that stand in the way of a
+    branch origin has now (`origin/release` and origin's `release/next`): (ref here, origin's
+    branch). git names neither in its message."""
+    theirs, _ = ask_origin(git, "refs/heads/*")
+    if theirs is None:
+        return []
+    names = {ref[len("refs/heads/") :] for ref in theirs if ref.startswith("refs/heads/")}
+    prefix = "refs/remotes/origin/"
+    printed = git.out("for-each-ref", "--format=%(refname)", prefix) or ""
+    here = [ref[len(prefix) :] for ref in printed.splitlines() if ref.startswith(prefix)]
+    found = []
+    for old in here:
+        if old in names or old == "HEAD":
+            continue
+        for new in sorted(names):
+            if new.startswith(old + "/") or old.startswith(new + "/"):
+                found.append((prefix + old, new))
+    return found
+
+
+def _conflicts_note(git: Git, conflicts: Sequence[Tuple[str, str]]) -> str:
+    place = quoted(git.place)
+    parts = [
+        f"{old} here, left from a branch origin no longer has, is in the way of origin's"
+        f" branch {new}"
+        for old, new in conflicts
+    ]
+    commands = " && ".join(
+        f"git -C {place} update-ref -d {quoted(old)}" for old in sorted({o for o, _ in conflicts})
+    )
+    return (
+        f"the fetch cannot write origin's branches: {'; '.join(parts)}. sync removes no"
+        f" remote-tracking ref, and another sync will not change this; to clear it: {commands},"
+        " then sync again"
+    )

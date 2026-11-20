@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import errno
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -108,8 +109,45 @@ def require_tools() -> Env:
         done = None
     if done is None or done.returncode != 0:
         raise Refusal(f"`{git} rev-parse --local-env-vars` does not run", "Repair or reinstall git")
+    require_git_version(git)
     local = set(done.stdout.split()) - CONFIGURATION_VARIABLES | {"GIT_NAMESPACE"}
     return {name: value for name, value in os.environ.items() if name not in local}
+
+
+# The oldest git that has every command `sync` runs: `git switch` (with `--no-overwrite-ignore`
+# and `--detach`) came in 2.23. The others are older: a fetch that does not replace a tag
+# without `--force` (2.20), `config --type` (2.18), `fetch --no-prune-tags` (2.17), `rev-parse
+# --is-shallow-repository` (2.15), `status --porcelain=v2` (2.11), `worktree list --porcelain`
+# and `for-each-ref --contains` (2.7), `fetch --refmap` (2.1).
+GIT_MINIMUM = (2, 23)
+_GIT_VERSION = re.compile(r"git version (\d+)\.(\d+)")
+
+
+def require_git_version(git: str) -> None:
+    """Stop with a plain message when `git --version` names a version older than
+    `GIT_MINIMUM`. A version it does not print in the usual form is not judged."""
+    try:
+        printed = subprocess.run(
+            [git, "--version"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            check=False,
+            env={**os.environ, "LC_ALL": "C"},
+        ).stdout
+    except OSError:
+        raise Refusal(f"`{git} --version` does not run", "Repair or reinstall git") from None
+    match = _GIT_VERSION.match(printed.strip())
+    if match is None:
+        return
+    found = (int(match.group(1)), int(match.group(2)))
+    if found < GIT_MINIMUM:
+        need = ".".join(str(n) for n in GIT_MINIMUM)
+        raise Refusal(
+            f"git {found[0]}.{found[1]} is on PATH, and this tool needs git {need} or later"
+            " (for `git switch`); nothing was changed",
+            f"Install git {need} or later",
+        )
 
 
 def sweep_temporaries(directory: Path) -> None:

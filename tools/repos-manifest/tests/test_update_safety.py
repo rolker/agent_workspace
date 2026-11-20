@@ -5,8 +5,10 @@ the run. The whole repo is compared with `snapshot_repo`.
 
 `NEVER` and its scan do not look for every form that can lose work. `update.py` does fetch
 with a forced refspec into remote-tracking refs (`+refs/heads/*:refs/remotes/origin/*`, and
-into its own probe refs under `refs/remotes/`), and does run `update-ref -d` on those probe
-refs only; neither touches a local branch, a tag or the work tree. The scan does not look for
+into its own probe refs under `refs/remotes/`), and does run `update-ref --no-deref -d` on
+those probe refs only, the one ref deletion it makes (`--no-deref`: a symbolic ref there is
+removed itself, never what it points to; a test below holds it to that); neither touches a
+local branch, a tag or the work tree. The scan does not look for
 these forms, nor for `reset --merge`, `reset --keep` and `checkout -B`, which `update.py` does
 not run."""
 
@@ -39,8 +41,9 @@ GIT_CALLS = ("run", "out", "ok", "count", "ask_origin")
 # The names a git call may spread with `*`: each is a function's own parameter (`args`,
 # `patterns`, whose callers the scan reads as git calls too), a
 # step taken from a list literal (`step`, `back`), or a list literal or `GIT_OPTIONS` bound in
-# the module, all of which the scan reads.
-SPREAD = {"args", "patterns", "step", "back", "fetch_args", "GIT_OPTIONS"}
+# the module, all of which the scan reads; `patterns` in `find_version` is built of `refs/...`
+# texts; and `heads`, the commit ids `git worktree list` gives, each checked to be one.
+SPREAD = {"args", "patterns", "step", "back", "fetch_args", "GIT_OPTIONS", "heads"}
 
 
 def _called(call: ast.Call) -> str:
@@ -172,6 +175,14 @@ def test_a_git_call_spreads_only_names_the_scan_reads():
             assert isinstance(node.value, ast.List)
 
 
+def test_the_only_ref_deletion_is_of_probe_refs_without_following_a_symbolic_ref():
+    texts = [t for t in git_argument_texts(UPDATE.read_text()) if t.startswith("update-ref")]
+    assert texts == ["update-ref --no-deref -d"], texts
+    source = UPDATE.read_text()
+    body = source[source.index("def delete_probe_refs") : source.index("def probe_taken")]
+    assert 'prefix = f"refs/remotes/{PROBE}/"' in body and "ref.startswith(prefix)" in body
+
+
 def test_the_scan_finds_a_forbidden_command():
     source = 'git.run("stash", "push")\nsteps = [["reset", "--hard", "x"]]\n'
     texts = git_argument_texts(source)
@@ -263,7 +274,7 @@ def test_a_file_git_does_not_track_where_an_incoming_file_goes_stops_the_move(
     out = capsys.readouterr().out
     shown = f"{name} (ignored)" if what == "ignored" else name
     assert (
-        f"src/a: left alone: 1 paths not tracked here are in the way of incoming files: {shown};"
+        f"src/a: left alone: 1 path not tracked here is in the way of incoming files: {shown};"
         " not updated" in out
     ), out
     assert {k: v for k, v in state_of(sys_dir)["a"].items() if k != "moving"} == recorded
@@ -358,4 +369,4 @@ def test_untracked_files_elsewhere_do_not_stop_a_fast_forward(system, capsys):
     assert head(clone) == head(remote)
     assert (clone / "notes.txt").read_text() == "mine\n"
     assert (clone / "build.log").read_text() == "ignored\n"
-    assert "src/a: fast-forwarded 1 commits" in capsys.readouterr().out
+    assert "src/a: fast-forwarded 1 commit" in capsys.readouterr().out

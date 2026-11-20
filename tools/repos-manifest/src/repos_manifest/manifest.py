@@ -183,6 +183,21 @@ def parse_part(text: str, source: str) -> Part:
     return _Checker(source).part(raw)
 
 
+# How vcstool reads a `version`: a leading `heads/` names a branch and a leading `tags/` a tag,
+# and is taken off; the update rules of `sync` read it the same way (`update.py`).
+VERSION_PREFIXES = (("heads/", "branch"), ("tags/", "tag"))
+
+
+def version_ref(version: str) -> Tuple[Optional[str], str]:
+    """(kind, name) of a manifest's `version`: ("branch", "x") for `heads/x`, ("tag", "x") for
+    `tags/x`, and (None, version) for any other, which is a branch, a tag or a commit,
+    whichever the repo has."""
+    for prefix, kind in VERSION_PREFIXES:
+        if version.startswith(prefix):
+            return kind, version[len(prefix) :]
+    return None, version
+
+
 # A value of the wrong type is described by its kind, never shown: a url inside it would not
 # be masked.
 _type_name = type_name
@@ -230,14 +245,16 @@ class _Checker:
         """A version that git cannot read as an option, as given or as vcstool passes it: it
         takes a leading `heads/` or `tags/` off and checks out the rest, which is not empty."""
         version = self.not_an_option(self.string(value, where), where)
-        for prefix in ("heads/", "tags/"):
-            if version == prefix:
+        kind, name = version_ref(version)
+        if kind is not None:
+            prefix = version[: len(version) - len(name)]
+            if name == "":
                 raise self.error(
                     where,
                     f"{quoted_url(version)} names nothing after {quoted_url(prefix)}, which vcstool"
                     " takes off",
                 )
-            if version.startswith(prefix) and version[len(prefix) :].startswith("-"):
+            if name.startswith("-"):
                 raise self.error(
                     where,
                     f"{quoted_url(version)} starts with '-' after {quoted_url(prefix)}, which"
