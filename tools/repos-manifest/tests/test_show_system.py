@@ -154,3 +154,38 @@ def test_show_in_a_system_prints_every_manifest_as_an_absolute_path(tmp_path, ca
     at = lines.index("  n   (its default branch)   https://example.org/n.git")
     assert lines[at + 1].strip() == f"from {leaf}"
     assert all(os.path.isfile(path) for path in (leaf, base))
+
+
+def _record(system, manifest):
+    config = Config(manifest, "robot", [], "flat", ["jazzy"])
+    (system / SYSTEM_DIR / CONFIG_FILE).write_text(config_text(config))
+
+
+def test_show_opens_the_recorded_path_as_sync_does_and_prints_it_canonical(
+    tmp_path, capsys, monkeypatch
+):
+    # `sub/../m.yaml` opens, since sub/ exists: show reads it and prints the path canonical.
+    system = _system(tmp_path, ["jazzy"])
+    (system / "sub").mkdir()
+    _record(system, "sub/../m.yaml")
+    monkeypatch.chdir(system)
+    assert main(["show"]) == 0
+    assert capsys.readouterr().out.startswith(f"manifest  {os.path.realpath(system / 'm.yaml')}\n")
+
+
+def test_a_recorded_path_that_resolves_only_once_canonicalised_is_refused_as_sync_refuses_it(
+    tmp_path, capsys, monkeypatch
+):
+    # `missing/../m.yaml` names m.yaml once `..` is taken away by hand, but the system opens it
+    # through missing/, which does not exist: show and sync both refuse it, by its recorded path.
+    system = _system(tmp_path, ["jazzy"])
+    _record(system, "missing/../m.yaml")
+    monkeypatch.chdir(system)
+    recorded = f"(the manifest's path is `manifest` in {system / SYSTEM_DIR / CONFIG_FILE}"
+    assert main(["show"]) == 1
+    shown = capsys.readouterr()
+    assert shown.out == ""
+    assert "missing/../m.yaml" in shown.err and recorded in shown.err
+    assert main(["sync"]) == 1
+    synced = capsys.readouterr().err
+    assert "missing/../m.yaml" in synced and recorded in synced
