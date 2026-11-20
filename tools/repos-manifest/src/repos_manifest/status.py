@@ -281,15 +281,15 @@ def _repo(
         if blocked.kind in (update.OPERATION, update.INDEX_LOCK):
             return  # `sync`'s text for these carries the stopped move already
     elif origin == "":
-        # `sync` reads the empty value as one url and fails at the fetch; here it is no url at
-        # all (git 2.46 and later read an empty url as clearing the list), so no refs to trust.
+        # `sync` takes the empty value for one url, and its fetch fails: there is no url whose
+        # refs `status` could answer from.
         found.state, found.detail = UNUSABLE, "has no origin url (it is set to an empty value)"
     elif not lazy_off and _partial(git):
         found.fetched_from = mask_url(origin)
         found.state, found.detail = UNUSABLE, (
             f"is a partial clone, and the git on PATH is older than {_shown(LAZY_FETCH_KNOWN)}"
             " (or its version cannot be read), so its `git status` could fetch a missing object;"
-            f" status does not read it there (git {_shown(LAZY_FETCH_KNOWN)} or later does)"
+            f" status reads a partial clone only with git {_shown(LAZY_FETCH_KNOWN)} or later"
         )
     else:
         found.state, found.detail = _version(git, place, repo, record, head, origin, found)
