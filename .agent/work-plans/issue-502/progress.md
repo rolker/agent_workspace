@@ -677,3 +677,13 @@ Tests: 342 passed (test_status, test_status_agrees_with_sync, test_update_safety
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 15:01 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 4 approved with no findings; the host's full pass passed on this head)
+**After**: publish
+**Decision**: publish
+
+Read the Local Review (Pre-Push) at 4ab1fe43 (round 4, approved, ship recommended, no findings). The full pass (`pre-commit run --files` over the branch's files, no SKIP, branch even with origin/main, 2m50s) passed: every hook Passed or Skipped for no files, including the adapter contract check, the `.agent/scripts/tests/` suite, shellcheck, black and flake8; the tree was clean after it.
