@@ -524,8 +524,9 @@ bidirectional override) is written as an escape, `\xXX` below 0x100 and `\uXXXX`
 that is not UTF-8 as `\xXX`, and a backslash is doubled. `init` prints the system directory in
 its question the same way.
 
-It lists the repos that are left out with the reason, in the manifest's order: "group X is off" for a repo in one group that is off,
-"none of its groups (X, Y) is on" for a repo in several, "not on D" for a repo that distro D's
+It lists the repos that are left out with the reason, in the manifest's order: "group X is
+off" for a repo in one group that is off, "none of its groups (X, Y) is on" for a repo in
+several, "not on D" for a repo that distro D's
 entry or the repo's own `absent: true` leaves out, and "absent, and no distro adds it" for a
 repo with `absent: true` in a manifest with no `distros:`. A repo that a group and a distro
 would both leave out is listed with the group. A manifest with no roles prints `(none)` as
