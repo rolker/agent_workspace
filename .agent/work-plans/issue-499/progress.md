@@ -495,3 +495,19 @@ Scope: commit 3b21957f (show names the recorded manifest as recorded on every re
 **Decision**: address
 
 Read the Integrated Review at 1a41a6be (one open finding, no outside review, CI pending). The design promises that every refusal and warning names the manifest by its path as recorded, and the test covers two refusals only. Add the two cases the review names, with a recorded `sub/../m.yaml`: a top manifest with an unknown top-level key, where the warning from `show` and from `sync` names the recorded path; and a recorded role that is not in the manifest, refused by both under the recorded name. Tests only; no code change is expected.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 13:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #541 at `3c7f8bf1`
+**Addressed**: Integrated Review at `d02ab66` (2026-11-20 13:05 -05:00)
+**Commits**: 3c7f8bf1
+
+### Actions
+- [x] Two cases added with the manifest recorded as `sub/../m.yaml`: a top manifest with an unknown top-level key, whose warning `show` and `sync` both print under `sub/../m.yaml` and never under the canonical path (sync is stopped at `require_tools` so nothing is cloned); and a recorded role `pilot` the manifest lacks, refused by both under `sub/../m.yaml`. Tests only, no code change: sync reports a distro that does not resolve in its per-distro report and goes on, so the role test reads sync's stdout and stderr together. — `tools/repos-manifest/tests/test_show_system.py:233`
+
+### Checks
+- `PYTHONPATH=src pytest tests/test_show_system.py tests/test_show.py` (from `tools/repos-manifest`): 37 passed in 0.20s
+- No script under `.agent/scripts/` changed, so no script suite was run; the full pre-commit pass is left to the host, and CI checks the push.
