@@ -658,3 +658,22 @@ Read the Local Review (Pre-Push) at c1eca0fe (round 3, changes-requested, one mu
 - Reproduction by hand (git 2.53.0), status's exact `git status` argv, fresh blob:none clone per run, trace2 child count and packs: rename detection on, variable set: exit 128 "could not fetch"; variable removed: exit 0, one child `git fetch`, a pack added, `R` entry. With `-c status.renames=false` (and, checked too, `--no-renames`): exit 0, no child fetch, no new pack, with the variable set and removed; output `A` a.txt and `D` b.txt.
 - Found beyond the checkpoint: a clone filtered on trees (`--filter=tree:0`) after `reset --soft` onto a fetched commit lacks `HEAD`'s trees, so `status`'s `git status` still needs a missing object even with rename detection off: "bad tree object HEAD" with the variable set, a fetch without it. The design states this case (unusable with git 2.45+, a fetch with older git); no code was added for it. A host decision.
 - Whole tool suite, `tools/repos-manifest`: `2102 passed in 670.84s (0:11:10)`. The full pre-commit pass was left to the host. Nothing in ~/project11 was read, written or run.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-20 14:57 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-502 at `4e91a564`
+**Base**: origin/main
+**Depth**: Deep (reason: round 4 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 4 | **Ship**: recommended — no must-fix findings; down from 1
+
+Checked (commits 783239df, 883e8dd1, fe9a84e2, 37bfe91a): the partial-clone `unusable` rule, `LAZY_FETCH_KNOWN`, `lazy_off`, `sync.git_version` and its test are gone (no leftover in src, tests, docs, README). `git diff origin/main -- sync.py` shows only the `require_git` split: `require_tools` returns `require_git()`, which holds the git half unchanged. Detection (`_partial`, status.py:296) reads `extensions.partialClone` or any `remote.*.promisor` true, the two settings git itself uses to decide a repo has a promisor remote, so a clone git would lazy-fetch for is always detected; a promisor set without a filter is detected but only costs the rename count; a non-boolean promisor makes git itself fail, so `unusable` either way. A fresh `--filter=blob:none` clone on git 2.53 sets only `remote.origin.promisor`, which is matched. `NO_RENAMES` is added only on the partial path (status.py:262, :291), and `tracked_changes` (the one `git status`) runs after it; `blocked_early` runs no command that reads blobs. With `NO_RENAMES` emptied in-process, both `test_a_partial_clone_with_a_staged_rename_reads_no_missing_object` cases fail (honoured: exit 1; removed: the snapshot changes, a pack fetched); `test_a_clone_that_is_not_partial_keeps_rename_detection` passes with it, as it should. With the old `url_changed` (copy not moved ahead) patched in, both "a url changed" agreement cases fail, so the difference is exercised. By hand, `--filter=tree:0` clone, fetch a branch, `reset --soft FETCH_HEAD`, status's exact argv with `GIT_NO_LAZY_FETCH=1` and `status.renames=false`: "error: bad tree object HEAD", exit 128, as the design says; the result is `unusable` ("`git status` fails here"), inside the host's earlier placement of a failing `git status`, for a repo that cannot be read offline. The design's and README's partial-clone sentences are each true as checked. Cross-model: skipped (round-4 convergence check, per handoff).
+
+Tests: 342 passed (test_status, test_status_agrees_with_sync, test_update_safety, test_cli). Nothing in ~/project11 was read, written or run.
+
+### Findings
+- [ ] No issues found. LGTM.
