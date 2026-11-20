@@ -145,3 +145,11 @@ Read the Plan Review at b5216657 (verdict needs-work). All twelve findings go ba
 2. Finding 4: a file at a repo's place, a place that fails the destination check, and a repo the manifest moved to another layer whose old place is still there each get a state of their own in the design table and count as not at its place (exit 1 for a repo that is not optional), since `sync` and `build` treat them as errors.
 3. Finding 6: the row of `docs/manifest/roadmap.md` that covers five things stays open and is not split in this pull request; the plan says which of the five this issue delivers.
 4. Finding 1 first: the tests for the stopped-move text on the in-progress and `index.lock` messages and for "has no commit checked out" are written and passing against today's `update.py` before any of it is refactored.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-20 11:37 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-502/plan.md` at `3dd5164d`
+
+Revision after the plan review (needs-work, twelve findings, all checked against the code and held). Characterisation tests for today's update.py come first, then the extraction; the exit rule follows the validate row (exit 1 for a non-optional repo missing, not at its place or unknown); three place states added; the five-part roadmap row stays open.
