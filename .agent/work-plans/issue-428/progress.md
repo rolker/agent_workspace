@@ -907,3 +907,51 @@ Read: the Integrated Review at 98c47a8c: no must-fix, three open findings, all c
 - test_skill_paths.sh: 164 passed, 0 failed
 
 shellcheck at warning severity is clean on `worktree_remove.sh` and its test. No part 2 file and not `plan.md` touched.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-20 14:04 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent ae4a8940bb75088a1, resume 2 of 3)
+
+**PR**: #542 at `0c3c7b47`
+**Depth**: Deep (reason: whole-diff classification for a fix round, 11 files and about 950 changed lines; no convergence-check words in the handoff, so cross-model ran)
+**Must-fix**: 1 | **Suggestions**: 1
+
+Re-review after the fix pass 97e48c95, f7959ef4 and 3575bbee (Implementation entry 0c3c7b47).
+
+Earlier suggestions (Local Review 592ddc83):
+- A link out of the worktree got chmod advice: fixed. A folder on the entry's path that is a link out is refused as a link, before any search check, with no chmod advice. Tested for both shapes. The adversarial reviewer also checked a link out to a mode 000 folder and a link out at the entry's own name.
+- The mount wording: fixed, in the header and in the `script_reference.md` row.
+- The edited-review limit: fixed. Step 9 names it.
+
+Statements tested:
+- "A link to something that is not a reachable folder is still taken as gone." This is safe when the target is outside the worktree: a dangling link, a link to a file, or a link to an outside folder whose parent cannot be searched. `rm -rf` removes only the link, and the outside tree keeps its contents and modes. It is not safe when the target is inside the worktree. See the must-fix.
+- "The advice names the target, a folder inside the worktree." This holds: the walk prints only the `readlink -f` target of a link checked to be inside, or a non-link path reached through inside links.
+
+Reproduced, with main as the control:
+- Setup: a real checkout at `layer_ws/src/sub/pkg_a` with an uncommitted change. The manifest names `alias/pkg_a`, and `alias -> layer_ws/src/sub`. `layer_ws/src` is mode 600.
+- Branch: exit 0, "removed successfully", the change deleted.
+- Main: exit 1 with `rm: cannot remove ... Permission denied`, the change kept.
+- The same happens when the entry's own name is such a link. With `layer_ws/src` searchable, the branch refuses for the uncommitted change.
+
+This was present since d8bcf950, and I missed it in round 2.
+
+Verified:
+- shellcheck at warning severity is clean on `worktree_remove.sh` and its test.
+- `test_worktree_remove.sh`: 92 passed, 0 failed.
+
+Reviewers:
+- Gemini ran, EXIT 0. It found the must-fix and the suggestion. Dropped from its review:
+  - Plan drift: recorded in the pull request text.
+  - Matching `could not open directory`: when the error is not EACCES, chmod cannot open the folder either, so `rm -rf` fails rather than deletes.
+  - `merge_pr.sh`'s hold after 1800 s: that is the documented existing behaviour.
+  - The wait-end wording points: dropped in earlier rounds.
+  - A negative `total_count`: GitHub never sends one.
+- Codex ran, EXIT 0. It found the must-fix.
+- The Claude adversarial reviewer ran, with a fresh agent. It found the must-fix, reproduced with the link at the entry's own name, and the suggestion.
+
+### Findings
+- [ ] (must-fix) A link that stays inside the worktree, but whose target sits under a folder with no search permission, is taken as gone. `[ -d ]` follows the link and is false on EACCES, at line 432 (a folder on the path) and at line 427 (the entry's own name), and both run before the `[ -L ]` check. The entry gets no owner and no dirty check. `_make_dirs_writable` then opens the folder, and `rm -rf` deletes the checkout with its uncommitted work, without `--force`. Main fails safe here. Fix: when `[ -d ]` is false on a component that is a link, resolve it (`readlink -m`). If the target is inside the worktree, refuse (return 2, naming the folder that cannot be entered). Keep "gone" only for a target outside the worktree. Add a test for an intermediate link and one for a link at the entry's own name, each with a dirty entry under a mode 600 folder. Found by the lead (reproduced), Codex, Gemini and the Claude adversarial reviewer. — `.agent/scripts/worktree_remove.sh:432`
+- [ ] (suggestion) An entry that is itself a link to a folder inside the worktree that cannot be entered gets the "leads outside this worktree ... through a symbolic link" message at line 495, because `_real` is empty and `[ -L ]` is true at line 487. The refusal is safe; only the message is wrong. Found by the Claude adversarial reviewer and Gemini. — `.agent/scripts/worktree_remove.sh:487`
