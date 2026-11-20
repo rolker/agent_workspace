@@ -457,12 +457,21 @@ def test_status_asks_git_for_no_lazy_fetch(vcs, tmp_path, capsys, monkeypatch):
     real = update.Git.run
 
     def watching(self, *args, **kwargs):
-        seen.append((self.env.get("GIT_NO_LAZY_FETCH"), self.options[:2]))
+        seen.append((self.env.get("GIT_NO_LAZY_FETCH"), self.options))
         return real(self, *args, **kwargs)
 
     monkeypatch.setattr(update.Git, "run", watching)
     status(case.system, capsys, expect=0)
     assert seen and set(seen) == {("1", ("-c", "core.fsmonitor=false"))}
+
+
+def test_a_clone_that_is_not_partial_keeps_rename_detection(vcs, tmp_path, capsys):
+    """Rename detection is off only in a partial clone: elsewhere a staged rename counts as one
+    file, as `sync` and `git status` count it."""
+    case = make_case(tmp_path)
+    git("mv", "README", "README.md", cwd=case.clone)
+    _, doc, _ = status(case.system, capsys)
+    assert repo_a(doc)["changes"] == 1, repo_a(doc)
 
 
 @pytest.mark.parametrize("name", ["behind origin", "pinned at a tag", "a moved tag"])
@@ -481,6 +490,40 @@ def test_no_lazy_fetch_does_not_change_the_answer(vcs, tmp_path, capsys, monkeyp
     _, allowed, _ = status(case.system, capsys)
     assert repo_a(off) == repo_a(allowed)
     assert repo_a(off)["state"] == CASES[name][1], repo_a(off)
+
+
+@pytest.mark.parametrize("honoured", [True, False])
+def test_a_partial_clone_with_a_staged_rename_reads_no_missing_object(
+    vcs, tmp_path, capsys, monkeypatch, honoured
+):
+    """`HEAD` moved without a checkout onto a commit that renames a file with a small edit: the
+    file under its old name is in the index, and `HEAD`'s file under its new name was never
+    fetched. Rename detection would read it; with it off `status` reads no object the clone
+    lacks, whether git honours `GIT_NO_LAZY_FETCH` or not (git before 2.45 does not), and
+    counts the rename as two files."""
+    case = make_case(tmp_path)
+    _partial_clone(case)
+    lines = "".join(f"{n}\n" for n in range(1, 201))
+    commit_file(case.remote, "big.txt", lines, "big")
+    git("pull", "-q", "--ff-only", "origin", "main", cwd=case.clone)
+    git("checkout", "-q", "-b", "renamed", cwd=case.remote)
+    git("mv", "big.txt", "moved.txt", cwd=case.remote)
+    commit_file(case.remote, "moved.txt", lines + "201\n", "renamed")
+    git("checkout", "-q", "main", cwd=case.remote)
+    git("fetch", "-q", "origin", "renamed", cwd=case.clone)
+    git("reset", "-q", "--soft", "FETCH_HEAD", cwd=case.clone)
+    # Not the `status` helper: its own snapshot runs a plain `git status`, which would fetch.
+    # The files below the system directory, packs included, are compared as they are.
+    before = snapshot(case.system)
+    if not honoured:
+        monkeypatch.setattr("repos_manifest.status.NO_LAZY_FETCH", {})
+        monkeypatch.delenv("GIT_NO_LAZY_FETCH", raising=False)
+    capsys.readouterr()
+    code = run(case.system, "status", "--json")
+    found = repo_a(json.loads(capsys.readouterr().out))
+    assert snapshot(case.system) == before  # no pack fetched, nothing written
+    assert code == 0 and found["state"] != "unusable", found
+    assert found["changes"] == 2, found
 
 
 def _partial_clone(case):

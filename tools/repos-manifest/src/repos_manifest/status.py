@@ -85,6 +85,12 @@ BEFORE_THE_URL = (update.OPERATION, update.INDEX_LOCK, update.SPARSE)
 # the same files as changed.
 NO_LAZY_FETCH = {"GIT_NO_LAZY_FETCH": "1"}
 NO_FSMONITOR = ("-c", "core.fsmonitor=false")
+# In a partial clone, and only there, `git status` counts changes without rename detection: to
+# pair a file staged under a new name with the one `HEAD` has, git reads the file `HEAD` has,
+# which a partial clone may not hold when `HEAD` was moved without a checkout (`reset --soft`).
+# With no rename detection no object the clone lacks is read, on any git version. The cost: a
+# staged rename there counts as two files where `sync` and `git status` say one.
+NO_RENAMES = ("-c", "status.renames=false")
 
 # `sync` fetches only when nothing stops it first (uncommitted changes, a remote of the probe's
 # name with the url changed), so this says a fetch, not a sync, may find it.
@@ -253,6 +259,8 @@ def _repo(
     if blocked is not None:
         found.state, found.detail = BLOCKED_STATE[blocked.kind], blocked.text
         return
+    if _partial(git):
+        git = _reading_git(place, env, partial=True)
     found.head = head
     # A `moving` line that does not name HEAD no longer describes the repo; `sync` drops it,
     # `status` only does not use it.
@@ -277,11 +285,12 @@ def _repo(
         found.detail += f"; {stopped}"
 
 
-def _reading_git(place: Path, env: Dict[str, str]) -> update.Git:
+def _reading_git(place: Path, env: Dict[str, str], partial: bool = False) -> update.Git:
     """`update.Git` for `status`: with no fsmonitor hook (`-c` on the command line comes after
     the configuration git reads from files and from the environment, so it wins), and the
-    clone's filter drivers as they are, as `git status` and `sync` run them."""
-    return update.Git(place, env, None, options=NO_FSMONITOR)
+    clone's filter drivers as they are, as `git status` and `sync` run them; in a partial clone
+    (`partial`) with no rename detection either."""
+    return update.Git(place, env, None, options=NO_FSMONITOR + (NO_RENAMES if partial else ()))
 
 
 def _partial(git: update.Git) -> bool:
