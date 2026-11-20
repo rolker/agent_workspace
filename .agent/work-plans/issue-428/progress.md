@@ -360,3 +360,49 @@ Part 1 only (items 1, 2, 3 and 5); no Part 2 file is touched. The `test_script_t
 - [x] (suggestion) Three changes to the `find` line: `chmod u+rwx` with `! -perm -u=rwx`, so a directory missing `x` or `r` is also repaired; `--` before the paths; and `-xdev`, so a bind mount inside the tree is not crossed. — `.agent/scripts/worktree_remove.sh:467`
 - [x] (suggestion) The tests never exercise the aggregate (package) path where `_make_dirs_writable "$WORKTREE_DIR"` does real work, or an entry `$_dest` that is itself a symlink. — `.agent/scripts/tests/test_worktree_remove.sh`
 - [x] (suggestion) `fetch_pr_reviews.sh` returns every review in the PR's history. At round 2 or later, an earlier round's `notice_only` review could end the wait for the current head. Say that only a review whose `commit_id` is the current `head_sha` ends the wait. — `.claude/skills/run-issue/SKILL.md:938`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 11:40 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-428 at `a3d6f10f`
+**Addressed**: Local Review (Pre-Push) at `5a857f7e` (2026-11-20 11:13 -05:00)
+**Commits**: d2745d16, 22441d54, 98a20099, 8b9cd9a5, 6096fc74, a3d6f10f
+
+Part 1 fix pass (items 1, 2, 3 and 5). No part 2 file touched; `plan.md` unchanged.
+
+Must-fix 1, the host's question before patching the matcher a third time, answered from the code and the API:
+- (a) Does the wait need the mark? No. run-issue step 9 waits until the `copilot-pull-request-reviewer` check-run has completed. On pull request 400 (read-only `gh api`), the check-run of each of five notice commits completed with conclusion `failure` within 1 to 4 s of the notice review. The notice is also a review on the head, so either wait condition is met without any mark.
+- (b) Does triage need the mark? No. The notice body says in plain words that the review could not be done; a reader of the body sees it.
+- So the mark is removed, not repaired: `fetch_pr_reviews.sh` is back to main's text, `test_fetch_pr_reviews.sh` (it tested only the mark) and its `ROOT_READERS` entry are deleted, the `script_reference.md` row is back to main's, and run-issue step 9 and triage-reviews describe the notice as a review by the hosted reviewer, read like any review, which holds no findings only because its own words say so. No review is skipped unread.
+
+### Actions
+- [x] (must-fix) `notice_only` unanchored match: mark removed (answers above) — `.agent/scripts/fetch_pr_reviews.sh:213` (d2745d16)
+- [x] (must-fix) 900 s bound cut off a running review: the 900 s now applies only while no review check-run is in `ci_checks`; a running one is waited for, bounded by `merge_pr.sh`'s own hold (`MERGE_PR_CI_TIMEOUT_SECONDS`, 1800 s), after which the host records it, triages what exists and re-fetches before the merge checkpoint so a late review on the head goes to triage first; measured-times sentence corrected (0 to 30 minutes, most 1 to 6, all but two within 9, outliers 17 and 30). `merge_pr.sh` unchanged for this — `.claude/skills/run-issue/SKILL.md` step 9 (22441d54)
+- [x] (suggestion) only a review whose `commit_id` is the current `head_sha` ends the round's wait — `.claude/skills/run-issue/SKILL.md` step 9 (22441d54)
+- [x] (suggestion) `total_count` missing or not a number is "unknown"; new case ci-28d3 (missing, null, string) — `.agent/scripts/merge_pr.sh:1782` (98a20099)
+- [x] (suggestion) mechanism comment names no project ("a project's merge") — `.agent/scripts/merge_pr.sh:1753` (8b9cd9a5)
+- [x] (suggestion) `find -P -- <tree> -xdev -type d ! -perm -u=rwx -exec chmod u+rwx {} \;`. Also changed from `+` to `\;`: a batched chmod runs after the walk, too late for find to enter a directory that lacked r or x, so a read-only directory under one was missed (seen with GNU find 4.9.0) — `.agent/scripts/worktree_remove.sh:467` (6096fc74)
+- [x] (suggestion) tests for the aggregate (package) path and a symlinked entry — `.agent/scripts/tests/test_worktree_remove.sh` (6096fc74, a3d6f10f). The symlinked-entry test found a defect the review did not name: `git worktree remove` given an entry that is a link acts on the checkout it points to (with `--force` it deleted that outside checkout's files and dropped its worktree record, after already removing the other entry). `worktree_remove.sh` now refuses, before anything is removed, an entry whose resolved path is outside the worktree; header and `script_reference.md` row updated.
+
+Without the fixes the new tests fail: `test_worktree_remove.sh` 8 failed against the previous `worktree_remove.sh` (aggregate case 3, symlinked entry 5); ci-28d3's missing-`total_count` case gave no-ci under the previous jq.
+
+Suites run, each on its own with `bash` (last result line):
+- `test_worktree_remove.sh` (changed): test_worktree_remove: 37 passed, 0 failed
+- `test_merge_pr_gate.sh` (changed): test_merge_pr_gate: 213 passed, 0 failed
+- `test_script_tests_hook_scope.sh` (changed): test_script_tests_hook_scope: 347 passed, 0 failed
+- `test_skill_paths.sh`: test_skill_paths: 164 passed, 0 failed
+- `test_merge_pr.sh`: === Results: 175 passed, 0 failed ===
+- `test_merge_pr_skill.sh`: test_merge_pr_skill: 132 passed, 0 failed
+- `test_merge_pr_root_resolution.sh`: === Results: 6 passed, 0 failed ===
+- `test_dispatch_phase.sh`: test_dispatch_phase: 244 passed, 0 failed
+- `test_checkpoint_269.sh`: test_checkpoint_269: 43 passed, 0 failed
+- `test_records_write_gate.sh`: test_records_write_gate: 68 passed, 0 failed
+- `test_package_issue_loop.sh`: test_package_issue_loop: 220 passed, 0 failed
+- `test_project_registry.sh`: === Results: 425 passed, 0 failed ===
+- `test_user_tier_guard.sh`: test_user_tier_guard: 64 passed, 0 failed
+- `test_validate_workspace_stale.sh`: test_validate_workspace_stale: 126 passed, 0 failed
+- `test_ros2_colcon.sh` (names `worktree_remove.sh`; part 2 file, run only): === Results: 1374 passed, 1 failed, 0 skipped === — FAILED, not from this pass: "adapter sync: the tool's own report" expects `present, not touched (2)`, but the in-repo `repos-manifest` sync now prints `up to date (2)` (`tools/repos-manifest/src/repos_manifest/sync.py:644`, changed on main by PR 535's commits for issue 500 and brought in by the merge 5a857f7e). Those files are identical to origin/main, so main is expected to fail the same way. Not fixed here: `test_ros2_colcon.sh` is a part 2 file and the cause is outside this issue.
+
+The full pre-commit pass and the full run of every suite are left to the host.
