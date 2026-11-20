@@ -64,6 +64,22 @@ def git_argument_texts(source: str):
     return [" ".join(str(w) for w in words) for words in found if words]
 
 
+def forbidden(text: str, never=update.NEVER):
+    """The entries of `never` in one git argument text. A one-word entry is any word of the
+    text. A command with its flag (`switch -f`) is the command and then the flag anywhere
+    after it, not only next to it: `switch -q -f dev` holds `switch -f`."""
+    words = text.split()
+    found = []
+    for entry in never:
+        command, *flag = entry.split()
+        if command not in words:
+            continue
+        after = words[words.index(command) + 1 :]
+        if not flag or all(f in after for f in flag):
+            found.append(entry)
+    return found
+
+
 @pytest.mark.parametrize("word", update.NEVER)
 def test_the_update_module_runs_no_command_that_can_lose_work(word):
     texts = git_argument_texts(UPDATE.read_text())
@@ -71,7 +87,7 @@ def test_the_update_module_runs_no_command_that_can_lose_work(word):
     assert any(text.startswith("fetch --tags") for text in texts)  # and calls
     assert any(text.startswith("--no-prune --no-prune-tags") for text in texts)
     for text in texts:
-        assert f" {word} " not in f" {text} ", f"{word!r} in {text!r}"
+        assert word not in forbidden(text, (word,)), f"{word!r} in {text!r}"
 
 
 @pytest.mark.parametrize(
@@ -112,6 +128,11 @@ def test_no_bundled_short_flag_holds_p_or_f():
     [
         ('git.run("fetch", "-P", "origin")\n', True),
         ('git.run("fetch", "--prune", "--prune-tags", "origin")\n', True),
+        ('git.run("fetch", "--prune-tags", "origin")\n', True),  # NEVER's --prune-tags alone
+        ('steps = [["switch", "-q", "-f", "dev"]]\n', True),  # a flag not next to its command
+        ('git.run("branch", "-q", "-f", "dev", "x")\n', True),
+        ('steps = [["reset", "-q", "--hard", "x"]]\n', True),
+        ('git.run("switch", "-q", "dev")\n', False),
         ('steps = [["switch", "-f", "dev"]]\n', True),
         ('steps = [["switch", "--discard-changes", "dev"]]\n', True),
         ('git.run("branch", "-f", "dev", "x")\n', True),
@@ -123,7 +144,7 @@ def test_no_bundled_short_flag_holds_p_or_f():
 )
 def test_the_scan_catches_each_way_of_forcing_or_pruning(source, hit):
     texts = git_argument_texts(source)
-    words = [w for w in update.NEVER for t in texts if f" {w} " in f" {t} "]
+    words = [w for t in texts for w in forbidden(t)]
     assert bool(words or bundled_with(texts)) == hit, (texts, words)
 
 
