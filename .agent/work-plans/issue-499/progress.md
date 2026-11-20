@@ -284,3 +284,23 @@ left out
   marine_colormap               group ui is off
   marine_sonar_widgets          group ui is off
 ```
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-20 12:09 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-499 at `67fcacd7`
+**Base**: main
+**Depth**: Deep (reason: about 1300 lines across 19 files, resolver data model and CLI)
+**Must-fix**: 1 | **Suggestions**: 5
+**Round**: 1 | **Ship**: continue — round 1: 1 must-fix; first round always re-reviews after fixes
+
+### Findings
+- [ ] (must-fix) A later manifest may change a repo's `url` (docs/spec.md:390-391), but `Repo.source` stays the manifest where the key first appears. `show` then prints that later URL with no `from` line, and the design and comment claim the source "gave its `type` and `url`". Track which manifest set the url, or narrow the claim and test the case — `tools/repos-manifest/docs/design.md:510`, `tools/repos-manifest/src/repos_manifest/manifest.py:99`, `tools/repos-manifest/src/repos_manifest/show.py:518`
+- [ ] (suggestion) `show --role X` outside a system directory gives the in-system refusal, not "no manifest given, and no system directory"; check `find_system` first — `tools/repos-manifest/src/repos_manifest/cli.py:190`
+- [ ] (suggestion) Path labels are inconsistent: `base` lines print the real path, while the manifest and `from` lines print the label as given. Inside a system directory the labels are relative to the system directory, not to cwd, and the output does not say so — `tools/repos-manifest/src/repos_manifest/show.py:471`
+- [ ] (suggestion) Manifest and base path labels are printed with control characters and newlines left as they are (masking does not escape them); escape them on display — `tools/repos-manifest/src/repos_manifest/show.py:471`
+- [ ] (suggestion) No test covers the refusal of `--distro ""` — `tools/repos-manifest/src/repos_manifest/cli.py:197`
+- [ ] (suggestion) The "show" section says no-argument `show` "also shows the effect of `fetch_from`", which is not built; mark it as planned there — `tools/repos-manifest/docs/design.md:521`
