@@ -930,9 +930,35 @@ in — otherwise `triage-reviews` runs before Copilot's review exists and
 triages a source that lands minutes later. **CI may still be running**:
 that is the wall-clock saving, since a triage of the review sources does
 not depend on the CI verdict. One case looks like a completed review but
-is not: when Copilot's quota is exhausted it posts a plain issue comment
-saying so instead of a review — that comment is not a review source for
-`triage-reviews`, so note it and move on rather than waiting further.
+is not: when Copilot cannot review (its quota is exhausted, or it hit an
+error) it posts a **review** by its own account
+(`copilot-pull-request-reviewer[bot]`), state `COMMENTED`, no inline
+comments, and a short body saying it was unable to review this pull
+request. It is a review source in form only and holds no findings:
+`fetch_pr_reviews.sh` marks it `"notice_only": true`. Note it in the
+hand-back's outside-reviewer line and move on rather than waiting further.
+A short review that is not marked is read like any review: a real review
+by the same account can be short and carry a finding in its body (issue
+428, item 5).
+
+**The wait is bounded** (issue 428, item 5). Poll `fetch_pr_reviews.sh` for
+at most about 900 s after publish (or after the PR-mode review). If the
+hosted review has neither arrived nor been marked `notice_only` by then,
+record "review never arrived" on the hand-back's outside-reviewer line and
+dispatch `triage-reviews` with the sources that exist, as for the notice.
+The 900 s is the standing rule's timeout of about twice the expected
+duration (`host_standing_rules.md`: "no waits on things that will not
+arrive, a timeout of about twice the expected duration") applied to the
+measured review time: on pull requests 416, 417 and 420 reviews arrived 0
+to 9 minutes after the reviewed commit, most within 1 to 6, with two
+outliers at 17 and 30 minutes (commit time precedes push time, so these
+are upper bounds). Nothing in a script ends this wait for you: the notice
+is a quick answer, but a review that never starts is an absence, and only
+time bounds an absence. `merge_pr.sh`'s own hold is a different wait and
+is unchanged: it holds only on a review check-run that exists and has not
+finished, up to `MERGE_PR_CI_TIMEOUT_SECONDS` (default 1800 s), then
+refuses with the review-pending error; a check-run that never appears
+holds nothing there.
 
 When CI has not settled, say so in the dispatch: the `## Integrated
 Review` records `**CI**: pending` (a value in `triage-reviews`' own `**CI**`

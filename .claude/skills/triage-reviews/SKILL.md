@@ -117,6 +117,7 @@ The script:
 - Fetches PR conversation comments (issue-level comments, not code review threads)
 - Fetches CI check-runs for the PR head SHA
 - Outputs structured JSON with `head_sha`, `reviews`, `conversation_comments`, and `ci_checks`
+- Marks each review `notice_only`: `true` is the hosted reviewer saying it could not review this pull request (quota or error), which holds no findings; an unmarked short review is read like any review (issue 428)
 
 Save the JSON to a file (it feeds the integrator step below). If it
 contains no reviews and no conversation comments, **do not stop yet** —
