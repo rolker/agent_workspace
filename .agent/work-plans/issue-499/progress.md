@@ -511,3 +511,18 @@ Read the Integrated Review at 1a41a6be (one open finding, no outside review, CI 
 ### Checks
 - `PYTHONPATH=src pytest tests/test_show_system.py tests/test_show.py` (from `tools/repos-manifest`): 37 passed in 0.20s
 - No script under `.agent/scripts/` changed, so no script suite was run; the full pre-commit pass is left to the host, and CI checks the push.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-20 13:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #541 at `f838757`
+**Depth**: Standard (reason: round 3 convergence check per handoff; scope: the tests-only commit 3c7f8bf1 answering the open finding of the Integrated Review at 1a41a6be; no cross-model reviewers)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Verified: `tests/test_show_system.py` 19 passed. Mutation check: making show (`cli.py:212`) and, separately, sync (`resolve_all` in `sync.py`) pass the canonical path as the shown name fails both new tests each time; restored after. The `require_tools` stub runs after `resolve_all` has read the manifest and warned, so it cuts off cloning only, not the warning under test. In the role test sync's refusal is printed by `sync_distros` (stdout) after the real `require_tools` passes; `vcs` comes from the `vcs2l` dependency and `git` is on CI runners, so reading stdout and stderr together is right and the test can fail.
+
+### Findings
+- [ ] No issues found. LGTM.
