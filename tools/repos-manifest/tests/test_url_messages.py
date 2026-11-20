@@ -1,23 +1,36 @@
-"""Every message the tool builds that holds a url masks it before it is quoted or escaped
-(``docs/design.md``, "sync": a url's user name and password are never printed).
+"""The messages the tool builds that hold a url mask it before it is quoted or escaped
+(``docs/design.md``, "sync"). The scan here is a guard against accidents, not a proof.
 
 The scan walks the syntax tree of every module of the package and looks at each value that
-is formatted into text: each `{...}` of an f-string, each operand of a `+` or `%` on text,
-each argument of a `.format(...)`, and each argument given directly to `print`,
-`ManifestError`, `Refusal`, `Done` or `warn`. A value counts as a url when a name in it (a
-variable, an attribute, or a constant key such as `["url"]`) holds "url" or is `origin`, the
-names the code uses for urls (a module constant in capitals, such as `_URL_RULE`, is message
-text). Such a value must be a call of `mask_url`, `quoted_url`,
-`mask_urls` or `set_url_command`, or sit on a line marked `# url-text:` with the reason it is
-not a message (a git argument, a hash input).
+is formatted into text: each `{...}` of an f-string, each operand of a `+` or `%` on text
+(one side a constant or an f-string), each argument of a `.format(...)`, and each positional
+argument given directly to `print`, `ManifestError`, `Refusal`, `Done` or `warn`. A value
+counts as a url when a name in it (a variable, an attribute, or a constant key such as
+`["url"]`) holds "url" or is `origin`, the names the code uses for urls (a module constant in
+capitals, such as `_URL_RULE`, is message text). Such a value must be a call of `mask_url`,
+`quoted_url`, `mask_urls` or `set_url_command`, or sit on a line marked `# url-text:` with the
+reason it is not a message (a git argument, a hash input). Each of those four is safe on a
+value that is not a string: `quoted_url` describes it by its kind and shows nothing of it, and
+the others refuse it (`TypeError`); a test below holds them to that.
 
-What it cannot see: a url held under another name. The second test closes most of that: every
-assignment that takes a url (from an attribute or key named `url`, or from `self.url(...)`)
-must give it a name the scan reads, so a url cannot change its name on the way to a message.
-A url passed as an argument to a function whose parameter has another name (`value` in
-`manifest.py`'s checks) is not followed; those functions quote with `quoted_url` whatever
-they are given, the end-to-end tests in `test_masking.py` run each refusal with a password
-that `repr` escapes, and `mask_urls` on everything printed stays behind it.
+The second test closes part of the name gap: an assignment that takes a url (from an
+attribute or key named `url`, or from `self.url(...)`) must give it a name the scan reads. A
+third holds the two modules that read a manifest (`manifest.py` and `schema.py`) to echo a
+value only through `quoted_url`: no `!r` and no call of `repr`.
+
+What the scan cannot see, so a url reaching a message by one of these ways is not caught here:
+- a url under a name without "url": by `getattr`, a tuple or annotated assignment, a walrus
+  (`:=`), a `for` target, or a parameter with another name (`path`, `value`, `name`) in a
+  function it is passed to;
+- a url passed to a helper that formats it, or joined (`", ".join(...)`), or put in a list or
+  a dict that is then formatted whole;
+- `prefix + url` with no constant side, and `text += url`;
+- keyword arguments to `Done`, `Refusal` and the other direct calls;
+- output that is not one of those calls: `logging`, `sys.stderr.write`;
+- an exception formatted as `{exc}` whose text holds a url.
+Behind it, `mask_urls` masks every line `sync` prints and every `ERROR:` line of any
+command, and the end-to-end tests in `test_masking.py` run each command over passwords that
+`repr` escapes.
 """
 
 import ast
@@ -164,3 +177,45 @@ def test_a_url_under_another_name_is_caught_where_it_is_taken():
     assert misnamed("address = repo.url\n")
     assert misnamed("a = self.url(value, where)\n")
     assert not misnamed("url = repo.url\nremote_url = entry['url']\n")
+
+
+def echoes(source: str):
+    """(line, text) of each value echoed with `!r` or `repr(...)`."""
+    tree = ast.parse(source)
+    lines = source.splitlines()
+    found = []
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.FormattedValue) and node.conversion == ord("r")) or (
+            isinstance(node, ast.Call) and _func_name(node) == "repr"
+        ):
+            found.append((node.lineno, lines[node.lineno - 1].strip()))
+    return found
+
+
+@pytest.mark.parametrize("name", ["manifest.py", "schema.py"])
+def test_a_module_that_reads_a_manifest_echoes_only_through_quoted_url(name):
+    """A key, a name, a path or a value of the wrong type need not be named like a url to hold
+    one (round 5: a `base:` url, a list given as a url)."""
+    assert echoes((SRC / name).read_text()) == []
+
+
+def test_the_echo_scan_catches_each_shape():
+    assert echoes('x = f"{path!r}"\n')
+    assert echoes("x = repr(location)\n")
+    assert not echoes('x = f"{quoted_url(path)}"\n')
+
+
+def test_each_safe_function_shows_nothing_of_a_value_that_is_not_a_string():
+    """The scan counts these as safe whatever they are given, so none may show the content of
+    a list, a mapping or a number: `quoted_url` describes its kind, the others refuse it."""
+    from repos_manifest import masking, update
+
+    secret = "https://aliceQ:pw zQ@127.0.0.1:9/x.git"
+    for value in ([secret], {"u": secret}, 5):
+        assert masking.quoted_url(value) in ("a list", "a mapping", "a int")
+        for function in (masking.mask_url, masking.mask_urls):
+            with pytest.raises(TypeError):
+                function(value)
+        with pytest.raises(TypeError):
+            update.set_url_command(Path("/srv/a"), value, "a")
+    assert SAFE == {"mask_url", "quoted_url", "mask_urls", "set_url_command"}
