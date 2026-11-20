@@ -67,3 +67,11 @@ issue: 502
 "Build both here (Recommended)"
 
 Asked with the issue review's scope finding in the dialog: the issue lists "a form a script can read, and an exit status for a missing repo" as not in scope unless issue 495 had settled them, and issue 495 did not. The question was whether issue 502 builds the script-readable form and the exit status too, with the plan writing them into the tool's design first. His answer puts both in scope. The other choices offered were the human-readable form only with a follow-up issue, or holding the drive.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-20 11:31 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-502/plan.md` at `768ed207`
+
+Design text for `status` (states, facts, `--json` form, exit status) is written into the plan to land first in the tool's design; then `update.py` gets an `ask` parameter and shared `standing` and `blocked` helpers so `status` reads the sync ladder offline, then `status.py`, the CLI block, tests and the ADR-0017 doc updates. Ten decisions are listed for veto.
