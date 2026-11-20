@@ -1125,3 +1125,26 @@ Reviewers:
 - [ ] (suggestion) Step 11 says to "present the merge checkpoint again" after the late review's triage; when that triage leaves open boxes, `next` raises `checkpoint:findings`. Say "call `next` again" instead. Both checkpoints offer merge and address, and the dialog carries the triage, so nothing is hidden. Found by the lead and Gemini. — `.claude/skills/run-issue/SKILL.md:1110`
 - [ ] (suggestion) The script header's list of refused cases and the `script_reference.md` row do not mention the `..` refusal. The error message itself is clear. — `.agent/scripts/worktree_remove.sh:27`
 - [ ] (suggestion) The pull request's Decision summary is out of date: item 5 says `triage-reviews` records a fetch time in `**Fetched**`, which is now `**Reviews-read**` with review ids; item 3 does not say that links which do not reach a folder inside, and `..` paths, are refused, to be removed or corrected by hand. Refresh it before the merge gate reads it. — pull request 542 body
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-20 14:47 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+**Dispatch**: resumed (agent adfe2f8b386465a21, resume 1 of 3)
+
+**PR**: #542 at `8ce42584`
+**Sources**: 2 (Local Review @ `8ce42584` (entry 4bd5eeb0, approved, three open suggestions), CI rollup). No hosted review, no hosted-reviewer check-run, no inline or conversation comment. The stale Local Review @ `d2adb33a` (three open boxes, listed as dropped) was ruled on in the Integrated Review of 98c47a8c, and all three were fixed (97e48c95, f7959ef4, 3575bbee); not re-listed. The intervening rounds at `0c3c7b47` and `7b49a579` are closed; the bind-mount suggestion there was declined by the fix pass, as recorded.
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Owner direction (2026-11-20), applied here: "it's ok if scripts don't handle everything and come back saying they can't do it. If it's occasinal and an agent can deal with, that's fine. If it happens too often, than we can look at root causes and such. Let's not waist too much time going for perfect when we can have agents handle the edge cases."
+
+Summary: no must-fix open. S1 and S2 are valid wording fixes, one phrase or line each. S3 (stale Decision summary) is addressed by the host's rewrite, checked against the branch. CI on `8ce42584` is still running (Lint and the repos-manifest tests pending in both runs; nothing failed). Whether S1 and S2 are fixed before or after the merge is the owner's call at the checkpoint.
+
+### Findings
+- [ ] (suggestion, Local Review @ `8ce42584`) S1, valid, wording: step 11 says that after a late review's triage the host should "present the merge checkpoint again". After that triage the route is `next`'s to decide: `dispatch_phase.sh:1227` emits `checkpoint:findings` when the new Integrated Review has open boxes, so naming only the merge checkpoint is wrong in that case. The harm is small, because both checkpoints offer merge and address and the dialog carries the triage, and an agent handles it, as the owner's direction allows. Fix: replace the phrase with "call `next` again". Size: one phrase — `.claude/skills/run-issue/SKILL.md:1110`
+- [ ] (suggestion, Local Review @ `8ce42584`) S2, valid, wording: the header's list of refused cases (lines 24-36) and the `script_reference.md` row name the unreachable folder and the bad link but not the refusal of a manifest path containing `..` (lines 506-512). The error message itself is clear and says what to correct. Fix: add "or a manifest path containing `..` (correct `.worktree-repos` by hand)" to both. Size: one line in each of two places — `.agent/scripts/worktree_remove.sh:27`, `.agent/knowledge/script_reference.md:21`
+- [x] (suggestion, Local Review @ `8ce42584`) S3: the Decision summary was out of date. Addressed by the host's rewrite of the pull request text, checked here. Item 5 now describes `**Reviews-read**` and the edited-review limit. Item 3 describes the three-state decision and the hand-fixed refusals, `..` included. "Open, small" lists S1 and S2. The counts are right: 6 `## Local Review (Pre-Push)` and 5 `## Local Review` entries in `progress.md`, and `test_worktree_remove.sh` ran here with 138 passed and 0 failed. The leave-out list (`dynamic/dependabot/`, `dynamic/pages/`) is in `merge_pr.sh:1770-1771` — pull request 542 body
+
+### False positives
