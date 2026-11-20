@@ -300,3 +300,40 @@ The second revision answers all three must-fix items and both suggestions. The n
 **Decision**: proceed
 
 The owner's answer in the dialog, to "Approve this plan so implementation of part 1 starts?": "Approve (Recommended)". The dialog showed the two parts (part 1: items 1, 2, 3 and 5; part 2: item 4) and the choices listed for his veto (github.com only, no dispatch guard, the notice mark keyed on the hosted reviewer's phrase). The question reached him because the host had answered revise twice in a row. Plan Review b52a78d0 is ready with four suggestions for the implementer.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 11:06 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-428 at `2e560433`
+
+Part 1 of 2 (items 1, 2, 3 and 5; `Part of #428`). Item 4 is part 2 and was not touched. `plan.md` is unchanged since the Plan Review at b52a78d0.
+
+- Item 1 (`f2a320bf`): `dispatch_phase.sh` puts the job-count rule (`-j 4`, `--parallel 4`, never the flag alone, copied text included) in `conventions=` for every phase and issue type; a paragraph in run-issue step 4 says the host checks text it copies into a handoff; a row in `host_standing_rules.md` with its reason (the 2026-11-09 out-of-memory crash) and source; `script_reference.md` row; `test_dispatch_phase.sh` asserts the counted examples for every phase and for a project implement handoff. No guard, as planned.
+- Item 2 (`a563428f`): `merge_pr.sh` reads `actions/workflows?per_page=100` and counts active entries not on the leave-out list (the hosted reviewer's two paths, `dynamic/dependabot/`, `dynamic/pages/`); a list past one page or with no `workflows` array is unknown. Next to the list it cites the Dependabot and Pages evidence (123 runs, all `event: dynamic` on the default branch, none linked to a pull request) and says a leave-out acts only before any check registers. The header records three known gaps; the third is the hosted coding agent's `dynamic/copilot-swe-agent` workflow, which is counted, so a repository with only the reviewer and the coding agent still waits 120 s and gets the `--no-wait` hint (Plan Review suggestions 1 and 2). `test_merge_pr_gate.sh`: the 17 bare `total_count` fixtures go through `workflows_json`; new cases (a)-(f) as planned, plus a no-`workflows`-array case, the Dependabot and Pages prefixes, and the coding agent. Case (a) also checks that the run takes less than its 20 s grace window.
+- Item 3 (`11b7e00f`): `worktree_remove.sh` runs `find -P <tree> -type d ! -perm -u=w -exec chmod u+w {} +` before each `git worktree remove` and before the final `rm -rf` (guarded; a symlinked tree is skipped; a failed chmod does not hide the removal error). The header and `script_reference.md` row say so. New suite `test_worktree_remove.sh`: plain and `--force` removal of a gitignored read-only install tree, a dirty tracked file still refused, and a symlink to a read-only directory outside the tree left alone; it skips as root.
+- Item 5 (`2e560433`): `fetch_pr_reviews.sh` adds `notice_only` to every review, true only for the hosted reviewer's account, COMMENTED, no inline comments and the phrase "unable to review this pull request". run-issue step 9 now gives the notice's real shape (a review, not an issue comment), the `notice_only` reading, and a bound of about 900 s on the host's review poll with its two reasons; `merge_pr.sh`'s 1800 s review hold is described and left as it is. One line in triage-reviews and the `script_reference.md` row. New suite `test_fetch_pr_reviews.sh`: three notice wordings are marked, six non-notices are not.
+- Consequence not named in the plan: `test_script_tests_hook_scope.sh` needs a `ROOT_READERS` entry for each new suite (`test_worktree_remove.sh`, `test_fetch_pr_reviews.sh`), or it fails. Both entries are added.
+
+Suites run, each on its own with `bash` (last result line):
+- `test_dispatch_phase.sh`: test_dispatch_phase: 244 passed, 0 failed
+- `test_merge_pr_gate.sh`: test_merge_pr_gate: 210 passed, 0 failed
+- `test_merge_pr.sh`: === Results: 175 passed, 0 failed ===
+- `test_merge_pr_skill.sh`: test_merge_pr_skill: 132 passed, 0 failed
+- `test_merge_pr_root_resolution.sh`: === Results: 6 passed, 0 failed ===
+- `test_checkpoint_269.sh`: test_checkpoint_269: 43 passed, 0 failed
+- `test_project_registry.sh`: === Results: 425 passed, 0 failed ===
+- `test_user_tier_guard.sh`: test_user_tier_guard: 64 passed, 0 failed
+- `test_package_issue_loop.sh`: test_package_issue_loop: 220 passed, 0 failed
+- `test_records_write_gate.sh`: test_records_write_gate: 68 passed, 0 failed
+- `test_review_code_convergence.sh`: test_review_code_convergence: 38 passed, 0 failed
+- `test_validate_workspace_stale.sh`: test_validate_workspace_stale: 126 passed, 0 failed
+- `test_ros2_colcon.sh` (it names `worktree_remove.sh`; run only, not edited): === Results: 1375 passed, 0 failed, 0 skipped ===
+- `test_worktree_remove.sh` (new): test_worktree_remove: 16 passed, 0 failed
+- `test_fetch_pr_reviews.sh` (new): test_fetch_pr_reviews: 11 passed, 0 failed
+- `test_script_tests_hook_scope.sh` (changed): test_script_tests_hook_scope: 352 passed, 0 failed
+- `test_skill_paths.sh`: test_skill_paths: 164 passed, 0 failed
+
+Without the fix, the new tests fail: `test_merge_pr_gate.sh` 17 failed (case (a) included), `test_worktree_remove.sh` 5 failed, `test_fetch_pr_reviews.sh` 10 failed.
+
+The full pre-commit pass and the full run of every suite are left to the host.
