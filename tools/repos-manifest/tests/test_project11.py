@@ -92,3 +92,31 @@ def test_validate_checks_every_role_and_distro(capsys):
     assert "role robot, distro rolling: 20 repos in 5 layers" in out
     assert "role operator, distro jazzy: 30 repos in 6 layers" in out
     assert out.endswith("valid\n")
+
+
+def _repo_lines(out):
+    """The repo lines of the layers: those before `left out`, indented, with a url."""
+    layers = out.split("\nleft out\n")[0]
+    return [line for line in layers.splitlines() if line.startswith("  ") and "git" in line]
+
+
+def _show(capsys, role, distro):
+    assert main(["show", str(MANIFEST), "--role", role, "--distro", distro]) == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    return captured.out
+
+
+@pytest.mark.parametrize("distro", ["jazzy", "rolling"])
+def test_show_prints_each_role_and_the_roles_differ(distro, capsys):
+    shown = {role: _show(capsys, role, distro) for role in ("robot", "operator", "developer")}
+    for role, out in shown.items():
+        assert f"role      {role}    groups on: " in out
+        assert out.endswith("\n")
+    assert len(set(shown.values())) == 3
+    # As many repos as `validate` counts (test_validate_checks_every_role_and_distro).
+    listed = {role: len(_repo_lines(out)) for role, out in shown.items()}
+    assert listed == {"robot": 20, "operator": 30, "developer": 44}
+    # The developer gets every repo, so nothing is left out for it; the others leave some out.
+    assert "left out" not in shown["developer"]
+    assert "\nleft out\n" in shown["robot"] and "\nleft out\n" in shown["operator"]
