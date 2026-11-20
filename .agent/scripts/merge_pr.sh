@@ -1750,7 +1750,7 @@ _ci_excluded_noted=false
 # a pull request (issue 428, item 2). GitHub lists its hosted features as
 # `dynamic/...` workflows in `actions/workflows` even in a repository with
 # no workflow file, so counting every entry turned "no CI" into a 120 s
-# wait and a `--no-wait` demand (a GeoZui4D merge, 2026-11-02 and 11-09:
+# wait and a `--no-wait` demand (a project's merge, 2026-11-02 and 11-09:
 # the one entry was the hosted reviewer). An entry ending in `/` is a path
 # prefix, any other an exact path.
 #   - The hosted reviewer's two paths: its check-run is the one excluded
