@@ -10,6 +10,7 @@ the reader for the earlier shape (``schema.py`` and ``extends.py``).
 from __future__ import annotations
 
 import argparse
+import os
 import signal
 import sys
 from pathlib import Path
@@ -202,8 +203,14 @@ def _show_in_system(args: argparse.Namespace, cwd: Path) -> selection.Resolved:
         )
     config = read_config(system)
     distro = one_distro_for(system, config, [args.distro] if args.distro else [], cwd)
+    # The recorded path is taken from the system directory, which need not be the current one;
+    # it is shown, like the manifests it builds on, as an absolute path with links followed, so
+    # it opens from where show is run.
+    location = config.manifest
+    if "://" not in location:
+        location = os.path.realpath(system / location)
     try:
-        manifest = read_manifest(config.manifest, system)
+        manifest = read_manifest(location, system)
         return selection.resolve(manifest, config.role, distro, config.groups)
     except ManifestError as exc:
         raise ManifestError(f"{exc} {recorded_manifest(system)}") from None

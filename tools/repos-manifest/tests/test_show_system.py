@@ -1,6 +1,8 @@
 """`show` with no manifest, inside a system directory: it uses what `config.yaml` records and the
 distro "Which distro a command uses" picks, and writes nothing."""
 
+import os
+
 import pytest
 
 from repos_manifest.cli import main
@@ -51,8 +53,11 @@ def test_show_uses_what_the_system_records_from_a_directory_below_it(tmp_path, c
     before = _listing(system)
     assert main(["show"]) == 0
     out = capsys.readouterr().out
+    # The recorded path is relative to the system directory, not to src/: it is printed as an
+    # absolute path, which opens from here.
     assert out.startswith(
-        "manifest  m.yaml\nrole      robot    groups on: hw, sim    distro: jazzy\n"
+        f"manifest  {os.path.realpath(system / 'm.yaml')}\n"
+        "role      robot    groups on: hw, sim    distro: jazzy\n"
     )
     # The recorded group `sim` is on, so `s` is shown.
     assert "  a   main                   https://example.org/a.git\n" in out
@@ -127,3 +132,25 @@ def test_a_manifest_that_does_not_read_names_where_its_path_is_recorded(
     err = capsys.readouterr().err
     assert "m.yaml" in err
     assert f"(the manifest's path is `manifest` in {system / SYSTEM_DIR / CONFIG_FILE}" in err
+
+
+def test_show_in_a_system_prints_every_manifest_as_an_absolute_path(tmp_path, capsys, monkeypatch):
+    # The recorded manifest builds on one in another directory and adds a repo: the manifest,
+    # base and from lines all name absolute paths, each manifest the same way on every line.
+    system = _system(tmp_path, ["jazzy"])
+    (tmp_path / "published").mkdir()
+    (tmp_path / "published" / "base.yaml").write_text(MANIFEST)
+    (system / "m.yaml").write_text(
+        "base: ../published/base.yaml\nrepositories:\n  n:\n    type: git\n"
+        "    url: https://example.org/n.git\n"
+    )
+    (system / "src").mkdir()
+    monkeypatch.chdir(system / "src")
+    assert main(["show"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    leaf = os.path.realpath(system / "m.yaml")
+    base = os.path.realpath(tmp_path / "published" / "base.yaml")
+    assert lines[:2] == [f"manifest  {leaf}", f"base      {base}"]
+    at = lines.index("  n   (its default branch)   https://example.org/n.git")
+    assert lines[at + 1].strip() == f"from {leaf}"
+    assert all(os.path.isfile(path) for path in (leaf, base))

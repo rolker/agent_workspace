@@ -512,8 +512,15 @@ in the chain, the manifest the chain's reading starts from. The manifest an entr
 the one that gave the URL printed: the one where its key first appears, or the last manifest in
 the order of reading that changed its `url`, as one that points a repo at a fork does. A later
 manifest that changes the entry's other keys, its `version` or its `type`, does not change
-that, so the version printed may come from a later manifest than the one named. It lists the repos that are left out with
-the reason, in the manifest's order: "group X is off" for a repo in one group that is off,
+that, so the version printed may come from a later manifest than the one named.
+
+Each manifest is printed by its path, the same way on every line that names it, so that it
+opens from the directory `show` is run in. A manifest given on the command line is printed as
+it was given. Every other one is printed as an absolute path with links followed: the
+manifests it builds on, and, with no manifest given, the one `config.yaml` records, whose
+recorded path is taken from the system directory and not from the current one.
+
+It lists the repos that are left out with the reason, in the manifest's order: "group X is off" for a repo in one group that is off,
 "none of its groups (X, Y) is on" for a repo in several, "not on D" for a repo that distro D's
 entry or the repo's own `absent: true` leaves out, and "absent, and no distro adds it" for a
 repo with `absent: true` in a manifest with no `distros:`. A repo that a group and a distro
