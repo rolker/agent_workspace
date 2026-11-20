@@ -1104,7 +1104,11 @@ References for the gate rule.
 
 ### 11. Leave the worktree before merging
 
-`merge_pr.sh` removes the worktree and deletes the branch. Before
+`merge_pr.sh` removes the worktree and deletes the branch. On the
+owner's merge answer, before anything else, run `fetch_pr_reviews.sh
+--pr <M>` once more and apply step 9's "A review not yet read" check: if a
+review landed while he decided, do not merge; send it to `triage-reviews`
+and present the merge checkpoint again. Before
 `action=merge` (row 21), still in the worktree, push the outstanding
 record commits and check that nothing is left unpushed or uncommitted
 (step 10). Then `cd` to this session's root: the `root=`
