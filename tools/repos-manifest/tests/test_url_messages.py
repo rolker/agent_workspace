@@ -15,8 +15,10 @@ the others refuse it (`TypeError`); a test below holds them to that.
 
 The second test closes part of the name gap: an assignment that takes a url (from an
 attribute or key named `url`, or from `self.url(...)`) must give it a name the scan reads. A
-third holds the two modules that read a manifest (`manifest.py` and `schema.py`) to echo a
-value only through `quoted_url`: no `!r` and no call of `repr`.
+third finds no `!r` and no call of `repr` in the two modules that read a manifest
+(`manifest.py` and `schema.py`). It does not check their other echoes: `schema.py` still
+prints some values from a manifest as they are (a layer name in quotes, whole lists), which
+the design's list of limits names.
 
 What the scan cannot see, so a url reaching a message by one of these ways is not caught here:
 - a url under a name without "url": by `getattr`, a tuple or annotated assignment, a walrus
@@ -194,8 +196,9 @@ def echoes(source: str):
 
 @pytest.mark.parametrize("name", ["manifest.py", "schema.py"])
 def test_a_module_that_reads_a_manifest_echoes_only_through_quoted_url(name):
-    """A key, a name, a path or a value of the wrong type need not be named like a url to hold
-    one (round 5: a `base:` url, a list given as a url)."""
+    """No `!r` and no `repr(...)` in the two readers: a key, a name, a path or a value of the
+    wrong type need not be named like a url to hold one (round 5: a `base:` url, a list given
+    as a url). Other ways these modules echo a value are not checked here."""
     assert echoes((SRC / name).read_text()) == []
 
 

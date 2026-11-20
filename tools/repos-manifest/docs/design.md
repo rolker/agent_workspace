@@ -890,15 +890,15 @@ in a `url` is not looked for: the manifest is as trusted as the code it names",
 The user information of a `scheme://user:password@host` url is shown as `***` (an ssh url's
 user name alone is kept; any other user name is masked, since an https one is often a token).
 Each url the tool reads (the manifest's, the clone's `origin`, the recorded one) is parsed
-whole: its user information is everything between `://` and the last `@` in it, whatever
+whole: its user information (a `file://` url's aside, below) is everything between `://` and
+the last `@` in it, whatever
 characters it holds (quotes, spaces, `@`, `:`, `/`, `%` escapes, any letter); an https url
-whose path holds an `@` has more masked, never less. In a `file://` url, text after `://` that
-starts with `/` (`file:///srv/w@x/...`) is a path and is printed as it is; otherwise the user
-information is the text before the last `@` ahead of the first `/` when it holds a `:`
-(`file://user:password@host/srv/w@x`: the path's `@` is not part of it), or, for a password
-holding a `/`, the text before the last `@` in the url when that holds a `:`, which can mask
-part of the path too. Nothing that does not follow `://` is masked: a local path holding `@`,
-`git@github.com:...` and `origin/main@{upstream}` are printed as they are, so a password that
+whose path holds an `@` has more masked, never less. In a `file://` url, user information is
+only in the authority, the text between `file://` and the first `/` after it: it is the text
+before the last `@` there, when that text holds a `:` (`file://user:password@host/srv/w@x` is
+shown as `file://***@host/srv/w@x`). A `file://` url's path is never masked
+(`file:///srv/w@x/...` and `file://localhost/srv/a:b/w@x` are printed as they are). Nothing
+that does not follow `://` is masked: a local path holding `@`, `git@github.com:...` and `origin/main@{upstream}` are printed as they are, so a password that
 is a common word (`git`, `main`, `a`) cannot change a printed command.
 
 It is masked at two places:
@@ -913,11 +913,34 @@ It is masked at two places:
   printing it, and shows a name that fails its rule, two names that differ only in case and
   an unknown top-level key the same way; its other messages that print a value from a
   manifest ([prototype.md](prototype.md) lists them) are masked only as they are printed.
-- As lines are printed. Every line `sync` prints for a repo, what it says and what git says,
-  and the `ERROR:` line of any command are masked again: each url the tool read is masked
-  where it follows `://`, its `%`-decoded form too, and a url it did not read itself (git's
-  message after an `insteadOf` rewrite) is masked by its shape, up to the first `@` that a
-  host follows within one run of characters that are not white space.
+- As some lines are printed. These lines pass through a filter: each line `sync` prints for a
+  repo (what it says and what git says, `ERROR:`, `skipped`, `left alone` and the updated
+  line, and a repo's notes), `sync`'s `ERROR:` line for a distro whose plan or run failed, and
+  the `ERROR:` line any command ends with when it stops on the tool's own kind of error (a
+  manifest that cannot be read or is refused, a system or a record in the wrong state; the
+  handler in `cli.py`). The filter masks each url the tool read where it follows `://`, its
+  `%`-decoded form too, and a url it did not read itself (git's message after an `insteadOf`
+  rewrite, a value typed on the command line) by its shape, up to the first `@` that a host
+  follows within one run of characters that are not white space. Other lines are printed as
+  given: the "unknown role" error of `resolve` and `validate` on an earlier-format manifest,
+  which echoes the role typed on the command line, the `ERROR:` line of a run stopped by a
+  signal, `sync`'s line for a setup file it could not write, and every `WARNING:` line.
+
+What is not masked, so a user name and password in a url can be printed:
+- A `file://` url whose password holds a `/`: the password reaches past the authority and
+  cannot be told from a path. git's file transport ignores user information.
+- The scp-like form `user:password@host:path`, which does not follow `://`.
+- A value the earlier format's reader (`schema.py`) prints from a manifest other than those
+  named above (a layer name in `optional_layers` or `repos`, a list of layers or of unknown
+  keys); [prototype.md](prototype.md) lists them. Such a line is masked only if the filter
+  above covers it.
+- A warning (`WARNING:`), including a manifest's warnings: the filter does not cover them,
+  though `manifest.py` quotes the key in them through `quoted_url`.
+- A message outside the manifest readers that echoes a value typed on the command line (a
+  role or a distro) or read from the tool's own record files (`state.yaml`, the built file),
+  unless it is one of the lines the filter covers.
+- A url that reaches a message by a way the source scan below cannot see, on a line the filter
+  does not cover, or with white space in its user information when the tool did not read it.
 
 Tests check it. One walks the tool's source for values formatted into text whose names say
 they are urls (holding "url", or `origin`) and fails on one that does not go through the
@@ -925,9 +948,7 @@ masking functions; another holds `manifest.py` and `schema.py` to quote no value
 `repr`. The walk cannot see a url held under another name, passed to a helper, joined, or
 formatted inside a list or a mapping, nor keyword arguments, `+=`, logging, or an exception
 formatted whole; `tests/test_url_messages.py` lists what it misses. A message reached that way
-is masked only by the filter above, so only in `sync`'s lines and `ERROR:` lines, and a url the
-tool did not read is masked there only when its user information holds no white space. End to
-end, `resolve`, `validate`, `init` and `sync` are run over repo urls whose passwords hold
+is masked only on the lines the filter above covers. End to end, `resolve`, `validate`, `init` and `sync` are run over repo urls whose passwords hold
 quotes, a backslash, a space, `%` escapes and letters beyond ASCII, in every url form the
 tests name (a list and a mapping among them); `resolve`, `validate` and `init` over a `base:`
 url, mapping and list; and `validate` over keys, names and values that hold a url. Their

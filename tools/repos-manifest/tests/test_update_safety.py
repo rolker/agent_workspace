@@ -1,7 +1,11 @@
 """What `sync` never does to a repo that is there: no git command that can lose or rewrite a
 person's work is in the update module, the paths check refuses every file git does not track
 that an incoming file would replace, and a repo left alone is the same, byte for byte, after
-the run. The whole repo is compared with `snapshot_repo`."""
+the run. The whole repo is compared with `snapshot_repo`.
+
+`NEVER` and its scan do not cover everything that can lose work, and nothing in `update.py`
+runs these today: a forced refspec (`+refs/...`), `reset --merge` and `reset --keep`,
+`checkout -B` and `update-ref -d`."""
 
 import ast
 import re
@@ -95,14 +99,14 @@ def test_the_update_module_runs_no_command_that_can_lose_work(word):
     [
         ('git.run("fetch", "--prune", "origin")\n', True),
         ('git.run("fetch", "-p", "origin")\n', True),
-        ('args = ["fetch", "--prune-tags"]\n', False),
+        ('args = ["fetch", "--prune-tags"]\n', True),  # forbidden: it prunes local tags
         ('args = ["--no-prune", "--no-prune-tags", "origin"]\n', False),
     ],
 )
 def test_pruning_flags_are_forbidden_and_no_prune_is_not(source, hit):
     texts = git_argument_texts(source)
-    found = [w for w in ("--prune", "-p") for t in texts if f" {w} " in f" {t} "]
-    assert {"--prune", "-p"} <= set(update.NEVER)
+    found = [w for t in texts for w in forbidden(t)]
+    assert {"--prune", "-p", "--prune-tags"} <= set(update.NEVER)
     assert bool(found) == hit, (texts, found)
 
 
