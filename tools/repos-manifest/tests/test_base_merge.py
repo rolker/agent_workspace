@@ -330,6 +330,28 @@ def test_a_repo_whose_url_a_later_manifest_changes_names_that_manifest(tmp_path)
     assert _sources(resolved) == {"nav": fork, "site": first, "viz": first}
 
 
+def test_a_later_manifest_that_repeats_the_url_unchanged_does_not_move_the_source(tmp_path):
+    # m1 repeats nav's url as the base gives it; m2 repeats it again with a new version.
+    same = "repositories:\n  nav:\n    url: https://example.org/nav.git\n"
+    leaf = _chain(tmp_path, PUBLISHED, same, same + "    version: from_leaf\n")
+    m = load_manifest(leaf)
+    first = os.path.realpath(tmp_path / "m0.yaml")
+    nav = m.repositories["nav"]
+    assert (nav.url, nav.version, nav.source) == ("https://example.org/nav.git", "from_leaf", first)
+    assert _sources(resolve(m, "dev", "jazzy"))["nav"] == first
+
+
+def test_a_url_changed_then_changed_back_names_the_manifest_that_changed_it_back(tmp_path):
+    leaf = _chain(
+        tmp_path,
+        PUBLISHED,
+        "repositories:\n  nav:\n    url: https://example.org/fork/nav.git\n",
+        "repositories:\n  nav:\n    url: https://example.org/nav.git\n",
+    )
+    m = load_manifest(leaf)
+    assert m.repositories["nav"].source == str(leaf)
+
+
 def test_in_a_diamond_the_last_manifest_read_that_changed_the_url_is_named(tmp_path):
     (tmp_path / "c.yaml").write_text(PUBLISHED)
     (tmp_path / "a.yaml").write_text(

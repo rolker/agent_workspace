@@ -511,8 +511,9 @@ user name and password masked as "sync" describes. A repo with no version shows
 in the chain, the manifest the chain's reading starts from. The manifest an entry came from is
 the one that gave the URL printed: the one where its key first appears, or the last manifest in
 the order of reading that changed its `url`, as one that points a repo at a fork does. A later
-manifest that changes the entry's other keys, its `version` or its `type`, does not change
-that, so the version printed may come from a later manifest than the one named.
+manifest that changes the entry's other keys, its `version` or its `type`, or that repeats its
+`url` unchanged, does not change that, so the version printed may come from a later manifest
+than the one named.
 
 Each manifest is printed by its path, the same way on every line that names it, so that it
 opens from the directory `show` is run in. A manifest given on the command line is printed as

@@ -63,6 +63,9 @@ def merge_parts(parts: Sequence[Part], bases: Sequence[str] = ()) -> Manifest:
                 first[key] = index
                 brought[key] = list(given)
             for name, value in given.items():
+                earlier = repos[key].get(name)
+                if name == "url" and earlier is not None and earlier.value == value:
+                    continue  # a url repeated unchanged keeps the manifest that gave it
                 repos[key][name] = _Given(value, part.source)
 
     layer_list, group_list = list(layers), list(groups)
