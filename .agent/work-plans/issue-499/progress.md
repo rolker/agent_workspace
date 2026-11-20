@@ -526,3 +526,21 @@ Verified: `tests/test_show_system.py` 19 passed. Mutation check: making show (`c
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-20 13:09 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #541 at `f838757`
+**Sources**: 2 (Local Review @ `f838757` (approved, no findings), CI rollup); GitHub: 0 reviews, 0 inline comments, 0 conversation comments, no Copilot review
+**Cross-source confirmations**: 0
+**CI**: pending
+
+The open finding of the Integrated Review at `d02ab66` (two missing test cases) is answered by 3c7f8bf1: `test_a_warning_from_the_recorded_manifest_names_it_as_recorded_by_show_and_sync` and `test_a_recorded_role_the_manifest_lacks_is_refused_as_recorded_by_show_and_sync` in `tools/repos-manifest/tests/test_show_system.py`, confirmed present; the Local Review at `f838757` re-ran the file (19 passed) and mutation-checked both tests. The two entries `sources` lists as stale (Local Review (Pre-Push) @ `f310d62`, Local Review @ `d02ab66`) were each ruled on by an earlier Integrated Review and fixed since. CI at `f838757`: Validate Documentation passed; Lint, Validate Adapter Contract and the repos-manifest tests (3.10, 3.14) still running.
+
+### Findings
+None.
+
+### False positives
+None.
