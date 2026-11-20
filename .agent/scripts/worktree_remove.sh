@@ -402,12 +402,21 @@ done <<< "$MANIFEST_ENTRIES"
 # walked down from the worktree, which was entered above: a name is looked
 # up only in a folder already entered, where a failed lookup can only mean
 # it is not there, and a folder on the way that cannot be entered is
-# reported. Returns 0 when the entry is a folder, as before; 1 when it is
-# not (missing, a non-folder, or a link whose target cannot be reached:
+# reported. A folder on the way that is a symbolic link to a folder is
+# resolved (`readlink -f`): one that leads outside the worktree, or whose
+# target cannot be resolved, is reported as a link, before any search check,
+# because a `chmod` advised on it would follow it to a folder outside; one
+# that stays inside is walked through as before, and if its target cannot
+# be entered that target, inside the worktree, is the folder reported.
+# Returns 0 when the entry is a folder, as before; 1 when it is not
+# (missing, a non-folder, or a link whose target cannot be reached:
 # `rm -rf` then removes only the name, never a link's target); 2 when a
-# folder on the way cannot be entered, printing that folder.
+# folder on the way cannot be entered, printing that folder; 3 when a
+# folder on the way is a link out of the worktree or one that cannot be
+# resolved, printing the link, a tab, and its target (empty when it could
+# not be resolved).
 _entry_reach() {  # <worktree_dir> <dest>
-    local cur="$1" rel part
+    local cur="$1" rel part target
     [ "$2" = "$1" ] && return 0
     rel="${2#"$1"/}"
     while :; do
@@ -419,8 +428,20 @@ _entry_reach() {  # <worktree_dir> <dest>
         cur="$cur/$part"
         rel="${rel#*/}"
         [ -d "$cur" ] || return 1
+        if [ -L "$cur" ]; then
+            target="$(readlink -f -- "$cur" 2>/dev/null || true)"
+            case "$target/" in
+                "$1/"*) ;;
+                *)
+                    printf '%s\t%s' "$cur" "$target"
+                    return 3
+                    ;;
+            esac
+        else
+            target="$cur"
+        fi
         if ! (cd "$cur" 2>/dev/null); then
-            printf '%s' "$cur"
+            printf '%s' "$target"
             return 2
         fi
     done
@@ -431,6 +452,17 @@ for _i in "${!ENTRY_DESTS[@]}"; do
     _dest="${ENTRY_DESTS[$_i]}"
     _reach_rc=0
     _blocked="$(_entry_reach "$WORKTREE_DIR" "$_dest")" || _reach_rc=$?
+    if [ "$_reach_rc" -eq 3 ]; then
+        _link="${_blocked%%$'\t'*}"
+        _target="${_blocked#*$'\t'}"
+        if [ -n "$_target" ]; then
+            echo "Error: ${_dest} leads outside this worktree (to ${_target}) through the symbolic link ${_link}; nothing was removed."
+        else
+            echo "Error: ${_dest} lies under the symbolic link ${_link}, which leads outside this worktree or cannot be resolved; nothing was removed."
+        fi
+        echo "Delete that link by hand (rm on a link removes only the link, never what it points to), then run this command again: an entry already gone is skipped."
+        exit 1
+    fi
     if [ "$_reach_rc" -eq 2 ]; then
         echo "Error: cannot enter ${_blocked}: no search permission on it, so this script cannot tell whether ${_dest} is there or what removing it would lose; nothing was removed."
         echo "Check what it holds, give it back its owner permission by hand (chmod u+rwx $(printf '%q' "$_blocked")), then run this command again."
@@ -446,7 +478,8 @@ for _i in "${!ENTRY_DESTS[@]}"; do
     # checkout's files. Refused before anything is removed.
     _real="$(cd "$_dest" 2>/dev/null && pwd -P || true)"
     # An entry that cannot be entered itself (a folder above it that cannot
-    # be entered was refused just above) is not a link and leads nowhere:
+    # be entered, or that is a link out of the worktree, was refused just
+    # above) is not a link and leads nowhere:
     # say so, never the link message below, which would name a link that
     # does not exist.
     if [ -z "$_real" ] && [ ! -L "$_dest" ]; then

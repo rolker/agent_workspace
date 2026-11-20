@@ -311,6 +311,63 @@ check "absent: the container is gone" test ! -e "$c"
 check "absent: says it was removed" grep -q "Worktree removed successfully" <<<"$out"
 check "absent: the present entry's repository no longer lists it" bash -c '! git -C "$1" worktree list | grep -qF "$2"' _ "$pkg" "$c/layer_ws/src/pkg_a"
 
+# A folder on an entry's path that is a symbolic link out of the worktree
+# is refused as such, before any search-permission advice: a `chmod u+rwx`
+# on the link would follow it and change a folder outside the worktree.
+# Two shapes: the outside target cannot be entered; the outside target can,
+# but the entry under it cannot.
+for shape in target entry; do
+    echo "TEST: an entry under a symbolic link out of the worktree is refused as a link, never with chmod advice ($shape cannot be entered)"
+    sb="$(make_sandbox)"; c="$sb/worktrees/workspace/issue-workspace-7"
+    pkg="$(make_pkg_repo)"
+    make_aggregate "$sb" layer_ws/src/pkg_a "$pkg"
+    out_dir="$(mktemp -d -p "$SANDBOX")"
+    mkdir -p "$out_dir/pkg_x"
+    printf 'keep\n' > "$out_dir/pkg_x/keep.txt"
+    ln -s "$out_dir" "$c/ext"
+    printf '%s\t%s\tfeature/issue-7\n' "$pkg" ext/pkg_x >> "$c/.worktree-repos"
+    if [ "$shape" = target ]; then blocked="$out_dir"; else blocked="$out_dir/pkg_x"; fi
+    chmod 600 "$blocked"
+    rc=0; out="$(run_remove "$sb" 2>&1)" || rc=$?
+    mode_after="$(stat -c %a "$blocked")"
+    chmod 700 "$blocked"
+    check "outside link ($shape): exit 1" test "$rc" -eq 1
+    check "outside link ($shape): says it leads outside through a link" grep -q "leads outside this worktree" <<<"$out"
+    check "outside link ($shape): gives no chmod advice" bash -c '! grep -q "chmod" <<<"$1"' _ "$out"
+    check "outside link ($shape): the outside folder keeps mode 600" test "$mode_after" = 600
+    check "outside link ($shape): the outside contents are kept" test -f "$out_dir/pkg_x/keep.txt"
+    check "outside link ($shape): the other entry is still there" test -f "$c/layer_ws/src/pkg_a/package.xml"
+done
+
+# A link that stays inside the worktree is walked through as before: the
+# dirty check reaches the entry under it.
+echo "TEST: an entry under a symbolic link inside the worktree is checked as before"
+sb="$(make_sandbox)"; c="$sb/worktrees/workspace/issue-workspace-7"
+pkg="$(make_pkg_repo)"
+make_aggregate "$sb" layer_ws/src/pkg_a "$pkg"
+ln -s layer_ws "$c/alias"
+printf '# project=demo issue=owner/pkg_a#7 layer=l1 base=main\n%s\t%s\tfeature/issue-7\n' "$pkg" alias/src/pkg_a > "$c/.worktree-repos"
+printf 'uncommitted\n' > "$c/layer_ws/src/pkg_a/package.xml"
+rc=0; out="$(run_remove "$sb" 2>&1)" || rc=$?
+check "inside link: exit 1" test "$rc" -eq 1
+check "inside link: refused for the uncommitted change" grep -q "uncommitted changes" <<<"$out"
+check "inside link: the change is kept" grep -q uncommitted "$c/layer_ws/src/pkg_a/package.xml"
+
+# The same inside link to a folder that cannot be entered: the advice
+# names the folder the link leads to, inside the worktree, not the link.
+echo "TEST: an inside link to a folder that cannot be entered names that folder"
+sb="$(make_sandbox)"; c="$sb/worktrees/workspace/issue-workspace-7"
+pkg="$(make_pkg_repo)"
+make_aggregate "$sb" layer_ws/src/pkg_a "$pkg"
+ln -s layer_ws/src "$c/alias"
+printf '# project=demo issue=owner/pkg_a#7 layer=l1 base=main\n%s\t%s\tfeature/issue-7\n' "$pkg" alias/pkg_a > "$c/.worktree-repos"
+chmod 600 "$c/layer_ws/src"
+rc=0; out="$(run_remove "$sb" 2>&1)" || rc=$?
+chmod 700 "$c/layer_ws/src"
+check "inside link, no search: exit 1" test "$rc" -eq 1
+check "inside link, no search: names the folder inside the worktree" grep -qF "cannot enter $c/layer_ws/src:" <<<"$out"
+check "inside link, no search: the entry is still there" test -f "$c/layer_ws/src/pkg_a/package.xml"
+
 # The chmod never opens the top folder of a mount of another filesystem
 # (find -xdev alone still lists it). Mounting needs a user and mount
 # namespace (unshare -rm); where that is not allowed the case is skipped
