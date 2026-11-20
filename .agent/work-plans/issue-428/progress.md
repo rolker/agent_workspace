@@ -442,3 +442,39 @@ Reviewers:
 - [x] (suggestion) "Mounts never crossed" overstates `-xdev`. A bind mount from the same filesystem has the same device and is crossed. `rm -rf` crossed it before this change too. Say "a mount of another filesystem is not crossed" here and in the `script_reference.md` row. Found by Codex, downgraded from its must-fix. — `.agent/scripts/worktree_remove.sh:31,480`
 - [x] (suggestion) `plan.md` item 5 still describes the `notice_only` mark. Record the change in the plan or the pull request text. Found by Gemini, downgraded from its must-fix: plan drift is a suggestion, and the removal is reasoned in the Implementation entry. — `.agent/work-plans/issue-428/plan.md:50-55` (deferred: plan.md stays unchanged since its review so part 2 can go straight on; the host records the change (notice_only mark removed) in the pull request text)
 - [x] (suggestion) The trap's `chmod -R u+w` cannot descend into the test's `chmod 600` directory. If the test fails before the repair, the sandbox leaks. Use `u+rwx`. Found by Gemini. — `.agent/scripts/tests/test_worktree_remove.sh:47`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 12:05 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a9184401bb6c30a1f, resume 1 of 3)
+
+**Branch**: feature/issue-428 at `2c82204f`
+**Addressed**: Local Review (Pre-Push) at `54c28fe3` (2026-11-20 11:50 -05:00)
+**Commits**: e15c60c4, 32269153, e6b46deb, 75af46ba, 2c82204f
+
+Round 2 fix pass for part 1. No part 2 file touched; `plan.md` unchanged.
+
+### Actions
+- [x] (must-fix) pre-merge re-fetch on every path: the "Re-check CI" paragraph is now "Fetch again before every merge checkpoint", with two checks on the output. First, any hosted review the latest `## Integrated Review` has not read goes to `triage-reviews` first, whatever its `commit_id`; unread means its `**Sources**` line does not name it or its `**Reviews**` count is lower than now. Second, the CI-pending rule as before. The running-check-run bullet no longer carries its own copy. The step now says plainly that ending the wait (only the current head) and being read at triage (every review) are two different things — `.claude/skills/run-issue/SKILL.md` step 9 (e15c60c4)
+- [x] (must-fix) an entry that cannot be entered and is not a link is refused with a permission message and the chmod to give it back, never the link message; new test (mode 600 entry). Against the previous script 2 checks fail — `.agent/scripts/worktree_remove.sh:406` (32269153)
+- [x] (suggestion) a concluded `copilot-pull-request-reviewer` check-run ends the wait even with no review on the head — `.claude/skills/run-issue/SKILL.md` step 9 (e15c60c4)
+- [x] (suggestion) `_make_dirs_writable "$WORKTREE_DIR"` once before the entry loop, after every refusal. The pass after the loop is dropped. A package worktree's entries are still walked on their own, which reaches an entry on another filesystem. The single-entry tree is not walked twice. New test: two entries in a read-only `layer_ws/src`. Against the previous script 3 checks fail — `.agent/scripts/worktree_remove.sh` (e6b46deb)
+- [x] (suggestion) `-xdev` wording, "a mount of another filesystem", in the header, the comment and the `script_reference.md` row — `.agent/scripts/worktree_remove.sh:31,480` (75af46ba)
+- [x] (suggestion) plan drift — `.agent/work-plans/issue-428/plan.md:50-55` (deferred: addressed by the host, which records the change, the `notice_only` mark removed, in the pull request text; `plan.md` stays unchanged since its review so part 2 can go straight on)
+- [x] (suggestion) the test trap uses `chmod -R u+rwx`, checked to reach a read-only directory under a mode 600 one — `.agent/scripts/tests/test_worktree_remove.sh:47` (2c82204f)
+
+Suites run, each on its own with `bash` (last result line):
+- `test_worktree_remove.sh` (changed): test_worktree_remove: 46 passed, 0 failed
+- `test_skill_paths.sh`: test_skill_paths: 164 passed, 0 failed
+- `test_script_tests_hook_scope.sh`: test_script_tests_hook_scope: 347 passed, 0 failed
+- `test_merge_pr.sh`: === Results: 175 passed, 0 failed ===
+- `test_merge_pr_skill.sh`: test_merge_pr_skill: 132 passed, 0 failed
+- `test_merge_pr_gate.sh`: test_merge_pr_gate: 213 passed, 0 failed
+- `test_merge_pr_root_resolution.sh`: === Results: 6 passed, 0 failed ===
+- `test_validate_workspace_stale.sh`: test_validate_workspace_stale: 126 passed, 0 failed
+- `test_user_tier_guard.sh`: test_user_tier_guard: 64 passed, 0 failed
+- `test_project_registry.sh`: === Results: 425 passed, 0 failed ===
+- `test_ros2_colcon.sh` (names `worktree_remove.sh`; part 2 file, run only): === Results: 1374 passed, 1 failed, 0 skipped === — FAILED, the same case as round 1 and not from this branch ("adapter sync: the tool's own report": the in-repo `repos-manifest` now prints `up to date (2)`; the round-2 review confirmed both strings are on main as they are).
+
+The full pre-commit pass and the full run of every suite are left to the host.
