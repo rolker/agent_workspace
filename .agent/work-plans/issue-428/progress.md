@@ -571,3 +571,13 @@ The paragraph agrees with the rest of step 9. The flaw is the reference time (be
 
 ### Findings
 - [ ] (must-fix) `**When**` is written when triage-reviews finishes, but triage fetches the reviews at its step 3, minutes earlier. A review submitted after that fetch and before the minute of `**When**` counts as read but never was. That is the late-review case this rule exists for, and the rule errs toward skipping there, not toward triaging again. Fix: compare against a time no later than triage's fetch, for example the time the host dispatched `triage-reviews`, which the host notes when it dispatches. — `.claude/skills/run-issue/SKILL.md:1008-1019`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 12:09 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 4 left one must-fix open, so publishing is not clean; second host address in a row at this checkpoint, the next answer here is the owner's)
+**After**: rounds
+**Decision**: address
+
+Read: the Local Review (Pre-Push) at a28f0757, round 4, verdict changes-requested, Ship recommended, one must-fix: run-issue step 9 compares a review's time with the Integrated Review's When, which is written when triage finishes, minutes after triage fetched the reviews, so a review that lands in between counts as read when it was not. This is the third finding in how that paragraph tells a read review from an unread one (fields that are not written, then the wrong reference time), so the mechanism changes rather than the wording: triage-reviews records in its entry the time it fetched the reviews, and the rule compares against that. No full pass was run: publish was not the chosen answer.
