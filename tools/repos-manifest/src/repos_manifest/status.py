@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
 from . import sync, update
-from .masking import mask_url, mask_urls
+from .masking import mask_url, mask_urls, remember_url
 from .selection import Selected
 from .system import (
     SYSTEM_DIR,
@@ -163,6 +163,14 @@ def distro_status(system: Path, config: Config, planned, env: Dict[str, str]) ->
     distro = resolved.distro
     state = read_state(system, distro)
     result = DistroStatus(distro)
+    # Every url read is registered before any text is masked, as `sync` registers them, so a
+    # credential the masking pattern alone would miss (one holding a space or a quote) is
+    # masked wherever it appears.
+    for layer in resolved.layers:
+        for repo in layer.repos:
+            remember_url(repo.url)
+    for record in state.repos.values():
+        remember_url(record.url)
     for layer in resolved.layers:
         src = layer_src_parts(config.layout, distro, layer.name)
         for repo in layer.repos:
@@ -247,6 +255,7 @@ def _repo(
     stopped = update.stopped_move(record, head)
     found.stopped_move = stopped is not None
     blocked, origin = update.blocked_late(git, git_dir, record, head)
+    remember_url(origin)  # None when blocked: nothing to register
     if blocked is not None:
         found.state, found.detail = BLOCKED_STATE[blocked.kind], blocked.text
         if blocked.kind in (update.OPERATION, update.INDEX_LOCK):
@@ -380,7 +389,7 @@ def _document(system: Path, config: Config, results: Sequence[DistroStatus], ok:
         "format": FORMAT,
         "ok": ok,
         "system": str(system),
-        "manifest": config.manifest,
+        "manifest": mask_url(config.manifest),
         "role": config.role,
         "groups": list(config.groups),
         "layout": config.layout,
@@ -407,7 +416,7 @@ def _print(
     results: Sequence[DistroStatus],
 ) -> None:
     print(f"system {system}")
-    print(f"manifest {config.manifest}")
+    print(f"manifest {mask_url(config.manifest)}")
     print(f"role {config.role if config.role is not None else '(none)'}")
     print(f"groups {', '.join(config.groups) if config.groups else '(none)'}")
     if config.distros is not None:

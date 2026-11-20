@@ -1586,7 +1586,10 @@ Facts, for a repo that is there: `changes` (tracked files changed, counted as `s
 `unpushed` (commits reachable from `HEAD` and from no remote-tracking ref of `origin`, counted as
 `sync` counts them: on a branch only, null when `HEAD` is detached), `behind` (commits of `origin`'s
 branch the clone lacks, on the manifest's branch), and `fetched_from`, the url of `origin`, with any
-user name and password masked. When it is not the manifest's url the text says which: it is the url recorded,
+user name and password masked. As `sync` does, `status` registers every url it reads (each repo's url
+in the manifest, each recorded url, each `origin`) before it prints anything, so the user name and
+password of each is masked wherever it appears, in the JSON, in the lines a person reads and in error
+texts, and the manifest's location is masked too. When it is not the manifest's url the text says which: it is the url recorded,
 so `sync` tries to repoint it (fetching from the new url first, and leaving `origin` and the repo as
 they are when that fetch fails or a local commit is not on the new url), or `sync` leaves it because a
 remote named `repos-manifest-probe` is set here; or it was set by hand and is left. A repo can be expected and have

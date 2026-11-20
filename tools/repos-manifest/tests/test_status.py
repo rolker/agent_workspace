@@ -9,6 +9,7 @@ import shutil
 import time
 
 import pytest
+import yaml
 
 from helpers import (
     commit_file,
@@ -207,6 +208,62 @@ def test_a_url_set_by_hand_is_said_and_credentials_are_masked(vcs, tmp_path, cap
     run(case.system, "status")
     assert "hunter2" not in capsys.readouterr().out
     assert "hunter2" not in json.dumps(doc)
+
+
+SECRET = "https://some one:hun ter2@example.invalid/a.git"  # a space: the pattern misses it
+
+
+def _secret_by_hand(case):
+    git("remote", "set-url", "origin", SECRET, cwd=case.clone)
+
+
+def _secret_recorded(case):
+    """origin and the record hold the url with credentials; the manifest names another."""
+    git("remote", "set-url", "origin", SECRET, cwd=case.clone)
+    state = case.system / ".repos-manifest/state.yaml"
+    data = yaml.safe_load(state.read_text())
+    data["distros"]["_unnamed"]["repos"]["a"]["url"] = SECRET
+    state.write_text(yaml.safe_dump(data))
+
+
+def _secret_and_no_version(case):
+    _secret_by_hand(case)
+    CASES["a version not fetched"][0](case)
+
+
+def _secret_in_the_manifest(case):
+    rewrite_manifest(case.manifest, lambda d: d["repositories"]["a"].update(url=SECRET))
+
+
+def _secret_in_a_manifest_that_fails(case):
+    rewrite_manifest(
+        case.manifest, lambda d: d["repositories"]["a"].update(url=SECRET, version=["x"])
+    )
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        _secret_by_hand,
+        _secret_recorded,
+        _secret_and_no_version,
+        _secret_in_the_manifest,
+        _secret_in_a_manifest_that_fails,
+    ],
+)
+def test_no_credential_reaches_the_output_in_either_form(vcs, tmp_path, capsys, build):
+    """A url's user name and password is masked in the JSON, the lines a person reads and
+    standard error, in error texts too, also one the masking pattern alone would miss."""
+    case = make_case(tmp_path)
+    build(case)
+    for form in (["--json"], []):
+        capsys.readouterr()
+        run(case.system, "status", *form)
+        out = capsys.readouterr()
+        for text in (out.out, out.err):
+            assert "hun ter2" not in text and "ter2" not in text and "some one" not in text
+    if build is not _secret_in_a_manifest_that_fails:  # its error does not name the url
+        assert "***@example.invalid" in out.out
 
 
 def test_a_repo_no_longer_in_the_manifest_is_listed(vcs, tmp_path, capsys):
