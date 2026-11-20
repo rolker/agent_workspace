@@ -228,7 +228,16 @@ def _url_forms(user, password):
         "transport form": f"foo::https://{info}@127.0.0.1:9/x.git",
         "ssh with no path": f"ssh://{info}@127.0.0.1:9",
         "file url": f"file://{info}@localhost/nonexistent/x.git",
+        # Round 5: a value that is not a string, and a file url whose user information is
+        # followed by a path holding an `@`, or holds a `/` itself.
+        "list": [f"https://{info}@127.0.0.1:9/x.git"],
+        "mapping": {"u": f"https://{info}@127.0.0.1:9/x.git"},
+        "file url, @ in its path": f"file://{info}@localhost/srv/w@x",
+        "file url, / in its password": f"file://{user}:{password}/zQ@localhost/srv/x",
     }
+
+
+FORMS = list(_url_forms("u", "p"))
 
 
 def _forbidden(user, password):
@@ -248,10 +257,11 @@ def _command_output(capsys, cwd, *argv):
 
 
 @pytest.mark.parametrize("user, password", ESCAPED)
-@pytest.mark.parametrize("form", ["repo url", "transport form", "ssh with no path", "file url"])
+@pytest.mark.parametrize("form", FORMS)
 def test_no_command_prints_a_password_in_any_url(vcs, tmp_path, capsys, user, password, form):
     url = _url_forms(user, password)[form]
-    data = {"format": 1, "repositories": {"a": repo(url, "main")}}
+    # Not `repo()`, which would turn a list or a mapping into its text.
+    data = {"format": 1, "repositories": {"a": {"type": "git", "url": url, "version": "main"}}}
     manifest = tmp_path / "m.manifest.yaml"
     manifest.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
     texts = {
@@ -314,3 +324,82 @@ def test_an_extends_url_of_the_earlier_format_prints_no_password(tmp_path, capsy
 def test_a_file_urls_user_and_password_are_masked_and_its_path_is_not(url, shown):
     assert masking.mask_url(url) == shown
     assert masking.quoted_url(url) == repr(shown)
+
+
+# --- Values of the wrong type, and keys and names that are not urls by name (round 5) -------
+
+
+@pytest.mark.parametrize(
+    "value", [["https://aliceQ:pw zQ@h/x.git"], {"u": "https://aliceQ:pw zQ@h/x.git"}, 5]
+)
+def test_a_value_that_is_not_a_string_is_described_and_never_shown(value):
+    shown = masking.quoted_url(value)
+    assert shown in ("a list", "a mapping", "a int"), shown
+    assert "alice" not in shown and "pw" not in shown
+
+
+BASES = {
+    "a url": "https://aliceQ:pw zQ@127.0.0.1:9/base.git",
+    "a mapping": {"url": "https://aliceQ:pw zQ@127.0.0.1:9/base.git", "path": "m.yaml"},
+    "a list": [["https://aliceQ:pw zQ@127.0.0.1:9/base.git"]],
+}
+
+
+@pytest.mark.parametrize("form", list(BASES))
+def test_a_base_url_is_never_printed(tmp_path, capsys, form):
+    data = {"format": 1, "base": BASES[form], "repositories": {}}
+    manifest = tmp_path / "m.manifest.yaml"
+    manifest.write_text(yaml.safe_dump(data), encoding="utf-8")
+    (tmp_path / "fresh").mkdir()
+    texts = [
+        _command_output(capsys, tmp_path, "validate", "--manifest", manifest),
+        _command_output(
+            capsys, tmp_path, "resolve", "--manifest", manifest, "--out", tmp_path / "o"
+        ),
+        _command_output(capsys, tmp_path / "fresh", "init", manifest, "--yes"),
+    ]
+    for text in texts:
+        assert "ERROR" in text, text
+        assert "aliceQ" not in text and "pw zQ" not in text, text
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"https://aliceQ:pw zQ@h/x.git": 1},  # an unknown top-level key
+        {"layers": ["https://aliceQ:pw zQ@h/x.git"]},  # a name
+        {"layers": [["https://aliceQ:pw zQ@h/x.git"]]},  # a name of the wrong type
+        {"repositories": {"a": {"type": "git", "url": "/srv/a", "https://aliceQ:pw zQ@h": 1}}},
+        {"repositories": {"a": {"type": "https://aliceQ:pw zQ@h/x.git", "url": "/srv/a"}}},
+        {
+            "repositories": {
+                "a": {"type": "git", "url": "/srv/a", "version": ["https://aliceQ:pw zQ@h"]}
+            }
+        },
+        {"repositories": {"https://aliceQ:pw zQ@h/x.git": {"type": "git", "url": "/srv/a"}}},
+        {"format": "https://aliceQ:pw zQ@h/x.git"},
+    ],
+)
+def test_a_key_or_name_holding_a_url_is_never_printed(tmp_path, capsys, data):
+    data = {"format": 1, "repositories": {}, **data}
+    manifest = tmp_path / "m.manifest.yaml"
+    manifest.write_text(yaml.safe_dump(data), encoding="utf-8")
+    text = _command_output(capsys, tmp_path, "validate", "--manifest", manifest)
+    assert "aliceQ" not in text and "pw zQ" not in text, text
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"https://aliceQ:pw zQ@h/x.git": 1},  # an unknown top-level key
+        {"repos": {"core": {"https://aliceQ:pw zQ@h/x.git": {"url": "file:///srv/a"}}}},
+    ],
+)
+def test_the_earlier_format_prints_no_url_in_a_key(tmp_path, capsys, extra):
+    data = {"layers": ["core"], "roles": {"dev": {}}, **extra}
+    manifest = tmp_path / "leaf.yaml"
+    manifest.write_text(yaml.safe_dump(data), encoding="utf-8")
+    argv = ["validate", "--manifest", manifest, "--role", "dev", "--distro", "jazzy"]
+    text = _command_output(capsys, tmp_path, *argv)
+    assert "ERROR" in text, text
+    assert "aliceQ" not in text and "pw zQ" not in text, text

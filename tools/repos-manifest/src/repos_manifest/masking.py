@@ -1,4 +1,6 @@
-"""The user name and password of a url are never printed (``docs/design.md``, "sync").
+"""Masking the user name and password of a url in what the tool prints (``docs/design.md``,
+"sync"). It is a guard against accidents, not a guarantee: a credential belongs in a credential
+helper or an ssh key, not in a manifest url.
 
 Every url the tool reads (a manifest's, a clone's `origin`, a recorded one) is registered with
 `remember_url`, which parses the url whole: its user information is everything between `://`
@@ -14,11 +16,11 @@ first `/` when that text holds a `:`, or else the text before the last `@` in th
 holds a `:`; a bare name before an `@` is kept. An https url, or a `file://` url, whose path
 holds an `@` can have more masked than its user information; never less.
 
-Every message that puts a url into text does it through `mask_url` (plain) or `quoted_url`
-(quoted for display, as `repr` would), so a url is masked before it is quoted or escaped;
-`mask_urls`, applied to what is printed, is the second line of defence. A test walks the
-tool's source for every formatted value that names a url and fails on one that does not go
-through these.
+The messages that put a url into text do it through `mask_url` (plain) or `quoted_url`
+(quoted for display, as `repr` would), so a url is masked before it is quoted or escaped.
+`quoted_url` given a value that is not a string shows only what kind of value it is (`a list`,
+`a mapping`), nothing of its content. A test walks the tool's source for values formatted into
+text whose names say they are urls (``tests/test_url_messages.py`` names what it cannot see).
 """
 
 from __future__ import annotations
@@ -120,9 +122,23 @@ def mask_url(url: str) -> str:
     return mask_urls(url)
 
 
+def type_name(value: object) -> str:
+    """What kind of value `value` is, in words (`a list`, `a mapping`), for a message that
+    describes a value of the wrong type without showing it."""
+    if value is None:
+        return "nothing"
+    if isinstance(value, bool):
+        return "true or false"
+    return {dict: "a mapping", list: "a list", str: "a string"}.get(
+        type(value), f"a {type(value).__name__}"
+    )
+
+
 def quoted_url(value: object) -> str:
-    """A url, or any value a message quotes where a url may be, as `repr` would show it, with
-    the user information masked first: so no escaping can hide it from the masking."""
+    """A url, or any value a message quotes where a url may be. A string is shown as `repr`
+    would show it, with the user information masked first, so no escaping can hide it from the
+    masking. Any other value (a list, a mapping, a number) is described by its kind alone, with
+    nothing of its content: a url inside it is never parsed, so it is never shown."""
     if isinstance(value, str):
         return repr(mask_url(value))
-    return mask_urls(repr(value))
+    return type_name(value)

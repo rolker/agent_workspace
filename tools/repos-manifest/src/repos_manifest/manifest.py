@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .yamlload import ManifestError, _load_yaml, _refuse_unsafe_chars, first_unsafe_in_text
-from .masking import quoted_url, remember_url
+from .masking import quoted_url, remember_url, type_name
 
 FORMAT = 1
 
@@ -183,14 +183,9 @@ def parse_part(text: str, source: str) -> Part:
     return _Checker(source).part(raw)
 
 
-def _type_name(value) -> str:
-    if value is None:
-        return "nothing"
-    if isinstance(value, bool):
-        return "true or false"
-    return {dict: "a mapping", list: "a list", str: "a string"}.get(
-        type(value), f"a {type(value).__name__}"
-    )
+# A value of the wrong type is described by its kind, never shown: a url inside it would not
+# be masked.
+_type_name = type_name
 
 
 class _Checker:
@@ -212,8 +207,8 @@ class _Checker:
         if not isinstance(value, str):
             raise self.error(
                 where,
-                f"must be a string, got {_type_name(value)} ({quoted_url(value)}); quote it in the"
-                " YAML (unquoted, 1.10 is read as the number 1.1, yes as true)",
+                f"must be a string, got {_type_name(value)}; quote it in the YAML (unquoted,"
+                " 1.10 is read as the number 1.1, yes as true)",
             )
         if value == "":
             raise self.error(where, "must not be empty")
@@ -238,19 +233,23 @@ class _Checker:
         for prefix in ("heads/", "tags/"):
             if version == prefix:
                 raise self.error(
-                    where, f"{version!r} names nothing after {prefix!r}, which vcstool takes off"
+                    where,
+                    f"{quoted_url(version)} names nothing after {quoted_url(prefix)}, which vcstool"
+                    " takes off",
                 )
             if version.startswith(prefix) and version[len(prefix) :].startswith("-"):
                 raise self.error(
                     where,
-                    f"{version!r} starts with '-' after {prefix!r}, which vcstool takes off;"
-                    " git would read the rest as an option",
+                    f"{quoted_url(version)} starts with '-' after {quoted_url(prefix)}, which"
+                    " vcstool takes off; git would read the rest as an option",
                 )
         return version
 
     def name(self, value, kind: str, where: str) -> str:
         if not isinstance(value, str) or not _NAME.fullmatch(value):
-            raise self.error(where, f"{kind} name {value!r} is not allowed; a name is {_NAME_RULE}")
+            raise self.error(
+                where, f"{kind} name {quoted_url(value)} is not allowed; a name is {_NAME_RULE}"
+            )
         return value
 
     def names(self, value, kind: str, where: str) -> List[str]:
@@ -260,7 +259,7 @@ class _Checker:
         for index, item in enumerate(value):
             self.name(item, kind, f"{where}[{index}]")
             if item in seen:
-                raise self.error(where, f"names {kind} {item!r} twice")
+                raise self.error(where, f"names {kind} {quoted_url(item)} twice")
             seen.append(item)
         return seen
 
@@ -391,11 +390,12 @@ class _Checker:
 
         for key in raw:
             if key not in _TOP_LEVEL_KEYS:
-                self.warn(f"unknown top-level key {key!r} is ignored")
+                self.warn(f"unknown top-level key {quoted_url(key)} is ignored")
 
         fmt = raw.get("format", FORMAT)
         if isinstance(fmt, bool) or not isinstance(fmt, int) or fmt < 1:
-            raise self.error("format", f"must be a whole number from 1, got {fmt!r}")
+            shown = fmt if isinstance(fmt, int) and not isinstance(fmt, bool) else _type_name(fmt)
+            raise self.error("format", f"must be a whole number from 1, got {shown}")
         if fmt > FORMAT:
             raise self.error(
                 "format", f"is {fmt}; this tool reads format {FORMAT} and earlier versions"
@@ -414,8 +414,8 @@ class _Checker:
             if layer.lower() in RESERVED_LAYERS:
                 raise self.error(
                     "layers",
-                    f"a layer cannot be named {layer!r}; {', '.join(RESERVED_LAYERS)} are the"
-                    " directories of the unnamed layer, in any case",
+                    f"a layer cannot be named {quoted_url(layer)}; {', '.join(RESERVED_LAYERS)} are"
+                    " the directories of the unnamed layer, in any case",
                 )
 
         groups = self.names(raw.get("groups", []), "group", "groups")
@@ -485,19 +485,20 @@ class _Checker:
             if isinstance(location, dict):
                 raise self.error(
                     where,
-                    f"{location!r} is a mapping, the form of a file in a git repo;"
-                    f" {_BASE_PATH_ONLY}",
+                    f"is a mapping, the form of a file in a git repo; {_BASE_PATH_ONLY}",
                 )
             path = self.string(location, where)
             if _colon_before_slash(path):
-                raise self.error(where, f"{path!r} is a URL, not a path; {_BASE_PATH_ONLY}")
+                raise self.error(
+                    where, f"{quoted_url(path)} is a URL, not a path; {_BASE_PATH_ONLY}"
+                )
             result.append((where, path))
         return result
 
     def repo_key(self, key) -> str:
         if not isinstance(key, str) or key == "":
-            raise self.error("repositories", f"a repo key must be a path, got {key!r}")
-        where = f"repositories: {key!r}"
+            raise self.error("repositories", f"a repo key must be a path, got {quoted_url(key)}")
+        where = f"repositories: {quoted_url(key)}"
         if "\\" in key:
             raise self.error(where, "a repo key is a path with '/' between its parts, no '\\'")
         if key.startswith("/"):
@@ -512,7 +513,7 @@ class _Checker:
             raise self.error(where, "a repo key has no empty part (no '//', no '/' at the end)")
         for part in key.split("/"):
             if part in (".", "..", ".git"):
-                raise self.error(where, f"a repo key has no {part!r} part")
+                raise self.error(where, f"a repo key has no {quoted_url(part)} part")
         return key
 
     def repo(self, key: str, entry) -> Dict[str, object]:
@@ -524,15 +525,17 @@ class _Checker:
             raise self.error(where, f"must be a mapping with type and url, got {_type_name(entry)}")
         for name in entry:
             if name not in _REPO_KEYS:
-                self.warn(f"{where}: unknown key {name!r} is ignored and left out of the output")
+                self.warn(
+                    f"{where}: unknown key {quoted_url(name)} is ignored and left out of the output"
+                )
         given: Dict[str, object] = {}
         if "type" in entry:
             repo_type = self.string(entry["type"], f"{where}.type")
             if repo_type != "git":
                 raise self.error(
                     f"{where}.type",
-                    f"is {repo_type!r}; the format takes any type a .repos file takes, and these"
-                    " tools read git repos only",
+                    f"is {quoted_url(repo_type)}; the format takes any type a .repos file takes,"
+                    " and these tools read git repos only",
                 )
             given["type"] = repo_type
         if "url" in entry:
@@ -567,7 +570,7 @@ class _Checker:
                 )
             for name in entry:
                 if name not in _DISTRO_ENTRY_KEYS:
-                    self.warn(f"{entry_where}: unknown key {name!r} is ignored")
+                    self.warn(f"{entry_where}: unknown key {quoted_url(name)} is ignored")
             distro_entry = DistroEntry()
             if "version" in entry:
                 distro_entry.version = self.version(entry["version"], f"{entry_where}.version")
