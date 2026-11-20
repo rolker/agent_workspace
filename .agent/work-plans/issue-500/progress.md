@@ -2429,3 +2429,15 @@ GitHub side: 0 reviews, 0 inline comments, 0 conversation comments. CI at `25e67
 ### Findings
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 10:43 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+"Merge"
+
+Asked at the merge checkpoint for pull request 535 after the Integrated Review at dd241342 with no open findings. The dialog gave: the design.md sentence fixed, the narrow re-review approved with no findings, all 10 CI checks passing on head dd241342 (the pull-request run's Validate Adapter Contract job lost its hosted runner after 46 minutes and passed on a re-run of that job; the same job had passed on the push run), merge state CLEAN, and the outside reviewers (Codex ran on earlier rounds and its defects were fixed, Gemini failed twice, Copilot left no review, the last narrow re-review had none). The other choices offered were hold and stop.
