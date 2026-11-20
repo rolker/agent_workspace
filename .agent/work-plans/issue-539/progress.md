@@ -142,3 +142,13 @@ Part 1 is right and its check is real: the tool prints `up to date (2)` and noth
 **Decision**: proceed
 
 Read: the Plan Review at d68975b2, verdict needs-work. Part 1 (the one expected string) is ready: the reviewer ran the suite and the tool prints "up to date (2)" for this setup. This proceed covers part 1 only; the implement handoff says so. Part 2 is not implemented as planned: its two must-fix items (failing on a missing vcs whenever CI is set would break the Lint job, which runs every suite with CI=true and no vcs; pip install vcstool==0.3.0 depends on an unpinned setuptools and crashed in a fresh venv, use the pinned vcs2l the repos-manifest job already installs) and its suggestions go back to the plan at the plan checkpoint raised after part 1's merge, which the host answers revise. The owner asked for the test fix on main first (2026-11-20: "Issue + fix main first (Recommended)").
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 12:25 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-539 at `1164e166`
+
+- Part 1 only: `.agent/scripts/tests/test_ros2_colcon.sh` assertion "adapter sync: the tool's own report" now expects `up to date (2)` (was `present, not touched (2)`). No other line or file changed; part 2 (CI workflow, fail-in-CI rule, skip count) not implemented, its plan is being revised.
+- Ran `bash .agent/scripts/tests/test_ros2_colcon.sh` on its own: `=== Results: 1375 passed, 0 failed, 0 skipped ===`. The real-tool case ran (no `SKIPPED: vcs` line; the assertion passed).
+- Committed with `SKIP=validate-script-tests` per the issue-465 interim rule; the full pre-commit pass is left to the host.
