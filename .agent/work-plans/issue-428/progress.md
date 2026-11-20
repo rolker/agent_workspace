@@ -142,3 +142,11 @@ Items 1 and 3 are sound and need only small test corrections. Item 2 targets a r
 **Decision**: revise
 
 Read: the Plan Review at 7bffcb35. Its must-fix items go back to the plan as written there: item 2's fix aims at a path the GeoZui4D runs did not take (the workflow count was 1, the hosted reviewer's own dynamic workflow, so count only workflows under .github/workflows/, handle a list past one page, test the real shape); item 5's "no change" reason does not hold (the skill text predates the wait and describes a comment where the notice was a review; the "review never started" case is not addressed); item 4 misses the existing parser in sitrep_root.sh, a stale copy in test_ros2_colcon.sh, the hang-3 fixtures in test_merge_pr_gate.sh and the empty-slug fallback in worktree_create.sh; the Serves line and the principles cited name things that do not exist. Its suggestions for items 1, 3 and 4 are taken too. First host revise at this checkpoint.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-20 10:40 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-428/plan.md` (revision after the Plan Review at 7bffcb35)
+
+Revised for every finding. Item 2: count only active `.github/workflows/` entries (GeoZui4D's one workflow is the hosted reviewer's `dynamic/` one), a list past one page is `unknown`, fixtures rewritten to the real shape, no message change. Item 5: skill text corrected to a COMMENTED review by the hosted reviewer, a `notice_only` flag in `fetch_pr_reviews.sh` keyed on author and shape, and a stated bound on the never-started wait. Item 4: `sitrep_root.sh`'s grammar reused with recorded differences, stale `test_ros2_colcon.sh` copy, hang-3 fixtures and the `worktree_create.sh` workspace-slug fallback fixed, local-path exception narrowed. Item 3: symlink-safe `find -P` chmod, guarded final step, gitignored `install/`, skip as root. Item 1: placement kept, test asserts the counted examples. Serves and principle names corrected to existing headings. One PR, with a split proposed only as a fallback.
