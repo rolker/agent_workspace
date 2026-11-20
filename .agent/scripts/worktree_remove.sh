@@ -23,7 +23,10 @@
 #
 # This will:
 #   1. Check for uncommitted changes (unless --force)
-#   2. Remove the worktree directory
+#   2. Remove the worktree directory, first making its read-only
+#      directories writable (a build's install tree can leave some, which
+#      would block the removal; directories only, symlinks never followed;
+#      issue 428)
 #   3. Prune the git worktree reference
 #   4. Show branch deletion instructions
 
@@ -450,11 +453,26 @@ fi
 # --- Remove every entry, then the aggregate dir last ---
 echo "Removing worktree..."
 
+# A build or install step can leave read-only directories in the tree
+# (`cmake --install` did, issue 428), and a file in a directory without
+# write permission cannot be unlinked, so `git worktree remove` and the
+# final `rm -rf` fail half way. Directories only, because that is what
+# blocks the unlink, and only under the one tree given, never its parent.
+# -P and -type d: a symlink, as the starting point or met on the walk, is
+# never followed or changed, so an entry that links elsewhere cannot make
+# this touch another checkout. A failed chmod does not stop the removal:
+# the removal's own error is the one to show.
+_make_dirs_writable() {  # <dir>
+    [ -d "$1" ] && [ ! -L "$1" ] || return 0
+    find -P "$1" -type d ! -perm -u=w -exec chmod u+w {} + 2>/dev/null || true
+}
+
 for _i in "${!ENTRY_DESTS[@]}"; do
     _dest="${ENTRY_DESTS[$_i]}"
     _owner="${ENTRY_OWNERS[$_i]}"
     [ -n "$_owner" ] || continue
     [ -d "$_dest" ] || continue
+    _make_dirs_writable "$_dest"
     if [ "$FORCE" = true ]; then
         git -C "$_owner" worktree remove --force "$_dest"
     else
@@ -469,7 +487,9 @@ done
 # Only $WORKTREE_DIR itself is removed — never its parent (the root's
 # worktrees/ dir). This script never deletes a directory the user may have
 # customized (a worktrees= override, say), so an empty worktrees/ dir is
-# simply left behind.
+# simply left behind. The single-entry tree is already gone by now, so
+# the guard in _make_dirs_writable skips it.
+_make_dirs_writable "$WORKTREE_DIR"
 rm -rf "$WORKTREE_DIR"
 
 echo ""
