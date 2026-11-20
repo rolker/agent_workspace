@@ -414,3 +414,18 @@ Cross-model: skipped (round-3 convergence check, per handoff). All five round-2 
 **Decision**: publish
 
 Read the Local Review (Pre-Push) at e54b043b (round 3, approved, ship recommended, one suggestion). The full pass (`pre-commit run --files` over the branch's files, no SKIP, branch even with origin/main) passed: every hook Passed or Skipped for no files, black and flake8 included. The one open suggestion goes to the pull request's triage rather than a fourth pre-push round: the design's "show" section says a refusal names the path as recorded, which holds only when the recorded path does not exist; when it exists but cannot be read, `show` names the canonical path and `sync` the recorded one.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-20 12:59 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #541 at `4431a59`
+**Sources**: 2 (Local Review (Pre-Push) @ `f310d62` (covers 4431a59 via bookkeeping), CI rollup); no GitHub reviews, inline comments or conversation comments, and no Copilot review
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) @ `f310d62`) Verified against the code: "a refusal names the path as recorded" holds only when the recorded path does not exist. `_show_in_system` (`cli.py:212`) passes `os.path.realpath(recorded)` as the label whenever `os.path.exists(recorded)`, so a recorded path that exists but is a directory, unreadable, not UTF-8 or fails to parse is named canonical by `show` (`_read_text`/`parse_part` use that label), while `sync` (`sync.py:714`, no `shown`) names it as recorded. Narrow the design sentence and the comment to "a path that does not exist", or pass the recorded path as the label on every refusal so both commands agree — `tools/repos-manifest/docs/design.md`, `tools/repos-manifest/src/repos_manifest/cli.py`
+
+### False positives
