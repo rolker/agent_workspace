@@ -231,8 +231,8 @@ editable into the workspace's shared `.venv` in the main checkout. The adapter r
 Nothing in this section is built beyond its first cut, the tool route under "What exists
 today". It depends on two things outside the workspace's own code:
 
-- tool commands that are not built yet (`show`, `build`, `status`, `add-distro`; `init` and
-  `sync` are), which the tool's roadmap has;
+- tool commands that are not built yet (`status`, `add-distro`; `show`, `init`, `sync` and
+  `build` are), which the tool's roadmap has;
 - some of what the adapter relies on today, which the tool's design does not promise yet. It
   is listed under "What the tool has to give".
 

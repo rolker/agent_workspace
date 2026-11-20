@@ -210,11 +210,12 @@ Something at its place that is not a file or a link to one, such as a directory 
 link, is left as it is and named in a warning after that distro's report; the exit status is
 not changed by it.
 
-Before its question, `init` prints a summary until `show` is built, and then what `show`
-prints (see "show"). The summary gives the manifest, the role and the extra groups, then for
-each distro, in the order given, each layer's `src/` with each repo's key, version and URL and
-whether it is optional, then a `Layout:` line. It asks before it goes on, which `--yes` skips;
-when its input is not a terminal it refuses without `--yes`. For a flat system with a distro
+Before its question, `init` prints what `show` prints (see "show"): the `manifest`, `base`
+and `role` lines once, then for each distro, in the order given, a `distro` line (none when
+the manifest has no `distros:`), its layers with their repos and the repos left out, and a
+`will create` list of each layer's `src/` directory. A `Layout:` line comes last. It asks
+before it goes on, which `--yes` skips; when its input is not a terminal it refuses without
+`--yes`. For a flat system with a distro
 the `Layout:` line is this one, which `--yes` does not skip:
 
 ```
@@ -504,10 +505,23 @@ left out
   new_planner           not on jazzy
 ```
 
-For each repo it shows the layer, the version and the URL it will be fetched from. It says
-which manifest an entry came from when that is not the first in the chain, and it lists the
-repos that are left out with the reason. Inside a system directory it uses what `config.yaml`
-records and that distro's manifest, so it also shows the effect of `fetch_from`.
+For each repo it shows the layer, the version and the URL it will be fetched from, the URL's
+user name and password masked as "sync" describes. A repo with no version shows
+`(its default branch)`. It says which manifest an entry came from when that is not the first
+in the chain, the manifest the chain's reading starts from; the manifest an entry came from is
+the one where its key first appears, which gave its `type` and `url`, and a later manifest
+that only changes its version does not change that. It lists the repos that are left out with
+the reason, in the manifest's order: "group X is off" for a repo in one group that is off,
+"none of its groups (X, Y) is on" for a repo in several, "not on D" for a repo that distro D's
+entry or the repo's own `absent: true` leaves out, and "absent, and no distro adds it" for a
+repo with `absent: true` in a manifest with no `distros:`. A repo that a group and a distro
+would both leave out is listed with the group. A manifest with no roles prints `(none)` as
+the role, and the unnamed first layer prints as `(unnamed layer)`.
+
+With no manifest given, `show` must be run inside a system directory: it uses what
+`config.yaml` records and that distro's manifest, so it also shows the effect of `fetch_from`.
+`--role` and `--with` are refused there, since the system records them; giving the manifest
+tries another role. Outside a system directory, a manifest is given.
 
 `show` does not clone the system's repos. It does read every manifest in the chain, which
 for one in a git repo means fetching it, and with a `fetch_from` fallback it asks the other
@@ -1851,13 +1865,17 @@ go on. Each of those errors ends by saying that the manifest's path is the one r
 `config.yaml`, taken from the system directory. Two names that a disk which ignores case
 treats as one are not checked yet on the real destination.
 
+`show` is built for a manifest given as a path on the local disk, and with no manifest inside
+a system directory, as "show" describes. It prints a manifest's own URLs, since fetching from
+another place is not built.
+
 `build` is built as "build" describes, for one distro at a time, stopping at the first layer
 that fails unless `--keep-going` is given. It reads the resolved files `sync` wrote and needs `colcon` on `PATH` or beside the
 Python running it.
 
 Not built yet: step 1 of "sync" (the manifest's own clone), the rebase of a repo with commits
 not on `origin`, `local_manifest`, the git and URL forms of a manifest's location with `--manifest-ref` and
-`--manifest-path`, arguments after `--` for `init` and `sync`, `add-distro`, `show`, `status`,
+`--manifest-path`, arguments after `--` for `init` and `sync`, `add-distro`, `status`,
 `freeze`, fetching from another place and extra remotes.
 
 ## Open questions
