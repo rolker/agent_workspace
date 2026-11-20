@@ -510,7 +510,7 @@ Verified:
 - shellcheck at warning severity: clean on `worktree_remove.sh` and its test.
 
 ### Findings
-- [ ] (must-fix) The test for a review not yet read keys on a `**Reviews**` line. The `## Integrated Review` entry that triage-reviews persists has no such line (`triage-reviews/SKILL.md:396-412`; `**Reviews**` is only in its conversation report, line 292). Its `**Sources**` line is a count with optional examples, not a required list of each review and its commit. As written, the check can miss a late review. Fix: key the check on a field that exists, for example any review whose `submitted_at` is later than the latest Integrated Review's `**When**`; or make triage-reviews write the field it names. — `.claude/skills/run-issue/SKILL.md:1008-1013`
+- [x] (must-fix) The test for a review not yet read keys on a `**Reviews**` line. The `## Integrated Review` entry that triage-reviews persists has no such line (`triage-reviews/SKILL.md:396-412`; `**Reviews**` is only in its conversation report, line 292). Its `**Sources**` line is a count with optional examples, not a required list of each review and its commit. As written, the check can miss a late review. Fix: key the check on a field that exists, for example any review whose `submitted_at` is later than the latest Integrated Review's `**When**`; or make triage-reviews write the field it names. — `.claude/skills/run-issue/SKILL.md:1008-1013`
 
 ## Checkpoint
 **Status**: complete

@@ -1005,13 +1005,18 @@ path (a review that arrived, "review never arrived", "review still
 running after 1800 s", or a head moved by a bookkeeping push). Two
 checks on its output:
 
-- **A review not yet read.** The latest `## Integrated Review` names the
-  reviews it read on its `**Sources**` line (each with the commit it was
-  on) and counts them on its `**Reviews**` line. A hosted review it has
-  not read, whatever its `commit_id` (a review count now higher than
-  recorded, or a review on a commit its `**Sources**` does not name),
-  goes to `triage-reviews` before the checkpoint is presented, so no
-  review is merged past unread (issue 428, item 5).
+- **A review not yet read.** Compare each review's `submitted_at` in the
+  output (GitHub's time in UTC, e.g. `2026-10-20T18:56:41Z`) with the
+  `**When**` of the latest `## Integrated Review` in `progress.md` (local
+  time with its offset, to the minute, e.g. `2026-11-20 12:06 -05:00`).
+  Turn both into the same instant before comparing, e.g.
+  `date -d '<When>' +%s` and `date -d '<submitted_at>' +%s`. A review
+  counts as not read, whatever its `commit_id`, when it was submitted at
+  or after the start of that minute, or when its `submitted_at` is empty
+  or cannot be read. The rule errs toward triaging again: a review that
+  triage did read in that same minute is read twice, never skipped. Any
+  review not read goes to `triage-reviews` before the checkpoint is
+  presented, so no review is merged past unread (issue 428, item 5).
 - **CI.** After an `## Integrated Review` that recorded `**CI**:
   pending`, do not present the checkpoint while CI is still running.
 
