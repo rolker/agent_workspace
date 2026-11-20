@@ -940,24 +940,48 @@ words say it could not review. Say so on the hand-back's
 outside-reviewer line and dispatch `triage-reviews`, which reads it too
 (issue 428, item 5).
 
-**The wait is bounded** (issue 428, item 5). Poll `fetch_pr_reviews.sh` for
-at most about 900 s after publish (or after the PR-mode review). If the
-hosted review has not arrived by then,
-record "review never arrived" on the hand-back's outside-reviewer line and
-dispatch `triage-reviews` with the sources that exist, as for the notice.
+**Only this round's review counts** (issue 428, item 5).
+`fetch_pr_reviews.sh` returns every review in the pull request's history,
+and its `ci_checks` are those of the current head. A review ends this
+round's wait only when its `commit_id` is the output's `head_sha`; an
+earlier round's review, a could-not-review one included, is about an
+older commit and does not end it.
+
+**The wait is bounded while no review check-run has appeared** (issue
+428, item 5). Poll `fetch_pr_reviews.sh` after publish (or after the
+PR-mode review):
+
+- **No `copilot-pull-request-reviewer` check-run in `ci_checks`**: wait at
+  most about 900 s. If none has appeared and no review on the head has
+  arrived by then, record "review never arrived" on the hand-back's
+  outside-reviewer line and dispatch `triage-reviews` with the sources
+  that exist. A review that never starts is an absence, and only time
+  bounds an absence.
+- **The check-run is there with no `conclusion` yet** (running): the
+  review has started, so the 900 s does not apply; wait for it to
+  complete. What bounds this wait is the merge script's own hold, which
+  the host adopts: `merge_pr.sh` holds on a review check-run that exists
+  and has not finished up to `MERGE_PR_CI_TIMEOUT_SECONDS` (default
+  1800 s), then refuses with the review-pending error. A check-run still
+  running after about 1800 s of the host's wait is recorded as "review
+  still running after 1800 s" on the outside-reviewer line, and
+  `triage-reviews` is dispatched with the sources that exist. Before the
+  merge checkpoint, run `fetch_pr_reviews.sh` again: a hosted review on
+  the head that the `## Integrated Review` did not read goes to
+  `triage-reviews` before the checkpoint is presented, so a late review
+  is never merged past unread. A check-run that never appears holds
+  nothing in `merge_pr.sh`, which is why the first case needs the host's
+  own bound.
+
 The 900 s is the standing rule's timeout of about twice the expected
 duration (`host_standing_rules.md`: "no waits on things that will not
 arrive, a timeout of about twice the expected duration") applied to the
-measured review time: on pull requests 416, 417 and 420 reviews arrived 0
-to 9 minutes after the reviewed commit, most within 1 to 6, with two
-outliers at 17 and 30 minutes (commit time precedes push time, so these
-are upper bounds). Nothing in a script ends this wait for you: the notice
-is a quick answer, but a review that never starts is an absence, and only
-time bounds an absence. `merge_pr.sh`'s own hold is a different wait and
-is unchanged: it holds only on a review check-run that exists and has not
-finished, up to `MERGE_PR_CI_TIMEOUT_SECONDS` (default 1800 s), then
-refuses with the review-pending error; a check-run that never appears
-holds nothing there.
+measured review time: on pull requests 416, 417 and 420 reviews arrived
+between 0 and 30 minutes after the reviewed commit, most within 1 to 6
+minutes and all but two within 9; the two outliers took 17 and 30
+minutes (commit time precedes push time, so all of these are upper
+bounds). The outliers are why the bound stops once a check-run is
+running: a slow review is still a review on its way, not an absence.
 
 When CI has not settled, say so in the dispatch: the `## Integrated
 Review` records `**CI**: pending` (a value in `triage-reviews`' own `**CI**`
