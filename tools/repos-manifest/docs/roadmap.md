@@ -33,7 +33,7 @@ are relative to the tool's own directory.
 | `show` prints what a manifest comes to for a machine, with what is left out and why | |
 | `init` and `sync` set up and update a system directory, and `sync` leaves local work alone | `file-exists src/repos_manifest/update.py` |
 | `build` builds the layers in order and writes one setup file | `file-exists src/repos_manifest/build.py` |
-| `status` shows what differs from the manifest | |
+| `status` shows what differs from the manifest | `file-exists src/repos_manifest/status.py` |
 | A machine can fetch every repo from another place: a developer's forks where they exist, or a private server for a field machine | |
 | A manifest can be read from a private git server | |
 | `sync` adds the extra remotes a machine names to every clone | |

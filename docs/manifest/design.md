@@ -182,7 +182,8 @@ The root need not be a git repository. The registry line holds its name, type an
   each is a second record beside the tool's. A leftover `configs/manifest` or
   `configs/project_bootstrap.url`, which this route does not read, is noted without failing.
   Its success line, one per distro, says it checked the tool's last resolve and did not read
-  the manifest again; there is no `repos-manifest status` yet.
+  the manifest again; it does not call `repos-manifest status` yet (#503, the issue where the
+  adapter calls the tool's commands).
 - **`env`, `repos`, `repo_pin`, `worktree_repos` and `worktree_env`** read the same files and
   directories, so package worktrees work as on the other routes.
 - **A `.repos-manifest/` the adapter cannot use** is an error, never another route, so a root
@@ -208,8 +209,8 @@ After a package pull request merges, `merge_pr.sh` fast-forwards the root's clon
 repo, when it is clean and on the pull request's base, past the commit the tool recorded for
 it in `state.yaml`. That is the move the tool's `sync` makes to a clean repo that is still
 on the manifest's version: the next `sync` finds the clone on the manifest's branch and records
-its commit, or fast-forwards it further. The tool's `status`, when it is built, should treat
-such a clone as expected. The layer is then rebuilt by hand until the tool builds.
+its commit, or fast-forwards it further. The tool's `status` treats such a clone as
+expected. The layer is then rebuilt by hand until the tool builds.
 
 ### Worktrees
 
@@ -231,8 +232,8 @@ editable into the workspace's shared `.venv` in the main checkout. The adapter r
 Nothing in this section is built beyond its first cut, the tool route under "What exists
 today". It depends on two things outside the workspace's own code:
 
-- tool commands that are not built yet (`show`, `build`, `status`, `add-distro`; `init` and
-  `sync` are), which the tool's roadmap has;
+- tool commands that are not built yet (`show`, `build`, `add-distro`; `init`, `sync` and
+  `status` are), which the tool's roadmap has;
 - some of what the adapter relies on today, which the tool's design does not promise yet. It
   is listed under "What the tool has to give".
 
@@ -297,7 +298,7 @@ instance's directory, for one distro.
 | `sync` | Fetch the manifest, resolve, update each repo with git | `repos-manifest sync` |
 | `build` | `colcon build` per layer | `repos-manifest build`, with that distro's environment sourced first |
 | `test` | `colcon test` per layer | Stays in the adapter: `colcon test` per layer, over the layers the tool resolved. The tool has no test command |
-| `validate` | Fail when what is on disk was resolved from something else, or a checkout is missing | Fail when `repos-manifest status` says a repo the manifest calls for is missing, or cannot say |
+| `validate` | Fail when what is on disk was resolved from something else, or a checkout is missing | Fail when `repos-manifest status` exits 1: a repo the manifest calls for is missing, is not at its place, or is there and unusable (not a git repo of its own, no commit checked out, no `origin` url, its version not found among the refs of its last fetch, or git cannot read its state), or a distro's manifest cannot be read or resolved, or the system directory cannot be read. Work in progress and lasting setups that `sync` leaves alone (a rebase or merge in progress, an `index.lock`, a sparse checkout, a link at the repo's place) are reported and do not fail it |
 
 `setup`, `sync`, `build`, `test` and `validate` each act on one distro of the instance: for
 the adapter's commands, the one the directory the call comes from chooses, except that
@@ -310,7 +311,8 @@ Which route an instance is on is decided in this order, until the older routes a
 2. Otherwise `source` is set: today's manifest route, reading `configs/manifest-resolved`.
 3. Otherwise: the bootstrap route.
 
-Until `status` is built, the test is the folder being there, as built today. A folder the
+Until the adapter calls `status` (#503, the issue where the adapter calls the tool's commands),
+the test is the folder being there, as built today. A folder the
 adapter or the tool cannot use, one whose record cannot be read included, is an error that
 names the next step, not a sign that the instance is on another route: falling through would
 send a root the tool set up to the bootstrap route's fetch. A `status` that reports a missing
@@ -332,10 +334,11 @@ result as an agent going through the adapter.
 Some of what the adapter gives today is not in the tool's design yet. The adapter cannot
 become thin without it, and it is asked of the tool, not rebuilt in the adapter:
 
-- **A status a script can read.** `validate` fails with an exit status today. The tool's
-  `status` is described as something a person reads. It needs a form a script can read,
-  which also gives the role and the distros the system directory was set up for, and an exit
-  status that says a repo the manifest calls for is missing.
+- **A status a script can read.** The tool gives it now: `repos-manifest status --json`
+  prints one document a script can read, which also gives the role and the distros the system
+  directory was set up for, and `status` exits 1 when a repo the manifest calls for is missing,
+  not at its place or unusable. The adapter does not use it yet (#503, the issue where the
+  adapter calls the tool's commands).
 - **Protection against two runs at once.** The adapter locks its fetch and resolve. The
   tool's design has no lock.
 - **Time limits on fetches.** The adapter bounds its fetches, and the resolver bounds its

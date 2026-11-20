@@ -137,6 +137,16 @@ pushes). Both need `git` 2.23 or later, and `vcs` from vcs2l or vcstool, on `PAT
 [docs/design.md](docs/design.md#sync) gives the rules and
 [docs/design.md](docs/design.md#what-is-built) says how far they go.
 
+`status` shows, for each distro, what the system directory holds against what the manifest
+says: for each repo one state (expected, different, left alone, unusable, missing, skipped, or
+not at its place), with its uncommitted changes, its commits not on `origin`, how far it is
+behind `origin`'s branch, and where it was fetched from; and the repos `sync` recorded that are
+no longer in the manifest. It changes nothing on disk and makes no network call: it answers
+from what each clone had when it was last fetched. `status --json` prints the same as one
+document a script can read, and the exit status is 1 when a repo that is not optional is
+missing, not at its place or unusable. [docs/design.md](docs/design.md#status) gives the states
+and the few cases where `status` and the next `sync` read a repo differently.
+
 `build` builds one distro's layers in order with `colcon`, each on top of the ones below it,
 stops at the first layer that fails (`--keep-going` tries the later ones), and writes the one
 `setup.bash` to source. It keeps a record of what it built, one file per distro in
