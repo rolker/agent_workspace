@@ -23,8 +23,9 @@
 #
 # This will:
 #   1. Refuse, before removing anything, an entry that leads outside the
-#      worktree through a symbolic link (issue 428), and check for
-#      uncommitted changes (unless --force)
+#      worktree through a symbolic link or that sits under a folder it
+#      cannot enter (issue 428), and check for uncommitted changes (unless
+#      --force; a folder git status cannot open counts as not checked)
 #   2. Remove the worktree directory, first giving its directories that
 #      lack any of u=rwx full owner permission (a build's install tree can
 #      leave read-only ones, which would block the removal; directories
