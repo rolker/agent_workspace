@@ -6,8 +6,9 @@ import textwrap
 import pytest
 
 from repos_manifest.base import load_manifest, parse_manifest
+from repos_manifest.cli import main
 from repos_manifest.selection import resolve
-from repos_manifest.show import render, render_body, render_head
+from repos_manifest.show import render, render_body, render_head, shown_path
 
 SYSTEM = """\
 distros: [jazzy, rolling]
@@ -202,3 +203,39 @@ def test_a_url_with_a_password_prints_masked():
     assert "s3cret" not in out
     assert "user" not in out
     assert "https://***@example.org/a.git" in out
+
+
+@pytest.mark.parametrize(
+    "path,shown",
+    [
+        ("plain/m.yaml", "plain/m.yaml"),
+        ("a\nmanifest  b.yaml", "a\\x0amanifest  b.yaml"),
+        ("tab\there", "tab\\x09here"),
+        ("m\u202eyaml.txt", "m\\u202eyaml.txt"),
+        ("back\\slash", "back\\\\slash"),
+        ("not-utf8-\udcff", "not-utf8-\\xff"),
+    ],
+)
+def test_a_path_is_printed_on_one_line_with_control_characters_escaped(path, shown):
+    assert shown_path(path) == shown
+
+
+def test_show_escapes_a_control_character_in_a_bases_path(tmp_path, capsys, monkeypatch):
+    # The base sits in a directory whose name has a newline and a direction override; the
+    # manifest names it by a plain relative link. The base and from lines print it on one line.
+    odd = tmp_path / "pub\nmanifest  fake\u202e"
+    odd.mkdir()
+    (odd / "system.manifest.yaml").write_text(SYSTEM)
+    (tmp_path / "pub").symlink_to(odd)
+    (tmp_path / "leaf.yaml").write_text(
+        "base: pub/system.manifest.yaml\nrepositories:\n"
+        "  vrx:\n    url: https://example.org/v.git\n"
+    )
+    monkeypatch.chdir(tmp_path)
+    assert main(["show", "leaf.yaml", "--role", "developer", "--distro", "jazzy"]) == 0
+    out = capsys.readouterr().out
+    shown = f"{os.path.realpath(tmp_path)}/pub\\x0amanifest  fake\\u202e/system.manifest.yaml"
+    assert out.splitlines()[1] == f"base      {shown}"
+    assert "\u202e" not in out and "\nmanifest  fake" not in out
+    assert out.splitlines()[0] == "manifest  leaf.yaml"
+    assert "from leaf.yaml" in out

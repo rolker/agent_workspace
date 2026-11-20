@@ -518,7 +518,11 @@ Each manifest is printed by its path, the same way on every line that names it, 
 opens from the directory `show` is run in. A manifest given on the command line is printed as
 it was given. Every other one is printed as an absolute path with links followed: the
 manifests it builds on, and, with no manifest given, the one `config.yaml` records, whose
-recorded path is taken from the system directory and not from the current one.
+recorded path is taken from the system directory and not from the current one. A path is
+printed on one line: a control or invisible character in it (a newline, a tab, a
+bidirectional override) is written as an escape, `\xXX` below 0x100 and `\uXXXX` above, a byte
+that is not UTF-8 as `\xXX`, and a backslash is doubled. `init` prints the system directory in
+its question the same way.
 
 It lists the repos that are left out with the reason, in the manifest's order: "group X is off" for a repo in one group that is off,
 "none of its groups (X, Y) is on" for a repo in several, "not on D" for a repo that distro D's

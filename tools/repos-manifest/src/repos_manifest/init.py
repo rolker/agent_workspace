@@ -19,7 +19,7 @@ from typing import Callable, List, Optional, Sequence
 
 from . import selection
 from .output import process_has_ended, signals_held
-from .show import render_body, render_head
+from .show import render_body, render_head, shown_path
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
 from .sync import FINISH, Planned, closing, plan_distros, require_tools, sync_distros
 from .yamlload import ManifestError
@@ -287,7 +287,7 @@ def _init(
                 "Give --yes to set up without asking",
             )
         print(summary(config, plan), flush=True)
-        if not yes and not ask(f"Set up this system in {system}? [y/N] "):
+        if not yes and not ask(f"Set up this system in {shown_path(str(system))}? [y/N] "):
             print("Nothing was created.")
             return 1
         make_system_dir(system, config, lambda: made.append(True))

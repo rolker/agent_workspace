@@ -2,7 +2,8 @@
 
 A renderer only: it takes what `selection.resolve` produced and reads no file and no system
 directory. `render` is what `show` prints; `init` prints `render_head` once and `render_body`
-for each distro it sets up. Every url is printed through `masking.mask_url`.
+for each distro it sets up. Every url is printed through `masking.mask_url`, and every path of
+a manifest through `shown_path`.
 """
 
 from __future__ import annotations
@@ -12,12 +13,33 @@ from typing import List, Optional
 from .manifest import UNNAMED_LAYER
 from .masking import mask_url, mask_urls
 from .selection import ABSENT_NO_DISTRO, GROUP_OFF, NOT_ON_DISTRO, LeftOut, Resolved
+from .yamlload import has_unsafe_char
 
 DEFAULT_BRANCH = "(its default branch)"
 NONE = "(none)"
 UNNAMED_LAYER_HEADING = "(unnamed layer)"
 NOTHING_SELECTED = "no repo is selected for this machine"
 GAP = "   "  # between the columns of a repo's line
+
+
+def shown_path(path: str) -> str:
+    """A path as `show` and `init` print it, on one line: a url's user name and password
+    masked, then each character a line cannot show as itself written as an escape. A control
+    or invisible character (a newline, a tab, a bidirectional override) is `\\xXX` below 0x100
+    and `\\uXXXX` above, a byte that is not UTF-8 (held as a lone surrogate) is `\\xXX`, and a
+    backslash in the path is doubled, so an escape is never mistaken for one."""
+    out = []
+    for ch in mask_urls(path):
+        code = ord(ch)
+        if 0xDC80 <= code <= 0xDCFF:
+            out.append(f"\\x{code - 0xDC00:02x}")
+        elif ch == "\\":
+            out.append("\\\\")
+        elif has_unsafe_char(ch):
+            out.append(f"\\x{code:02x}" if code < 0x100 else f"\\u{code:04x}")
+        else:
+            out.append(ch)
+    return "".join(out)
 
 
 def _name(value: Optional[str]) -> str:
@@ -27,8 +49,8 @@ def _name(value: Optional[str]) -> str:
 def render_head(resolved: Resolved, distro: bool = False) -> str:
     """The `manifest` line, a `base` line for each manifest it builds on (reading order), and
     the role line with the groups on; with `distro`, the role line also names the distro."""
-    lines = [f"manifest  {mask_urls(resolved.source)}"]
-    lines += [f"base      {mask_urls(parent)}" for parent in resolved.bases]
+    lines = [f"manifest  {shown_path(resolved.source)}"]
+    lines += [f"base      {shown_path(parent)}" for parent in resolved.bases]
     groups = ", ".join(resolved.groups_on) if resolved.groups_on else NONE
     role = f"role      {_name(resolved.role)}    groups on: {groups}"
     if distro:
@@ -75,7 +97,7 @@ def render_body(resolved: Resolved) -> str:
                 line += f"{GAP}optional"
             lines.append(line)
             if repo.source and repo.source != first:
-                lines.append(" " * from_indent + f"from {mask_urls(repo.source)}")
+                lines.append(" " * from_indent + f"from {shown_path(repo.source)}")
     blocks = ["\n".join(lines) if lines else NOTHING_SELECTED]
     if resolved.left_out:
         left_lines = ["left out"]
