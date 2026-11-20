@@ -112,6 +112,16 @@ def behind_probe_taken(case):
     url_changed_probe_taken(case)
 
 
+def no_version(case):
+    """The manifest names no version: origin's default branch, which the clone is on."""
+    rewrite_manifest(case.manifest, lambda data: data["repositories"]["a"].pop("version"))
+
+
+def behind_with_no_version(case):
+    no_version(case)
+    behind(case)
+
+
 def commits_only_here(case):
     commit_file(case.clone, "mine", "mine\n", "mine")
 
@@ -190,6 +200,16 @@ def ahead_on_another_origin_branch(case):
 def local_tag_origin_lacks(case):
     git("tag", "v7", cwd=case.clone)
     pin(case, "v7")
+
+
+def moved_tag(case):
+    """Pinned at v1; origin moved the tag, and the person deleted the stale tag here and
+    fetched again, as `sync`'s failed fetch told them to."""
+    pinned_tag(case)
+    commit_file(case.remote, "later", "l\n", "later")
+    git("tag", "-f", "v1", cwd=case.remote)
+    git("tag", "-d", "v1", cwd=case.clone)
+    git("fetch", "-q", "--tags", "origin", cwd=case.clone)
 
 
 # --- left-alone -----------------------------------------------------------------------------
@@ -282,6 +302,23 @@ def a_file_at_the_place(case):
     case.clone.write_text("a file\n")
 
 
+def a_link_on_the_way(case):
+    """The layer's `src` directory is a link to somewhere else, with the clone inside it."""
+    src = case.system / "src"
+    os.rename(src, case.tmp / "elsewhere-src")
+    src.symlink_to(case.tmp / "elsewhere-src")
+
+
+def in_another_layer(case):
+    """The manifest gives the repo a layer; its record, and the clone, are in the unnamed one."""
+
+    def change(data):
+        data["layers"] = ["core"]
+        data["repositories"]["a"]["layer"] = "core"
+
+    rewrite_manifest(case.manifest, change)
+
+
 # name: (builder, state, a piece of the detail)
 CASES = {
     "on its branch": (on_branch, "expected", "on main"),
@@ -306,6 +343,8 @@ CASES = {
         "expected",
         "sync leaves it while a remote named repos-manifest-probe is set here",
     ),
+    "no version": (no_version, "expected", "on main, as origin's was"),
+    "behind, no version": (behind_with_no_version, "expected", "sync tries to fast-forward it"),
     "commits only here": (commits_only_here, "expected", "1 commit not on origin"),
     "fast-forwarded by hand": (fast_forwarded_by_hand, "expected", "on main"),
     "a tag on no branch": (tag_on_no_branch, "expected", "pinned at v9"),
@@ -340,6 +379,7 @@ CASES = {
         "(rewritten upstream)",
     ),
     "a local tag origin lacks": (local_tag_origin_lacks, "different", "sync would try"),
+    "a moved tag": (moved_tag, "different", "sync would try to move it"),
     "a link at the place": (link_at_the_place, "left-alone", "is a link to"),
     "a rebase in progress": (rebase_in_progress, "left-alone", "a rebase is in progress"),
     "a merge in progress": (merge_in_progress, "left-alone", "a merge is in progress"),
@@ -355,6 +395,8 @@ CASES = {
     "no origin url": (no_origin_url, "unusable", "has no single origin"),
     "missing": (missing, "missing", "is not there"),
     "a file at the place": (a_file_at_the_place, "not-a-directory", "is not a directory"),
+    "a link on the way": (a_link_on_the_way, "blocked-place", "a link on the way"),
+    "in another layer": (in_another_layer, "in-other-layer", "the manifest now has it in layer"),
 }
 
 # The states that fail the exit status for a repo that is not optional.
