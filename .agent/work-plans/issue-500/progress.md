@@ -2332,3 +2332,19 @@ Only what changes or is new in this pass; the rest of the last entry's text stan
   - Urls are compared after one trailing `/` and `.git` are taken off, so local `/srv/robot` and `/srv/robot.git` read as one repository, as git hosting reads `x` and `x.git`.
   - `build` reads the resolved plan before it takes the lock it shares with `sync` (`build.py`, a follow-up for the lock issue).
   - A plain recorded version whose branch and tag are both at the recorded commit is left alone until a person moves the repo (the record keeps the version as written, not its kind).
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-20 08:22 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aae2dec0f27df04d4, resume 2 of 3)
+**Verdict**: approved
+
+**PR**: #535 at `f01f6336`
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Round 3, narrow: the round 2 findings and `git diff 3e9e484c..f01f6336 -- tools/`; cross-model skipped (round-3 convergence check, per handoff). Reproduced on real systems from `init`, snapshotting every work tree: a rebase of jazzy stopped in a `-f` work tree now leaves the clone alone ("a rebase of jazzy is stopped there") and `rebase --continue` then succeeds; a detached bisect started on jazzy is held; a rebase dir with no head-name holds every branch; a move to a branch a rebase there returns to is "not switched"; a linked work tree on another branch is still unaffected (fast-forwarded). `git branch -f` refuses the same branches (git's own rule, as the design says). Branch `release` to `tags/release` moves ("moved from branch release to tag release"), back via `heads/release` moves, second syncs quiet; tag and branch both at the recorded commit: left alone with the reason (listed as left open); `tags/v1` to `v1` no move, then `heads/v1` moves. A tracked edit made during the checks (in_the_way patched to write it) leaves the clone alone, the edit kept, next sync "uncommitted changes". Owner's case unchanged: already on rolling, record updated (was jazzy); clean moved; local commit with push hint; edit left alone. `fuser -v` now quoted; no other unquoted printed command found in sync.py, system.py, init.py, update.py. PR body's new sentences checked against code and timeline (round 1 for the six mutations is right). Tests touched by the diff: test_update, test_update_safety, test_update_submodules, test_sync_distros: 266 passed. CI at f01f6336: Validate Documentation and Adapter Contract pass; Lint and the tool's tests pending.
+
+### Findings
+- [ ] No issues found. LGTM.
