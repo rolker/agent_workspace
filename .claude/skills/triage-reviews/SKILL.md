@@ -103,16 +103,7 @@ comments align with local files.
 
 ### 3. Fetch PR reviews and CI status
 
-First note the local time, just **before** the fetch, to the minute with
-its offset (`date '+%Y-%m-%d %H:%M %:z'`): it is the entry's
-`**Fetched**` field in step 7. Taken before the fetch, it is never later
-than the moment the reviews were read, so a review that lands during or
-after this run is at or after that minute and `/run-issue` step 9 sends
-it to triage again before the merge checkpoint (issue 428). A run that
-reads no pull-request reviews (only the local timeline is a source)
-still notes the time and writes the field.
-
-Then run the helper script to get all reviews and CI check status:
+Run the helper script to get all reviews and CI check status:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
@@ -131,6 +122,17 @@ When the hosted reviewer cannot review (its quota is exhausted, or it hit
 an error), it still posts a **review** by its own account saying so. Read
 it like any review: it holds no findings only because its own words say
 it could not review; the script does not mark or skip it (issue 428).
+
+**Record which reviews were read.** Step 7's `**Reviews-read**` field
+lists the `review_id` of every review in this output whose `state` is
+not `PENDING`, those read in an earlier triage included, comma-separated
+(`**Reviews-read**: 3456789012, 3456789013`), or `none` when there is
+none. A `PENDING` review is a draft not yet submitted and is never
+listed: once submitted, under the same `review_id`, it is new to read.
+`/run-issue` step 9 sends any non-`PENDING` review not on the latest
+entry's list back to triage before the merge checkpoint (issue 428). A
+run that reads no pull-request reviews (only the local timeline is a
+source) writes `none`.
 
 Save the JSON to a file (it feeds the integrator step below). If it
 contains no reviews and no conversation comments, **do not stop yet** —
@@ -406,7 +408,7 @@ never written again):
 **Status**: complete
 **When**: <YYYY-MM-DD HH:MM ±HH:MM>
 **By**: <agent name> (<model>)
-**Fetched**: <YYYY-MM-DD HH:MM ±HH:MM, noted just before step 3's fetch>
+**Reviews-read**: <review_id, review_id, … of the non-PENDING reviews step 3 fetched, or none>
 
 **PR**: #<N> at `<short-sha>`
 **Sources**: <count> (e.g., Copilot R2 @ `<sha>`, Local Review @ `<sha>`, CI rollup)

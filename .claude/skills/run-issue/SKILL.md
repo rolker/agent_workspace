@@ -1006,30 +1006,19 @@ running after 1800 s", or a head moved by a bookkeeping push). Two
 checks on its output:
 
 - **A review not yet read.** The latest `## Integrated Review` in
-  `progress.md` records on its `**Fetched**` line the time `triage-reviews`
-  noted just before it fetched the reviews (local time with its offset,
-  to the minute, e.g. `2026-11-20 12:06 -05:00`). Skip a review whose
-  `state` is `PENDING`: a draft its author has started and not submitted
-  (GitHub lists the account's own draft), with no `submitted_at`. It is
-  nobody's review to read yet and never sends the host back to triage;
-  once submitted it gets a time and a state of its own. Compare every
-  other review's `submitted_at` in the output (GitHub's time in UTC, e.g.
-  `2026-10-20T18:56:41Z`) with one minute before the start of the
-  `**Fetched**` minute, both turned into the same instant, e.g.
-  `$(( $(date -d '<Fetched>' +%s) - 60 ))` and
-  `date -d '<submitted_at>' +%s`. The extra minute is there because the
-  local clock may run ahead of GitHub's, or GitHub may list a review a
-  moment after the time it stamped on it; its cost is an occasional
-  second triage of a review already read. A review counts as not read,
-  whatever its `commit_id`, when it was submitted at or after that
-  instant; when its `submitted_at` is empty or cannot be read (test for
-  empty first: `date -d ''` gives midnight, not an error), in any state
-  but `PENDING`; or when the entry has no `**Fetched**` line (one written
-  before the field existed). All three err toward triaging again: a
-  review triage did read near that minute is read twice, never skipped.
-  Any review not read goes to `triage-reviews` before the
-  checkpoint is presented, so no review is merged past unread (issue
-  428, item 5).
+  `progress.md` lists on its `**Reviews-read**` line the `review_id` of
+  every review `triage-reviews` fetched and read, or `none`. A review in
+  the output whose `state` is not `PENDING` and whose `review_id` is not
+  on that line has not been read, whatever its `commit_id`. An entry with
+  no `**Reviews-read**` line (one written before the field existed)
+  counts as having read none. A `PENDING` review is a draft its author has
+  started and not submitted (GitHub lists the account's own draft): it is
+  nobody's review to read yet, never sends the host back to triage, and
+  is never on the line, so once submitted, under the same `review_id`, it
+  counts as not read. Any review not read goes to `triage-reviews` before
+  the checkpoint is presented, so no review is merged past unread (issue
+  428, item 5). That triage lists it, so the next fetch finds it read:
+  each review sends the host back to triage at most once.
 - **CI.** After an `## Integrated Review` that recorded `**CI**:
   pending`, do not present the checkpoint while CI is still running.
 
