@@ -114,15 +114,15 @@ follows one change of a submodule's commit and stops at the next, until that sub
 updated by hand (the report gives the `git submodule update` command), and a sparse checkout is left as
 it is. A version given as a commit is followed only when `origin` holds it. An
 `origin` a person set is left as set; the manifest's new url replaces `origin` only when the
-clone still has the url `sync` recorded and no local branch has commits it lacks. Where
-`sync`, `init`, `resolve` and `validate` put a url into a message, a url's user name and
+clone still has the url `sync` recorded and no local branch has commits it lacks. Where `sync`,
+`init`, `resolve` and `validate` put a url into a message, a `scheme://` url's user name and
 password are masked as `***`, and a value of the wrong type is described, not shown; the lines
 `sync` prints for a repo, and the error of a manifest that cannot be read or is refused, are
-masked again as they are printed. Other lines, such as an error that echoes a value typed on
-the command line, are printed as given. That is a guard against accidents, not a guarantee: a
-user name and password belong in a credential helper or an ssh key, not in a manifest url
-([docs/design.md](docs/design.md#sync) says what is masked and what is not). A repo the manifest moves to another layer is not moved: `sync` prints the
-`mv` command. A clone with
+masked again as they are printed. Other lines, such as an error that echoes a value typed on the
+command line, are printed as given. That is a guard against accidents, not a guarantee: a user
+name and password belong in a credential helper or an ssh key, not in a manifest url
+([docs/design.md](docs/design.md#sync) says what is masked and what is not). A repo the manifest
+moves to another layer is not moved: `sync` prints the `mv` command. A clone with
 commits not on `origin` is not rebased yet; `sync` prints the `git pull --rebase` command for a
 person to run. Both need `git`, and `vcs` from vcs2l or vcstool, on `PATH`.
 [docs/design.md](docs/design.md#sync) gives the rules and
