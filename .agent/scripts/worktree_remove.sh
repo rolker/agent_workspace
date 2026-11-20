@@ -23,10 +23,10 @@
 #
 # This will:
 #   1. Check for uncommitted changes (unless --force)
-#   2. Remove the worktree directory, first making its read-only
-#      directories writable (a build's install tree can leave some, which
-#      would block the removal; directories only, symlinks never followed;
-#      issue 428)
+#   2. Remove the worktree directory, first giving its directories that
+#      lack any of u=rwx full owner permission (a build's install tree can
+#      leave read-only ones, which would block the removal; directories
+#      only, symlinks never followed, mounts never crossed; issue 428)
 #   3. Prune the git worktree reference
 #   4. Show branch deletion instructions
 
@@ -458,13 +458,20 @@ echo "Removing worktree..."
 # write permission cannot be unlinked, so `git worktree remove` and the
 # final `rm -rf` fail half way. Directories only, because that is what
 # blocks the unlink, and only under the one tree given, never its parent.
+# A directory missing read or search permission blocks the walk the same
+# way, so any directory without all of u=rwx gets u+rwx.
 # -P and -type d: a symlink, as the starting point or met on the walk, is
 # never followed or changed, so an entry that links elsewhere cannot make
-# this touch another checkout. A failed chmod does not stop the removal:
-# the removal's own error is the one to show.
+# this touch another checkout. -xdev: a mount inside the tree (a bind
+# mount, say) is not crossed. `--`: a path is never read as an option.
+# `-exec ... \;`, not `+`: each directory is repaired when find reaches it,
+# before find tries to read it, so a directory under one that lacked r or
+# x is reached too (a batched `+` runs after the walk, too late for that).
+# A failed chmod does not stop the removal: the removal's own error is the
+# one to show.
 _make_dirs_writable() {  # <dir>
     [ -d "$1" ] && [ ! -L "$1" ] || return 0
-    find -P "$1" -type d ! -perm -u=w -exec chmod u+w {} + 2>/dev/null || true
+    find -P -- "$1" -xdev -type d ! -perm -u=rwx -exec chmod u+rwx {} \; 2>/dev/null || true
 }
 
 for _i in "${!ENTRY_DESTS[@]}"; do

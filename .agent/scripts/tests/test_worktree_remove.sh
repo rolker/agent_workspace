@@ -11,6 +11,9 @@
 #     is removed
 #   - a symlink in the tree to a read-only directory outside it is never
 #     followed: the outside directory keeps its mode and its contents
+#   - an aggregate (package) worktree: read-only leftovers in the container
+#     outside its entry, and a directory with no search permission over a
+#     read-only one, are cleared by the aggregate step
 # Root ignores mode bits, so as root the tests would pass without the fix:
 # the suite then skips with the reason.
 # Everything runs in sandboxes (mktemp) with the real scripts copied in.
@@ -126,6 +129,55 @@ check "symlink: exit 0" test "$rc" -eq 0
 check "symlink: the worktree directory is gone" test ! -e "$wt"
 check "symlink: the outside directories keep their mode ($mode_before)" test "$mode_before" = "$mode_after"
 check "symlink: the outside directory's contents are untouched" test -f "$outside/inner/keep.txt"
+
+# <sb>: a second repository (a package's), outside the worktree tree, with
+# one commit on main. Prints its path.
+make_pkg_repo() {
+    local repo
+    repo="$(mktemp -d -p "$SANDBOX")"
+    git -C "$repo" init --quiet -b main
+    printf 'pkg\n' > "$repo/package.xml"
+    git -C "$repo" add package.xml
+    git -C "$repo" -c user.name=t -c user.email=t@t commit --quiet -m init
+    echo "$repo"
+}
+
+# <sb> <rel> <origin>: turn issue 7's worktree into an aggregate (package)
+# worktree: a plain container directory (not a git checkout) holding a
+# .worktree-repos manifest and one entry, a linked worktree of <origin> at
+# <rel>, on feature/issue-7.
+make_aggregate() {
+    local sb="$1" rel="$2" origin="$3" c
+    c="$sb/worktrees/workspace/issue-workspace-7"
+    git -C "$sb" worktree remove --force "$c" >/dev/null 2>&1
+    git -C "$sb" worktree prune
+    mkdir -p "$c/$(dirname "$rel")"
+    git -C "$origin" worktree add --quiet -b feature/issue-7 "$c/$rel" main >/dev/null 2>&1
+    printf '# project=demo issue=owner/pkg_a#7 layer=l1 base=main\n%s\t%s\tfeature/issue-7\n' "$origin" "$rel" > "$c/.worktree-repos"
+}
+
+echo "TEST: an aggregate (package) worktree with read-only leftovers outside its entry is removed"
+sb="$(make_sandbox)"; c="$sb/worktrees/workspace/issue-workspace-7"
+pkg="$(make_pkg_repo)"
+make_aggregate "$sb" layer_ws/src/pkg_a "$pkg"
+check "aggregate fixture: the entry is a linked worktree" test -f "$c/layer_ws/src/pkg_a/.git"
+# Left at the container level, outside every entry, so only the aggregate
+# step (_make_dirs_writable on the container, then rm -rf) can clear it:
+# a read-only install tree, and a directory with no search (x) permission
+# that holds a further read-only directory, which find can reach only if
+# the outer one is repaired before find reads it.
+make_readonly_install "$c/layer_ws"
+mkdir -p "$c/layer_ws/build/noexec/inner"
+printf 'obj\n' > "$c/layer_ws/build/noexec/inner/a.o"
+chmod a-w "$c/layer_ws/build/noexec/inner"
+chmod 600 "$c/layer_ws/build/noexec"
+check "aggregate fixture: the no-search directory cannot be listed into" bash -c '! ls "$1" >/dev/null 2>&1' _ "$c/layer_ws/build/noexec/inner"
+rc=0; out="$(run_remove "$sb" 2>&1)" || rc=$?
+check "aggregate: exit 0" test "$rc" -eq 0
+check "aggregate: the container is gone" test ! -e "$c"
+check "aggregate: says it was removed" grep -q "Worktree removed successfully" <<<"$out"
+check "aggregate: the package repository no longer lists the entry" bash -c '! git -C "$1" worktree list | grep -qF "$2"' _ "$pkg" "$c/layer_ws/src/pkg_a"
+check "aggregate: the package repository itself is untouched" test -f "$pkg/package.xml"
 
 echo ""
 echo "test_worktree_remove: $PASS passed, $FAIL failed"
