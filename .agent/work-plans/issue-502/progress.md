@@ -328,3 +328,159 @@ Read the Plan Review at a0da9ddd: the split of the old `unknown` state puts ever
 1. Finding 8, which the review raised as a question: a required repo with no `origin` url at all is `unusable` (exit 1), because the owner's words put "its version cannot be found" on that side and with no `origin` there is nothing to find it in. A repo whose `origin` has more than one url stays `left-alone`. Undoing it is one line of the mapping and its test.
 2. Finding 5: the `validate` row of `docs/manifest/design.md` is worded as failing when `status` exits 1, with what that covers said in plain words, so an unreadable distro is covered too.
 3. Finding 1: the plan's decision 16 compared optional repos with `sync` wrongly. `sync` turns any failure of an optional repo into "skipped", so `status` and `sync` follow the same rule; the plan's sentence is corrected in the design text and the agreement test accepts "skipped" from `sync` for optional fixtures.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 12:42 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-502 at `d3f358f1`
+
+`repos-manifest status [--distro <name>] [--json]` is built, in eight commits after the checkpoint:
+
+1. `58e273ef` characterisation tests (`tests/test_update_characterisation.py`, 13 tests) for `sync`'s first checks: the order of the early answers, the stopped-move text on the in-progress and `index.lock` messages, a `moving` line not naming `HEAD` dropped with no suffix (a rebase and a bisect), and the no-commit answer coming before the `moving` line is touched. All 13 passed against the unchanged `update.py`; none had to be corrected to the code.
+2. `de71f9c9` the refactor, alone: `blocked_early`, `blocked_late` (returning `Blocked(kind, text)`), `stopped_move`, an `ask` parameter (default `None`, resolved to `ask_origin` at the call) on `find_version` and `commit_on_origin`, and `ask_local`. `sync`'s behaviour and messages are unchanged. `test_update_safety.py`'s `GIT_CALLS` gains `ask` and `ask_local`.
+3. `0f66c0d5` `status.py`; `system.place_problem_kind` (`place_problem` wraps it and returns the same text); `update.standing` with its `Standing` result.
+4. `a05702cd` the `status` subcommand in `cli.py` (one function and one parser block next to `sync`'s).
+5. `5490d4dd` tests: `tests/status_cases.py` (34 cases shared by two suites), `test_status.py`, `test_status_distros.py`, `test_status_agrees_with_sync.py`, and the read-only scan of `status.py` in `test_update_safety.py`.
+6. `1d53f2c8` `behind` counted on the manifest's branch in every case, not only when `HEAD` is behind or equal.
+7. `23196235` documents (ADR-0017): the tool's `docs/design.md` (`### status` rewritten, "What is built", the not-built list, and the sentence on what the recorded commit is for), `docs/roadmap.md` (the `status` row checked by `file-exists src/repos_manifest/status.py`), `README.md` ("What works today"), and `docs/manifest/design.md` (the `validate` row, "What the tool has to give", and lines 185, 211, 234 and 313).
+8. `d3f358f1` `_url_note` renamed `_remote_note`: `test_url_messages.py` flagged the name, though its text was already masked.
+
+The host checkpoint's three decisions are built in. A required repo with no `origin` url is `unusable` (exit 1), and one with several urls is `left-alone`. The `validate` row fails when `status` exits 1, with what that covers said in plain words, an unreadable distro and an unreadable system directory included. The design sentence on optional repos now says `sync` skips whatever stops an optional repo, and the agreement test accepts "skipped" from `sync` for every optional fixture.
+
+All nine findings of the third plan review are built in, each checked against the code first:
+1. Optional repos: the design text is corrected, and the agreement test maps `failed` to `skipped` for optional fixtures.
+2. `blocked-place`: "a link on the way to the place (a layer directory or a directory of the repo's key) leads somewhere else".
+3. `unusable` lists every version cause and "git cannot read its state"; so do the closing paragraph and the `validate` row.
+4. `missing` and `skipped` say `sync` clones the repo when it can.
+5. The `validate` row is worded on exit 1.
+6. `standing` takes `changes`.
+7. The stopped-move text is added once: it is not added again to `blocked_late`'s in-progress and `index.lock` texts. A test checks the count.
+8. No `origin` url is `unusable`.
+9. The human form prints the recorded distros with the ones shown marked `(shown)`, and the JSON note says `unpushed` is null for `left-alone` and `unusable`.
+
+Where this departs from the plan, and why:
+- `standing` is not called by `update_repo`. It lives in `update.py`, reuses `_on_recorded`, `recorded_kind`, `same_version`, `ancestor`, `worktree_holding` and `sync`'s wording, and answers the sub-cases rule 9 cuts off in `sync`. `update_repo` keeps its own ladder, because its actions are interleaved with the checks. Making `sync` go through `standing` would have changed `update_repo`'s control flow beyond what the characterisation tests pin. The agreement test (68 cases) guards the two against drift. It went into the `status.py` commit, not the refactor commit, which stays a pure behaviour-preserving extraction.
+- `blocked_early(git)` takes no `place`: it reads `git.place`.
+- `sync.resolve_all` is reused for resolving, and `sync.layer_moved` for rule 1. `sync.require_tools` is reused for the environment, so `status` needs `vcs` on `PATH`, as the design's "What the tools rely on" table already said.
+- The check order follows `sync`'s actual code: rule 1 (a layer the manifest changed) before the place checks. The plan text gave rule 2 first.
+- With `--json`, a system directory that cannot be found or read, or an unrecorded `--distro`, prints no document: the error goes to standard error and the exit status is 1. The design says so. A manifest that cannot be read is reported as every distro's problem, in the document.
+- `layer` in the JSON is `_unnamed` for the unnamed first layer, as the resolved files name it; the design says so.
+- The design text was written into the docs commit at the end, not first: the handoff ordered characterisation tests first.
+- `.agent/work-plans/issue-502/plan.md` was not edited. Decision 16's last bullet there is still wrong about `sync` and optional repos; the design text is the corrected one.
+
+Tests run:
+- Whole tool suite (pytest from `tools/repos-manifest`, the repository's `.venv` with `PYTHONPATH=src`, so the worktree's code is the one tested; the `.venv`'s editable install points at the main checkout):
+  - before any change: `1757 passed in 551.60s`
+  - after the characterisation tests and the refactor: `1770 passed in 556.51s`. After that run, one docstring line in `test_update_safety.py` was re-wrapped for flake8 before the commit.
+  - after `status`: `1 failed, 1946 passed` (the `test_url_messages` name scan on `status.py`, fixed in `d3f358f1`); then `1947 passed in 653.03s`.
+- Workspace suites under `.agent/scripts/tests/`: none apply. No script under `.agent/scripts/`, no skill and no knowledge text was changed. The full pre-commit pass is left to the host.
+
+Nothing in `~/project11` was read, written or run. The sample runs below are on a fixture system made from local git repos in the session scratchpad (shown as `<demo>`). `core_lib` has a commit only here, `driver` is switched to `dev`, `sim` was removed, and `private_tools` is optional and removed.
+
+```
+$ repos-manifest status
+system <demo>/sys
+manifest ../sys.manifest.yaml
+role (none)
+groups (none)
+distro (no distro):
+  core/src/core_lib  expected: on main, with 1 commit not on origin; origin's main has nothing this clone lacks, so the commits are only here; to publish them (sync never pushes): git -C <demo>/sys/core/src/core_lib push origin main [1 commit not on origin]
+  core/src/driver  different: it is on branch dev; the manifest names main; sync leaves it as it is
+  extra/src/sim  missing: is not there; sync clones it
+  extra/src/private_tools  skipped (optional): is not there; sync clones it
+exit status: 1
+```
+
+```
+$ repos-manifest status --json
+{
+  "format": 1,
+  "ok": false,
+  "system": "<demo>/sys",
+  "manifest": "../sys.manifest.yaml",
+  "role": null,
+  "groups": [],
+  "layout": "flat",
+  "recorded_distros": null,
+  "distros": [
+    {
+      "distro": null,
+      "ok": true,
+      "problem": null,
+      "repos": [
+        {
+          "key": "core_lib",
+          "path": "core/src/core_lib",
+          "layer": "core",
+          "optional": false,
+          "state": "expected",
+          "detail": "on main, with 1 commit not on origin; origin's main has nothing this clone lacks, so the commits are only here; to publish them (sync never pushes): git -C <demo>/sys/core/src/core_lib push origin main",
+          "version": "main",
+          "head": "0a92b63af1a5bc769a78e275f423212d89205e11",
+          "changes": 0,
+          "unpushed": 1,
+          "behind": 0,
+          "stopped_move": false,
+          "url": "<demo>/remotes/core_lib",
+          "fetched_from": "<demo>/remotes/core_lib"
+        },
+        {
+          "key": "driver",
+          "path": "core/src/driver",
+          "layer": "core",
+          "optional": false,
+          "state": "different",
+          "detail": "it is on branch dev; the manifest names main; sync leaves it as it is",
+          "version": "main",
+          "head": "6c384eea659e72afb525ad14a887a782c1b6dd73",
+          "changes": 0,
+          "unpushed": 0,
+          "behind": null,
+          "stopped_move": false,
+          "url": "<demo>/remotes/driver",
+          "fetched_from": "<demo>/remotes/driver"
+        },
+        {
+          "key": "sim",
+          "path": "extra/src/sim",
+          "layer": "extra",
+          "optional": false,
+          "state": "missing",
+          "detail": "is not there; sync clones it",
+          "version": "main",
+          "head": null,
+          "changes": null,
+          "unpushed": null,
+          "behind": null,
+          "stopped_move": false,
+          "url": "<demo>/remotes/sim",
+          "fetched_from": null
+        },
+        {
+          "key": "private_tools",
+          "path": "extra/src/private_tools",
+          "layer": "extra",
+          "optional": true,
+          "state": "skipped",
+          "detail": "is not there; sync clones it",
+          "version": "main",
+          "head": null,
+          "changes": null,
+          "unpushed": null,
+          "behind": null,
+          "stopped_move": false,
+          "url": "<demo>/remotes/private_tools",
+          "fetched_from": null
+        }
+      ],
+      "not_in_manifest": []
+    }
+  ]
+}
+exit status: 1
+```
+
+The agreement test saw these pairs (state from `status`, then `sync`'s outcome), all within the allowed pairs or the listed differences: expected with up to date (6 cases), updated (behind) or left alone (commits only here, branch held by a work tree); a branch origin deleted is expected, then failed (listed); different with updated (the manifest changed version) or left alone (7 cases); a local tag origin lacks is different, then failed (listed); left-alone with left alone (8 cases); unusable with left alone (4 cases); a version not fetched is unusable, then updated (listed: the fetch brings it); missing with cloned; not-a-directory with failed.
+
+Left undone: none of the plan's items. The by-hand acceptance on project11 is the owner's. The adapter's use of `status` is #503 (the adapter calls the tool's commands).
