@@ -298,3 +298,26 @@ def test_a_ctrl_c_before_anything_is_changed_is_one_line_and_no_traceback(
     then = "nothing was created" if command == "init" else "nothing was changed"
     assert err == f"ERROR: stopped by SIGINT; {then}\n"
     assert snapshot(system) == before
+
+
+@pytest.mark.parametrize("pid", ["running", "0", "too large"])
+def test_inits_sweep_says_running_only_for_what_init_leaves(manifest, tmp_path, capsys, pid):
+    # A directory of the aside's name holding a file init never writes is a person's, whatever
+    # its process number; so is one whose number names no process at all.
+    system = _system(tmp_path)
+    running = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        number = {"running": running.pid, "0": 0, "too large": 2**70}[pid]
+        leftover = system / f".repos-manifest-tmp-{number}-abcd_123"
+        leftover.mkdir()
+        (leftover / "config.yaml").write_text("manifest: x\n")
+        if pid == "running":
+            (leftover / "notes.txt").write_text("a person's notes\n")
+        assert run(system, *INIT) == 0
+    finally:
+        running.kill()
+        running.wait()
+    assert sorted(os.listdir(leftover))[0] == "config.yaml"
+    err = capsys.readouterr().err
+    assert f"WARNING: {leftover}: named like a temporary of repos-manifest, but not what" in err
+    assert "still running" not in err

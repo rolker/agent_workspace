@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from .yamlload import ManifestError, _load_yaml, _refuse_unsafe_chars, first_unsafe_in_text
+from .masking import quoted_url, remember_url, type_name
 
 FORMAT = 1
 
@@ -182,14 +183,24 @@ def parse_part(text: str, source: str) -> Part:
     return _Checker(source).part(raw)
 
 
-def _type_name(value) -> str:
-    if value is None:
-        return "nothing"
-    if isinstance(value, bool):
-        return "true or false"
-    return {dict: "a mapping", list: "a list", str: "a string"}.get(
-        type(value), f"a {type(value).__name__}"
-    )
+# How vcstool reads a `version`: a leading `heads/` names a branch and a leading `tags/` a tag,
+# and is taken off; the update rules of `sync` read it the same way (`update.py`).
+VERSION_PREFIXES = (("heads/", "branch"), ("tags/", "tag"))
+
+
+def version_ref(version: str) -> Tuple[Optional[str], str]:
+    """(kind, name) of a manifest's `version`: ("branch", "x") for `heads/x`, ("tag", "x") for
+    `tags/x`, and (None, version) for any other, which is a branch, a tag or a commit,
+    whichever the repo has."""
+    for prefix, kind in VERSION_PREFIXES:
+        if version.startswith(prefix):
+            return kind, version[len(prefix) :]
+    return None, version
+
+
+# A value of the wrong type is described by its kind, never shown: a url inside it would not
+# be masked.
+_type_name = type_name
 
 
 class _Checker:
@@ -211,8 +222,8 @@ class _Checker:
         if not isinstance(value, str):
             raise self.error(
                 where,
-                f"must be a string, got {_type_name(value)} ({value!r}); quote it in the YAML"
-                " (unquoted, 1.10 is read as the number 1.1, yes as true)",
+                f"must be a string, got {_type_name(value)}; quote it in the YAML (unquoted,"
+                " 1.10 is read as the number 1.1, yes as true)",
             )
         if value == "":
             raise self.error(where, "must not be empty")
@@ -225,29 +236,37 @@ class _Checker:
 
     def not_an_option(self, value: str, where: str) -> str:
         if value.startswith("-"):
-            raise self.error(where, f"{value!r} starts with '-', which git would read as an option")
+            raise self.error(
+                where, f"{quoted_url(value)} starts with '-', which git would read as an option"
+            )
         return value
 
     def version(self, value, where: str) -> str:
         """A version that git cannot read as an option, as given or as vcstool passes it: it
         takes a leading `heads/` or `tags/` off and checks out the rest, which is not empty."""
         version = self.not_an_option(self.string(value, where), where)
-        for prefix in ("heads/", "tags/"):
-            if version == prefix:
-                raise self.error(
-                    where, f"{version!r} names nothing after {prefix!r}, which vcstool takes off"
-                )
-            if version.startswith(prefix) and version[len(prefix) :].startswith("-"):
+        kind, name = version_ref(version)
+        if kind is not None:
+            prefix = version[: len(version) - len(name)]
+            if name == "":
                 raise self.error(
                     where,
-                    f"{version!r} starts with '-' after {prefix!r}, which vcstool takes off;"
-                    " git would read the rest as an option",
+                    f"{quoted_url(version)} names nothing after {quoted_url(prefix)}, which vcstool"
+                    " takes off",
+                )
+            if name.startswith("-"):
+                raise self.error(
+                    where,
+                    f"{quoted_url(version)} starts with '-' after {quoted_url(prefix)}, which"
+                    " vcstool takes off; git would read the rest as an option",
                 )
         return version
 
     def name(self, value, kind: str, where: str) -> str:
         if not isinstance(value, str) or not _NAME.fullmatch(value):
-            raise self.error(where, f"{kind} name {value!r} is not allowed; a name is {_NAME_RULE}")
+            raise self.error(
+                where, f"{kind} name {quoted_url(value)} is not allowed; a name is {_NAME_RULE}"
+            )
         return value
 
     def names(self, value, kind: str, where: str) -> List[str]:
@@ -257,15 +276,16 @@ class _Checker:
         for index, item in enumerate(value):
             self.name(item, kind, f"{where}[{index}]")
             if item in seen:
-                raise self.error(where, f"names {kind} {item!r} twice")
+                raise self.error(where, f"names {kind} {quoted_url(item)} twice")
             seen.append(item)
         return seen
 
     def url(self, value, where: str) -> str:
+        remember_url(value)  # before any message that quotes it
         url = self.not_an_option(self.string(value, where), where)
         if _TRANSPORT_FORM.match(url):
             raise self.error(
-                where, f"{url!r}: the <transport>::<address> form is refused; {_URL_RULE}"
+                where, f"{quoted_url(url)}: the <transport>::<address> form is refused; {_URL_RULE}"
             )
         scheme = next((s for s in _URL_SCHEMES if url.startswith(s)), None)
         if scheme is not None:
@@ -276,7 +296,9 @@ class _Checker:
                 # '/' after the host; not to a '?' or a '#'.
                 slash = rest.find("/", brackets[1] + 1 if brackets else 0)
                 if slash < 0:
-                    raise self.error(where, f"{url!r}: an ssh url has no path after the host")
+                    raise self.error(
+                        where, f"{quoted_url(url)}: an ssh url has no path after the host"
+                    )
             else:
                 # Not handed to ssh: the user, host and port run to the first '/', and a '%',
                 # '[' or ']' after it is the path's business.
@@ -291,16 +313,16 @@ class _Checker:
             brackets = self.ssh_address(url, url, where)
             sep = url.find(":", brackets[1] + 1 if brackets else 0)
             if sep <= 0 or sep == len(url) - 1:
-                raise self.error(where, f"{url!r} is refused; {_URL_RULE}")
+                raise self.error(where, f"{quoted_url(url)} is refused; {_URL_RULE}")
             self.authority(url, url[:sep], brackets, where, ssh=True)
             if url[sep + 1] == "-":
                 # git refuses such a path ("strange pathname") rather than hand it to ssh.
-                raise self.error(where, f"{url!r}: the path starts with '-'")
+                raise self.error(where, f"{quoted_url(url)}: the path starts with '-'")
             return url
         # No ':', or a '/' before the first ':': a path on the local disk.
         if url.startswith("/"):
             return url
-        raise self.error(where, f"{url!r} is refused; {_URL_RULE}")
+        raise self.error(where, f"{quoted_url(url)} is refused; {_URL_RULE}")
 
     def ssh_address(self, url: str, address: str, where: str) -> Optional[Tuple[int, int]]:
         """Check an address git hands to ssh (after `ssh://`, or the scp form), and return
@@ -308,14 +330,15 @@ class _Checker:
         in brackets anywhere in it, so neither is allowed outside the host: no '%' at all, and
         a '[' and a ']' only as one pair around the host at the start of the address."""
         if "%" in url:
-            raise self.error(where, f"{url!r}: a '%' in an ssh address is refused")
+            raise self.error(where, f"{quoted_url(url)}: a '%' in an ssh address is refused")
         brackets = _bracketed_host(address)
         allowed = brackets or ()
         for index, char in enumerate(address):
             if char in "[]" and index not in allowed:
                 raise self.error(
                     where,
-                    f"{url!r}: in an ssh address, '[' and ']' are allowed only around the host",
+                    f"{quoted_url(url)}: in an ssh address, '[' and ']' are allowed only around"
+                    " the host",
                 )
         return brackets
 
@@ -333,7 +356,9 @@ class _Checker:
         '://', so a '%2d' would be a '-'), and none starts with '-', where ssh would read it as
         an option. In an address handed to ssh (`ssh`), the host is not empty."""
         if "%" in text:
-            raise self.error(where, f"{url!r}: a '%' in the user, host or port is refused")
+            raise self.error(
+                where, f"{quoted_url(url)}: a '%' in the user, host or port is refused"
+            )
         if brackets:
             start, close = brackets
             outer_user, inner, rest = (
@@ -342,7 +367,7 @@ class _Checker:
                 text[close + 1 :],
             )
             if rest and not rest.startswith(":"):
-                raise self.error(where, f"{url!r} is refused; {_URL_RULE}")
+                raise self.error(where, f"{quoted_url(url)} is refused; {_URL_RULE}")
             # Inside the brackets, ssh still reads a user before the last '@', and git a port
             # after a ':'.
             user, _, host_port = inner.rpartition("@")
@@ -359,10 +384,10 @@ class _Checker:
             host, _, port = host_port.partition(":")
             parts = [("user", user), ("host", host), ("port", port)]
         if ssh and not host:
-            raise self.error(where, f"{url!r}: the host is empty")
+            raise self.error(where, f"{quoted_url(url)}: the host is empty")
         for part, value in parts:
             if value.startswith("-"):
-                raise self.error(where, f"{url!r}: the {part} starts with '-'")
+                raise self.error(where, f"{quoted_url(url)}: the {part} starts with '-'")
 
     # --- one manifest, as read -------------------------------------------------------------
 
@@ -382,11 +407,12 @@ class _Checker:
 
         for key in raw:
             if key not in _TOP_LEVEL_KEYS:
-                self.warn(f"unknown top-level key {key!r} is ignored")
+                self.warn(f"unknown top-level key {quoted_url(key)} is ignored")
 
         fmt = raw.get("format", FORMAT)
         if isinstance(fmt, bool) or not isinstance(fmt, int) or fmt < 1:
-            raise self.error("format", f"must be a whole number from 1, got {fmt!r}")
+            shown = fmt if isinstance(fmt, int) and not isinstance(fmt, bool) else _type_name(fmt)
+            raise self.error("format", f"must be a whole number from 1, got {shown}")
         if fmt > FORMAT:
             raise self.error(
                 "format", f"is {fmt}; this tool reads format {FORMAT} and earlier versions"
@@ -405,8 +431,8 @@ class _Checker:
             if layer.lower() in RESERVED_LAYERS:
                 raise self.error(
                     "layers",
-                    f"a layer cannot be named {layer!r}; {', '.join(RESERVED_LAYERS)} are the"
-                    " directories of the unnamed layer, in any case",
+                    f"a layer cannot be named {quoted_url(layer)}; {', '.join(RESERVED_LAYERS)} are"
+                    " the directories of the unnamed layer, in any case",
                 )
 
         groups = self.names(raw.get("groups", []), "group", "groups")
@@ -476,19 +502,20 @@ class _Checker:
             if isinstance(location, dict):
                 raise self.error(
                     where,
-                    f"{location!r} is a mapping, the form of a file in a git repo;"
-                    f" {_BASE_PATH_ONLY}",
+                    f"is a mapping, the form of a file in a git repo; {_BASE_PATH_ONLY}",
                 )
             path = self.string(location, where)
             if _colon_before_slash(path):
-                raise self.error(where, f"{path!r} is a URL, not a path; {_BASE_PATH_ONLY}")
+                raise self.error(
+                    where, f"{quoted_url(path)} is a URL, not a path; {_BASE_PATH_ONLY}"
+                )
             result.append((where, path))
         return result
 
     def repo_key(self, key) -> str:
         if not isinstance(key, str) or key == "":
-            raise self.error("repositories", f"a repo key must be a path, got {key!r}")
-        where = f"repositories: {key!r}"
+            raise self.error("repositories", f"a repo key must be a path, got {quoted_url(key)}")
+        where = f"repositories: {quoted_url(key)}"
         if "\\" in key:
             raise self.error(where, "a repo key is a path with '/' between its parts, no '\\'")
         if key.startswith("/"):
@@ -503,7 +530,7 @@ class _Checker:
             raise self.error(where, "a repo key has no empty part (no '//', no '/' at the end)")
         for part in key.split("/"):
             if part in (".", "..", ".git"):
-                raise self.error(where, f"a repo key has no {part!r} part")
+                raise self.error(where, f"a repo key has no {quoted_url(part)} part")
         return key
 
     def repo(self, key: str, entry) -> Dict[str, object]:
@@ -515,15 +542,17 @@ class _Checker:
             raise self.error(where, f"must be a mapping with type and url, got {_type_name(entry)}")
         for name in entry:
             if name not in _REPO_KEYS:
-                self.warn(f"{where}: unknown key {name!r} is ignored and left out of the output")
+                self.warn(
+                    f"{where}: unknown key {quoted_url(name)} is ignored and left out of the output"
+                )
         given: Dict[str, object] = {}
         if "type" in entry:
             repo_type = self.string(entry["type"], f"{where}.type")
             if repo_type != "git":
                 raise self.error(
                     f"{where}.type",
-                    f"is {repo_type!r}; the format takes any type a .repos file takes, and these"
-                    " tools read git repos only",
+                    f"is {quoted_url(repo_type)}; the format takes any type a .repos file takes,"
+                    " and these tools read git repos only",
                 )
             given["type"] = repo_type
         if "url" in entry:
@@ -558,7 +587,7 @@ class _Checker:
                 )
             for name in entry:
                 if name not in _DISTRO_ENTRY_KEYS:
-                    self.warn(f"{entry_where}: unknown key {name!r} is ignored")
+                    self.warn(f"{entry_where}: unknown key {quoted_url(name)} is ignored")
             distro_entry = DistroEntry()
             if "version" in entry:
                 distro_entry.version = self.version(entry["version"], f"{entry_where}.version")

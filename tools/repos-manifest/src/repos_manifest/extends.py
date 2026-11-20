@@ -39,6 +39,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from .masking import mask_url
 from .schema import ExtendsRef, Manifest, load_manifest_file, ManifestError
 
 
@@ -272,7 +273,7 @@ def _kill_group(proc: subprocess.Popen) -> None:
 
 
 def _cache_key(url: str, ref: str) -> str:
-    digest = hashlib.sha256(f"{url}@{ref}".encode()).hexdigest()[:16]
+    digest = hashlib.sha256(f"{url}@{ref}".encode()).hexdigest()[:16]  # url-text: not a message
     return digest
 
 
@@ -384,7 +385,7 @@ class _GitOrigin:
 
     def label(self, path: Path) -> str:
         rel = path.relative_to(self.clone_dir).as_posix()
-        return f"{self.url}#{self.ref}:{rel}@{self.commit}"
+        return f"{mask_url(self.url)}#{self.ref}:{rel}@{self.commit}"
 
 
 def _resolve_one(

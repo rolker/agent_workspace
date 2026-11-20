@@ -11,7 +11,17 @@ import sys
 import pytest
 import yaml
 
-from helpers import dead_pid, head, make_remote, repo, run, snapshot, temporaries, write_manifest
+from helpers import (
+    dead_pid,
+    head,
+    make_remote,
+    repo,
+    run,
+    settled,
+    snapshot,
+    temporaries,
+    write_manifest,
+)
 from repos_manifest import sync
 from repos_manifest.sync import rename_failure, sweep_temporaries
 from repos_manifest.system import place_problem
@@ -70,14 +80,19 @@ def test_a_destination_that_exists_is_present_and_untouched(setup, tmp_path, cap
         (tmp_path / "elsewhere").mkdir()
         place.symlink_to(tmp_path / "elsewhere")
     add("d")
-    before = snapshot(tmp_path)
+    before = settled(snapshot(tmp_path))
     capsys.readouterr()
     assert run(system, "sync") == 0
-    after = snapshot(tmp_path)
+    after = settled(snapshot(tmp_path))
     resolved = lambda snap: {k: v for k, v in snap.items() if "resolved" not in k}  # noqa: E731
     assert resolved(after) == resolved(before)
     assert _recorded(system) == {"a"}
-    assert "present, not touched (2)" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "  up to date (1)\n" in out
+    if kind == "link":
+        assert f"src/d: left alone: is a link to {tmp_path / 'elsewhere'}" in out
+    else:
+        assert "src/d: left alone: is not a git repository of its own" in out
 
 
 @pytest.mark.parametrize("kind", ["file", "dangling link"])
@@ -90,10 +105,10 @@ def test_a_place_that_is_not_a_directory_is_reported(setup, tmp_path, capsys, ki
     else:
         place.symlink_to(tmp_path / "nowhere")
     add("d", optional=optional)
-    before = snapshot(tmp_path)
+    before = settled(snapshot(tmp_path))
     capsys.readouterr()
     assert run(system, "sync") == (0 if optional else 1)
-    after = snapshot(tmp_path)
+    after = settled(snapshot(tmp_path))
     resolved = lambda snap: {k: v for k, v in snap.items() if "resolved" not in k}  # noqa: E731
     assert resolved(after) == resolved(before)
     assert _recorded(system) == {"a"}
@@ -121,8 +136,8 @@ def test_a_link_inside_src_on_the_way_refuses_the_repo(setup, tmp_path, capsys):
 
 
 IN_THE_WAY = (
-    "Some repos could not be put in place, and another sync will not change that: the ERROR"
-    " lines above say what is in the way.\n"
+    "Some repos could not be put in place or updated, and another sync will not change that:"
+    " the ERROR lines above say what is in the way.\n"
 )
 FETCH = "Some repos failed; run `repos-manifest sync` to finish once they can be fetched.\n"
 
@@ -234,9 +249,9 @@ def test_a_failed_clone_leaves_nothing_but_the_message(setup, tmp_path, monkeypa
     system, add = setup
     add("d")
     _stub_vcs(tmp_path, monkeypatch, 'cat >/dev/null; mkdir -p "$2/d/.git"; echo broken; exit 1')
-    before = snapshot(system / "src")
+    before = settled(snapshot(system / "src"))
     assert run(system, "sync") == 1
-    assert snapshot(system / "src") == before
+    assert settled(snapshot(system / "src")) == before
     assert temporaries(system) == []
     assert "ERROR: src/d: vcs import exited 1:\nbroken" in capsys.readouterr().out
 

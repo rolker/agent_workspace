@@ -164,9 +164,10 @@ The root need not be a git repository. The registry line holds its name, type an
   <x>` from inside `<root>/<x>/`, from elsewhere the one resolved distro's name; `sync` with
   no `--distro` only from outside every distro's directory when nothing is resolved yet. They
   pass its output and exit status through
-  (0; 1 when a repo that is not optional failed, or on a refusal; 128+n on a signal). The
-  adapter pulls, fetches and moves no clone on this route. The tool's `sync` clones what is
-  missing and leaves a repo that is there as it is. When the layers changed, `sync` says that
+  (0; 1 when a repo that is not optional failed, a distro was reported, or on a refusal; 128+n
+  on a signal). The adapter pulls, fetches and moves no clone on this route. The tool's `sync`
+  clones what is missing and updates a clean clone that is there by the rules in the tool's
+  design (under "sync"); a clone with local work is left as it is and reported. When the layers changed, `sync` says that
   package worktrees made before keep their old environment script.
 - **`build` and `test`** are the colcon loops of the other routes, over the resolved layers,
   with `--base-paths src`. `build` is interim until the tool's own `build`, and stops at the
@@ -205,9 +206,10 @@ The root need not be a git repository. The registry line holds its name, type an
 
 After a package pull request merges, `merge_pr.sh` fast-forwards the root's clone of that
 repo, when it is clean and on the pull request's base, past the commit the tool recorded for
-it in `state.yaml`. That is the move the tool's `sync` is designed to make to a clean repo
-that is still on the manifest's version, and that part of `sync` is not built yet; the tool's
-`status`, when it is built, should treat such a clone as expected. The layer is then rebuilt by hand until the tool builds.
+it in `state.yaml`. That is the move the tool's `sync` makes to a clean repo that is still
+on the manifest's version: the next `sync` finds the clone on the manifest's branch and records
+its commit, or fast-forwards it further. The tool's `status`, when it is built, should treat
+such a clone as expected. The layer is then rebuilt by hand until the tool builds.
 
 ### Worktrees
 

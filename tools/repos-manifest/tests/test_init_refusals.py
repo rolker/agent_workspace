@@ -407,10 +407,10 @@ def test_a_manifest_whose_resolved_files_cannot_be_written_out_creates_nothing(t
         "jazzy",
         "--yes",
         expect="ERROR: refusing to write the head comment: the manifest's location or a name"
-        " holds a control or invisible character\n",
+        " holds a control or invisible character; nothing was set up\n",
     )
     assert os.listdir(system) == ["unrelated.txt"]
-    assert "set up" not in err
+    assert "the system is set up" not in err
 
 
 def test_a_config_yaml_that_cannot_be_written_names_it_and_sets_nothing_up(tmp):

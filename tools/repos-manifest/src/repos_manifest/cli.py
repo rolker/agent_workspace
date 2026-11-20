@@ -20,6 +20,7 @@ from .emit import LAYOUT_FLAT, LAYOUT_MANIFEST_DIR, LAYOUTS, emit_manifest
 from .extends import resolve_chain
 from .init import run_init
 from .merge import merge_chain
+from .masking import mask_urls
 from .schema import ManifestError
 from .selectors import select_repos
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
@@ -327,7 +328,7 @@ def main(argv=None) -> int:
     try:
         return args.func(args)
     except ManifestError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        print(f"ERROR: {mask_urls(str(exc))}", file=sys.stderr)
         return 1
     except Exception as exc:
         # The backstop for a route the loader does not turn into a ManifestError: the

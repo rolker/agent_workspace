@@ -428,6 +428,10 @@ def test_the_install_note_names_removed_and_added_repos(stub, tmp_path, capsys):
     data["repositories"]["m"]["layer"] = "top"
     data["repositories"]["n"] = repo(make_remote(tmp_path / "remotes", "n"), None, "mid")
     write_manifest(path, data)
+    # sync does not move a repo given another layer; it says how, and that is done by hand.
+    assert run(system, "sync") == 1
+    (system / "top/src").mkdir(parents=True, exist_ok=True)
+    (system / "mid/src/m").rename(system / "top/src/m")
     assert run(system, "sync") == 0
     capsys.readouterr()
     assert run(system, "build", "mid") == 0

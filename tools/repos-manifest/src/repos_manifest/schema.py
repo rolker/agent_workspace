@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from .masking import quoted_url
 from .yamlload import (  # noqa: F401 (ManifestError, has_unsafe_char: imported from here too)
     ManifestError,
     _load_yaml,
@@ -162,7 +163,10 @@ def _check_name(kind: str, name, source: str, where: str) -> None:
     if isinstance(name, str) and pattern.fullmatch(name) and len(name) <= _NAME_MAX:
         return
     quote_hint = "" if isinstance(name, str) else " (quote it in the YAML)"
-    shown = repr(name) if not isinstance(name, str) or len(name) <= _NAME_MAX else "(too long)"
+    # A value of the wrong type is described by its kind, never shown (``masking.py``).
+    shown = (
+        quoted_url(name) if not isinstance(name, str) or len(name) <= _NAME_MAX else "(too long)"
+    )
     raise ManifestError(
         f"{source}: {where}: {kind} name {shown} is not allowed{quote_hint}; a {kind} name"
         f" is {allowed}, at most {_NAME_MAX} characters"
@@ -177,8 +181,8 @@ def refuse_case_twins(names, kind: str, source: str) -> None:
         other = by_fold.setdefault(name.casefold(), name)
         if other != name:
             raise ManifestError(
-                f"{source}: {kind} names {other!r} and {name!r} differ only in case; on a"
-                " case-insensitive disk one would overwrite the other"
+                f"{source}: {kind} names {quoted_url(other)} and {quoted_url(name)} differ only in"
+                " case; on a case-insensitive disk one would overwrite the other"
             )
 
 
@@ -224,9 +228,8 @@ def parse_manifest_text(text: str, source: str) -> Manifest:
     _refuse_unsafe_chars(raw, source, "")
     unknown = set(raw) - _TOP_LEVEL_KEYS
     if unknown:
-        raise ManifestError(
-            f"{source}: unknown top-level key(s): {sorted(repr(k) for k in unknown)}"
-        )
+        shown = sorted(quoted_url(k) for k in unknown)
+        raise ManifestError(f"{source}: unknown top-level key(s): {shown}")
 
     extends_ref: Optional[ExtendsRef] = None
     if "extends" in raw:

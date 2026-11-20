@@ -85,7 +85,12 @@ def test_flat_with_no_layers_and_no_distro(remotes, tmp_path, system, capsys):
     assert head(system / "src" / "b") == git("rev-parse", "v1", cwd=remotes["b"])
     assert config(system) == {"manifest": "../m.manifest.yaml", "layout": "flat"}
     recorded = state(system)["distros"]["_unnamed"]["repos"]
-    assert recorded["a"] == {"layer": "_unnamed", "version": None, "commit": head(system / "src/a")}
+    assert recorded["a"] == {
+        "layer": "_unnamed",
+        "version": None,
+        "commit": head(system / "src/a"),
+        "url": str(remotes["a"]),
+    }
     assert recorded["b"]["version"] == "v1"
     assert sorted(os.listdir(system / ".repos-manifest" / "resolved")) == sorted(
         [MARKER, "_unnamed.repos", "layers.txt", "optional.txt"]
@@ -115,6 +120,7 @@ def test_flat_with_layers_and_a_distro(remotes, tmp_path, system, capsys):
         "layer": "core",
         "version": "dev",
         "commit": head(system / "core/src/grp/c"),
+        "url": str(remotes["c"]),
     }
     out = capsys.readouterr().out
     assert (
@@ -229,8 +235,18 @@ def test_a_manifest_with_base_sets_up_the_merged_chain(remotes, tmp_path, system
     assert config(system) == {"manifest": "../manifests/leaf.manifest.yaml", "layout": "flat"}
     recorded = state(system)["distros"]["_unnamed"]["repos"]
     assert recorded == {
-        "a": {"layer": "underlay", "version": "jazzy", "commit": head(system / "underlay/src/a")},
-        "b": {"layer": "core", "version": "v1", "commit": head(system / "core/src/b")},
+        "a": {
+            "layer": "underlay",
+            "version": "jazzy",
+            "commit": head(system / "underlay/src/a"),
+            "url": str(remotes["a"]),
+        },
+        "b": {
+            "layer": "core",
+            "version": "v1",
+            "commit": head(system / "core/src/b"),
+            "url": str(remotes["b"]),
+        },
     }
     resolved = (system / ".repos-manifest/resolved/layers.txt").read_text()
     assert f"# base: {os.path.realpath(parent)}\n" in resolved
