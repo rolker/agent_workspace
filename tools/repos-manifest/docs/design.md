@@ -521,7 +521,8 @@ would both leave out is listed with the group. A manifest with no roles prints `
 the role, and the unnamed first layer prints as `(unnamed layer)`.
 
 With no manifest given, `show` must be run inside a system directory: it uses what
-`config.yaml` records and that distro's manifest, so it also shows the effect of `fetch_from`.
+`config.yaml` records and that distro's manifest. Showing the effect of `fetch_from` there is
+planned, not built: today it prints the manifest's own URLs.
 `--role` and `--with` are refused there, since the system records them; giving the manifest
 tries another role. Outside a system directory, a manifest is given.
 

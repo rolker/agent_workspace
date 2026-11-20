@@ -303,4 +303,4 @@ left out
 - [ ] (suggestion) Path labels are inconsistent: `base` lines print the real path, while the manifest and `from` lines print the label as given. Inside a system directory the labels are relative to the system directory, not to cwd, and the output does not say so — `tools/repos-manifest/src/repos_manifest/show.py:471`
 - [ ] (suggestion) Manifest and base path labels are printed with control characters and newlines left as they are (masking does not escape them); escape them on display — `tools/repos-manifest/src/repos_manifest/show.py:471`
 - [x] (suggestion) No test covers the refusal of `--distro ""` — `tools/repos-manifest/src/repos_manifest/cli.py:197`
-- [ ] (suggestion) The "show" section says no-argument `show` "also shows the effect of `fetch_from`", which is not built; mark it as planned there — `tools/repos-manifest/docs/design.md:521`
+- [x] (suggestion) The "show" section says no-argument `show` "also shows the effect of `fetch_from`", which is not built; mark it as planned there — `tools/repos-manifest/docs/design.md:521`
