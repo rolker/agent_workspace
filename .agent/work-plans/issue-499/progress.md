@@ -59,3 +59,13 @@ issue: 499
 - [ ] Extend the resolver to carry each entry's source manifest and a left-out list with reasons ("group X is off", "not on DISTRO") as a tested step before the printer; decide the layout in the plan.
 - [ ] Decide in the plan whether `init` switches to `show`'s output in this PR (the design says it should once `show` exists) or in a follow-up, and tick the roadmap accordingly.
 - [ ] For the acceptance run use the in-repo project11 fixture for robot, operator and developer on jazzy and rolling, not ~/project11.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 11:27 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review's actions are mechanism questions for the plan; none changes what the issue is for)
+**After**: issue-actions
+**Decision**: proceed
+
+Read the Issue Review at b5a7f3cc: verdict proceed to plan-task, no question for the owner. Its open actions (the manifest as a positional path like `init`, the URL and git-ref location forms left to another issue because the reader takes a local path only, the no-argument form, the resolver carrying where each entry came from and what was left out, whether `init` switches to `show`'s output in this pull request, the acceptance run on the in-repo project11 fixture rather than ~/project11) go to the plan, and the owner sees the plan's answers at the plan checkpoint.
