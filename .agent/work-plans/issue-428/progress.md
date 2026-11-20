@@ -570,7 +570,7 @@ The round-3 must-fix is partly fixed. Both fields now exist under the names the 
 The paragraph agrees with the rest of step 9. The flaw is the reference time (below).
 
 ### Findings
-- [ ] (must-fix) `**When**` is written when triage-reviews finishes, but triage fetches the reviews at its step 3, minutes earlier. A review submitted after that fetch and before the minute of `**When**` counts as read but never was. That is the late-review case this rule exists for, and the rule errs toward skipping there, not toward triaging again. Fix: compare against a time no later than triage's fetch, for example the time the host dispatched `triage-reviews`, which the host notes when it dispatches. — `.claude/skills/run-issue/SKILL.md:1008-1019`
+- [x] (must-fix) `**When**` is written when triage-reviews finishes, but triage fetches the reviews at its step 3, minutes earlier. A review submitted after that fetch and before the minute of `**When**` counts as read but never was. That is the late-review case this rule exists for, and the rule errs toward skipping there, not toward triaging again. Fix: compare against a time no later than triage's fetch, for example the time the host dispatched `triage-reviews`, which the host notes when it dispatches. — `.claude/skills/run-issue/SKILL.md:1008-1019`
 
 ## Checkpoint
 **Status**: complete

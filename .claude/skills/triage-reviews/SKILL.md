@@ -103,7 +103,16 @@ comments align with local files.
 
 ### 3. Fetch PR reviews and CI status
 
-Run the helper script to get all reviews and CI check status:
+First note the local time, just **before** the fetch, to the minute with
+its offset (`date '+%Y-%m-%d %H:%M %:z'`): it is the entry's
+`**Fetched**` field in step 7. Taken before the fetch, it is never later
+than the moment the reviews were read, so a review that lands during or
+after this run is at or after that minute and `/run-issue` step 9 sends
+it to triage again before the merge checkpoint (issue 428). A run that
+reads no pull-request reviews (only the local timeline is a source)
+still notes the time and writes the field.
+
+Then run the helper script to get all reviews and CI check status:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
@@ -397,6 +406,7 @@ never written again):
 **Status**: complete
 **When**: <YYYY-MM-DD HH:MM ±HH:MM>
 **By**: <agent name> (<model>)
+**Fetched**: <YYYY-MM-DD HH:MM ±HH:MM, noted just before step 3's fetch>
 
 **PR**: #<N> at `<short-sha>`
 **Sources**: <count> (e.g., Copilot R2 @ `<sha>`, Local Review @ `<sha>`, CI rollup)
