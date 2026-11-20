@@ -130,3 +130,18 @@ The approach is sound: one ladder shared with `sync`, offline, facts beside the 
 - [ ] Leave `docs/manifest/roadmap.md` row 27 open (or propose a split).
 - [ ] Add `ask`/`ask_local` to the safety scan's `GIT_CALLS`; avoid a bound default for `ask` so the no-network test can fail.
 - [ ] Owner: should `unknown` (status cannot tell) fail `validate`?
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 11:35 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review's verdict is needs-work; its twelve findings are fixes to the plan, and the one question it raised is already answered by the workspace's design)
+**After**: plan
+**Decision**: revise
+
+Read the Plan Review at b5216657 (verdict needs-work). All twelve findings go back to plan-task. Host decisions, listed for the owner's veto:
+
+1. The review asked whether `unknown` (the state where `status` cannot tell) should fail `validate`. `docs/manifest/design.md`, the `validate` row, already says: "Fail when `repos-manifest status` says a repo the manifest calls for is missing, or cannot say". So the plan follows that row and does not change it: `status` exits 1 when a repo the manifest calls for (not optional) is missing, is not at its place, or is `unknown`; `different`, local changes and unpushed commits exit 0; the JSON says which state each repo is in. This replaces the plan's decision 6. Undoing it is a change to one exit rule and its tests, and to the adapter's `validate` once issue 503 (the adapter calls the tool's commands) builds on it.
+2. Finding 4: a file at a repo's place, a place that fails the destination check, and a repo the manifest moved to another layer whose old place is still there each get a state of their own in the design table and count as not at its place (exit 1 for a repo that is not optional), since `sync` and `build` treat them as errors.
+3. Finding 6: the row of `docs/manifest/roadmap.md` that covers five things stays open and is not split in this pull request; the plan says which of the five this issue delivers.
+4. Finding 1 first: the tests for the stopped-move text on the in-progress and `index.lock` messages and for "has no commit checked out" are written and passing against today's `update.py` before any of it is refactored.
