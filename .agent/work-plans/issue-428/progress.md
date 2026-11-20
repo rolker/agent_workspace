@@ -647,3 +647,31 @@ The one defect left is a case the rule never ends (below), present since 5509c1a
 **Decision**: address
 
 The owner's answer in the dialog, to "Fix F1 and F2 once more before publishing?": "Fix once more (Recommended)". F1 is the round 5 must-fix (Local Review (Pre-Push) at 8e35a651): run-issue step 9's rule can loop forever on a review in state PENDING, which has no submitted_at; skip a review whose state is PENDING. F2 is that review's suggestion: compare against one minute before Fetched. The question reached him because the host had answered address twice in a row at this checkpoint. In the same dialog he answered a second question, about a stale check in test_ros2_colcon.sh that comes from main and not from this branch: "Issue + fix main first (Recommended)", so part 1 is published only after that fix is on main and merged into this branch.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 12:16 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-428 at `e668b698`
+**Addressed**: Local Review (Pre-Push) at `a8a95eb9` (2026-11-20 12:14 -05:00)
+**Commits**: e668b698
+
+Round 5 fix pass for part 1, answering the Checkpoint (address, owner: "Fix once more (Recommended)") at 5bac9083. Fresh dispatch after the earlier fix agent reached its resume limit. Only run-issue step 9's "Fetch again before every merge checkpoint" paragraph changed; no part 2 file touched; `plan.md` unchanged.
+
+Field confirmed before writing: `fetch_pr_reviews.sh` emits each review's state as `state` under `reviews[]` (line 107 builds it from GitHub's `.state`, line 177 carries it into the output). Script unchanged.
+
+### Actions
+- [x] (must-fix) F1: a review whose `state` is `PENDING` is skipped (an unsubmitted draft, no `submitted_at`, nobody's review to read yet) and never sends the host back to triage; an empty or unreadable time in any other state still counts as not read — `.claude/skills/run-issue/SKILL.md` step 9 (e668b698)
+- [x] (suggestion) F2: the comparison is against one minute before the start of the `**Fetched**` minute (`$(( $(date -d '<Fetched>' +%s) - 60 ))`), with the reason (local clock ahead of GitHub's, or a review listed a moment after it was stamped) and the cost (an occasional second triage) — `.claude/skills/run-issue/SKILL.md` step 9 (e668b698)
+
+### Termination, case by case
+- Submitted before the margin: it counts as read and is never sent to triage, so it cannot start a round.
+- Submitted inside the margin: it is triaged; that triage notes a later `**Fetched**` minute, and since `submitted_at` is fixed and `**Fetched**` only moves forward with the clock, it falls before the margin once a triage starts about two minutes after it, so it is read at most a few times, in practice once more.
+- PENDING: skipped outright, so it never sends the host round; once submitted it has a time and becomes one of the two cases above.
+- Any other state with an empty or unreadable time: this can still loop. Each triage reads it, the next re-fetch returns the same empty time, and it counts as not read again. Nothing in the text bounds it, and `dispatch_phase.sh`'s MAX_ROUNDS counts only pre-push reviews, not Integrated Reviews. What bounds it is GitHub's contract alone: every submitted review (any state but PENDING) carries `submitted_at`, so the case needs a GitHub or fetch fault. Left as is: a stop rule for it was not part of the owner's answer.
+
+Suites run, each on its own with `bash` (last result line):
+- `test_skill_paths.sh`: test_skill_paths: 164 passed, 0 failed
+
+The full pre-commit pass and the full run of every suite are left to the host.
