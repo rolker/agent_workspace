@@ -153,3 +153,70 @@ Read the Plan Review at b5216657 (verdict needs-work). All twelve findings go ba
 **Plan**: `.agent/work-plans/issue-502/plan.md` at `3dd5164d`
 
 Revision after the plan review (needs-work, twelve findings, all checked against the code and held). Characterisation tests for today's update.py come first, then the extraction; the exit rule follows the validate row (exit 1 for a non-optional repo missing, not at its place or unknown); three place states added; the five-part roadmap row stays open.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-20 11:40 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #502 — repos-manifest: `status` shows what differs from the manifest
+**Plan**: `.agent/work-plans/issue-502/plan.md` at `3dd5164d`
+**Branch**: `feature/issue-502`
+
+Second review, of the revision after the first review's twelve findings and the host's four checkpoint decisions. Checked against `tools/repos-manifest/src/repos_manifest/update.py` (`update_repo` lines 871-1095, `find_version`, `commit_on_origin`, `_move`, `_change`), `sync.py` (`present_repo`, `layer_moved`, `left_the_manifest`), `system.py` (`place_problem`, `distros_for`, `Config`), `manifest.py` (non-git types are refused at read), `tests/test_update.py` (lines 380-460), `tests/test_update_safety.py`, the tool's design (sync rules 1 to 12, `### status`), `docs/manifest/design.md` (the adapter's `validate`, the `validate` row, "What the tool has to give"), both roadmaps, and where the adapter's `validate` runs (`.agent/scripts/registration_verify.sh:159`, the sitrep roadmap checks). The script form and exit status are in scope (owner); the exit rule, the three place states, the open roadmap row and the characterisation-tests-first order are host decisions and are not re-argued. Nothing in `~/project11` was read or run.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One PR in six commits: design, characterisation tests, extraction, command, tests, docs. |
+| Issue alignment | Good | All states, facts and the several-distro default are covered; all twelve first-review findings are answered in the plan text (checked one by one below). Serves: "Easy to use, and Trust, control and information (README "Workspace goals"); `tools/repos-manifest/docs/design.md#status`, within `docs/manifest/design.md` ("What the tool has to give")." Both goals are sections of `README.md#workspace-goals`; the `#status` anchor exists. |
+| File targeting | Good | The files match the work; `docs/manifest/design.md` lines 313-316 keep a condition that becomes false (finding 7). |
+| Consequences | Needs work | `standing` gives answers `sync` does not give in two sub-cases the plan does not list (findings 1, 2); a stopped move is `unknown` (exit 1) where `sync` goes on (finding 3). |
+| Principle alignment | Needs work | "Verify before claiming": three sentences of the proposed design text are not true of the code (findings 2, 4, 6). "Ask about what matters": the exit rule's everyday effect on the adapter's `validate` is not said plainly (finding 5). |
+| ADR compliance | Good | ADR-0017 (design first and in the same change), ADR-0022 (inside in the tool's design, root files only at the boundary), ADR-0013. |
+| ROS conventions | N/A | Workspace tool. |
+
+### First review's findings, as the revision answers them
+
+1. Answered. 2a's tests (suffix on in-progress and `index.lock` when `moving` names `HEAD`; no-commit before the `moving` line is touched; the order of early answers) fail if the halves are reordered around the write or a message changes. The existing `test_update.py:395` keeps the suffix on "has uncommitted changes", which `blocked_late` must therefore hand back to `update_repo` (`also` is used again at line 962). The plan's "now also for an in-progress operation, not only `index.lock` as `test_update.py:429` has" is slightly off: line 429 already covers "a merge in progress"; harmless.
+2. Partly answered: sub-cases specified and pairs listed, but two sub-cases are answered wrongly (findings 1, 2 below).
+3. Answered: the three cases are true of the code (`find_version` lines 603-625, `commit_on_origin`, the url rule at 930-955); deleted-branch fixture added. The list is not the whole list (findings 1-3).
+4. Answered (decision 7); one wording point (finding 4).
+5. Answered (decision 6); its plain statement is finding 5.
+6. Answered: `recorded_distros` in the JSON, from `Config.distros`.
+7. Answered: row 27 of `docs/manifest/roadmap.md` stays open, no edit.
+8. Answered; the scan's reach is finding 8.
+9. Answered: `ask=None` resolved inside, and a `Git.run` patch refusing `ls-remote` and `fetch`.
+10. Answered.
+11. Answered.
+12. Answered (listed under Consequences).
+
+### Findings
+
+1. **[Consequences] medium** — `standing` calls "on the manifest's branch, `origin`'s branch an ancestor of `HEAD`" expected regardless of `unpushed`. With `unpushed == 0` and `HEAD` strictly ahead of `origin/<branch>` (a person fast-forwarded the branch to another `origin` branch's commits), `sync` reaches line 1044, finds `HEAD` not an ancestor of `origin`'s branch, and leaves it as "rewritten upstream". `status` says expected. Either make that sub-case `different` with `sync`'s wording, or keep it expected and add it to the agreement test's listed pairs and to the design text's list of differences.
+2. **[Consequences / design text] medium** — Rule 11 in `standing` says `different`, "`sync` would move it", unless the new branch is local with commits not on `origin` or held. `sync` reaches rule 11 only with no tracked changes (line 961) and no commits not on `origin` on the current branch (rule 9, line 1022); with either, it leaves the repo ("has uncommitted changes", "has N commits not on origin; the manifest names X; it is not switched"). `status` calls `standing` with both facts, so the detail and the design table's "(`sync` moves it, or leaves it when ...)" would say "moves" for a repo `sync` leaves. `_change` can also leave it (submodules or paths in the way). The detail should say `sync` moves it only when the repo has no changes and no commits only here, or say "`sync` would try to move it"; the table sentence should list those conditions, and the agreement test should cover rule 11 with unpushed commits and with changes.
+3. **[Consequences / exit status] medium** — The state table puts "a `sync` stopped while moving it" under `unknown`, so exit 1 for a repo that is not optional. In `sync` a `moving` line that names `HEAD` is only a suffix: with no operation in progress and no `index.lock`, `sync` goes on, and a clean repo on the version is "up to date" with the line removed (`test_a_moving_line_is_removed_when_the_repo_is_found_on_the_version`). A `sync` killed between its `moving` write and its final record (power loss on a field machine), or a `status` run beside a `sync` (decision 11), then fails `validate` though the next `sync` answers it. Also, the plan's `blocked_late` returns nothing for a stopped move alone in `sync`'s path, so `status` needs a separate rule for it that the plan does not name. Make the stopped move a fact (or a detail) beside the version state, with `unknown` only when an operation or `index.lock` is there too, or keep it `unknown` and list it among the pairs and in the design text.
+4. **[Design text] low** — `blocked-place` is described as "a link on the way leads outside the system directory". `place_problem` (system.py:316) fails for any link on the way whose real path is not the expected one, inside the system directory too; its own message is "leads outside its place". Say "a link on the way to the place", as rule 2 does. The test list in Approach 5 puts "a file on the way" under `blocked-place`, while the table puts it under `not-a-directory` (and `place_problem` says "is on the way and is not a directory"); make the test list match the table.
+5. **[Design text / exit status] medium** — The exit rule (host decision 6, not re-argued) makes `status` exit 1 for every `unknown` repo that is not optional. The design text says so only by combining the table with "or is `unknown`"; it does not say plainly what a developer will meet. The adapter's `validate` runs at registration (`registration_verify.sh:159`) and in sitrep's roadmap checks, and on #503 it will fail while a rebase, merge or bisect is in progress in any repo, while an editor's or a crashed git's `index.lock` is there, and for as long as a repo is a sparse checkout or a link at its place. The last two are lasting setups that `sync` leaves with exit 0 (`present_repo` returns LEFT for a link, line 439; rule 4 for sparse), so `validate` would fail for as long as a person keeps them. Add one plain sentence to the design text after the exit rule, naming these cases, so the owner can judge the rule with them in view. Owner question below.
+6. **[Design text] low** — `unpushed` is "counted as `sync` counts them", but `sync` counts only on a branch (line 1018); the plan's step 3 counts for every repo. A repo pinned detached at a tag whose commit no `origin` branch holds (a release tag on a commit off every branch) would show unpushed commits that are on `origin` as a tag. Count only on a branch (null when detached), or exclude tags `origin` has, and say which in the text.
+7. **[File targeting] low** — `docs/manifest/design.md` line 313, "Until `status` is built, the test is the folder being there", becomes false when this lands. Reword it to "Until the adapter calls `status` (#503)" in the same change, as the plan does for line 185.
+8. **[Tests] low** — The read-only scan over `status.py` sees only git calls written in `status.py`. Calls it makes into `update.py` helpers are scanned only by `update.py`'s own NEVER list, which allows writing calls (`update-ref -d`, `switch`, `merge`). Add to the scan a list of the `update` functions `status.py` may call (`blocked_early`, `blocked_late`, `tracked_changes`, `count`, `find_version`, `commit_on_origin`, `ask_local`, `standing`, `worktree_holding`, `recorded_kind`, ...) and fail on any other, so a call to `_move`, `_change`, `delete_probe_refs` or `_repoint` from `status.py` fails it.
+
+The proposed `### status` text is otherwise true on the points checked (offline answers and the three listed differences, which distros, the config fields, the place states against `layer_moved`, `present_repo` and `place_problem`, `fetched_from` and the record's url, not-in-manifest against `left_the_manifest`), is written in plain sentences, and has no bold lead-ins.
+
+### Summary
+
+The revision answers all twelve first-review findings, and the characterisation tests in 2a would catch a reorder around the `moving` write or a changed message. Before code, `standing` needs the two sub-cases where it would contradict `sync` fixed or listed. A stopped move needs a rule that matches `sync`. The design text needs three small corrections and one plain sentence on what the exit rule means for `validate` day to day. All of these are edits to the plan's text, small enough to do in one pass.
+
+### Recommended Actions
+
+- [ ] `standing`: on the manifest's branch with `HEAD` ahead of `origin`'s and `unpushed == 0`, answer as `sync` does (rewritten upstream, `different`) or list the pair.
+- [ ] Rule 11 detail and design-table sentence: "`sync` moves it" only with no changes and no commits only here; add agreement-test cases for rule 11 with unpushed commits and with changes.
+- [ ] A stopped move: a fact beside the version state, `unknown` only with an operation or `index.lock`; or list it as a difference. Name the rule in `status.py`'s steps.
+- [ ] Design text: "a link on the way to the place" for `blocked-place`; test list matching the table; `unpushed` counted on a branch only, or tags excluded.
+- [ ] Design text: one plain sentence after the exit rule naming a rebase or merge in progress, `index.lock`, a sparse checkout and a link at the place as cases that fail `validate`.
+- [ ] `docs/manifest/design.md` line 313 reworded in the same change.
+- [ ] Safety scan: allowlist of `update` functions `status.py` may call.
+- [ ] Owner: with those cases in view, should a sparse checkout and a link at the place (lasting setups `sync` leaves with exit 0) fail `validate` as `unknown`, or be states that exit 0?
