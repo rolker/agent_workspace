@@ -458,6 +458,20 @@ for shape in dangling file outside-unreachable missing-behind-link; do
     check "link not reaching a folder ($shape): the other entry is still there" test -f "$c/layer_ws/src/pkg_a/package.xml"
 done
 
+# A manifest path with a `..` segment is refused before the walk: with
+# `gone/../...` the walk stopped at the missing `gone` and took the entry
+# as absent, so its uncommitted change was deleted.
+echo "TEST: a manifest path with a .. segment is refused, the change kept"
+sb="$(make_sandbox)"; c="$sb/worktrees/workspace/issue-workspace-7"
+pkg="$(make_pkg_repo)"
+make_aggregate "$sb" layer_ws/src/sub/pkg_a "$pkg"
+printf '# project=demo issue=owner/pkg_a#7 layer=l1 base=main\n%s\t%s\tfeature/issue-7\n' "$pkg" gone/../layer_ws/src/sub/pkg_a > "$c/.worktree-repos"
+printf 'uncommitted\n' > "$c/layer_ws/src/sub/pkg_a/package.xml"
+rc=0; out="$(run_remove "$sb" 2>&1)" || rc=$?
+check "dot-dot: exit 1" test "$rc" -eq 1
+check "dot-dot: says a manifest path may not contain .." grep -qF "may not contain .." <<<"$out"
+check "dot-dot: the change is kept" grep -q uncommitted "$c/layer_ws/src/sub/pkg_a/package.xml"
+
 # The chmod never opens the top folder of a mount of another filesystem
 # (find -xdev alone still lists it). Mounting needs a user and mount
 # namespace (unshare -rm); where that is not allowed the case is skipped

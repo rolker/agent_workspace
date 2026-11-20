@@ -503,6 +503,14 @@ _entry_state() {  # <worktree_dir (physical, entered)> <dest>
 declare -a ENTRY_OWNERS=()
 for _i in "${!ENTRY_DESTS[@]}"; do
     _dest="${ENTRY_DESTS[$_i]}"
+    # A `..` segment could make the walk stop at a missing name before it
+    # and take an entry further on as absent; the scripts never write one.
+    case "/${_dest#"$WORKTREE_DIR"}/" in
+        */../*)
+            echo "Error: cannot remove ${_dest}: a manifest path may not contain ..; correct .worktree-repos by hand. Nothing was removed."
+            exit 1
+            ;;
+    esac
     _state_rc=0
     _state_out="$(_entry_state "$WORKTREE_DIR" "$_dest")" || _state_rc=$?
     case "$_state_rc" in
