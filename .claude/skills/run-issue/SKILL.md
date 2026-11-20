@@ -424,6 +424,15 @@ chain, which every dispatched phase must follow) into a fresh Agent tool call us
 printed `model=` as the model override. The dispatched phase
 fetches its own inputs (issue/PR body via `gh`) — nothing is injected.
 
+**A parallel build or test command always names its job count** (issue
+428, item 1): `-j 4` or `--parallel 4`, never the flag alone. The
+`conventions=` line carries this rule for every phase. The host checks any
+text it copies into a handoff from an issue, a plan or its own notes, and
+gives an uncounted command a count before it pastes it: a parallel build
+copied that way, with no count, was killed for lack of memory and took a
+session down (2026-11-09). The script prints the handoff but never sees the
+text the host adds, so this check is the host's.
+
 After the sub-agent returns, check the exit contract:
 
 ```bash

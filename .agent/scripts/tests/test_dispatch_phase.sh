@@ -1005,6 +1005,21 @@ for sk in review-issue plan-task review-plan review-code triage-reviews; do
         || fail "handoff $sk must not carry the hook rule (conv=$conv)"
 done
 
+# The job-count rule (issue 428, item 1) rides on conventions= for every
+# phase, committing or not: a review or planning phase can run a build too,
+# and a plan's text is where an uncounted command gets copied from. Only the
+# counted examples are asserted; the absence of a bare flag is not, because
+# the rule's own wording ("never the flag alone") would be all that check
+# could look at.
+for sk in review-issue plan-task review-plan implement review-code triage-reviews address-findings; do
+    out=$(run_handoff --issue 9 --skill "$sk" --pr 42)
+    conv=$(printf '%s\n' "$out" | grep '^conventions=')
+    [[ "$conv" == *"A parallel build or test command always names its job count, for example \`-j 4\` or \`--parallel 4\`"* \
+        && "$conv" == *"this holds for a command copied from an issue or a plan too"* ]] \
+        && pass "handoff: $sk conventions= carries the job-count rule with its counted examples (issue 428)" \
+        || fail "handoff $sk job-count rule (conv=$conv)"
+done
+
 out=$(run_handoff --issue 9 --skill review-issue --entry-type "Custom Type" --model haiku)
 [[ "$out" == *"entry_type=Custom Type"* && "$out" == *"model=haiku"* ]] \
     && pass "handoff: --entry-type / --model override the table" || fail "handoff overrides (out=$out)"
@@ -1131,6 +1146,9 @@ conv=$(printf '%s\n' "$out" | grep '^conventions=')
     && "$conv" == *"local time with offset"*"scratchpad"* ]] \
     && pass "handoff: --type project implement conventions= carries no workspace hook rule" \
     || fail "handoff project implement must not carry the hook rule (rc=$rc out=$out)"
+[[ "$conv" == *"always names its job count, for example \`-j 4\` or \`--parallel 4\`"* ]] \
+    && pass "handoff: --type project implement conventions= still carries the job-count rule (issue 428)" \
+    || fail "handoff project implement job-count rule (conv=$conv)"
 
 # (b) the retired locations (issue #265 part 4): no registry entry, a
 # worktree inside a project/ checkout's own worktrees/ dir (pre-#25) and
