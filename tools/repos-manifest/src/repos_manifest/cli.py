@@ -187,18 +187,18 @@ def cmd_validate(args: argparse.Namespace) -> int:
 def _show_in_system(args: argparse.Namespace, cwd: Path) -> selection.Resolved:
     """`show` with no manifest: what the system directory `cwd` is in records, for the one
     distro "Which distro a command uses" picks. Reads `config.yaml` and the manifest only."""
-    if args.role is not None or args.with_groups:
-        given = "--role" if args.role is not None else "--with"
-        raise Refusal(
-            f"{given} without a manifest: in a system directory show uses what it records",
-            "Give the manifest to try another role or other groups",
-        )
     system = find_system(cwd)
     if system is None:
         raise Refusal(
             f"no manifest given, and no system directory in {cwd} or above it (no"
             f" {SYSTEM_DIR}/ found)",
             "Give the manifest's path, or run show inside a system directory",
+        )
+    if args.role is not None or args.with_groups:
+        given = "--role" if args.role is not None else "--with"
+        raise Refusal(
+            f"{given} without a manifest: in a system directory show uses what it records",
+            "Give the manifest to try another role or other groups",
         )
     config = read_config(system)
     distro = one_distro_for(system, config, [args.distro] if args.distro else [], cwd)

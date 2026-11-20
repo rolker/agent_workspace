@@ -79,12 +79,17 @@ def test_show_with_a_manifest_inside_a_system_tries_another_role(tmp_path, capsy
     assert "  a   next" in out
 
 
-def test_show_outside_a_system_with_no_manifest_says_what_to_give(tmp_path, capsys, monkeypatch):
+@pytest.mark.parametrize("argv", [[], ["--role", "developer"], ["--with", "sim"]])
+def test_show_outside_a_system_with_no_manifest_says_what_to_give(
+    argv, tmp_path, capsys, monkeypatch
+):
+    # With --role or --with too: the missing manifest is the problem, not the role.
     monkeypatch.chdir(tmp_path)
-    assert main(["show"]) == 1
+    assert main(["show", *argv]) == 1
     err = capsys.readouterr().err
     assert f"no manifest given, and no system directory in {tmp_path} or above it" in err
     assert "Give the manifest's path, or run show inside a system directory" in err
+    assert "in a system directory show uses what it records" not in err
 
 
 def test_show_at_the_top_of_a_system_with_several_distros_asks_for_one(
