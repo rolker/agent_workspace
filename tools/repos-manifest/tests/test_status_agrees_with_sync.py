@@ -28,6 +28,12 @@ GOES_WITH = {
 DIFFER = {
     # The state is the version; `sync` leaves a repo with commits only here as it is.
     "commits only here": "left alone",
+    # The state is the version; `sync` leaves a repo with uncommitted changes as it is, and one
+    # where a remote of the probe's name is set while the url changed.
+    "on its branch, with changes": "left alone",
+    "behind, with changes": "left alone",
+    "a url changed, probe remote taken": "left alone",
+    "behind, probe remote taken": "left alone",
     # A branch another work tree holds is not fast-forwarded by `sync`.
     "behind, held by a work tree": "left alone",
     # `sync` asks origin, which no longer has the branch; `status` reads the stale ref.

@@ -66,9 +66,9 @@ BLOCKED_STATE = {
     update.SEVERAL_ORIGINS: LEFT_ALONE,
 }
 
-AS_FETCHED = (
-    "as origin was when this clone was last fetched; a sync, which fetches first, may find it"
-)
+# `sync` fetches only when nothing stops it first (uncommitted changes, a remote of the probe's
+# name with the url changed), so this says a fetch, not a sync, may find it.
+AS_FETCHED = "as origin was when this clone was last fetched; a fetch may find it"
 
 
 @dataclass
@@ -239,10 +239,19 @@ def _version(git, place, repo, record, head, origin, found):
     """The state and text of a repo that is a git repository with a commit, nothing in
     progress, and one `origin` url."""
     found.fetched_from = mask_url(origin)
-    remote_note = _remote_note(origin, repo, record)
+    repoint = _repoints(origin, repo, record)
+    taken = repoint and update.probe_taken(git)
+    remote_note = _remote_note(origin, repo, record, taken)
     changes = update.tracked_changes(git)
     if changes is None:
         return UNUSABLE, "`git status` fails here"
+    # What stops `sync` at the repo before its rules, in its order.
+    held = None
+    if taken:
+        held = f"sync leaves it while a remote named {update.PROBE} is set here"
+    elif changes:
+        many = update.counted(changes, "file")
+        held = f"sync leaves it while it has uncommitted changes ({many})"
     symbolic = git.out("symbolic-ref", "-q", "HEAD")
     branch = None
     if symbolic is not None and symbolic.startswith("refs/heads/"):
@@ -268,23 +277,43 @@ def _version(git, place, repo, record, head, origin, found):
                 f"version {repo.version} is a commit here that no branch of origin, and no tag"
                 f" origin has, holds; sync does not follow it{remote_note}",
             )
-    standing = update.standing(git, repo, record, version, head, branch, unpushed, changes)
+    standing = update.standing(git, repo, record, version, head, branch, unpushed, held)
     found.behind = standing.behind
     return (EXPECTED if standing.on_version else DIFFERENT), standing.text + remote_note
 
 
-def _remote_note(origin: str, repo: Selected, record: Optional[RepoRecord]) -> str:
-    """When `origin` is not the manifest's url: whether `sync` would repoint it."""
+def _repoints(origin: str, repo: Selected, record: Optional[RepoRecord]) -> bool:
+    """Whether `origin` is the url recorded and the manifest now names another: the case where
+    `sync` tries to repoint it."""
+    return (
+        not update.same_url(origin, repo.url)
+        and record is not None
+        and record.url is not None
+        and update.same_url(origin, record.url)
+    )
+
+
+def _remote_note(origin: str, repo: Selected, record: Optional[RepoRecord], taken: bool) -> str:
+    """When `origin` is not the manifest's url: what `sync` does about it. `taken` when a remote
+    of the probe's name is set here (`update.probe_taken`, read only for a url to repoint)."""
     if update.same_url(origin, repo.url):
         return ""
-    if record is not None and record.url is not None and update.same_url(origin, record.url):
+    shown, wanted = mask_url(origin), mask_url(repo.url)
+    if not _repoints(origin, repo, record):
         return (
-            f"; fetched from {mask_url(origin)}, the url recorded; the manifest now says"
-            f" {mask_url(repo.url)}, and sync repoints origin to it"
+            f"; fetched from {shown}, set by hand; the manifest says {wanted}, and sync leaves"
+            " origin as it is"
+        )
+    if taken:
+        return (
+            f"; fetched from {shown}, the url recorded; the manifest now says {wanted}, and a"
+            f" remote named {update.PROBE} is set here, a name sync keeps for checking a new"
+            " url, so sync leaves origin, and the repo, as they are"
         )
     return (
-        f"; fetched from {mask_url(origin)}, set by hand; the manifest says {mask_url(repo.url)},"
-        " and sync leaves origin as it is"
+        f"; fetched from {shown}, the url recorded; the manifest now says {wanted}, and sync"
+        " tries to repoint origin to it: it fetches from the new url first, and leaves origin,"
+        " and the repo, as they are when that fails or a local commit is not on the new url"
     )
 
 

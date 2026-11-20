@@ -406,6 +406,7 @@ STATUS_MAY_CALL = {
         "commit_on_origin",
         "ask_local",
         "standing",
+        "probe_taken",
         "same_url",
         "quoted",
         "counted",

@@ -167,7 +167,30 @@ def test_a_url_the_manifest_changed_is_said_to_be_repointed_by_sync(vcs, tmp_pat
     rewrite_manifest(case.manifest, change)
     found = repo_a(status(case.system, capsys, expect=0)[1])
     assert found["fetched_from"] == str(case.remote) and found["url"] == str(copy)
-    assert "the url recorded" in found["detail"] and "sync repoints origin" in found["detail"]
+    assert "the url recorded" in found["detail"]
+    assert "sync tries to repoint origin" in found["detail"]
+
+
+def test_a_probe_remote_with_the_url_changed_is_said_to_stop_sync(vcs, tmp_path, capsys):
+    """Must-fix 1 of the first review: `sync` leaves such a repo before its rules, so neither
+    the url nor the fast-forward is said to happen."""
+    case = make_case(tmp_path)
+    CASES["behind, probe remote taken"][0](case)
+    found = repo_a(status(case.system, capsys, expect=0)[1])
+    assert found["state"] == "expected" and found["behind"] == 1
+    assert "fast-forward" not in found["detail"] and "repoint" not in found["detail"]
+    assert "sync leaves origin, and the repo, as they are" in found["detail"]
+
+
+def test_behind_with_changes_is_not_said_to_be_fast_forwarded(vcs, tmp_path, capsys):
+    """Must-fix 1 of the first review: `sync` leaves a repo with uncommitted changes before it
+    would fast-forward it; the state stays expected."""
+    case = make_case(tmp_path)
+    CASES["behind, with changes"][0](case)
+    found = repo_a(status(case.system, capsys, expect=0)[1])
+    assert (found["state"], found["changes"], found["behind"]) == ("expected", 1, 1)
+    assert "fast-forward" not in found["detail"]
+    assert "sync leaves it while it has uncommitted changes (1 file)" in found["detail"]
 
 
 def test_a_url_set_by_hand_is_said_and_credentials_are_masked(vcs, tmp_path, capsys):

@@ -1214,26 +1214,38 @@ def standing(
     head: str,
     branch: Optional[str],
     unpushed: Optional[int],
-    changes: int,
+    held: Optional[str],
 ) -> Standing:
     """`status`'s reading of `update_repo`'s rules after the fetch, for a repo whose version
-    `found` was found: it acts on nothing. `update_repo` reaches its rules for the manifest's
-    branch only with no commits that are not on origin (it leaves the repo at rule 9 first);
-    this answers those cases too, as `sync` treats them: a branch with commits only here is on
-    the manifest's version, and one that origin's branch does not contain while it has none
-    only here was rewritten upstream. For the recorded version that the manifest changed, the
-    text says whether `sync` would try to move it, in the order `sync` checks: uncommitted
-    changes, commits not on origin, the new branch held by another work tree or a local branch
-    of it with commits not on origin. Reads only."""
+    `found` was found: it acts on nothing. It is a second copy of those rules, not code they
+    share; `tests/test_status_agrees_with_sync.py` holds the two in step. `update_repo` reaches
+    its rules for the manifest's branch only with no commits that are not on origin (it leaves
+    the repo at rule 9 first); this answers those cases too, as `sync` treats them: a branch
+    with commits only here is on the manifest's version, and one that origin's branch does not
+    contain while it has none only here was rewritten upstream.
+
+    `held` is what stops `sync` at the repo before these rules, as the caller read it (a
+    remote of the probe's name with the url changed, then uncommitted changes), or None. Every
+    sentence here that says what `sync` does to the repo says that instead when it is given.
+    Otherwise a fast-forward, and a move from the recorded version that the manifest changed,
+    are said as what `sync` tries: `_change` can still stop either (a path or a submodule in the
+    way), and so can a repoint of origin that fails. For the move, the checks `sync` makes
+    first are read here, in its order: commits not on origin, then the new branch held by
+    another work tree or a local branch of it with commits not on origin. Reads only."""
     wanted = repo.version if repo.version is not None else f"origin's default branch {found.name}"
     if found.kind == BRANCH and branch == found.name:
         if head == found.target:
             return Standing(True, f"on {found.name}, as origin's was when last fetched", 0)
         behind = count(git, f"{head}..{found.target}")
         if ancestor(git, head, found.target):
-            text = f"on {found.name}, behind origin's as last fetched (sync fast-forwards it)"
+            text = (
+                f"on {found.name}, behind origin's as last fetched (sync tries to fast-forward"
+                " it)"
+            )
             holder = worktree_holding(git, branch)
-            if holder is not None:
+            if held is not None:
+                text = f"on {found.name}, behind origin's as last fetched; {held}"
+            elif holder is not None:
                 text = (
                     f"on {found.name}, behind origin's as last fetched; branch {branch} is held"
                     f" by {holder}, so sync does not fast-forward it"
@@ -1267,14 +1279,13 @@ def standing(
             return Standing(
                 False,
                 f"it is on {where}, the version recorded ({record.version or 'no version'});"
-                f" the manifest now names {wanted}; " + _would_move(git, found, changes, unpushed),
+                f" the manifest now names {wanted}; " + _would_move(git, found, held, unpushed),
             )
         if found.kind == TAG and branch is None:
             return Standing(
                 False,
                 f"tag {found.name} here is now at {found.target[:12]}, and the repo is at"
-                f" {head[:12]}, where sync followed it; "
-                + _would_move(git, found, changes, unpushed),
+                f" {head[:12]}, where sync followed it; " + _would_move(git, found, held, unpushed),
             )
         name = version_ref(record.version or "")[1]
         tag = git.out("rev-parse", "--verify", "-q", f"refs/tags/{name}^{{commit}}")
@@ -1290,15 +1301,15 @@ def standing(
     detail = f"it is on {where}; the manifest names {wanted}"
     if record is not None and not same_version(record.version, repo.version, None, found.kind):
         detail += f" (recorded: {record.version or 'no version'})"
-    return Standing(False, detail + "; sync leaves it as it is")
+    return Standing(False, detail + "; sync does not move it")
 
 
-def _would_move(git: Git, found: Version, changes: int, unpushed: Optional[int]) -> str:
+def _would_move(git: Git, found: Version, held: Optional[str], unpushed: Optional[int]) -> str:
     """Whether `sync` would try to move a repo from the recorded version to `found`, by the
-    checks it makes first; `_change` can still stop a move (a path or a submodule in the
-    way), so the most it says is that it would try."""
-    if changes:
-        return f"sync leaves it while it has uncommitted changes ({counted(changes, 'file')})"
+    checks it makes first (`held`, as for `standing`); `_change` can still stop a move (a path
+    or a submodule in the way), so the most it says is that it would try."""
+    if held is not None:
+        return held
     if unpushed:
         return f"sync leaves it while it has {counted(unpushed, 'commit')} not on origin"
     if found.kind == BRANCH:

@@ -80,6 +80,38 @@ def behind_held_by_a_work_tree(case):
     git("worktree", "add", "-q", "-f", str(case.tmp / "wt"), "main", cwd=case.clone)
 
 
+def changes_on_its_branch(case):
+    (case.clone / "README").write_text("mine\n")
+
+
+def behind_with_changes(case):
+    """`sync` stops at the changes before it would fast-forward."""
+    behind(case)
+    (case.clone / "README").write_text("mine\n")
+
+
+def url_changed(case):
+    """The manifest names a copy of the remote; origin is still the url recorded."""
+    copy = case.tmp / "remotes" / "a-copy"
+    shutil.copytree(case.remote, copy)
+
+    def change(data):
+        data["repositories"]["a"]["url"] = str(copy)
+
+    rewrite_manifest(case.manifest, change)
+
+
+def url_changed_probe_taken(case):
+    """The url changed, and a person has a remote of the name `sync` keeps for the probe."""
+    url_changed(case)
+    git("remote", "add", "repos-manifest-probe", str(case.remote), cwd=case.clone)
+
+
+def behind_probe_taken(case):
+    behind(case)
+    url_changed_probe_taken(case)
+
+
 def commits_only_here(case):
     commit_file(case.clone, "mine", "mine\n", "mine")
 
@@ -257,6 +289,23 @@ CASES = {
     "pinned at a commit": (pinned_commit, "expected", "pinned at"),
     "behind origin": (behind, "expected", "behind origin's"),
     "behind, held by a work tree": (behind_held_by_a_work_tree, "expected", "is held by"),
+    "on its branch, with changes": (changes_on_its_branch, "expected", "on main"),
+    "behind, with changes": (
+        behind_with_changes,
+        "expected",
+        "sync leaves it while it has uncommitted changes (1 file)",
+    ),
+    "a url changed": (url_changed, "expected", "sync tries to repoint origin"),
+    "a url changed, probe remote taken": (
+        url_changed_probe_taken,
+        "expected",
+        "a remote named repos-manifest-probe is set here",
+    ),
+    "behind, probe remote taken": (
+        behind_probe_taken,
+        "expected",
+        "sync leaves it while a remote named repos-manifest-probe is set here",
+    ),
     "commits only here": (commits_only_here, "expected", "1 commit not on origin"),
     "fast-forwarded by hand": (fast_forwarded_by_hand, "expected", "on main"),
     "a tag on no branch": (tag_on_no_branch, "expected", "pinned at v9"),

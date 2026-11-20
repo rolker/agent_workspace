@@ -1523,8 +1523,8 @@ even after a fetch:
 - a remote-tracking ref left from a branch `origin` deleted: `sync` never prunes, so `status`, which
   reads the refs, calls the branch expected while `sync`, which asks `origin`, says it is not there;
 - a tag here that `origin` lacks: offline it cannot be told from `origin`'s tag, so `status` counts it;
-- a url that the manifest changed while the record still matches `origin`: `sync` repoints `origin` and
-  fetches from the new url, `status` answers from the refs of the old one.
+- a url that the manifest changed while the record still matches `origin`: `sync` tries to repoint
+  `origin` and then fetches from the new url, `status` answers from the refs of the old one.
 
 A `--remote` that asks `origin` itself is not built.
 
@@ -1542,8 +1542,8 @@ For each repo of the manifest, in layer order, one state, and facts that go with
 
 | State | Meaning |
 |---|---|
-| expected | on the manifest's version, by the rules `sync` follows: on the branch it names, or detached at its tag or commit. A branch behind `origin`'s is still expected; `behind` says how far (`sync` fast-forwards it). A branch with commits only here (`sync` leaves it as it is) and a branch another work tree holds are expected, with the commits or the work tree named. A clone `merge_pr.sh` fast-forwarded past the recorded commit is expected. |
-| different | there, and on another branch, tag or commit; on the manifest's branch but not contained in `origin`'s with no commits only here (rewritten upstream, as `sync` says); on the version it was recorded on while the manifest now names another (`sync` tries to move it when the repo has no changes and no commits only here; with either, or when the new branch is local with commits not on `origin`, or held by another work tree, it leaves it: the text says which); or the manifest's version is a commit no branch or tag of `origin` holds. The text says where it is and what the manifest names. |
+| expected | on the manifest's version, by the rules `sync` follows: on the branch it names, or detached at its tag or commit. A branch behind `origin`'s is still expected; `behind` says how far, and the text says whether `sync` tries to fast-forward it or what stops it first: uncommitted changes, a remote of the name `sync` keeps for checking a new url (`repos-manifest-probe`) while the manifest changed the url, or another work tree holding the branch. A fast-forward `sync` tries can still be stopped by a path or a submodule in the way, which `status` does not check. A branch with commits only here (`sync` leaves it as it is) and a branch another work tree holds are expected, with the commits or the work tree named. A clone `merge_pr.sh` fast-forwarded past the recorded commit is expected. |
+| different | there, and on another branch, tag or commit; on the manifest's branch but not contained in `origin`'s with no commits only here (rewritten upstream, as `sync` says); on the version it was recorded on while the manifest now names another (`sync` tries to move it when nothing stops it first; it leaves it for a remote of the probe's name with the url changed, uncommitted changes, commits only here, a local new branch with commits not on `origin`, or the new branch held by another work tree: the text says which, in that order); or the manifest's version is a commit no branch or tag of `origin` holds. The text says where it is and what the manifest names. |
 | left-alone | there, and `sync` leaves it as it is, so `status` does not compare its version: a link at the place, a rebase, merge, bisect or other operation in progress, `index.lock`, a sparse checkout, or an `origin` with more than one url. The text says which. |
 | unusable | there, but `status` cannot use it as a clone of the manifest's version: not a git repo of its own, no commit checked out, no `origin` url at all, the manifest's version cannot be found among the refs `origin` had when last fetched or names no single commit there (a branch and a tag of the same name, a tag of something that is not a commit, a commit missing from a shallow clone, no version and no recorded default branch), or `git` cannot read its state (`git status` or the count of commits not on `origin` fails). The text says which. |
 | missing | not there. `sync` clones it, and reports an error only when the clone fails. |
@@ -1569,8 +1569,10 @@ Facts, for a repo that is there: `changes` (tracked files changed, counted as `s
 `unpushed` (commits reachable from `HEAD` and from no remote-tracking ref of `origin`, counted as
 `sync` counts them: on a branch only, null when `HEAD` is detached), `behind` (commits of `origin`'s
 branch the clone lacks, on the manifest's branch), and `fetched_from`, the url of `origin`, with any
-user name and password masked. When it is not the manifest's url the text says which: the record
-says `sync` would repoint it, or it was set by hand and is left. A repo can be expected and have
+user name and password masked. When it is not the manifest's url the text says which: it is the url recorded,
+so `sync` tries to repoint it (fetching from the new url first, and leaving `origin` and the repo as
+they are when that fetch fails or a local commit is not on the new url), or `sync` leaves it because a
+remote named `repos-manifest-probe` is set here; or it was set by hand and is left. A repo can be expected and have
 changes and unpushed commits at once, as `sync` leaves such a repo as it is; the state is the
 version, the facts are separate.
 
