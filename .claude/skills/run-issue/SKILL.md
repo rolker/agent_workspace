@@ -424,6 +424,15 @@ chain, which every dispatched phase must follow) into a fresh Agent tool call us
 printed `model=` as the model override. The dispatched phase
 fetches its own inputs (issue/PR body via `gh`) — nothing is injected.
 
+**A parallel build or test command always names its job count** (issue
+428, item 1): `-j 4` or `--parallel 4`, never the flag alone. The
+`conventions=` line carries this rule for every phase. The host checks any
+text it copies into a handoff from an issue, a plan or its own notes, and
+gives an uncounted command a count before it pastes it: a parallel build
+copied that way, with no count, was killed for lack of memory and took a
+session down (2026-11-09). The script prints the handoff but never sees the
+text the host adds, so this check is the host's.
+
 After the sub-agent returns, check the exit contract:
 
 ```bash
@@ -920,10 +929,69 @@ absent from the check list entirely) and any requested human reviews are
 in — otherwise `triage-reviews` runs before Copilot's review exists and
 triages a source that lands minutes later. **CI may still be running**:
 that is the wall-clock saving, since a triage of the review sources does
-not depend on the CI verdict. One case looks like a completed review but
-is not: when Copilot's quota is exhausted it posts a plain issue comment
-saying so instead of a review — that comment is not a review source for
-`triage-reviews`, so note it and move on rather than waiting further.
+not depend on the CI verdict. When Copilot cannot review (its quota is
+exhausted, or it hit an error) it still posts a **review** by its own
+account (`copilot-pull-request-reviewer[bot]`) saying it was unable to
+review this pull request, and its check-run completes with it (seen on
+pull request 400: conclusion `failure`, within seconds of the review). So
+the wait ends as for any review; nothing has to recognise the notice for
+that. Read it like any review: it holds no findings only because its own
+words say it could not review. Say so on the hand-back's
+outside-reviewer line and dispatch `triage-reviews`, which reads it too
+(issue 428, item 5).
+
+**What ends the wait, and what is read, are two different things** (issue
+428, item 5). `fetch_pr_reviews.sh` returns every review in the pull
+request's history, and its `ci_checks` are those of the current head.
+This round's wait ends when either is true:
+
+- the `copilot-pull-request-reviewer` check-run in `ci_checks` has a
+  `conclusion` (any: `success`, `failure` or other), even when no review
+  has landed on the head; or
+- a hosted review whose `commit_id` is the output's `head_sha` has
+  arrived.
+
+An earlier round's review, a could-not-review one included, is about an
+older commit and does not end this round's wait. Being read is wider:
+`triage-reviews` reads every review the pull request holds, whatever its
+`commit_id`, and the re-fetch before every merge checkpoint (below)
+sends any review it has not read to it first.
+
+**The wait is bounded while no review check-run has appeared** (issue
+428, item 5). Poll `fetch_pr_reviews.sh` after publish (or after the
+PR-mode review):
+
+- **No `copilot-pull-request-reviewer` check-run in `ci_checks`**: wait at
+  most about 900 s. If none has appeared and no review on the head has
+  arrived by then, record "review never arrived" on the hand-back's
+  outside-reviewer line and dispatch `triage-reviews` with the sources
+  that exist. A review that never starts is an absence, and only time
+  bounds an absence.
+- **The check-run is there with no `conclusion` yet** (running): the
+  review has started, so the 900 s does not apply; wait for it to
+  complete. What bounds this wait is the merge script's own hold, which
+  the host adopts: `merge_pr.sh` holds on a review check-run that exists
+  and has not finished up to `MERGE_PR_CI_TIMEOUT_SECONDS` (default
+  1800 s), then refuses with the review-pending error. A check-run still
+  running after about 1800 s of the host's wait is recorded as "review
+  still running after 1800 s" on the outside-reviewer line, and
+  `triage-reviews` is dispatched with the sources that exist. A
+  check-run that never appears holds nothing in `merge_pr.sh`, which is
+  why the first case needs the host's own bound.
+
+Either exit can leave a review that lands after triage, and a later push
+of bookkeeping commits can leave one on an earlier commit of this round;
+the re-fetch before every merge checkpoint (below) catches both.
+
+The 900 s is the standing rule's timeout of about twice the expected
+duration (`host_standing_rules.md`: "no waits on things that will not
+arrive, a timeout of about twice the expected duration") applied to the
+measured review time: on pull requests 416, 417 and 420 reviews arrived
+between 0 and 30 minutes after the reviewed commit, most within 1 to 6
+minutes and all but two within 9; the two outliers took 17 and 30
+minutes (commit time precedes push time, so all of these are upper
+bounds). The outliers are why the bound stops once a check-run is
+running: a slow review is still a review on its way, not an absence.
 
 When CI has not settled, say so in the dispatch: the `## Integrated
 Review` records `**CI**: pending` (a value in `triage-reviews`' own `**CI**`
@@ -931,10 +999,32 @@ vocabulary) instead of `all-pass` / `failures-noted`. `merge_pr.sh` still
 gates the merge on CI regardless — triaging early never merges anything
 early.
 
-**Re-check CI before the merge checkpoint.** After an `## Integrated
-Review` that recorded `**CI**: pending`, run `fetch_pr_reviews.sh --pr
-<M>` again before presenting the `merge` checkpoint, and do not present it
-while CI is still running. After publish, CI on each push is the check on
+**Fetch again before every merge checkpoint.** Before presenting any
+`merge` checkpoint, run `fetch_pr_reviews.sh --pr <M>` again, on every
+path (a review that arrived, "review never arrived", "review still
+running after 1800 s", or a head moved by a bookkeeping push). Two
+checks on its output:
+
+- **A review not yet read.** The latest `## Integrated Review` in
+  `progress.md` lists on its `**Reviews-read**` line the `review_id` of
+  every review `triage-reviews` fetched and read, or `none`. A review in
+  the output whose `state` is not `PENDING` and whose `review_id` is not
+  on that line has not been read, whatever its `commit_id`. An entry with
+  no `**Reviews-read**` line (one written before the field existed)
+  counts as having read none. A `PENDING` review is a draft its author has
+  started and not submitted (GitHub lists the account's own draft): it is
+  nobody's review to read yet, never sends the host back to triage, and
+  is never on the line, so once submitted, under the same `review_id`, it
+  counts as not read. Any review not read goes to `triage-reviews` before
+  the checkpoint is presented, so no review is merged past unread (issue
+  428, item 5), with one limit: a review whose text is edited after
+  triage keeps its `review_id` and is not read again (GitHub gives no
+  edit time). That triage lists it, so the next fetch finds it read:
+  each review sends the host back to triage at most once.
+- **CI.** After an `## Integrated Review` that recorded `**CI**:
+  pending`, do not present the checkpoint while CI is still running.
+
+After publish, CI on each push is the check on
 a fix pass's commits: under the Hook rule (step 4) the pass ran only the
 suites that test what it changed, and the host's full pass ran once,
 before publish (step 7), so CI's verdict on the pushed head is confirmed
@@ -1014,7 +1104,11 @@ References for the gate rule.
 
 ### 11. Leave the worktree before merging
 
-`merge_pr.sh` removes the worktree and deletes the branch. Before
+`merge_pr.sh` removes the worktree and deletes the branch. On the
+owner's merge answer, before anything else, run `fetch_pr_reviews.sh
+--pr <M>` once more and apply step 9's "A review not yet read" check: if a
+review landed while he decided, do not merge; send it to `triage-reviews`
+and present the merge checkpoint again. Before
 `action=merge` (row 21), still in the worktree, push the outstanding
 record commits and check that nothing is left unpushed or uncommitted
 (step 10). Then `cd` to this session's root: the `root=`
