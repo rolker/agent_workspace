@@ -194,3 +194,13 @@ The revision answers all nine findings, and the new parts hold against the code:
 - [ ] Drop `test_extends.py` from the Files to Change test row
 - [ ] Align `## Design Picture` with the whole rewrite of the "init" paragraph
 - [ ] Say what `init` prints in place of the `distro <name>` line when the manifest has no distros, and pin it at `test_init.py:327`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 11:35 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the second plan review finds the plan ready to implement, with three minor wording points and no question for the owner)
+**After**: plan
+**Decision**: proceed
+
+Read the Plan Review at db66afbe: all nine findings of the first review are answered and the revision's new parts hold against the code. Its three minor findings go to the implementer in the handoff rather than a third plan round: the Files to Change row that still names `test_extends.py` is read as `test_base_merge.py`; the `init` summary paragraph of the design is rewritten whole, as step 4 says; and, a host decision listed for the owner's veto, for a manifest with no `distros:` `init` leaves the `distro` line out rather than printing a placeholder, pinned in the test at `test_init.py:327`. Undoing that is one line of output and its test.
