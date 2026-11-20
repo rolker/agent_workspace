@@ -321,8 +321,9 @@ class DistroResult:
 
 
 def _say(done: RepoResult) -> None:
-    """The line for a repo as it is handled; an up-to-date or present repo has none. A url's
-    user name and password, in what `sync` or git says, are never printed."""
+    """The line for a repo as it is handled; an up-to-date or present repo has none. What
+    `sync` or git says is passed through the masking filter (`mask_urls`), which masks a url's
+    user name and password within the limits the design lists (``docs/design.md``, "sync")."""
     detail = mask_urls(done.detail)
     if done.outcome == FAILED:
         print(f"ERROR: {done.path}: {detail}", flush=True)

@@ -117,12 +117,14 @@ it is. A version given as a commit is followed only when `origin` holds it. An
 clone still has the url `sync` recorded and no local branch has commits it lacks. Where `sync`,
 `init`, `resolve` and `validate` put a url into a message, a `scheme://` url's user name and
 password are masked as `***`, and a value of the wrong type is described, not shown; the lines
-`sync` prints for a repo, and the error of a manifest that cannot be read or is refused, are
-masked again as they are printed. Other lines, such as an error that echoes a value typed on the
-command line, are printed as given. That is a guard against accidents, not a guarantee: a user
-name and password belong in a credential helper or an ssh key, not in a manifest url
-([docs/design.md](docs/design.md#sync) says what is masked and what is not). A repo the manifest
-moves to another layer is not moved: `sync` prints the `mv` command. A clone with
+`sync` prints for a repo's outcome, and the error of a manifest that cannot be read or is
+refused, are masked again as they are printed. Other lines are printed as given: for example,
+the "unknown role" error of an earlier-format manifest, which echoes the role typed on the
+command line (in the current format that error passes the filter). That is a guard against
+accidents, not a guarantee: a user name and password belong in a credential helper or an ssh
+key, not in a manifest url ([docs/design.md](docs/design.md#sync) says what is masked and what
+is not). A repo the manifest moves to another layer is not moved: `sync` prints the `mv`
+command. A clone with
 commits not on `origin` is not rebased yet; `sync` prints the `git pull --rebase` command for a
 person to run. Both need `git`, and `vcs` from vcs2l or vcstool, on `PATH`.
 [docs/design.md](docs/design.md#sync) gives the rules and

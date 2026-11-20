@@ -914,17 +914,20 @@ It is masked at two places:
   an unknown top-level key the same way; its other messages that print a value from a
   manifest ([prototype.md](prototype.md) lists them) are masked only as they are printed.
 - As some lines are printed. These lines pass through a filter: each line `sync` prints for a
-  repo (what it says and what git says, `ERROR:`, `skipped`, `left alone` and the updated
-  line, and a repo's notes), `sync`'s `ERROR:` line for a distro whose plan or run failed, and
-  the `ERROR:` line any command ends with when it stops on the tool's own kind of error (a
-  manifest that cannot be read or is refused, a system or a record in the wrong state; the
-  handler in `cli.py`). The filter masks each url the tool read where it follows `://`, its
+  repo's outcome (what it says and what git says, `ERROR:`, `skipped`, `left alone` and the
+  updated line, and a repo's notes), `sync`'s `ERROR:` line for a distro whose plan or run
+  failed, and the `ERROR:` line any command ends with when it stops on the tool's own kind of
+  error (a manifest that cannot be read or is refused, a system or a record in the wrong state;
+  the handler in `cli.py`). The filter masks each url the tool read where it follows `://`, its
   `%`-decoded form too, and a url it did not read itself (git's message after an `insteadOf`
   rewrite, a value typed on the command line) by its shape, up to the first `@` that a host
-  follows within one run of characters that are not white space. Other lines are printed as
-  given: the "unknown role" error of `resolve` and `validate` on an earlier-format manifest,
-  which echoes the role typed on the command line, the `ERROR:` line of a run stopped by a
-  signal, `sync`'s line for a setup file it could not write, and every `WARNING:` line.
+  follows within one run of characters that are not white space. Two other lines `sync` prints
+  for a repo are not filtered, `cloning <path>` and "<path>: holds the manifest, …": they show
+  only the repo's path, its key, which cannot hold a `scheme://` url (a repo key has no `//`).
+  Other lines are printed as given, among them: the "unknown role" error of `resolve` and
+  `validate` on an earlier-format manifest, which echoes the role typed on the command line, the
+  `ERROR:` line of a run stopped by a signal, `sync`'s line for a setup file it could not write,
+  and every `WARNING:` line.
 
 What is not masked, so a user name and password in a url can be printed:
 - A `file://` url whose password holds a `/`: the password reaches past the authority and

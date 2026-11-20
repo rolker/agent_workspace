@@ -3,9 +3,12 @@ person's work is in the update module, the paths check refuses every file git do
 that an incoming file would replace, and a repo left alone is the same, byte for byte, after
 the run. The whole repo is compared with `snapshot_repo`.
 
-`NEVER` and its scan do not cover everything that can lose work, and nothing in `update.py`
-runs these today: a forced refspec (`+refs/...`), `reset --merge` and `reset --keep`,
-`checkout -B` and `update-ref -d`."""
+`NEVER` and its scan do not look for every form that can lose work. `update.py` does fetch
+with a forced refspec into remote-tracking refs (`+refs/heads/*:refs/remotes/origin/*`, and
+into its own probe refs under `refs/remotes/`), and does run `update-ref -d` on those probe
+refs only; neither touches a local branch, a tag or the work tree. The scan does not look for
+these forms, nor for `reset --merge`, `reset --keep` and `checkout -B`, which `update.py` does
+not run."""
 
 import ast
 import re
