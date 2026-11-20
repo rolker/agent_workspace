@@ -478,3 +478,36 @@ Suites run, each on its own with `bash` (last result line):
 - `test_ros2_colcon.sh` (names `worktree_remove.sh`; part 2 file, run only): === Results: 1374 passed, 1 failed, 0 skipped === — FAILED, the same case as round 1 and not from this branch ("adapter sync: the tool's own report": the in-repo `repos-manifest` now prints `up to date (2)`; the round-2 review confirmed both strings are on main as they are).
 
 The full pre-commit pass and the full run of every suite are left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-20 12:06 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a17e31622226f8c63, resume 2 of 3)
+
+**Branch**: feature/issue-428 at `84e27963`
+**Base**: origin/main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 1 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — round 3: 1 mechanical must-fix (prev 2), not rising — fix and ship rather than another full round
+
+Scope: the round-2 findings and the fix diff since f60c8faf. Cross-model: skipped (round-3 convergence check, per handoff).
+
+Round-2 findings:
+- Must-fix 1 (re-fetch on every path): partly fixed. The re-fetch now runs before every merge checkpoint. Its test for a review not yet read keys on fields the entry does not carry reliably (the new must-fix below).
+- Must-fix 2 (the false link message): fixed. A new permission message, and a test with a mode 600 entry.
+- Concluded check-run ends the wait: fixed.
+- `_make_dirs_writable "$WORKTREE_DIR"` before the loop: fixed. It runs at line 510, after every refusal: the owner and link checks, and the dirty check at 473. The dropped pass after the loop covered nothing that remains: the container was walked before the loop, an entry on another filesystem is still walked on its own, and removal creates no read-only directory.
+- `-xdev` wording: fixed.
+- Test trap: fixed.
+- Plan drift: taken by the host, recorded in the pull request text.
+
+The fix diff introduces no other defect.
+
+Verified:
+- `test_worktree_remove.sh`: 46 passed, 0 failed, run with `bash`.
+- shellcheck at warning severity: clean on `worktree_remove.sh` and its test.
+
+### Findings
+- [ ] (must-fix) The test for a review not yet read keys on a `**Reviews**` line. The `## Integrated Review` entry that triage-reviews persists has no such line (`triage-reviews/SKILL.md:396-412`; `**Reviews**` is only in its conversation report, line 292). Its `**Sources**` line is a count with optional examples, not a required list of each review and its commit. As written, the check can miss a late review. Fix: key the check on a field that exists, for example any review whose `submitted_at` is later than the latest Integrated Review's `**When**`; or make triage-reviews write the field it names. — `.claude/skills/run-issue/SKILL.md:1008-1013`
