@@ -1017,7 +1017,9 @@ checks on its output:
   is never on the line, so once submitted, under the same `review_id`, it
   counts as not read. Any review not read goes to `triage-reviews` before
   the checkpoint is presented, so no review is merged past unread (issue
-  428, item 5). That triage lists it, so the next fetch finds it read:
+  428, item 5), with one limit: a review whose text is edited after
+  triage keeps its `review_id` and is not read again (GitHub gives no
+  edit time). That triage lists it, so the next fetch finds it read:
   each review sends the host back to triage at most once.
 - **CI.** After an `## Integrated Review` that recorded `**CI**:
   pending`, do not present the checkpoint while CI is still running.
