@@ -1199,7 +1199,7 @@ def update_repo(
 class Standing:
     """Where a repo stands against the manifest's version, by the rules `sync` follows after
     its first checks (rules 9 to 12 of "sync"): on it or not, the text, and, on the manifest's
-    branch, how many commits of origin's branch it lacks."""
+    branch, how many commits of origin's branch it lacks (None elsewhere)."""
 
     on_version: bool
     text: str
@@ -1229,8 +1229,8 @@ def standing(
     if found.kind == BRANCH and branch == found.name:
         if head == found.target:
             return Standing(True, f"on {found.name}, as origin's was when last fetched", 0)
+        behind = count(git, f"{head}..{found.target}")
         if ancestor(git, head, found.target):
-            behind = count(git, f"{head}..{found.target}")
             text = f"on {found.name}, behind origin's as last fetched (sync fast-forwards it)"
             holder = worktree_holding(git, branch)
             if holder is not None:
@@ -1252,9 +1252,11 @@ def standing(
                     f" only here; to publish them (sync never pushes): git -C {quoted(git.place)}"
                     f" push origin {quoted(branch)}"
                 )
-            return Standing(True, text)
+            return Standing(True, text, behind)
         return Standing(
-            False, f"origin's {found.name} no longer contains this commit (rewritten upstream)"
+            False,
+            f"origin's {found.name} no longer contains this commit (rewritten upstream)",
+            behind,
         )
     if found.kind != BRANCH and branch is None and head == found.target:
         return Standing(True, f"pinned at {found.name}")

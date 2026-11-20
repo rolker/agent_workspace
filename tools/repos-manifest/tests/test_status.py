@@ -117,8 +117,12 @@ def test_changes_and_commits_only_here_are_facts_beside_the_state(vcs, tmp_path,
     case = make_case(tmp_path)
     commit_file(case.clone, "mine", "mine\n", "mine")
     (case.clone / "README").write_text("changed\n")
+    commit_file(case.remote, "theirs", "t\n")
+    git("fetch", "-q", "origin", cwd=case.clone)
     found = repo_a(status(case.system, capsys, expect=0)[1])
     assert (found["state"], found["changes"], found["unpushed"]) == ("expected", 1, 1)
+    assert found["behind"] == 1  # counted on the manifest's branch whatever else is there
+    assert "pull --rebase" in found["detail"]
 
 
 def test_a_detached_head_has_no_unpushed_count(vcs, tmp_path, capsys):
