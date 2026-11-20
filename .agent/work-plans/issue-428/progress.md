@@ -1051,3 +1051,35 @@ Reviewers:
 - [x] (must-fix) A manifest path with `..` after a missing name is judged ABSENT at that missing name, and the rest of the path is never checked. The function's contract is "refuse unless proven", and this breaks it. Example: manifest `gone/../layer_ws/src/sub/pkg_a`, with a real checkout there holding an uncommitted change. Reproduced: exit 0, "removed successfully", the change deleted. Main's script loses it the same way. The scripts never write `..`, so this needs a hand-edited manifest. Fix: refuse any `..` segment in a manifest path, or return ABSENT only when nothing remains of the path. Found by the lead (reproduced) and the Claude adversarial reviewer. — `.agent/scripts/worktree_remove.sh:477`
 - [x] (must-fix) The unread-review check runs only before the merge checkpoint is presented. A hosted review that lands while the owner is deciding is merged past unread: step 11 runs `merge_pr.sh` with no fetch, and `merge_pr.sh` holds only on a running check-run. The text "so no review is merged past unread" is then false. The documented late reviews, at 17 and 30 minutes, and the 900 s "never arrived" exit make this reachable. Fix: in step 11, after the owner's yes and before `merge_pr.sh`, fetch once more and apply the same check. Any review not yet read goes to triage, and the merge checkpoint is presented again. Found by Codex. — `.claude/skills/run-issue/SKILL.md:1019`
 - [x] (suggestion) A bind mount of an outside folder from the same filesystem, inside the tree, is walked by the chmod (same device). Its read-only folders are opened, and `rm -rf` then deletes them as well. Main's `rm -rf` already deleted the writable parts, the comment states the behaviour, and making such a mount needs root. Cheap closure: refuse when `/proc/self/mountinfo` lists a mount point under the worktree. Found by Codex as a must-fix, downgraded: documented, root-only, mostly pre-existing. — `.agent/scripts/worktree_remove.sh:628` (deferred: documented in the script, needs root to set up, and main's rm -rf already deleted the writable parts; under the owner's 2026-11-20 direction not worth another change)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 14:37 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a9bb1c9dbbf534a0a, resume 3 of 3)
+
+**PR**: #542 at `8314ad24`
+**Addressed**: Local Review at `b3dce4d6` (entry 711f12bd)
+**Commits**: ca7e4b94, 2ccc87cc, 8314ad24
+
+Kept as small as the owner asked (2026-11-20): "it's ok if scripts don't handle everything and come back saying they can't do it. If it's occasinal and an agent can deal with, that's fine. If it happens too often, than we can look at root causes and such. Let's not waist too much time going for perfect when we can have agents handle the edge cases."
+
+### Actions
+- [x] (must-fix) A manifest path with a `..` segment is refused before the walk, in one line ("a manifest path may not contain .."); no other path validation added. Test (`gone/../layer_ws/src/sub/pkg_a` with an uncommitted change): 3 checks failed before (exit 0, change deleted), all pass after. — `.agent/scripts/worktree_remove.sh:477`
+- [x] (must-fix) Run-issue step 11: on the owner's merge answer, before anything else, fetch the reviews once more and apply step 9's "A review not yet read" check; a review that landed while he decided goes to `triage-reviews` and the merge checkpoint is shown again. Placed before step 11's existing push, unpushed check and `cd` to the root, which still read in order after it. — `.claude/skills/run-issue/SKILL.md` step 11
+- [x] (suggestion) Bind mount from the same filesystem inside the tree — `.agent/scripts/worktree_remove.sh:628` (deferred: documented in the script, needs root to set up, and main's `rm -rf` already deleted the writable parts; under the owner's direction above it is not worth another change)
+
+### Suites run (each on its own with `timeout 600`, the full pass left to the host)
+- test_worktree_remove.sh: 138 passed, 0 failed
+- test_merge_pr_root_resolution.sh: 6 passed, 0 failed
+- test_merge_pr.sh: 175 passed, 0 failed
+- test_merge_pr_skill.sh: 132 passed, 0 failed
+- test_project_registry.sh: 425 passed, 0 failed
+- test_merge_pr_gate.sh: 213 passed, 0 failed
+- test_script_tests_hook_scope.sh: 347 passed, 0 failed
+- test_validate_workspace_stale.sh: 126 passed, 0 failed
+- test_ros2_colcon.sh: 1375 passed, 0 failed, 0 skipped
+- test_user_tier_guard.sh: 64 passed, 0 failed
+- test_skill_paths.sh: 164 passed, 0 failed
+
+shellcheck at warning severity is clean on `worktree_remove.sh` and its test. No part 2 file, not `plan.md`, and no change to `_entry_state`.
