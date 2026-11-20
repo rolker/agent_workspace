@@ -204,3 +204,83 @@ The revision answers all nine findings, and the new parts hold against the code:
 **Decision**: proceed
 
 Read the Plan Review at db66afbe: all nine findings of the first review are answered and the revision's new parts hold against the code. Its three minor findings go to the implementer in the handoff rather than a third plan round: the Files to Change row that still names `test_extends.py` is read as `test_base_merge.py`; the `init` summary paragraph of the design is rewritten whole, as step 4 says; and, a host decision listed for the owner's veto, for a manifest with no `distros:` `init` leaves the `distro` line out rather than printing a placeholder, pinned in the test at `test_init.py:327`. Undoing that is one line of output and its test.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 12:03 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-499 at `455ec748`
+
+Seven commits, in the plan's order:
+
+- `e0dcf7b6` Resolver: `Repo.source` and `Selected.source` (last, default `""`), filled in `combine._repo` from the manifest where the key first appears; `Resolved.groups_on`, `Resolved.left_out` (`LeftOut`: key, layer, reason `group_off` / `not_on_distro` / `absent_no_distro`, the repo's groups, the distro) and the `chain` property. Tests in `tests/test_selection.py` and `tests/test_base_merge.py` (the Files table's `test_extends.py` read as `test_base_merge.py`, per the checkpoint).
+- `a4f6b93b` `show.py`: pure `render_head`, `render_body`, `render`; the sketch pinned whole in `tests/test_show.py`, plus no roles/distros (`(none)`, `(unnamed layer)`, "absent, and no distro adds it"), several groups off, a masked password URL.
+- `97faf793` `show` command in `cli.py` (subparser before `init`'s); the system-directory form in `_show_in_system` (`find_system`, `read_config`, `one_distro_for`; `--role`/`--with` refused; a manifest error names where its path is recorded). Tests in `tests/test_cli.py` and a new `tests/test_show_system.py`.
+- `146ea892` `init.summary`: `render_head` once, then per distro a `distro <name>` line (left out when the manifest has no `distros:`, per the checkpoint), `render_body` and a `will create` list of each layer's `src/`, then the `Layout:` line. `tests/test_init.py` (the distro-dirs test and the one at line 327) rewritten; the latter pins the no-distro summary whole.
+- `e886a8f2` `tests/test_project11.py`: `show` for the six role/distro pairs succeeds, the three roles differ, and each lists as many repos as `validate` counts (20, 30, 44).
+- `8d68d15e` Docs: tool design "show" (left-out words, source rule, system form), the "init" summary paragraph rewritten whole (checkpoint point 2), a `show` paragraph in "What is built" next to `init`/`sync`/`build`, `show` out of "Not built yet"; README paragraph next to `init`/`sync`, `show` in the masking sentence and the example block; tool roadmap row checked with `file-exists src/repos_manifest/show.py`; `docs/manifest/design.md` not-built list drops `show` and the stale `build`. `docs/manifest/roadmap.md` line 28 left open, as the plan says.
+- `455ec748` Rename of a local in `show.py` (`url_column` to `from_indent`): `tests/test_url_messages.py` read the name as a URL formatted into text.
+
+Departures from the plan: the sketch's `base` line shows a URL, a ref and a path; this version prints the base's path only, since only local paths are read. "Masking" in the design has no heading of its own, so the "show" section points at "sync" for the masking rules. The `.venv` had no pytest; it was installed there with `.venv/bin/pip install pytest` (no bare pip), and tests ran with `PYTHONPATH=src` so the worktree's code was used rather than the main checkout's editable install.
+
+Tests: the whole tool suite, `PYTHONPATH=src .venv/bin/python -m pytest tests` from `tools/repos-manifest`: `1796 passed in 551.19s (0:09:11)` (the run before the rename had `1 failed, 1795 passed`, the `test_url_messages.py[show.py]` case, fixed in `455ec748`). No script under `.agent/scripts/` and no skill or knowledge text changed, so no shell suite applies. The full pre-commit pass was left to the host.
+
+Acceptance run on the in-repo fixture, not `~/project11` (nothing was read, written or run there). The fixture has no `base`, so no `base` line or `from <manifest>` appears; `tests/test_show.py`'s whole-string test covers both. All six pairs (robot, operator, developer on jazzy and rolling) exit 0. One run:
+
+```
+$ PYTHONPATH=src .venv/bin/python -m repos_manifest.cli show tests/fixtures/project11/project11.manifest.yaml --role robot --distro jazzy
+manifest  tests/fixtures/project11/project11.manifest.yaml
+role      robot    groups on: (none)    distro: jazzy
+
+underlay
+  ros2launch_gui                jazzy       https://github.com/rolker/ros2launch_gui.git
+  ros2launch_session            jazzy       https://github.com/rolker/ros2launch_session.git
+  geographic_info               ros2        https://github.com/ros-geographic-info/geographic_info.git
+  nmea_navsat_driver            add_pashr   https://github.com/rolker/nmea_navsat_driver.git
+core
+  manda_coverage                jazzy       https://github.com/rolker/manda_coverage.git
+  marine_ais                    jazzy       https://github.com/rolker/marine_ais.git
+  marine_control                jazzy       https://github.com/rolker/marine_control.git
+  udp_bridge                    jazzy       https://github.com/rolker/udp_bridge.git
+  unh_marine_navigation         jazzy       https://github.com/rolker/unh_marine_navigation.git
+  s57_tools                     jazzy       https://github.com/rolker/s57_tools.git
+  unh_marine_autonomy           jazzy       https://github.com/rolker/unh_marine_autonomy.git
+platforms
+  mru_transform                 jazzy       https://github.com/rolker/mru_transform.git
+site
+  site_config                   jazzy       git@github.com:example/site_config.git   optional
+sensors
+  unh_marine_radar              jazzy       https://github.com/rolker/unh_marine_radar.git
+  cube_bathymetry               jazzy       https://github.com/rolker/cube_bathymetry.git
+  unh_marine_perception         jazzy       https://github.com/rolker/unh_marine_perception.git
+  marine_tools                  jazzy       https://github.com/rolker/marine_tools.git
+  imagenex_deltat               jazzy       https://github.com/rolker/imagenex_deltat.git
+  starlink_stats_ros            jazzy       https://github.com/rolker/starlink_stats_ros.git
+  ros2_network_monitor          jazzy       https://github.com/rolker/ros2_network_monitor.git
+
+left out
+  audio_common                  group ui is off
+  detection_visualizer          group ui is off
+  norbit                        group sonar-drivers is off
+  ros2sonic                     group sonar-drivers is off
+  vrx                           group simulation is off
+  ben_project11                 group ben-hardware is off
+  ben_description               group ben-hardware is off
+  seafloor_echoboat_project11   group echoboat-hardware is off
+  unh_echoboats_project11       group unh-echoboat-hardware is off
+  lr30_project11                group lr30-hardware is off
+  drix_description              group drix-hardware is off
+  mobile_lab                    group mobile-lab is off
+  edgetech_sonar                group sonar-drivers is off
+  ben_gazebo                    group simulation is off
+  drix_gazebo                   group simulation is off
+  unh_marine_simulation         group simulation is off
+  camp                          group ui is off
+  rqt_operator_tools            group ui is off
+  rqt_marine_radar              group ui is off
+  rqt_udp_bridge                group ui is off
+  rviz_sonar_image              group ui is off
+  marine_perception_tools       group ui is off
+  marine_colormap               group ui is off
+  marine_sonar_widgets          group ui is off
+```
