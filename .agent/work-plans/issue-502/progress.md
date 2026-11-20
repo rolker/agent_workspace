@@ -624,3 +624,17 @@ Tests: 349 passed (test_status, test_status_agrees_with_sync, test_status_distro
 ### Findings
 - [ ] (must-fix) A partial clone with git before 2.45 (or an unreadable version) is `unusable`, exit 1, which is outside the owner's exit rule (missing, not at its place, not a git repo of its own, no commit, version not found) and fails every partial clone on Ubuntu 24.04's git 2.43. The host's reversal (report it in its ordinary state, state the limit in the design) is sound on the exit rule, but its stated ground is false: `status` reads only held objects except when HEAD was moved without a checkout (reset --soft, update-ref), where `git status`'s rename detection lazy-fetches on old git, and on 2.45+ makes `git status` fail so the repo is `unusable` "git status fails". Reverse it, and either have status's git skip rename detection (e.g. `-c status.renames=false`; a staged rename then counts 2 files where `sync` says 1, so say so) or state this case in the design; the test `test_no_lazy_fetch_does_not_change_the_answer` should gain the reset --soft case — `tools/repos-manifest/src/repos_manifest/status.py:287`, `tools/repos-manifest/docs/design.md:1569`, `:1607`, `:1690`, `tools/repos-manifest/README.md:152`
 - [ ] (suggestion) "a url changed" copies the remote, so the new url's refs equal the old ones and the case agrees trivially; the design's fourth difference (status answers from the old url's refs) is listed but not exercised. A copy that moves ahead before the sync would show it, as a DIFFER or CLAIMS_DIFFER entry — `tools/repos-manifest/tests/status_cases.py:94`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 14:32 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 left one must-fix that breaks the owner's exit rule and came from a host instruction; it cannot be published as it is)
+**After**: rounds
+**Decision**: address
+
+Read the Local Review (Pre-Push) at c1eca0fe (round 3, changes-requested, one must-fix, one suggestion; all eleven round 2 findings fixed). This is the first host `address` at the rounds checkpoint. Host decisions, listed for the owner's veto:
+
+1. A partial clone is reported in its ordinary state whatever the git version. Calling it `unusable` on git before 2.45 breaks the owner's exit rule ("Only unusable repos"): a partial clone is a usable repo, and Ubuntu 24.04 ships git 2.43. That behaviour followed a host instruction in the previous handoff, which is withdrawn.
+2. The review showed `status`'s own `git status` can fetch in a partial clone: rename detection between HEAD and the index reads a file that was never checked out, when HEAD was moved without a checkout. So in a partial clone, and only there, `status` counts changes with rename detection off. No object the clone lacks is then read, on any git version, and `status` neither fetches nor fails for want of one. The cost, stated in the design: in a partial clone a staged rename counts as two files where `sync` and `git status` say one. `GIT_NO_LAZY_FETCH=1` stays as a second guard where git honours it. Undoing it is one option and its tests.
+3. The suggestion is taken: the "a url changed" agreement case uses a copy that moves ahead before the sync, so the design's fourth difference is exercised.
