@@ -14,6 +14,8 @@
 #   - an aggregate (package) worktree: read-only leftovers in the container
 #     outside its entry, and a directory with no search permission over a
 #     read-only one, are cleared by the aggregate step
+#   - an aggregate entry that is itself a symlink to a checkout outside the
+#     tree is refused before anything is removed, plain and --force
 # Root ignores mode bits, so as root the tests would pass without the fix:
 # the suite then skips with the reason.
 # Everything runs in sandboxes (mktemp) with the real scripts copied in.
@@ -178,6 +180,35 @@ check "aggregate: the container is gone" test ! -e "$c"
 check "aggregate: says it was removed" grep -q "Worktree removed successfully" <<<"$out"
 check "aggregate: the package repository no longer lists the entry" bash -c '! git -C "$1" worktree list | grep -qF "$2"' _ "$pkg" "$c/layer_ws/src/pkg_a"
 check "aggregate: the package repository itself is untouched" test -f "$pkg/package.xml"
+
+# An entry that is itself a symlink to a linked worktree outside the tree
+# (holding a read-only install tree) is refused before anything is
+# removed, plain and --force: `git worktree remove` given the link would
+# delete the outside checkout's files, and the chmod must never follow it.
+for mode in plain --force; do
+    echo "TEST: an aggregate entry that is itself a symlink is refused, nothing removed ($mode)"
+    sb="$(make_sandbox)"; c="$sb/worktrees/workspace/issue-workspace-7"
+    pkg="$(make_pkg_repo)"
+    make_aggregate "$sb" layer_ws/src/pkg_a "$pkg"
+    pkg_b="$(make_pkg_repo)"
+    outside_wt="$(mktemp -d -p "$SANDBOX")/outside_wt"
+    git -C "$pkg_b" worktree add --quiet -b feature/issue-7 "$outside_wt" main >/dev/null 2>&1
+    make_readonly_install "$outside_wt"
+    ln -s "$outside_wt" "$c/layer_ws/src/pkg_b"
+    printf '%s\t%s\tfeature/issue-7\n' "$pkg_b" layer_ws/src/pkg_b >> "$c/.worktree-repos"
+    modes_before="$(stat -c %a "$outside_wt/install" "$outside_wt/install/lib" "$outside_wt/install/lib/sub" | tr '\n' ' ')"
+    if [ "$mode" = plain ]; then set --; else set -- --force; fi
+    rc=0; out="$(run_remove "$sb" "$@" 2>&1)" || rc=$?
+    modes_after="$(stat -c %a "$outside_wt/install" "$outside_wt/install/lib" "$outside_wt/install/lib/sub" 2>/dev/null | tr '\n' ' ')"
+    check "symlink entry ($mode): exit 1" test "$rc" -eq 1
+    check "symlink entry ($mode): says the entry leads outside through a link" grep -q "leads outside this worktree" <<<"$out"
+    check "symlink entry ($mode): the other entry is still there" test -f "$c/layer_ws/src/pkg_a/package.xml"
+    check "symlink entry ($mode): the outside directories keep their mode ($modes_before)" test "$modes_before" = "$modes_after"
+    check "symlink entry ($mode): the outside read-only file is still there" test -f "$outside_wt/install/lib/sub/libfoo.so"
+    check "symlink entry ($mode): the outside checkout's files are still there" test -f "$outside_wt/package.xml"
+    check "symlink entry ($mode): the outside package repository still lists its worktree" bash -c 'git -C "$1" worktree list | grep -qF "$2"' _ "$pkg_b" "$outside_wt"
+done
+set --
 
 echo ""
 echo "test_worktree_remove: $PASS passed, $FAIL failed"

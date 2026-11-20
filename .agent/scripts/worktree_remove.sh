@@ -22,7 +22,9 @@
 #   ./worktree_remove.sh --path worktrees/workspace/skill-workspace-research-20261115-101010-1 --type workspace
 #
 # This will:
-#   1. Check for uncommitted changes (unless --force)
+#   1. Refuse, before removing anything, an entry that leads outside the
+#      worktree through a symbolic link (issue 428), and check for
+#      uncommitted changes (unless --force)
 #   2. Remove the worktree directory, first giving its directories that
 #      lack any of u=rwx full owner permission (a build's install tree can
 #      leave read-only ones, which would block the removal; directories
@@ -397,6 +399,19 @@ for _i in "${!ENTRY_DESTS[@]}"; do
         ENTRY_OWNERS+=("")
         continue
     fi
+    # The entry must lie inside this worktree once links are resolved (issue
+    # 428 review): an entry that is a symbolic link, or sits under one, to a
+    # checkout elsewhere would have `git worktree remove` delete that other
+    # checkout's files. Refused before anything is removed.
+    _real="$(cd "$_dest" 2>/dev/null && pwd -P || true)"
+    case "$_real/" in
+        "$WORKTREE_DIR/"*) ;;
+        *)
+            echo "Error: ${_dest} leads outside this worktree${_real:+ (to ${_real})} through a symbolic link; nothing was removed."
+            echo "Delete that link by hand (the entry itself or a folder above it in this worktree; rm on a link removes only the link, never what it points to), then run this command again: an entry already gone is skipped."
+            exit 1
+            ;;
+    esac
     # The entry must be a checkout's own top folder: git would otherwise walk
     # up from a plain directory to an enclosing repository (the root the
     # worktree dir lies in, say) and name that as the owner.
