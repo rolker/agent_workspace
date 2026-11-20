@@ -2377,3 +2377,24 @@ GitHub side: 0 reviews, 0 inline comments, 0 conversation comments (Copilot left
 "Fix it first"
 
 Asked with the one open finding of the Integrated Review at 948659e6 in the dialog: the design's sentence that sync's two unfiltered lines "show only the repo's path, its key", where the printed path is the distro and layer directories, then src, then the key. The other choices offered were to merge with it deferred, or hold. An earlier dialog in this session asked him to merge before the triage had run; his "Merge" there was not acted on.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 09:13 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #535 at `fc1923bf`
+**Addressed**: Integrated Review at `948659e6` (2026-11-20 09:09 -05:00)
+**Commits**: fc1923bf
+
+Owner's direction at the findings checkpoint, quoted: "Fix it first".
+
+### Actions
+- [x] The design's sentence on sync's two unfiltered lines equated the shown path with the repo's key; it now says the path is the distro's and the layer's directories where the system has them, then `src`, then the key, and why that path cannot hold a `scheme://` url (distro and layer names allow only letters, digits, `_` and `-`, checked in `manifest.py:42` and `schema.py:113,126`; the path is built in `sync.py:268-271` from `system.py:286-288`) — `tools/repos-manifest/docs/design.md:1005-1009`. No code changed. The tool's README does not repeat the wording (checked: `tools/repos-manifest/README.md:120-135` says nothing of these two lines).
+
+### For the pull request body
+Remove this line from "Left open, on purpose", now fixed:
+- One wording point from the last review: the design says the two unfiltered lines "show only the repo's path, its key", where the path is the distro and layer directories, `src`, then the key (`docs/design.md:924-926`).
+
+### Checks
+No suite run: the change is documentation only (`tools/repos-manifest/docs/design.md`), no script, skill or knowledge text changed. The commit's hooks ran with `SKIP=validate-script-tests` and passed. The full pre-commit pass is left to the host.
