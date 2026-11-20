@@ -136,3 +136,11 @@ The plan answers every issue-review action and its claims about the code hold. I
 **Decision**: revise
 
 Read the Plan Review at f15db74e (verdict needs-work, no question for the owner). All nine findings go back to plan-task. Host decision on finding 3, listed for the owner's veto: `init` keeps printing each layer's `src/` directory. It prints what `show` prints, then the directories it will create, so nothing a person sees today is lost; the manifest, base and role lines are printed once, not once per distro; the design paragraph on `init`'s summary is rewritten whole. Undoing it is a change to `init`'s printed text and its tests.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-20 11:33 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-499/plan.md` at `15afac5e`
+
+Revision answering the nine findings of the plan review: the `Serves` line names "Trust, control and information"; chain tests move to `test_base_merge.py`; `init` keeps each layer's `src/` directory after `show`'s output with the head printed once and the design paragraph rewritten whole (host decision, listed with its undo cost); repo-level `absent` with no distros gets its own words; `test_init_refusals.py` dropped; `show`'s doc paragraphs sit next to the `init`/`sync` ones; `build` dropped from the root's stale list line; new `source` fields go last with defaults and `render` stays pure; the fixture's lack of a `base` is noted for the PR.
