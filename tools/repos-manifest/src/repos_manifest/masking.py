@@ -8,9 +8,11 @@ percent-decoded form, where it follows `://` in a text, and then masks any other
 `scheme://...@host` it finds by a pattern, for a url the tool did not read itself (one git
 prints after an `insteadOf` rewrite). Nothing not after `://` is masked: a local path holding
 `@`, `git@github.com:...` and `origin/main@{upstream}` are printed as they are. A `file://`
-url's text before an `@` is a path when it holds a `/`, and is kept; one that holds a `:` and
-no `/` (`file://user:password@host/...`) is masked like any other. An https url whose path
-holds an `@` has more masked than its user information; never less.
+url whose text after `://` starts with `/` (`file:///srv/w@x/...`) has no user information. In
+any other `file://` url, the user information is the text before the last `@` ahead of the
+first `/` when that text holds a `:`, or else the text before the last `@` in the url when that
+holds a `:`; a bare name before an `@` is kept. An https url, or a `file://` url, whose path
+holds an `@` can have more masked than its user information; never less.
 
 Every message that puts a url into text does it through `mask_url` (plain) or `quoted_url`
 (quoted for display, as `repr` would), so a url is masked before it is quoted or escaped;
@@ -44,18 +46,41 @@ def userinfo_of(url: str) -> Optional[Tuple[str, str]]:
     match = SCHEME.search(url)
     if match is None:
         return None
+    if match.group(0).lower() == "file://":
+        userinfo = _file_userinfo(url[match.end() :])
+        return None if userinfo is None else (match.group(0), userinfo)
     at = url.rfind("@", match.end())
     if at < 0:
         return None
     return match.group(0), url[match.end() : at]
 
 
+def _file_userinfo(rest: str) -> Optional[str]:
+    """The user information of a `file://` url, from the text after `file://`. Text that starts
+    with `/` is a path. Otherwise the user information ends at the last `@` before the first
+    `/` when the text before it holds a `:` (`user:password@host/srv/w@x`: the `@` in the path
+    is not part of it). A password may hold a `/` (`user:pass/word@host/...`) or an `@` and a
+    `/` together; then the first `/` is in it, and the user information runs to the last `@` in
+    the url when the text before that holds a `:`, which masks more than it, never less."""
+    if rest.startswith("/"):
+        return None
+    slash = rest.find("/")
+    head = rest if slash < 0 else rest[:slash]
+    at = head.rfind("@")
+    if at >= 0 and ":" in head[:at]:
+        return head[:at]
+    at = rest.rfind("@")
+    if at >= 0 and ":" in rest[:at]:
+        return rest[:at]
+    return None
+
+
 def _kept(scheme: str, userinfo: str) -> bool:
     """An ssh url's user name alone names an account, as in `ssh://git@host/...`. In a
-    `file://` url, text before an `@` that holds a `/` is a path on this machine, and a bare
-    name is not a secret either; only a `user:password` is masked."""
+    `file://` url, text before an `@` that starts with `/` is a path on this machine, and a
+    bare name is not a secret either; only text holding a `:` is masked."""
     if scheme.lower() == "file://":
-        return "/" in userinfo or ":" not in userinfo
+        return userinfo.startswith("/") or ":" not in userinfo
     return "ssh" in scheme.lower() and ":" not in userinfo
 
 

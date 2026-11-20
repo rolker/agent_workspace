@@ -24,6 +24,15 @@ AWKWARD = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def _nothing_registered():
+    """Each test starts with no url registered: a url an earlier test registered would mask
+    this test's url, and hide a path that does not register it."""
+    masking._KNOWN.clear()
+    yield
+    masking._KNOWN.clear()
+
+
 def _url(user, password, host="127.0.0.1:9", path="x.git"):
     info = user if password is None else f"{user}:{password}"
     return f"https://{info}@{host}/{path}"
@@ -292,6 +301,14 @@ def test_an_extends_url_of_the_earlier_format_prints_no_password(tmp_path, capsy
         ("file://u:SECRETPWQ@localhost/x.git", "file://***@localhost/x.git"),
         ("file:///srv/w@x/remotes/a", "file:///srv/w@x/remotes/a"),
         ("file://bobQ@localhost/x.git", "file://bobQ@localhost/x.git"),
+        # Round 5: an `@` in the path after the user information is not part of it ...
+        ("file://aliceQ:pw zQ@localhost/srv/w@x", "file://***@localhost/srv/w@x"),
+        # ... and a password holding a `/` is masked whole (with more after it, never less).
+        ("file://aliceQ:pw/zQ@localhost/srv/x", "file://***@localhost/srv/x"),
+        ("file://u@sQ:p:w/@zQ@localhost/srv/w@x", "file://***@x"),
+        # A path after a host, holding an `@` and no `:`, is not user information.
+        ("file://localhost/srv/w@x/r", "file://localhost/srv/w@x/r"),
+        ("file://bobQ@localhost/srv/w@x", "file://bobQ@localhost/srv/w@x"),
     ],
 )
 def test_a_file_urls_user_and_password_are_masked_and_its_path_is_not(url, shown):
