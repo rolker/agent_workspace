@@ -239,7 +239,7 @@ def _version(git, place, repo, record, head, origin, found):
     """The state and text of a repo that is a git repository with a commit, nothing in
     progress, and one `origin` url."""
     found.fetched_from = mask_url(origin)
-    url_note = _url_note(origin, repo, record)
+    remote_note = _remote_note(origin, repo, record)
     changes = update.tracked_changes(git)
     if changes is None:
         return UNUSABLE, "`git status` fails here"
@@ -255,7 +255,7 @@ def _version(git, place, repo, record, head, origin, found):
     version, problem, _ = update.find_version(git, repo.version, record, ask=update.ask_local)
     if version is None:
         problem = (problem or "").replace("<place>", update.quoted(place))
-        return UNUSABLE, f"{problem} ({AS_FETCHED}){url_note}"
+        return UNUSABLE, f"{problem} ({AS_FETCHED}){remote_note}"
     found.changes, found.unpushed = changes, unpushed
     if version.kind == update.COMMIT:
         on_origin, said = update.commit_on_origin(git, version.target, ask=update.ask_local)
@@ -266,14 +266,14 @@ def _version(git, place, repo, record, head, origin, found):
             return (
                 DIFFERENT,
                 f"version {repo.version} is a commit here that no branch of origin, and no tag"
-                f" origin has, holds; sync does not follow it{url_note}",
+                f" origin has, holds; sync does not follow it{remote_note}",
             )
     standing = update.standing(git, repo, record, version, head, branch, unpushed, changes)
     found.behind = standing.behind
-    return (EXPECTED if standing.on_version else DIFFERENT), standing.text + url_note
+    return (EXPECTED if standing.on_version else DIFFERENT), standing.text + remote_note
 
 
-def _url_note(origin: str, repo: Selected, record: Optional[RepoRecord]) -> str:
+def _remote_note(origin: str, repo: Selected, record: Optional[RepoRecord]) -> str:
     """When `origin` is not the manifest's url: whether `sync` would repoint it."""
     if update.same_url(origin, repo.url):
         return ""
