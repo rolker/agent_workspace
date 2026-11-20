@@ -290,3 +290,13 @@ The second revision answers all three must-fix items and both suggestions. The n
 - [ ] Item 2: record the coding-agent workflow as a third known gap (suggestion 2).
 - [ ] Item 4: keep the qualified-ref lookup ahead of the no-slug skip, and test it (suggestion 3).
 - [ ] Part 1: leave `plan.md` unchanged, so Part 2 can `proceed` (suggestion 4).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 10:42 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+The owner's answer in the dialog, to "Approve this plan so implementation of part 1 starts?": "Approve (Recommended)". The dialog showed the two parts (part 1: items 1, 2, 3 and 5; part 2: item 4) and the choices listed for his veto (github.com only, no dispatch guard, the notice mark keyed on the hosted reviewer's phrase). The question reached him because the host had answered revise twice in a row. Plan Review b52a78d0 is ready with four suggestions for the implementer.
