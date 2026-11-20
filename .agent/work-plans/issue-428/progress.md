@@ -867,3 +867,13 @@ Summary: no must-fix open; all three open suggestions of the approved local revi
 - [ ] (suggestion, Local Review @ `d2adb33a`) Valid: "so no review is merged past unread" overclaims. `fetch_pr_reviews.sh` keeps only `review_id`, `submitted_at`, `state`, `body`, `commit_id` and the user (lines 103-111), and the REST review object carries no edit time, so a review body edited after triage under the same `review_id` is not read again. The hosted reviewer posts new reviews rather than editing, so the gap is mainly a human edit. Fix: name the limit in the sentence (an edit to a review already read is not seen; the list gives no edit time), or record a hash of each read review's body beside its id. Size: one sentence for the wording; the hash is a larger change to both skills and not needed for part 1 — `.claude/skills/run-issue/SKILL.md:1019`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 13:50 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (three valid findings are open, each a small fix; merging with findings open is the owner's answer only, sending them back is the host's)
+**After**: findings
+**Decision**: address
+
+Read: the Integrated Review at 98c47a8c: no must-fix, three open findings, all classified valid: the refusal in worktree_remove.sh that advises a chmod which would follow a symbolic link to a folder outside the worktree (lines 436 and 452); the header and script_reference.md wording that says a mount of another filesystem is never walked or changed, without the exception for an entry that is itself on one; and the run-issue step 9 sentence "so no review is merged past unread", which does not hold for a review edited after triage. CI was pending at triage, with no failure. The quality standard is that a misleading message or an overclaiming text is fixed, not deferred.
