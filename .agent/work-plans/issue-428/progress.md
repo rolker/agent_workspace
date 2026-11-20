@@ -209,3 +209,13 @@ The revision answers every point of the first review except two that it answers 
 - [ ] Item 2: narrow the `dynamic/` exclusion to the reviewer's own workflows (both paths) and known non-PR ones, or record the code-scanning case; record the gap for a workflow file that runs only on other events (finding 4).
 - [ ] Item 4: word the worktree-creation note as something the workspace supports, and cover a project with no `origin` (finding 5).
 - [ ] Split up front: items 1, 2, 3 and 5, then item 4 (finding 6).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 09:46 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the second plan review's verdict is needs-work with three must-fix items, each with its fix named and none a question about the goal)
+**After**: plan
+**Decision**: revise
+
+Read: the Plan Review at 21ffdc89. Second host revise in a row at this checkpoint; the next answer here is the owner's. The must-fix items go back as written there: the notice_only flag keyed on shape would mark real short reviews that carry a finding (key it on the phrase "unable to review this pull request"; a new wording is missed, which is today's behaviour); the 1800 s bound on a review that never starts is longer than the wait the issue calls the defect (about 900 s by the standing rule of twice the expected duration); for a project with no GitHub slug the pull-request check still runs without --repo and can refuse creation (handle it as the existing not-a-git-repository branch does). Suggestions 4 and 5 are taken. The split is taken up front, grouped by shared files: items 1, 2, 3 and 5 in the first pull request (Part of #428), item 4 alone in the second (Closes #428).
