@@ -179,3 +179,14 @@ def test_cli_show_distro_may_be_given_once(tmp_path, capsys):
     with pytest.raises(SystemExit):
         main(["show", "m.yaml", "--distro", "jazzy", "--distro", "rolling"])
     assert "--distro may be given only once" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("before", [["m.yaml"], []])
+def test_cli_show_refuses_an_empty_distro_name(before, tmp_path, capsys, monkeypatch):
+    # With a manifest or without one, before any file or system directory is read.
+    (tmp_path / "m.yaml").write_text(SHOWN)
+    monkeypatch.chdir(tmp_path)
+    assert main(["show", *before, "--role", "robot", "--distro", ""]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "--distro is given an empty name; name the distro to show" in captured.err
