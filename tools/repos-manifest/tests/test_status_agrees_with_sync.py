@@ -41,6 +41,9 @@ DIFFER = {
     "behind, held by a work tree": "left alone",
     # `sync` asks origin, which no longer has the branch; `status` reads the stale ref.
     "a branch origin deleted": "failed",
+    # The same for a commit pin that only that branch held: `status` finds the commit on the
+    # stale ref, `sync` asks origin, which has no branch or tag holding it, and does not follow.
+    "a commit on a branch origin deleted": "left alone",
     # Offline a tag here cannot be told from origin's; `sync` asks origin, which lacks it.
     "a local tag origin lacks": "failed",
     # The version is on origin but was not fetched here yet: `sync` fetches it and moves there.

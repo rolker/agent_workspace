@@ -188,6 +188,19 @@ def deleted_branch(case):
     git("branch", "-q", "-D", "dev", cwd=case.remote)
 
 
+def commit_on_a_deleted_branch(case):
+    """Pinned at a commit only a branch of origin held, which origin then deleted: the
+    remote-tracking ref stays here."""
+    git("checkout", "-q", "-b", "gone", "main", cwd=case.remote)
+    commit = commit_file(case.remote, "gone", "g\n", "gone")
+    git("checkout", "-q", "main", cwd=case.remote)
+    git("fetch", "-q", "origin", cwd=case.clone)
+    pin(case, commit[:12])
+    sync(case)
+    assert head(case.clone) == commit
+    git("branch", "-q", "-D", "gone", cwd=case.remote)
+
+
 # --- different ------------------------------------------------------------------------------
 
 
@@ -390,6 +403,7 @@ CASES = {
         "sync tries to fast-forward it",
     ),
     "a branch origin deleted": (deleted_branch, "expected", "on dev"),
+    "a commit on a branch origin deleted": (commit_on_a_deleted_branch, "expected", "pinned at"),
     "another branch": (other_branch, "different", "it is on branch other"),
     "detached elsewhere": (detached_elsewhere, "different", "a detached HEAD"),
     "the manifest changed version": (

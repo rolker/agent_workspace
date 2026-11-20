@@ -1570,11 +1570,14 @@ answer (`sync` runs its git as before):
 
 Git runs no hook for the commands `status` runs. `sync` fetches first,
 so a repo can read differently after a fetch: a version that was not fetched yet is `unusable`
-until then, and a branch behind `origin`'s counts only the commits fetched. Three cases differ
+until then, and a branch behind `origin`'s counts only the commits fetched. Four cases differ
 even after a fetch:
 
 - a remote-tracking ref left from a branch `origin` deleted: `sync` never prunes, so `status`, which
   reads the refs, calls the branch expected while `sync`, which asks `origin`, says it is not there;
+- a commit pin that only such a branch held: `status` finds the commit on the stale ref and calls
+  the repo expected, while `sync` finds no branch or tag of `origin` that holds it and does not
+  follow it;
 - a tag here that `origin` lacks: offline it cannot be told from `origin`'s tag, so `status` counts it;
 - a url that the manifest changed while the record still matches `origin`: `sync` tries to repoint
   `origin` and then fetches from the new url, `status` answers from the refs of the old one.
