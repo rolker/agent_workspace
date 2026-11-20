@@ -132,3 +132,13 @@ Part 1 is right and its check is real: the tool prints `up to date (2)` and noth
 - [ ] Part 2: install `vcs2l` (pinned), not `vcstool==0.3.0`, and keep `vcs --version`.
 - [ ] Part 2: add the isolated-PATH test for skip vs fail, modelled on `test_setup_requires_vcs`.
 - [ ] Part 2: name the reused prior art (`REPOS_MANIFEST_REQUIRE_COLCON`, `vcs2l` in the `[test]` extra) in the plan or the pull request.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-20 12:22 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review finds part 1 ready as written and able to merge alone; both must-fix items are in part 2, which is not implemented under this answer)
+**After**: plan
+**Decision**: proceed
+
+Read: the Plan Review at d68975b2, verdict needs-work. Part 1 (the one expected string) is ready: the reviewer ran the suite and the tool prints "up to date (2)" for this setup. This proceed covers part 1 only; the implement handoff says so. Part 2 is not implemented as planned: its two must-fix items (failing on a missing vcs whenever CI is set would break the Lint job, which runs every suite with CI=true and no vcs; pip install vcstool==0.3.0 depends on an unpinned setuptools and crashed in a fresh venv, use the pinned vcs2l the repos-manifest job already installs) and its suggestions go back to the plan at the plan checkpoint raised after part 1's merge, which the host answers revise. The owner asked for the test fix on main first (2026-11-20: "Issue + fix main first (Recommended)").
