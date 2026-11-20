@@ -756,3 +756,40 @@ Dropped:
 - [x] (suggestion) `find -xdev` still tests and chmods the top folder of a mount of another filesystem; it only stops descending into it. Giving that folder u+rwx lets the later `rm -rf` unlink the mount's top-level entries, and `rm -rf` already crosses mounts, before this change too. Consider skipping mount-point folders in the chmod, or `rm -rf --one-file-system`. Found by Codex, downgraded from must-fix: the setup is contrived, and the crossing predates this change. — `.agent/scripts/worktree_remove.sh:500`
 - [x] (suggestion) "Its cost is an occasional second triage" understates it. The review that ends the wait is handed to triage within a minute or two. A `**Fetched**` noted that soon, taken back to the start of its minute and then by 60 s more, will often be at or before that review's `submitted_at`, so a second triage before the merge checkpoint is likely on many pull requests. State the cost as it is, or key "read" on the review ids that triage records. Found by Gemini, downgraded from must-fix: it errs in the safe direction. — `.claude/skills/run-issue/SKILL.md:1019-1024`
 - [x] (suggestion) A non-PENDING review with an empty or unreadable `submitted_at` is sent to triage before every checkpoint, with no end. Round 6 judged this acceptable, because it needs GitHub to break its own contract. Three reviewers raised it independently this round. A one-line cap would make the rule provably end: at most one more triage for the same review id, then report it to the owner. Found by Codex, Gemini and the Claude adversarial reviewer. — `.claude/skills/run-issue/SKILL.md:1025-1028`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-20 13:37 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #542 at `cc145c26`
+**Addressed**: Local Review at `47a1ea83` (2026-11-20 13:20 -05:00)
+**Commits**: d8bcf950, 49def999, 027c0b26, cc145c26
+
+### Actions
+- [x] (must-fix) An entry under a folder with no search permission was taken as gone and deleted with its uncommitted work. Now each entry's path is walked down from the worktree (`_entry_reach`): a name is looked up only in a folder already entered, so a failed lookup means "not there"; a folder on the way that cannot be entered is refused before any removal or chmod, plain and --force, naming the folder and the `chmod u+rwx` that fixes it. Test first: the reviewer's case (dirty entry under a mode 600 `layer_ws/src`) failed 14 checks before the fix (exit 0, change deleted, mode opened) and passes after; a genuinely absent entry, and one under a missing folder, are still skipped and the rest removed. — `.agent/scripts/worktree_remove.sh:399`
+- [x] (must-fix, same pass) Other "nothing to do" decisions that access denial could fake, checked: the dirty preflight's `git -C status` reads a folder it cannot open (mode 000) as clean with exit 0; it is now refused without --force when status fails or reports a permission denial (test failed before: the tree was chmodded before git's own check refused; passes after). The preflight now skips only entries proven gone (empty owner), not `[ -d ]`. Left as is, fail-safe: line 350 `[[ ! -d WORKTREE_DIR ]]` refuses (wording says "does not exist" when unreachable, never removes); the entry's own `cd`/`git -C rev-parse` failures refuse; the removal loop's `[ -d ]` runs after the chmod, and a skip there leaves `rm -rf` unable to enter the folder, so it fails rather than deletes; `_make_dirs_writable`'s `[ -d ]` skip changes nothing; the branch lookups (lines 333 and the closing hints) only print. — `.agent/scripts/worktree_remove.sh:460`
+- [x] (suggestion) The chmod now changes only folders on the walk's starting device, so a mount of another filesystem's top folder keeps its mode (`find -xdev` alone still listed it). Test in a user and mount namespace (`unshare -rm`, skipped where not allowed): tmpfs top folder stays 555, a same-filesystem folder gets u+rwx; the previous find line gave the mount top 755 in the same setup. Wording in the comment, header and script reference corrected: `rm -rf` still deletes into a mount it can already write, as before. — `.agent/scripts/worktree_remove.sh:500`
+- [x] (suggestion) Second-triage cost: replaced, per host direction, by recording what was read. `triage-reviews` writes `**Reviews-read**: <review_id>, ...` (or `none`) for every non-PENDING review fetched, replacing `**Fetched**`; `fetch_pr_reviews.sh` prints `review_id` at line 104 (`review_id: .id`), passed to the output at line 175. `progress_read.py` parses `**Reviews-read**:` as a field (checked on a sample entry). — `.claude/skills/run-issue/SKILL.md:1008`, `.claude/skills/triage-reviews/SKILL.md:126`
+- [x] (suggestion) Endless triage on an unreadable `submitted_at`: gone with the time comparison; run-issue step 9 now says a non-PENDING review whose `review_id` is not on the latest Integrated Review's line is unread, an entry without the line counts as none read. Every `**Fetched**` and time-comparison trace removed from both skills; the separate rule that only a review on the current head ends the WAIT is unchanged. — `.claude/skills/run-issue/SKILL.md:1008`
+
+### Why the step 9 rule now ends
+- A review already on the list: read, no triage.
+- A new review: one triage, which lists its id, so the next fetch finds it read.
+- A PENDING review: never sends to triage and is never listed; once submitted (same id) it is new once, as above.
+- An entry without the field: counts as none read, so one triage writes the field, and the cases above apply.
+
+### Suites run (each on its own, the full pass left to the host)
+- test_worktree_remove.sh: 74 passed, 0 failed
+- test_merge_pr_root_resolution.sh: 6 passed, 0 failed
+- test_merge_pr.sh: 175 passed, 0 failed
+- test_merge_pr_skill.sh: 132 passed, 0 failed
+- test_project_registry.sh: 425 passed, 0 failed
+- test_merge_pr_gate.sh: 213 passed, 0 failed
+- test_script_tests_hook_scope.sh: 347 passed, 0 failed
+- test_validate_workspace_stale.sh: 126 passed, 0 failed
+- test_ros2_colcon.sh: 1375 passed, 0 failed, 0 skipped
+- test_user_tier_guard.sh: 64 passed, 0 failed
+- test_skill_paths.sh: 164 passed, 0 failed
+
+No part 2 file and not `plan.md` touched. Scratch probe files in the session scratchpad were left: their delete was denied by the permission check.
