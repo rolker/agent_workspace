@@ -546,3 +546,28 @@ Suites run, each on its own with `bash` (last result line):
 - `test_skill_paths.sh`: test_skill_paths: 164 passed, 0 failed
 
 The full pre-commit pass and the full run of every suite are left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-20 12:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent a17e31622226f8c63, resume 3 of 3)
+
+**Branch**: feature/issue-428 at `fdee5c9a`
+**Base**: origin/main
+**Depth**: Deep (reason: round 4 convergence check per handoff)
+**Must-fix**: 1 | **Suggestions**: 0
+**Round**: 4 | **Ship**: recommended — round 4: 1 mechanical must-fix (prev 1), not rising — fix and ship rather than another full round
+
+Scope: the round-3 must-fix and commit 5509c1ac. Cross-model: skipped (round-4 convergence check, per handoff).
+
+The round-3 must-fix is partly fixed. Both fields now exist under the names the text uses: `submitted_at` in the `fetch_pr_reviews.sh` output, and `**When**` in the persisted `## Integrated Review`. Three parts of the comparison check out:
+- Time zones: GNU `date -d` gives the same epoch for `2026-11-20 12:06 -05:00` and `2026-11-20T17:06:00Z`.
+- "At or after the start of that minute" is right for a `**When**` kept to the minute.
+- An empty time counts as not read. Note that `date -d ''` exits 0 with midnight, so the explicit emptiness test in the text is what catches it.
+
+The paragraph agrees with the rest of step 9. The flaw is the reference time (below).
+
+### Findings
+- [ ] (must-fix) `**When**` is written when triage-reviews finishes, but triage fetches the reviews at its step 3, minutes earlier. A review submitted after that fetch and before the minute of `**When**` counts as read but never was. That is the late-review case this rule exists for, and the rule errs toward skipping there, not toward triaging again. Fix: compare against a time no later than triage's fetch, for example the time the host dispatched `triage-reviews`, which the host notes when it dispatches. — `.claude/skills/run-issue/SKILL.md:1008-1019`
