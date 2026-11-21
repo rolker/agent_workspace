@@ -191,7 +191,7 @@ is not the session's own root.
    ```bash
    WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"; \
    source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model id>" && \
-   body="<scratchpad file>" && \
+   body="$(mktemp "<scratch dir>/brainstorm.XXXXXX")" && \
    cat > "$body" <<'BODY' &&
    <the comment text exactly as shown, without the signature>
    BODY
@@ -199,7 +199,10 @@ is not the session's own root.
    gh issue comment <N> [-R <owner/repo>] --body-file "$body"; rc=$?; rm -f "$body"; (exit $rc)
    ```
 
-   The closing `BODY` stands alone at the start of its line (no list
+   `<scratch dir>` is the session's scratchpad directory when the framework
+   gives one (Claude Code does), else `$WS_ROOT/.agent/scratchpad/` (AGENTS.md
+   Workspace Cleanliness); `mktemp` makes the name unique, and the item 2
+   title file `t` is made the same way. The closing `BODY` stands alone at the start of its line (no list
    indent); if the text holds a line that is exactly `BODY`, pick another
    delimiter. Use `-R <owner/repo>` whenever the topic's root is not the
    session's own root (above). Never `--body`. Report the comment's URL,

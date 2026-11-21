@@ -217,7 +217,7 @@ Round-1 findings: all 9 resolved (checked against `.claude/skills/brainstorm/SKI
 
 ### Findings
 - [x] (must-fix) `gh issue create ... --title "<title>"` is double-quoted, so a backtick span, `$` or `$(...)` in the title is run or expanded, the same hazard item 4 guards the body against; prescribe a non-expanding form (single quotes with `'\''`, or the title read from a quoted heredoc) (gemini) — `.claude/skills/brainstorm/SKILL.md:174`
-- [ ] (suggestion) `body="<scratchpad file>"` names no unique file and no directory outside Claude Code (the skill is shared); use `mktemp` in the session scratchpad, else `$WS_ROOT/.agent/scratchpad/` (AGENTS.md Workspace Cleanliness) (adversarial + gemini) — `.claude/skills/brainstorm/SKILL.md:190`
+- [x] (suggestion) `body="<scratchpad file>"` names no unique file and no directory outside Claude Code (the skill is shared); use `mktemp` in the session scratchpad, else `$WS_ROOT/.agent/scratchpad/` (AGENTS.md Workspace Cleanliness) (adversarial + gemini) — `.claude/skills/brainstorm/SKILL.md:190`
 - [ ] (suggestion) No rule when `<owner/repo>` cannot be resolved (`gh repo view` fails: no GitHub remote, not a git folder) or the topic's project is unregistered; say the result then stays in the conversation, never falling back to the workspace repo (gemini) — `.claude/skills/brainstorm/SKILL.md:153`
 - [ ] (suggestion) The public-project check covers a new anchor issue's body but not its title; check both (gemini) — `.claude/skills/brainstorm/SKILL.md:171`
 - [ ] (suggestion) `### Sources` lists sources read via `$WS_ROOT` / the registered `<path>`, i.e. absolute local paths, which then go into a public comment; write them repo-relative (gemini) — `.claude/skills/brainstorm/SKILL.md:116`
