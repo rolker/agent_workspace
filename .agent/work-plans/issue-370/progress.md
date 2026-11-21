@@ -120,3 +120,15 @@ Scope, alignment with the Issue Review and the consequences are sound, and the g
 - [ ] Reword step 2: add a "What this is not" section (or line) to `brainstorm/SKILL.md`.
 - [ ] Fix the summary path to the workspace's ignored scratchpad via `~/.claude/agent-workspace-root`, citing the design's records-location rule, so a project session leaves no untracked files in the project.
 - [ ] Reclassify the "state a conclusion in your own words" rule as failure-backed (M10).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-21 16:21 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Owner answered "Revise": plan-task fixes the four Plan Review findings (F1 drop the Copilot and Gemini adapter files, which have no skill list; F2 brainstorm gets a new "What this is not" section; F3 summaries always go to the workspace's ignored scratchpad via ~/.claude/agent-workspace-root, never the session root; F4 mark the own-words rule failure-backed, citing M10).
+Name: the owner chose "design-discussion" (the trial draft's name), not the plan's proposed "challenge". Rename throughout the plan.
+Trial revisit date: the owner kept 2026-12-31.
