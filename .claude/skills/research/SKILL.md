@@ -73,8 +73,21 @@ directory is no session's root; stop and report its message).
   a project session does not create a workspace worktree. Instead:
   1. Draft the entry in the digest format and show the full entry text in the
      conversation, so the survey is not lost.
-  2. Record it in the inbox with
-     `"$WS_ROOT/.agent/scripts/capture.sh" "research for the workspace digest: <topic> — <one-line summary>"`.
+  2. Record it in the inbox. The topic and summary come from the web, so they
+     are written to a temporary file through a quoted heredoc (`<<'EOF'`) and
+     passed as `"$(cat "$f")"`: the quoted heredoc copies every character
+     verbatim, and the text a command substitution returns inside double
+     quotes is not expanded again, so a `$`, backtick, `$(...)` or quote in
+     it stays text. Double quotes around the text itself would expand `$` and
+     backticks; single quotes break on an apostrophe in it.
+     ```bash
+     WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+     f="$(mktemp)"
+     cat > "$f" <<'EOF'
+     research for the workspace digest: <topic> — <one-line summary>
+     EOF
+     "$WS_ROOT/.agent/scripts/capture.sh" "$(cat "$f")"; rm -f "$f"
+     ```
      The script tags the line with the project the cwd is in, so the text itself
      must say it is for the workspace digest.
   3. Offer a workspace issue that carries the drafted entry in its body; open it

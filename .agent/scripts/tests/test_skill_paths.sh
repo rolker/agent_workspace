@@ -929,7 +929,8 @@ has "$RES" "research: --skill research is for workspace worktrees only" \
     '`--skill research` is for workspace worktrees only: `worktree_create.sh` rejects `--skill research --type project`'
 has "$RES" "research: a workspace-digest write from a project session hands back" \
     'a workspace-digest **write** from a project session does not create a workspace worktree' \
-    '"$WS_ROOT/.agent/scripts/capture.sh" "research for the workspace digest:' \
+    "cat > \"\$f\" <<'EOF' research for the workspace digest:" \
+    '"$WS_ROOT/.agent/scripts/capture.sh" "$(cat "$f")"' \
     "open it only after the user's yes"
 has "$RES" "research: project rules read before committing a project digest" \
     "read the project's \`.agents/README.md\` for rules about what may be committed"
@@ -952,6 +953,11 @@ if grep -qF 'gh pr create --fill' "$RES" 2>/dev/null \
     fail "research still opens its PR with a bare gh pr create --fill"
 else
     pass "research opens no PR with a bare gh pr create --fill"
+fi
+if grep -qF 'capture.sh" "research' "$RES" 2>/dev/null; then
+    fail "research double-quotes web-derived text on the capture.sh line"
+else
+    pass "research passes no web-derived text to capture.sh in double quotes"
 fi
 if grep -qF '**Location**: `$WS_ROOT/' "$RES" 2>/dev/null; then
     fail "research still gives a digest location under \$WS_ROOT (the main checkout)"
