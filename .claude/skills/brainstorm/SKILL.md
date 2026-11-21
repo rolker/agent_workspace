@@ -84,7 +84,11 @@ only when the topic is about a project):
   `roadmap=`; without `--dir` it reports the session's own root)
 
 **A part** (ADR-0022): when the topic is about a part of the workspace or a
-project, also read the part's own `design.md`.
+project, also read the part's own `design.md`: the `design.md` in the same
+directory as the part's sub-roadmap file, which its parent's
+`| Sub-roadmap | Root |` row names (the rule `design-discussion` Step 0
+uses; the row's `Root` cell is not where the design is). If there is none
+there, say so; never guess another location.
 
 Check digest freshness — if a digest is older than 30 days, note it and
 suggest a refresh with `/research` but don't block on it.
