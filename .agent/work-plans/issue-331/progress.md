@@ -196,3 +196,30 @@ Issue-body addendum (text draft for the host; not posted):
 ### Checks
 - `bash .agent/scripts/tests/test_skill_paths.sh`: `test_skill_paths: 185 passed, 0 failed` (new guards for each finding added to its research block)
 - No script changed (only the test suite and the skill); manifest unchanged, so `test_plugin_manifest.sh` not run. The full pre-commit pass and the other suites were left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-21 18:35 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-331 at `8f6a8835`
+**Base**: main
+**Depth**: Deep (reason: 662 changed lines, 200+; skill definition is an override trigger; whole-diff classification at round 2)
+**Must-fix**: 3 | **Suggestions**: 8
+**Round**: 2 | **Ship**: continue — round 2: 3 must-fix is high; another independent read warranted (all three are mechanical)
+
+Round-1 findings: all 8 resolved in the text (the gh pr create --fill guard added for finding 2 is vacuous, see below). Checks: test_skill_paths.sh 185 passed, 0 failed; test_plugin_manifest.sh 12 passed, 0 failed; shellcheck not installed (not run); pre-commit left to the host. Cross-model: gemini complete, codex complete; Claude adversarial complete.
+
+### Findings
+- [ ] (must-fix) Adding research step 1 hands back before the survey exists, and steps 5-8 are not skipped for a hand-back (or a non-git project root); say steps 2-4 run, then hand back as in Scope instead of 5-8, as Refreshing does — `.claude/skills/research/SKILL.md:248-251`
+- [ ] (must-fix) Step 6 commits before set_git_identity_env.sh is sourced (only in step 7's chain); shell state does not persist, so commits get the default author. Source it in step 6's commit chain — `.claude/skills/research/SKILL.md:259-271`
+- [ ] (must-fix) gh pr create --fill guard is vacuous: the allowed sentence contains the string, so a real bare command anywhere still passes. Filter that line out (grep -F ... | grep -vF ...) and fail on any remainder — `.agent/scripts/tests/test_skill_paths.sh:958-963`
+- [ ] (suggestion) Usage says no --scope means the session root's digest, but Ingest step 3 picks scope from content; state Ingest's exception in Usage or align — `.claude/skills/research/SKILL.md:19,285-287`
+- [ ] (suggestion) In a project session without the user tier, WS_ROOT=. is the project dir: session_root.sh exits 127 (not the documented exit 1) and `cd "$WS_ROOT" && gh repo view` returns the project repo; say to stop when $WS_ROOT/.agent/scripts/session_root.sh is missing — `.claude/skills/research/SKILL.md:43-65,106`
+- [ ] (suggestion) With GITBUG_CREATE=1, gh_create_issue.sh runs git bug new in the cwd repo and ignores -R, so the hand-back issue lands in the project; prefix GITBUG_CREATE= or fix the wrapper — `.claude/skills/research/SKILL.md:114` (`gh_create_issue.sh:336-365`)
+- [ ] (suggestion) capture.sh guard only matches the literal `capture.sh" "research`; fail on any `capture.sh" "` not followed by `$(cat` — `.agent/scripts/tests/test_skill_paths.sh:971`
+- [ ] (suggestion) Snippets mask failures: trailing rm -f hides capture.sh/gh_create_issue.sh status, empty $ws_repo not checked, git push not &&-chained before gh_create_pr.sh — `.claude/skills/research/SKILL.md:91,106-115,270-271`
+- [ ] (suggestion) A line equal to EOF in web text closes the quoted heredoc early and runs the rest as shell; use a unique delimiter — `.claude/skills/research/SKILL.md:88-90,108-113`
+- [ ] (suggestion) Ingest hand-back path names neither Project rules (for the hand-back text) nor a dedup check against the $WS_ROOT digest — `.claude/skills/research/SKILL.md:288-291`
+- [ ] (suggestion) source worktree_enter.sh's cd does not carry to later tool calls in per-command shells; carry the worktree path into the edit/commit/PR steps — `.claude/skills/research/SKILL.md:213-229`
