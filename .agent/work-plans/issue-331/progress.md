@@ -173,3 +173,26 @@ Issue-body addendum (text draft for the host; not posted):
 - [x] (suggestion) An existing but empty `~/.claude/agent-workspace-root` leaves $WS_ROOT empty; add `; WS_ROOT="${WS_ROOT:-.}"` as sitrep does — `.claude/skills/research/SKILL.md:44`
 - [x] (suggestion) "In the project's own repo" is undefined for a multi-repo project whose root is not a git repo (`worktree_create.sh` refuses there); say what happens — `.claude/skills/research/SKILL.md:101-105`
 - [x] (suggestion) Read `.agents/README.md` before editing the project digest, not only before committing (AGENTS.md "before modifying"), and keep project-private data out of the workspace hand-back text — `.claude/skills/research/SKILL.md:174`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-21 18:30 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-331 at `61a4faa5`
+**Addressed**: Local Review (Pre-Push) at `b98619c7` (2026-11-21 18:25 -05:00)
+**Commits**: 0e9b9d52, 6cdb633c, 32062c55, 81b1b316, 27e285c1, 241cb8f8, 1af082cf, 61a4faa5
+
+### Actions
+- [x] (must-fix) Workspace digest written in the `--skill research` worktree, never at `$WS_ROOT/...`, which is for reading only — `.claude/skills/research/SKILL.md` Workspace digest (0e9b9d52)
+- [x] (must-fix) Step 7 opens the PR with `"$WS_ROOT/.agent/scripts/gh_create_pr.sh"` (signature, repo check), `Closes #<N>` for a project issue; Ingest/Refresh step 6 point to it — Adding research step 7 (6cdb633c)
+- [x] (must-fix) Ingest decides scope (step 3) before any setup, then hands back or sets up the worktree and follows Project rules; Refresh hands back a workspace refresh from a project session and follows Project rules for a project digest — Ingesting/Refreshing (32062c55)
+- [x] (must-fix) capture.sh text goes through a quoted heredoc to a mktemp file and is passed as `"$(cat "$f")"`: the heredoc copies it verbatim and command-substitution output in double quotes is not re-expanded; single quotes were rejected (break on an apostrophe) — Scope step 2 (81b1b316)
+- [x] (must-fix) Hand-back issue named: `"$WS_ROOT/.agent/scripts/gh_create_issue.sh" -R "$ws_repo" --title "$(cat "$t")" --body-file "$b"`, `ws_repo` from `gh repo view` in `$WS_ROOT`; no `--label` (the wrapper checks labels against the cwd checkout's list). Verified the wrapper takes -R/--repo and accepts the workspace slug — Scope step 3 (27e285c1)
+- [x] (suggestion) Every `$WS_ROOT` resolution adds `; WS_ROOT="${WS_ROOT:-.}"`, explained in Workspace root — (241cb8f8)
+- [x] (suggestion) A project root that is not a git repository has no project digest until the per-project setting exists: show the entry, capture it, stop; check snippet given. Verified both adapters' worktree_repos refuse a plain --issue there — Project digest (1af082cf)
+- [x] (suggestion) Project rules read before editing (not only committing), at Adding research step 1; hand-back text keeps project-private data out — Project rules (61a4faa5)
+
+### Checks
+- `bash .agent/scripts/tests/test_skill_paths.sh`: `test_skill_paths: 185 passed, 0 failed` (new guards for each finding added to its research block)
+- No script changed (only the test suite and the skill); manifest unchanged, so `test_plugin_manifest.sh` not run. The full pre-commit pass and the other suites were left to the host.
