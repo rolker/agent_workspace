@@ -504,3 +504,31 @@ Follow-up issue drafts (text only, nothing filed):
 - [x] (suggestion) Carve steps 2-4 commit before Step 7's "each write on the user's yes" is stated, and Step 6 runs the landing check that needs those commits; say each Carve write waits for a yes — `.claude/skills/design-discussion/SKILL.md:203-204,283`
 - [x] (suggestion) Resume (Step 1) needs the anchor issue, but Step 0 asks for it only before the first tracked write; ask for an existing anchor up front — `.claude/skills/design-discussion/SKILL.md:69-73,92-95`
 - [x] (suggestion) The "Workflow skill list" consequence row omits `.agent/knowledge/skill_workflows.md`, which this branch itself updates — `.agent/knowledge/principles_review_guide.md:71`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-21 17:48 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-370 at `d9b6e95d`
+**Addressed**: Local Review (Pre-Push) at `b25f28e6` (2026-11-21 17:27 -05:00)
+**Commits**: 3a815731, c1370b06, 82b7de72, cfe84ee3, 03e9a5bb, 8984e5c6, 8d300319, e3af65ab, 1b7c66d8, 4efb6d82, c698063c, ef8bc075, d9b6e95d
+
+### Actions
+- [x] (must-fix) A decision's reason is a signed comment on the anchor issue, never a progress entry (owner decision 2026-11-21); `progress_append.sh` and the `## Checkpoint` use removed; Step 1 resume reads the issue's comments; `docs/design.md#documentation-layers` Decisions row adds "or the anchor issue's comments for a design discussion's reasons", with a change-log row (1214 lines) — `.claude/skills/design-discussion/SKILL.md` Step 7 "The why", `docs/design.md:104` (3a815731, ef8bc075)
+- [x] (must-fix) Carve landing check runs against the drafts' worktree (`WT="$(git -C <worktree> rev-parse --show-toplevel)"`), both scripts with `$WS_ROOT/.agent/scripts/` paths; verified in this worktree: `check_design_anchors.sh "$WT"` exit 0, `sitrep_checks.sh --root "$WT" --roadmap "$WT/docs/roadmap.md"` exit 0 with `part tools/repos-manifest/docs/roadmap.md true`, and the nested form `--root "$WT/tools/repos-manifest" --roadmap "$WT/tools/repos-manifest/docs/roadmap.md"` reads the sub-roadmap — Carve step 4 (c1370b06)
+- [x] (must-fix) Drafts leave the machine: push of the branch (or a draft PR) offered after the first draft commit and at every ending, on a yes; the state comment names branch, draft PR and whether pushed, and says "this machine only" when not — Step 7 (8d300319)
+- [x] (must-fix) A project with no issues is not supported yet: say so and stop before any tracked write, pointing at #544 and #393 (owner decision 2026-11-21); draft-PR-body fallbacks removed; no allowlist or AGENTS.md change — Step 0, Step 7 (82b7de72)
+- [x] (must-fix) Identity sourced (`set_git_identity_env.sh`) in the drafts' worktree before the first commit or comment, in the same chain; the progress_append part is moot (no longer used) — Step 7 "Identity first" (03e9a5bb)
+- [x] (suggestion) One yes-rule for every tracked write; a no makes no write and the item goes into the next offered state comment; the state comment is offered at every ending and posted on a yes — Usage, Step 6, Step 7 (e3af65ab)
+- [x] (suggestion) Every comment and issue body written to a scratchpad file, posted with `--body-file`, ending with the AI signature — Step 7 "Every comment is signed" (8984e5c6, ef8bc075)
+- [x] (suggestion) Each Carve write waits for the user's yes; Step 6 runs the landing check once those writes are committed, and a declined write leaves the carve not landed — Carve intro, Step 6 (1b7c66d8)
+- [x] (suggestion) Ask for an existing anchor issue at the start, since resuming reads it — Step 0 (cfe84ee3)
+- [x] (suggestion) The "Workflow skill list" consequence row names `.agent/knowledge/skill_workflows.md`'s tables — `.agent/knowledge/principles_review_guide.md:71` (4efb6d82)
+- [x] (owner-approved addition) Step 1 reads the level's research digest (`$WS_ROOT/.agent/knowledge/research_digest.md`; a project's `.agents/workspace-context/research_digest.md` if it exists) and brainstorm results on the anchor issue; a "Before this" line names `/research` and `/brainstorm` as optional, not available in project sessions yet (#331, #552) — Usage, Step 1 (c698063c, d9b6e95d)
+
+### Checks
+- `bash .agent/scripts/tests/test_skill_paths.sh`: "test_skill_paths: 167 passed, 0 failed" (first run failed 1: a workspace-relative digest path; fixed in d9b6e95d, rerun passed)
+- `bash .agent/scripts/tests/test_plugin_manifest.sh`: "test_plugin_manifest: 12 passed, 0 failed"
+- `.agent/scripts/check_design_anchors.sh .`: exit 0
+- No script under `.agent/scripts/` changed. Full pre-commit pass left to the host.
