@@ -160,24 +160,28 @@ that heading.
    data) and remove what they forbid. Say what was removed.
 4. **Show, then post on a yes.** Show the full comment text. On the user's
    yes, in one command chain: resolve `$WS_ROOT`, set the identity, write the
-   body to a file in the session's scratchpad, post it, remove the file.
+   body to a file in the session's scratchpad **verbatim** (a quoted heredoc,
+   so no backtick span, `$` or `$(...)` in the text is run or expanded),
+   append the signature with `printf`, post it, remove the file, and keep the
+   chain's exit status, so a failed post is never reported as posted:
 
    ```bash
    WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"; \
    source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model id>" && \
-   <write the body to <scratchpad file>, signature expanded from $AGENT_NAME / $AGENT_MODEL> && \
-   gh issue comment <N> [-R <owner/repo>] --body-file <scratchpad file>; rm -f <scratchpad file>
+   body="<scratchpad file>" && \
+   cat > "$body" <<'BODY' &&
+   <the comment text exactly as shown, without the signature>
+   BODY
+   printf '\n---\n**Authored-By**: `%s`\n**Model**: `%s`\n' "$AGENT_NAME" "$AGENT_MODEL" >> "$body" && \
+   gh issue comment <N> [-R <owner/repo>] --body-file "$body"; rc=$?; rm -f "$body"; (exit $rc)
    ```
 
+   The closing `BODY` stands alone at the start of its line (no list
+   indent); if the text holds a line that is exactly `BODY`, pick another
+   delimiter.
    Use `-R <owner/repo>` when the issue is in a repository other than the
-   cwd's. Never `--body`. The body ends with the AI signature, the variables
-   expanded to their values:
-
-   ```markdown
-   ---
-   **Authored-By**: `$AGENT_NAME`
-   **Model**: `$AGENT_MODEL`
-   ```
+   cwd's. Never `--body`. Report the comment's URL, which `gh issue comment`
+   prints, only when the chain exits 0; otherwise say the post failed.
 
 **Never** a `progress.md` entry: brainstorm results are not an entry type on
 an issue's timeline (ADR-0013), and an entry there derails a later
