@@ -159,13 +159,19 @@ is not the session's own root.
 1. **Issues and `gh` first.** Before asking about an issue, check that the
    result can be saved at all:
    - `gh auth status` succeeds;
+   - the topic's root is known and `<owner/repo>` resolves: a project's topic
+     names a registered project (Workspace root, above), and `gh repo view`
+     run in that root prints a repository (it fails in a folder that is not
+     git or has no GitHub remote);
    - for a project's topic, the project uses issues: the `issues` fact of
      `"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --facts --format
      text --dir <project root>` (as `onboard-project` reads it); ask the user
      when it is `unknown`. The workspace uses issues.
 
-   If `gh` is missing or not authenticated, or the fact is `no`, the result
-   stays in the conversation. Say so plainly; write nothing anywhere else.
+   If `gh` is missing or not authenticated, the project is not registered,
+   `<owner/repo>` does not resolve, or the fact is `no`, the result stays in
+   the conversation. Say so plainly; write nothing anywhere else, and never
+   fall back to the workspace repository for a project's topic.
 2. **Anchor issue.** Ask which issue the brainstorm belongs to. If there is
    none, offer to open one (Issue-First Policy). Its body is a short statement
    of the topic, not the brainstorm. Give that body the public-project check
