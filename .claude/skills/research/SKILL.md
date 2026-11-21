@@ -70,7 +70,7 @@ fi
 It prints `root=`, `type=workspace|project` and `project=` (exit 1: this
 directory is no session's root; stop and report its message). When it says
 there are no workspace scripts, stop and tell the user to install the user
-tier (`.agent/scripts/user_tier_install.sh`, run from the workspace): in a
+tier (`user_tier_install.sh`, run in the workspace checkout): in a
 project session without it, `$WS_ROOT` falls back to `.`, the project
 directory, so every later `$WS_ROOT` command would run against the project
 (`session_root.sh` itself is not found, and `cd "$WS_ROOT" && gh repo view`
