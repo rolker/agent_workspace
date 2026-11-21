@@ -36,22 +36,22 @@ under a project's checkout. Resolve the folder at the head of each command chain
 state does not persist between tool calls):
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null)"
-if [ -z "$WS_ROOT" ]; then
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+if [ "$WS_ROOT" = . ]; then
   # No user tier on this machine: use the main checkout of the current repository,
   # so a summary written from a worktree survives the worktree's removal.
   common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
-  WS_ROOT="${common:+$(dirname "$common")}"
-  WS_ROOT="${WS_ROOT:-.}"
+  [ -n "$common" ] && WS_ROOT="$(dirname "$common")"
 fi
 DD_DIR="$WS_ROOT/.agent/scratchpad/design-discussions"
 git -C "$WS_ROOT" check-ignore -q .agent/scratchpad/design-discussions/probe.md \
   && echo "dd_dir=$DD_DIR" || echo "dd_dir="
 ```
 
-`~/.claude/agent-workspace-root` is written by `.agent/scripts/user_tier_install.sh` and
-names the workspace's main checkout. Without it, the fallback is the current repository's
-main checkout, which is the workspace only in a workspace session.
+`~/.claude/agent-workspace-root` is written by the user-tier install
+(`user_tier_install.sh`) and names the workspace's main checkout. Without it, the
+fallback is the current repository's main checkout, which is the workspace only in a
+workspace session.
 
 If `dd_dir=` comes back empty, the folder is not git-ignored there (a project session on a
 machine without the user tier, or no git repository at all). Then write no file: say so
