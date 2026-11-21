@@ -32,8 +32,8 @@ it before the first implementation issue of a new design, not only when doubts a
 It is a conversation, and its product is the level's tracked documents. A discussion
 bigger than one session loses its details unless they are saved where every later
 session reads them, until the work is done. So everything decided, everything still open
-and the reason for each decision is written to a tracked place during the session, each
-write on the user's yes (Step 7). The scratchpad holds in-session notes only: it is one
+and the reason for each decision is offered for a tracked place during the session, and
+written there on the user's yes (Step 7). The scratchpad holds in-session notes only: it is one
 machine, untracked, and a fresh session does not see it, so it is never the home of a
 decision. The skill writes no code and no work plan.
 
@@ -190,7 +190,7 @@ why the work had been started; the real reason came out four rounds in.*
 ### 6. Land
 
 - Any of these is a valid ending: continue, prune, shelve, or clearer but undecided.
-  Every ending records what it settled and what is open (Step 7).
+  Every ending offers to record what it settled and what is open (Step 7).
 - **Revise**, before the landing counts:
   - show the step 4 list with the *changed* and *dropped* items first;
   - check every new term in the conclusion against the existing decisions;
@@ -215,9 +215,11 @@ why the work had been started; the real reason came out four rounds in.*
 
 ### 7. Record
 
-Everything decided, everything open and every reason is written to a tracked place before
-the session ends. Each write is shown first and made on the user's yes to that item; a
-no leaves it recorded as open on the anchor issue instead. Never start building.
+Everything decided, everything open and every reason is offered for a tracked place
+before the session ends. One rule covers every tracked write (a commit, a push, a draft
+PR, an issue, a comment): it is shown first and made only on the user's yes to that
+item. A no makes no write: the item stays open, and the next state comment offered
+lists it among the open questions. Never start building.
 
 - **Identity first.** Before the first commit or comment, set the agent identity in the
   worktree the drafts go in, in the same command chain as the write (shell state does not
@@ -272,11 +274,12 @@ no leaves it recorded as open on the anchor issue instead. Never start building.
   derails a later `/run-issue` on that issue, whose next phase is read from those
   entries. The design keeps the current picture only, so without this the reasoning is
   lost and later sessions reopen what was settled.
-- **Undecided state.** On every ending, and on the user's yes mid-session, a comment on
-  the anchor issue with the open questions, the options still in play, what was parked
-  and why, where the discussion stands, and where the drafts are (branch, draft PR, pushed
-  or not). Step 1 reads the latest one first. When a session may be cut off
-  mid-round, leave one before the next long research step. *(untested)*
+- **Undecided state.** At every ending, offer a state comment on the anchor issue; offer
+  one mid-session too, whenever the user asks, and before the next long research step
+  when a session may be cut off mid-round *(untested)*. It is posted on a yes, like every
+  write, and holds the open questions, the options still in play, what was parked and
+  why, where the discussion stands, and where the drafts are (branch, draft PR, pushed or
+  not). Step 1 reads the latest one first.
 - **No document.** If the level has no goals, design or roadmap, or a Revise target is
   missing (say, no Direction section), the conversation still runs: drafts and open
   questions go in a comment on the anchor issue, not in a new file at a location no
