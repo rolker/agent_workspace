@@ -72,9 +72,15 @@ session.
     anchor issue (Step 7, "No document").
 - **Anchor issue.** At the start, ask whether the discussion already has an issue: a
   resumed discussion is read from it (Step 1). If it has none, offer to open one before
-  the first tracked write (Issue-First Policy). Every session writes to that issue and
-  resumes from it. Drafts go on that issue's branch, in a worktree made by the root's own
-  route for issues.
+  the first tracked write (Issue-First Policy); open it only on a yes. Every session
+  writes to that issue and resumes from it. Drafts go on that issue's branch, in a
+  worktree made by the root's own route for issues.
+- **No anchor issue, no record.** If the user declines the anchor issue, say plainly
+  that nothing from this session can be saved for later sessions: every record path in
+  Step 7 (drafts, reasons, the state comment) needs it. The conversation may still run,
+  but stop before any tracked write (no worktree, commit, comment or file), as for a
+  project that uses no issues (below). Offer the anchor issue again before the session
+  ends.
 - **A project that uses no issues is not supported yet.** Say so plainly and stop before
   any tracked write: no worktree, commit, comment or file. The skill has no anchor to
   write to or resume from there, and no worktree route that needs no issue. The
