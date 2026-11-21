@@ -332,3 +332,11 @@ He approved posting the restated goal ("yes"); it is on the issue at https://git
 
 Owner answered "Proceed": the new plan takes on Issue Review actions A1-A8 (after the restart).
 On where "where a project keeps its goals, design and roadmap" is tracked, the owner chose "New issue beside #393": the host drafts it, shows the owner the text, and files it only on his yes; it cross-links #393 and #370. Part 1 does not depend on it; Part 2 does.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-21 17:01 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-370/plan.md` at `384cc328`
+
+Rewritten for the restated goal. Part 1 only (`Part of #370`): rework the existing design-discussion SKILL.md with a level framing step (workspace, project, part), Revise and Carve, tracked writes on each yes with drafts in the level's documents on a branch or draft PR from the first session, resume reading the tracked documents first, scratchpad for in-session notes only, locations only where today's readers accept them. Part 2 (Create plus the location ask and storage, `Closes #370`) waits on a new location issue beside #393, not filed here. A1-A8 are answered in the plan; follow-up drafts (b) revised and (c) conditional are text only, (a) absorbed. Name, trial banner and 2026-12-31 date kept; banner text changes to the Revise and Carve uses.
