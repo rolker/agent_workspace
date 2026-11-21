@@ -225,6 +225,17 @@ no leaves it recorded as open on the anchor issue instead. Never start building.
   `cd <worktree> && source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model id>" && …`.
   It sets the commit identity and `AGENT_NAME` and `AGENT_MODEL`, which the signature
   below needs.
+- **Every comment is signed.** Each comment the skill posts (a reason, the undecided
+  state, drafts with no document) is written to a file in the session's scratchpad and
+  posted with `gh issue comment <N> --body-file <file>`, never `--body`; the file is
+  removed afterwards. The body ends with the AI signature, the variables expanded to
+  their values:
+
+  ```markdown
+  ---
+  **Authored-By**: `$AGENT_NAME`
+  **Model**: `$AGENT_MODEL`
+  ```
 - **Drafts live in the documents from the first session.** The first time the user says
   something is decided, propose the target document and section. On the user's yes, put
   the draft into that document on the anchor issue's branch, commit it, and offer a draft
