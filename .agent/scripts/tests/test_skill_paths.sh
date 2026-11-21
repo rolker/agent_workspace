@@ -167,7 +167,7 @@ fi
 # typo in the field name would silently drop a skill from the user tier.
 for name in start-task plan-task review-plan review-code triage-reviews \
             test-engineering sitrep run-issue review-issue address-findings \
-            orchestrator; do
+            orchestrator research; do
     f="$SKILLS/$name/SKILL.md"
     [[ -f "$f" ]] || { fail "expected skill is missing: $name"; continue; }
     [[ "$(scope_of "$f")" == "both" ]] \
@@ -914,6 +914,34 @@ if [[ -f "$ROADMAP" && -z "$paths_out" ]]; then
     pass "roadmap: Path 1, Path 2 and Path 3 paragraphs in ## Direction, no table row between them"
 else
     fail "roadmap paths: ${paths_out:-docs/roadmap.md is missing}"
+fi
+
+# --- research runs in a project session (#331) --------------------------
+# The default scope comes from session_root.sh; a project digest needs a
+# project issue (no --skill research --type project); a workspace-digest
+# write from a project session hands back through capture.sh; and the
+# project lessons (rules check, generic queries, pending sources) stay.
+RES="$SKILLS/research/SKILL.md"
+has "$RES" "research: default scope from the session root" \
+    '"$WS_ROOT/.agent/scripts/session_root.sh"' \
+    "No \`--scope\` means the digest of the session's root"
+has "$RES" "research: --skill research is for workspace worktrees only" \
+    '`--skill research` is for workspace worktrees only: `worktree_create.sh` rejects `--skill research --type project`'
+has "$RES" "research: a workspace-digest write from a project session hands back" \
+    'a workspace-digest **write** from a project session does not create a workspace worktree' \
+    '"$WS_ROOT/.agent/scripts/capture.sh" "research for the workspace digest:' \
+    "open it only after the user's yes"
+has "$RES" "research: project rules read before committing a project digest" \
+    "read the project's \`.agents/README.md\` for rules about what may be committed"
+has "$RES" "research: no real locations in web queries" \
+    'no real coordinates, bounding boxes, site names or addresses, unless the owner approves that query' \
+    'Pass this rule in every sub-agent prompt'
+has "$RES" "research: sources-pending mark" \
+    '`**Sources**: pending`' '`--refresh` takes pending entries first'
+if grep -qF 'manifest repo' "$RES" 2>/dev/null; then
+    fail "research still says the project digest lives in the manifest repo"
+else
+    pass "research no longer names the manifest repo"
 fi
 
 # --- Path 3's marker (#477): the sit-rep marks work Path 3 by the README
