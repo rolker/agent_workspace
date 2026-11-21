@@ -74,3 +74,11 @@ issue: 331
 **Decision**: proceed
 
 Owner answered "Proceed, keep defaults": plan #331 now with the project digest at .agents/workspace-context/research_digest.md (what ice_cube and design-discussion already use), read through #551's setting once that exists; research keeps its current worktree rule (a project digest update needs a project issue; no --skill research --type project, no AGENTS.md change). #331 ships apart from #552 (owner kept the host's ship-apart decision on #552). Easy to revisit after the workspace design review.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-21 18:01 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-331/plan.md` at `05f27884`
+
+Make research a session_scope: both skill (WS_ROOT idiom, session_root.sh default scope, project digest at the default path pending #551, worktree rule unchanged) and fold in the project lessons (project-rules check, no real-location queries, sources-pending mark), with test_skill_paths and plugin-list test coverage. Includes a text draft of the issue-body addendum.
