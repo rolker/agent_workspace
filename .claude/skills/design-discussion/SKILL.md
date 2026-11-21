@@ -238,11 +238,17 @@ no leaves it recorded as open on the anchor issue instead. Never start building.
   ```
 - **Drafts live in the documents from the first session.** The first time the user says
   something is decided, propose the target document and section. On the user's yes, put
-  the draft into that document on the anchor issue's branch, commit it, and offer a draft
-  PR, so the next session finds it by reading the document. Each later decision is a
-  tracked edit on a yes of its own, one at a time. No decision waits in scratch. *Why:
-  settled text lived only in scratch notes for days, and a deferral said in conversation
-  and kept in a scratch file was later read as a gap (#370, 2026-10-02 and 2026-10-12).*
+  the draft into that document on the anchor issue's branch and commit it. Each later
+  decision is a tracked edit on a yes of its own, one at a time. No decision waits in
+  scratch. *Why: settled text lived only in scratch notes for days, and a deferral said
+  in conversation and kept in a scratch file was later read as a gap (#370, 2026-10-02
+  and 2026-10-12).*
+- **Drafts leave the machine.** A commit alone is on this machine only, and a session
+  elsewhere cannot resume from it. At every ending, and after the first draft commit,
+  offer to push the branch, or to open a draft PR from it (which pushes it); do either
+  on a yes. The state comment (below) names the branch, the draft PR if there is one,
+  and whether the latest draft commit is pushed; when it is not, it says the drafts are
+  on this machine only.
 - **Where each kind goes:**
   - a design decision into the level's design: one current picture, edited in place, no
     revision layers (ADR-0017); follow the design's own change rule, or say it is set
@@ -267,9 +273,9 @@ no leaves it recorded as open on the anchor issue instead. Never start building.
   entries. The design keeps the current picture only, so without this the reasoning is
   lost and later sessions reopen what was settled.
 - **Undecided state.** On every ending, and on the user's yes mid-session, a comment on
-  the anchor issue with the open
-  questions, the options still in play, what was parked and why, and where the
-  discussion stands. Step 1 reads the latest one first. When a session may be cut off
+  the anchor issue with the open questions, the options still in play, what was parked
+  and why, where the discussion stands, and where the drafts are (branch, draft PR, pushed
+  or not). Step 1 reads the latest one first. When a session may be cut off
   mid-round, leave one before the next long research step. *(untested)*
 - **No document.** If the level has no goals, design or roadmap, or a Revise target is
   missing (say, no Direction section), the conversation still runs: drafts and open
