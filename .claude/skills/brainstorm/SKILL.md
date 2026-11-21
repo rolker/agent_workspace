@@ -64,7 +64,6 @@ Every source is optional. Read what exists, and say in the output (the
 - `$WS_ROOT/docs/design.md` — workspace design and layering constraints
 - `$WS_ROOT/docs/decisions/` — ADRs for historical context
 - the workspace roadmap: `$WS_ROOT/docs/roadmap.md`, else `$WS_ROOT/ROADMAP.md`
-  (what `"$WS_ROOT/.agent/scripts/sitrep_root.sh"` reports as `roadmap=`)
 
 **Project sources** (in a project session, from the project root; in a
 workspace session, when the topic is about a project, from that project's
@@ -76,7 +75,9 @@ registered folder):
   written in its public places
 - the project's principles (`PRINCIPLES.md` or `docs/principles.md`), design
   (`docs/design.md` or `ARCHITECTURE.md`) and ADRs (`docs/decisions/`)
-- the project's roadmap: `docs/roadmap.md`, else `ROADMAP.md`
+- the project's roadmap: `docs/roadmap.md`, else `ROADMAP.md` (what
+  `"$WS_ROOT/.agent/scripts/sitrep_root.sh" --dir <project root>` reports as
+  `roadmap=`; without `--dir` it reports the session's own root)
 
 **A part** (ADR-0022): when the topic is about a part of the workspace or a
 project, also read the part's own `design.md`.
