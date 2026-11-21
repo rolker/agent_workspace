@@ -532,3 +532,31 @@ Follow-up issue drafts (text only, nothing filed):
 - `bash .agent/scripts/tests/test_plugin_manifest.sh`: "test_plugin_manifest: 12 passed, 0 failed"
 - `.agent/scripts/check_design_anchors.sh .`: exit 0
 - No script under `.agent/scripts/` changed. Full pre-commit pass left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-21 18:10 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-370 at `29b1c00b`
+**Base**: main
+**Depth**: Deep (reason: 1043 changed lines over 9 files; governance files `.claude/skills/*/SKILL.md`, `docs/design.md`; whole-diff classification at round 2)
+**Must-fix**: 1 | **Suggestions**: 9
+**Round**: 2 | **Ship**: recommended — round 2: 1 mechanical must-fix (prev 5), not rising — fix and ship rather than another full round
+
+Round-1 findings (Local Review at `b25f28e6`): all 10 resolved, checked against SKILL.md: reasons are signed anchor-issue comments, no progress entry (281-288; design.md:104 and change-log row agree); Carve checks run on `$WT` with `$WS_ROOT` paths (337-345); push / draft PR offered and the state comment says where drafts are (260-265, 289-294); no-issues projects stop before any write (78-83); identity sourced first (235-240); one yes-rule (229-233); signed `--body-file` comments (241-252); Carve writes wait for a yes (309-310, 219-222); anchor asked up front (73-77); principles guide row names `skill_workflows.md` (71). Cross-model plan-divergence findings (no-issues projects, no progress entry for reasons) are owner decisions of 2026-11-21 and were dropped.
+
+Checks: `test_skill_paths.sh` 167 passed, 0 failed; `test_plugin_manifest.sh` 12 passed, 0 failed; `check_design_anchors.sh .` exit 0; pre-commit on the 9 changed files: no failures; 24 skill dirs; `plugin.json` parses. Cross-model: gemini complete (EXIT=0), codex complete (EXIT=0).
+
+### Findings
+- [ ] (must-fix) A declined anchor issue is unhandled: Step 0 offers to open one but never says what happens on a no, while every Step 7 record path (reasons, state comment, no-document drafts, missing-section fallback) needs it, so the session's decisions and open questions are silently lost; say so plainly and stop before any tracked write, as for a project with no issues — `.claude/skills/design-discussion/SKILL.md:73-77`
+- [ ] (suggestion) Repository targeting: the trial outcome goes on bare "#370", which a project session's `gh` resolves to the project repo (name `rolker/agent_workspace#370`); and `gh issue comment/create` and `sitrep_root.sh` run against the cwd, so a level other than the session's root (a project from a workspace session) needs `-R` / `--dir` or a note that the discussion runs in the level's own session — `.claude/skills/design-discussion/SKILL.md:11,87,243`
+- [ ] (suggestion) The identity step is `cd <worktree> && source …`, but opening the anchor issue (Step 0) and the comment-only paths (No document, state comment before any draft) have no worktree yet; say where to source it then — `.claude/skills/design-discussion/SKILL.md:235-238`
+- [ ] (suggestion) Push is offered after the first draft commit and at endings only; later draft commits stay on this machine if a session is cut off; offer the push after each draft commit (or one standing yes) — `.claude/skills/design-discussion/SKILL.md:260-265`
+- [ ] (suggestion) A draft PR should go through `.agent/scripts/gh_create_pr.sh` (AGENTS.md Always: signature and target-repo check), not raw `gh pr create` — `.claude/skills/design-discussion/SKILL.md:262`
+- [ ] (suggestion) "If the roadmap has none of these sections" leaves a roadmap with Direction but no Decided Against / To Consider unhandled; make it per section ("lacks the section for that kind") — `.claude/skills/design-discussion/SKILL.md:279`
+- [ ] (suggestion) "the roadmap's Format notes" names no heading; `docs/roadmap.md:62` is a `**Format.**` paragraph — `.claude/skills/design-discussion/SKILL.md:272`
+- [ ] (suggestion) Step 1 reads brainstorm results "recorded on the anchor issue", but nothing writes them there (`brainstorm/SKILL.md:91` creates no issues, output is conversation-only); offer to post a brainstorm's output as a signed comment, or drop the claim — `.claude/skills/design-discussion/SKILL.md:32-34,122-126`
+- [ ] (suggestion) "A project that uses no issues" gives no test; point at the `issues=` fact of `project_integration_audit.sh --facts` and ask when it is `unknown`, as `onboard-project/SKILL.md:475` does — `.claude/skills/design-discussion/SKILL.md:78`
+- [ ] (suggestion) Landing-check snippet runs both checks back to back, losing `check_design_anchors.sh`'s exit 0/1/2 the text says to report (echo each exit); and "reads only files git tracks" is imprecise (`git ls-files` includes staged files; pointer-named sub-roadmaps and their design.md are added with no tracking check, `check_design_anchors.sh:432-443`) — `.claude/skills/design-discussion/SKILL.md:330-342`
