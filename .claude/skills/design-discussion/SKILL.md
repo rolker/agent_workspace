@@ -91,7 +91,8 @@ session.
 
 - **On resuming** (the user comes back to a discussion, or the anchor issue shows earlier
   sessions), read in this order: the anchor issue's latest state comment (Step 7,
-  "Undecided state") and its progress timeline; the level's design; the roadmap's
+  "Undecided state") and its other comments, which hold the reasons (Step 7, "The why");
+  the level's design; the roadmap's
   Direction lines; the branch or draft PR holding the drafts; open issues that cite them.
   The first output is the one-liner of the overall task, then progress against the
   roadmap's lines (which are true, which is next), then only the context needed for the
@@ -235,12 +236,13 @@ no leaves it recorded as open on the anchor issue instead. Never start building.
   If the roadmap has none of these sections, say so and record the item on the anchor
   issue (below) rather than adding a section the readers do not know.
 - **The why.** Each decision's reason goes to the Decisions role
-  (`docs/design.md#documentation-layers`): a progress entry on the anchor issue's
-  timeline (`"$WS_ROOT/.agent/scripts/progress_append.sh" -C <worktree> <N>`, a
-  `## Checkpoint` entry with `**Decided-by**: owner`, the decision and its reason) when
-  the issue has a worktree, else a comment on the anchor issue; and an ADR draft when the
-  decision is a rule. The design keeps the current picture only, so without this the
-  reasoning is lost and later sessions reopen what was settled.
+  (`docs/design.md#documentation-layers`) as a signed comment on the anchor issue (the
+  decision, its reason, the date, and where the decided text now lives), and as an ADR
+  draft as well when the decision is a rule. Never as an entry in the issue's
+  `progress.md`: a `## Checkpoint` or any other entry on the anchor issue's timeline
+  derails a later `/run-issue` on that issue, whose next phase is read from those
+  entries. The design keeps the current picture only, so without this the reasoning is
+  lost and later sessions reopen what was settled.
 - **Undecided state.** On every ending, and on the user's yes mid-session, a comment on
   the anchor issue (or the draft PR's body for a project with no issues) with the open
   questions, the options still in play, what was parked and why, and where the
