@@ -9,7 +9,8 @@ session_scope: both
 > **Trial version.** Part 1 of the workspace issue that introduced it (#370): the Revise
 > and Carve uses. It stays a trial until two uses are recorded, one Revise and one Carve.
 > The outcome of those uses, and whether to settle, revise or remove the skill, goes in a
-> comment on #370. Revisit when both uses are done, or on 2026-12-31 if they are not,
+> comment on rolker/agent_workspace#370 (the full name: a project session's `gh` reads a
+> bare number as the project's issue). Revisit when both uses are done, or on 2026-12-31 if they are not,
 > whichever comes first; at that point the skill is revised or removed, not left as a
 > trial. That date judges Part 1 only. Create (a level with no goals, design or roadmap)
 > comes in Part 2, which waits on #551 (where a project keeps its goals, design and
@@ -63,6 +64,11 @@ session.
   of either (ADR-0022). For a part, read its parent's goals first. *Why: the same failures
   showed up on a workspace redesign and a project redesign; the level and its parent's
   goals were never named up front (#370, 2026-10-12).*
+- **The level's own session.** `gh`, `sitrep_root.sh` and the worktree route all act on
+  the session's root (the cwd). Discuss a level in a session started at its root: a
+  project's level from a workspace session, or the reverse, writes to the wrong
+  repository. If the level belongs to another root, say so and stop before any tracked
+  write.
 - **Use.**
   - **Revise**: the level has goals, design and roadmap; challenge and revise them.
   - **Carve**: split a sub-component or a new feature off as a part, with its own goals,
