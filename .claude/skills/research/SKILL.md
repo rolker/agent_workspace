@@ -228,18 +228,27 @@ The worktree type depends on the scope:
   In a project session the project is the one the cwd is in; from a workspace
   session add `--project <name>`.
 
-### Project rules before committing a project digest
+### Project rules before editing a project digest
 
-Before committing to a project digest, read the project's `.agents/README.md`
-for rules about what may be committed (for example: the repo is public, or no
-site data). When a rule applies: draft the full report somewhere the project
-ignores or keeps private, write the digest entries in generic terms, and commit
-only those entries. With no such rule, commit as usual.
+Before editing a project digest (not only before committing it), read the
+project's `.agents/README.md` for rules about what may be committed (for
+example: the repo is public, or no site data). When a rule applies: draft the
+full report somewhere the project ignores or keeps private, write the digest
+entries in generic terms, and commit only those entries. With no such rule,
+commit as usual.
+
+The same rules hold for what a project session hands back to the workspace
+(Scope steps 1 to 3): the inbox line and the workspace issue leave the project,
+so read the rules first and keep project-private data (site names, locations,
+unpublished results, anything the rules keep in the project) out of their text;
+say it in generic terms or leave it out.
 
 ### Adding research (`/research <topic>`)
 
 1. Resolve the scope (see Scope) and set up the worktree for it (see Worktree
-   setup); a workspace-digest write from a project session hands back instead
+   setup); a workspace-digest write from a project session hands back instead.
+   For a project digest, or any hand-back from a project session, follow
+   Project rules now, before anything is drafted or edited
 2. Search the web for current information on the topic, with generic queries
    only (see Guidelines: no real locations); pass that rule in the prompt of
    any sub-agent the search is delegated to
@@ -249,7 +258,7 @@ only those entries. With no such rule, commit as usual.
    `Last verified` to today for new entries; update `Last verified` for existing)
 6. Commit in the correct repo: workspace digest commits go in the workspace
    repo; project digest commits go in the project repo (not the workspace),
-   after the project-rules check above
+   holding to the project rules read in step 1
 7. Push and create the PR with the wrapper, which adds the AI signature and
    checks the target repo (a bare `gh pr create --fill` does neither). Run it
    from the worktree, so the PR goes to the repo the digest was committed in.

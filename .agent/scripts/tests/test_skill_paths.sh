@@ -932,8 +932,9 @@ has "$RES" "research: a workspace-digest write from a project session hands back
     "cat > \"\$f\" <<'EOF' research for the workspace digest:" \
     '"$WS_ROOT/.agent/scripts/capture.sh" "$(cat "$f")"' \
     "open it only after the user's yes"
-has "$RES" "research: project rules read before committing a project digest" \
-    "read the project's \`.agents/README.md\` for rules about what may be committed"
+has "$RES" "research: project rules read before editing a project digest" \
+    "Before editing a project digest (not only before committing it), read the project's \`.agents/README.md\` for rules about what may be committed" \
+    'keep project-private data (site names, locations, unpublished results, anything the rules keep in the project) out of their text'
 has "$RES" "research: no real locations in web queries" \
     'no real coordinates, bounding boxes, site names or addresses, unless the owner approves that query' \
     'Pass this rule in every sub-agent prompt'
