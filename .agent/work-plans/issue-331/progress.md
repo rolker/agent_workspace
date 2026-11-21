@@ -212,7 +212,7 @@ Issue-body addendum (text draft for the host; not posted):
 Round-1 findings: all 8 resolved in the text (the gh pr create --fill guard added for finding 2 is vacuous, see below). Checks: test_skill_paths.sh 185 passed, 0 failed; test_plugin_manifest.sh 12 passed, 0 failed; shellcheck not installed (not run); pre-commit left to the host. Cross-model: gemini complete, codex complete; Claude adversarial complete.
 
 ### Findings
-- [ ] (must-fix) Adding research step 1 hands back before the survey exists, and steps 5-8 are not skipped for a hand-back (or a non-git project root); say steps 2-4 run, then hand back as in Scope instead of 5-8, as Refreshing does — `.claude/skills/research/SKILL.md:248-251`
+- [x] (must-fix) Adding research step 1 hands back before the survey exists, and steps 5-8 are not skipped for a hand-back (or a non-git project root); say steps 2-4 run, then hand back as in Scope instead of 5-8, as Refreshing does — `.claude/skills/research/SKILL.md:248-251`
 - [x] (must-fix) Step 6 commits before set_git_identity_env.sh is sourced (only in step 7's chain); shell state does not persist, so commits get the default author. Source it in step 6's commit chain — `.claude/skills/research/SKILL.md:259-271`
 - [x] (must-fix) gh pr create --fill guard is vacuous: the allowed sentence contains the string, so a real bare command anywhere still passes. Filter that line out (grep -F ... | grep -vF ...) and fail on any remainder — `.agent/scripts/tests/test_skill_paths.sh:958-963`
 - [x] (suggestion) Usage says no --scope means the session root's digest, but Ingest step 3 picks scope from content; state Ingest's exception in Usage or align — `.claude/skills/research/SKILL.md:19,285-287`

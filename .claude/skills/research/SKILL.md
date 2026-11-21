@@ -283,10 +283,16 @@ say it in generic terms or leave it out.
 
 ### Adding research (`/research <topic>`)
 
-1. Resolve the scope (see Scope) and set up the worktree for it (see Worktree
-   setup); a workspace-digest write from a project session hands back instead.
-   For a project digest, or any hand-back from a project session, follow
-   Project rules now, before anything is drafted or edited
+1. Resolve the scope (see Scope). Two cases write no digest and set up no
+   worktree: a workspace-digest write from a project session, and a project
+   digest whose root is not a git repository (see Project digest). In both,
+   follow Project rules now, run steps 2 to 4 (step 4 against
+   `$WS_ROOT/.agent/knowledge/research_digest.md` for the workspace digest),
+   then hand the drafted entry back instead of steps 5 to 8: as in Scope steps
+   1 to 3 for the workspace digest, as Project digest says for a root that is
+   not a git repository. Otherwise set up the worktree for it (see Worktree
+   setup), and for a project digest follow Project rules now, before anything
+   is drafted or edited
 2. Search the web for current information on the topic, with generic queries
    only (see Guidelines: no real locations); pass that rule in the prompt of
    any sub-agent the search is delegated to
