@@ -400,3 +400,11 @@ The plan answers A1-A8 and moves decisions into tracked documents, but the owner
 Owner answered "Revise": plan-task fixes the Part 1 Plan Review findings F1-F7 (undecided state on the issue/draft PR at every ending and resume from it; reasons to an issue comment/progress entry or an ADR draft; missing-document drafts on the issue, Create in Part 2; a part's design is the design.md beside the sub-roadmap file, not in the Root column's directory; Carve proposes and confirms the part's directory and Root cell, parent cites <path>/design.md#<section>, a nested part's row showing "not followed" is expected; a part's goals in a goals section of its design naming the root goal served (ADR-0022 decision 7); the required issue is the discussion's anchor, no allowlist change).
 On the plan's open questions the owner answered "Accept all three" (Q-a issue-first anchor, draft PR body or ask for a project with no issues; Q-b no-documents level: conversation plus drafts and open questions on the issue, Create in Part 2; Q-c say so and ask, record the answer on the issue).
 The owner approved filing the location issue: #551 (https://github.com/rolker/agent_workspace/issues/551), with pointer comments on #370 and #393. Part 2 depends on #551.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-21 17:30 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-370/plan.md` at `d4cab127`
+
+Revision of the Part 1 plan. Applied Plan Review F1-F7: undecided state, the why of decisions and no-document drafts are recorded on the anchor issue (resume reads it first); a part's design is the design.md beside the sub-roadmap file (Root cell is the checks' base directory); Carve proposes and confirms the part directory and Root cell, treats a nested "not followed" row as expected, and writes the part's goals in its design naming the root goal served. Q-a..Q-c moved into the plan as owner-accepted; Part 2 cites #551. No open questions remain.
