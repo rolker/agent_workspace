@@ -344,9 +344,14 @@ say it in generic terms or leave it out.
    otherwise from the content, the session root's digest when it fits there,
    the other root's when it is clearly about that root, and ask when unclear
 4. Apply that scope as Adding research step 1 does: a workspace-digest write
-   from a project session hands back (see Scope) and stops here; otherwise set
-   up the worktree for it (see Worktree setup), and for a project digest
-   follow Project rules before writing it
+   from a project session hands back (see Scope) and stops here, and so does
+   a project digest whose root is not a git repository (see Project digest).
+   Before handing back, follow Project rules for the hand-back text and check
+   the target digest for related entries (for the workspace,
+   `$WS_ROOT/.agent/knowledge/research_digest.md`), so the drafted entry
+   updates one rather than duplicating it. Otherwise set up the worktree for
+   it (see Worktree setup), and for a project digest follow Project rules
+   before writing it
 5. Check the digest for related entries, then append or update (dates as in
    Adding research step 5)
 6. Commit, push and create the PR as in Adding research steps 6 and 7; it is merged, and the worktree cleaned up, by `$WS_ROOT/.agent/scripts/merge_pr.sh --pr <N>`

@@ -958,6 +958,8 @@ has "$RES" "research: the digest commit sources the identity in its own chain" \
     'source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model-id>" && \ git add <digest path> && \ git commit'
 has "$RES" "research: adding research hands back after the survey, instead of steps 5 to 8" \
     'run steps 2 to 4 (step 4 against `$WS_ROOT/.agent/knowledge/research_digest.md` for the workspace digest), then hand the drafted entry back instead of steps 5 to 8'
+has "$RES" "research: an ingest hand-back follows Project rules and checks the digest first" \
+    'Before handing back, follow Project rules for the hand-back text and check the target digest for related entries'
 has "$RES" "research: a project root that is not a git repository has no project digest" \
     'such a project has no project digest: do not pick one of its clones' \
     '`research for the <project> project digest (root is not a git repository):`'
