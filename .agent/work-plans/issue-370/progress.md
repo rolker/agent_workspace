@@ -183,3 +183,16 @@ All four earlier findings are resolved and the plan's claims check out against t
 
 - [ ] Apply the `$WS_ROOT` scratchpad path (and the conversation-only fallback) to Step 1's lookup and session-file lines, not only Step 7.
 - [ ] State in the fallback what happens in a workspace worktree session (summary goes with the worktree), or resolve the main checkout.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-21 16:30 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Owner answered "Proceed, add F5-F7". The implementer applies, beyond plan.md:
+- F5: Step 1's lookup of earlier sessions (and "keep them in the session file") uses the same $WS_ROOT scratchpad path as the record step, with the same conversation-only fallback.
+- F6: when ~/.claude/agent-workspace-root is missing, find the main checkout with `git rev-parse --git-common-dir` so a worktree session's summary is not lost when the worktree is removed.
+- F7 (owner's question: "is there a pathway for the results to turn into a roadmap for a feature for the workspace or a project?"): on a "continue" landing, the record step offers to draft that root's roadmap Direction line (docs/roadmap.md, or the project's roadmap) and the issues it needs, each written only on the owner's yes. Full roadmap derivation from a design stays in follow-up issue (b).
