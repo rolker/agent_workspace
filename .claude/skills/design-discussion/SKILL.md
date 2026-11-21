@@ -29,6 +29,10 @@ workspace, a project, or a part of one; asks whether something is a good idea; o
 to split a sub-component or a new feature off as a part with its own design. Reach for
 it before the first implementation issue of a new design, not only when doubts appear.
 
+**Before this** (optional): `/research` on the topic, then `/brainstorm` for options;
+Step 1 reads what they left. In a project session neither is available yet (#331 for
+`research`, #552 for `brainstorm`).
+
 It is a conversation, and its product is the level's tracked documents. A discussion
 bigger than one session loses its details unless they are saved where every later
 session reads them, until the work is done. So everything decided, everything still open
@@ -115,6 +119,11 @@ session.
   them (#370, 2026-10-02).
 - **Carve:** read the parent's design and roadmap, and what the project already has that
   partly does the part's job.
+- **Earlier preparation**, when it exists: the level's research digest (the workspace's
+  `.agent/knowledge/research_digest.md`; a project's
+  `.agents/workspace-context/research_digest.md` in the project repository, if it exists) and any
+  brainstorm results recorded on the anchor issue. Say what you read, or that there was
+  none.
 - Write down the decisions and assumptions you can see, including your own assumptions
   about what the user wants, as in-session notes. Step 5 checks them against the user's
   answers.
