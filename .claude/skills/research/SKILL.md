@@ -116,7 +116,10 @@ names the project's repo, not the workspace's).
      (never built from a directory name). The title and body, which carry web
      text, go in through quoted heredocs, as in step 2. Pass no `--label`:
      inside the project's git checkout the wrapper checks labels against that
-     checkout's list, not the workspace's.
+     checkout's list, not the workspace's. Run it with `GITBUG_CREATE` empty:
+     with `GITBUG_CREATE=1` the wrapper creates the issue with `git bug new` in
+     the cwd's repository and ignores `-R`, so the issue would land in the
+     project's git-bug store and its bridge, not the workspace's.
      ```bash
      WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
      source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model-id>"
@@ -128,7 +131,7 @@ names the project's repo, not the workspace's).
      cat > "$b" <<'RESEARCH_TEXT_END'
      <the drafted digest entry>
      RESEARCH_TEXT_END
-     "$WS_ROOT/.agent/scripts/gh_create_issue.sh" -R "$ws_repo" --title "$(cat "$t")" --body-file "$b"
+     GITBUG_CREATE= "$WS_ROOT/.agent/scripts/gh_create_issue.sh" -R "$ws_repo" --title "$(cat "$t")" --body-file "$b"
      rm -f "$t" "$b"
      ```
 

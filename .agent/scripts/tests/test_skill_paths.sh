@@ -945,7 +945,7 @@ has "$RES" "research: the workspace digest is written in the worktree, not \$WS_
     'at that path relative to the worktree'"'"'s root, never as `$WS_ROOT/.agent/knowledge/research_digest.md`'
 has "$RES" "research: the workspace issue is opened with -R naming the workspace repo" \
     'ws_repo="$(cd "$WS_ROOT" && gh repo view --json nameWithOwner --jq .nameWithOwner)"' \
-    '"$WS_ROOT/.agent/scripts/gh_create_issue.sh" -R "$ws_repo" --title "$(cat "$t")" --body-file "$b"'
+    'GITBUG_CREATE= "$WS_ROOT/.agent/scripts/gh_create_issue.sh" -R "$ws_repo" --title "$(cat "$t")" --body-file "$b"'
 has "$RES" "research: a project root that is not a git repository has no project digest" \
     'such a project has no project digest: do not pick one of its clones' \
     '`research for the <project> project digest (root is not a git repository):`'
