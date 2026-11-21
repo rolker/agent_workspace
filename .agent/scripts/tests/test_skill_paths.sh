@@ -960,9 +960,13 @@ has "$RES" "research: a workspace refresh from a project session hands back" \
     'A refresh of the workspace digest from a project session reads and re-surveys but writes nothing'
 has "$RES" "research: the PR is opened through the signing wrapper" \
     '"$WS_ROOT/.agent/scripts/gh_create_pr.sh" --title' '`Closes #<N>` for a project digest'
-if grep -qF 'gh pr create --fill' "$RES" 2>/dev/null \
-        && ! grep -qF 'a bare `gh pr create --fill` does neither' "$RES"; then
-    fail "research still opens its PR with a bare gh pr create --fill"
+# The one sentence that names it (to say why not) is filtered out by
+# itself, so a real command on any other line still fails.
+bare_fill="$(grep -nF 'gh pr create --fill' "$RES" 2>/dev/null \
+    | grep -vF 'a bare `gh pr create --fill` does neither' || true)"
+if [[ -n "$bare_fill" ]]; then
+    fail "research still opens its PR with a bare gh pr create --fill:"
+    head -n3 <<< "$bare_fill" | sed 's/^/        /'
 else
     pass "research opens no PR with a bare gh pr create --fill"
 fi
