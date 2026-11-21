@@ -222,3 +222,25 @@ Round-1 findings: all 9 resolved (checked against `.claude/skills/brainstorm/SKI
 - [x] (suggestion) The public-project check covers a new anchor issue's body but not its title; check both (gemini) — `.claude/skills/brainstorm/SKILL.md:171`
 - [x] (suggestion) `### Sources` lists sources read via `$WS_ROOT` / the registered `<path>`, i.e. absolute local paths, which then go into a public comment; write them repo-relative (gemini) — `.claude/skills/brainstorm/SKILL.md:116`
 - [x] (suggestion) design-discussion Step 7 `cd`s into the root before sourcing the identity (the email follows the cwd's git config); Step 4 sources it in whatever the cwd is; add `cd <topic root> &&` to match (adversarial) — `.claude/skills/brainstorm/SKILL.md:189`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-21 18:37 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-552 at `99eed9ef`
+**Addressed**: Local Review (Pre-Push) at `a3788a5e` (2026-11-21 18:19 -05:00)
+**Commits**: 4af32bcd, 678e5b2c, 9c1b4031, 598d67b0, 8e9eebaf, 99eed9ef
+
+### Actions
+- [x] (must-fix) anchor issue's title written through a quoted heredoc to a mktemp file and passed as `--title "$(cat "$t")"` (the #331 form), never typed in double quotes — `.claude/skills/brainstorm/SKILL.md` Step 4 item 2
+- [x] scratch files made with `mktemp` in the session scratchpad, else `$WS_ROOT/.agent/scratchpad/` — Step 4 item 4
+- [x] result stays in the conversation when the project is unregistered or `<owner/repo>` does not resolve; never falls back to the workspace repo — Step 4 item 1
+- [x] public-project check covers a new anchor issue's title and body — Step 4 items 2 and 3
+- [x] `### Sources` names files repo-relative, never absolute local paths — Step 3
+- [x] the post chain makes `$WS_ROOT` absolute, then `cd`s into the topic's root before sourcing the identity — Step 4 item 4
+
+### Checks
+- `bash .agent/scripts/tests/test_skill_paths.sh`: `test_skill_paths: 168 passed, 0 failed`
+- the Step 4 snippet, placeholders filled and `gh` replaced by `cat`: `bash -n` clean, ran with exit 0, scratch file removed
+- No script changed; the full pre-commit pass was left to the host.
