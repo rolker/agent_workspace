@@ -223,3 +223,30 @@ Round-1 findings: all 8 resolved in the text (the gh pr create --fill guard adde
 - [x] (suggestion) A line equal to EOF in web text closes the quoted heredoc early and runs the rest as shell; use a unique delimiter — `.claude/skills/research/SKILL.md:88-90,108-113`
 - [x] (suggestion) Ingest hand-back path names neither Project rules (for the hand-back text) nor a dedup check against the $WS_ROOT digest — `.claude/skills/research/SKILL.md:288-291`
 - [x] (suggestion) source worktree_enter.sh's cd does not carry to later tool calls in per-command shells; carry the worktree path into the edit/commit/PR steps — `.claude/skills/research/SKILL.md:213-229`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-21 18:40 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-331 at `d613ad77`
+**Addressed**: Local Review (Pre-Push) at `8f6a8835` (2026-11-21 18:35 -05:00)
+**Commits**: 0377a4e8, bd554cc1, 9ee01dd8, 625cbf77, effbc2f3, adc86168, c1bb7af9, 5dabb5a5, 2171e18a, b51235e8, bcb5555b, d613ad77
+
+### Actions
+- [x] (must-fix) Adding research step 1 now resolves the scope, and for a workspace-digest write from a project session or a project root that is not a git repository runs steps 2 to 4 (step 4 against the `$WS_ROOT` digest) and hands back instead of steps 5 to 8; test added — `.claude/skills/research/SKILL.md` Adding research step 1 (bcb5555b)
+- [x] (must-fix) Step 6 has its own commit block that sources `set_git_identity_env.sh` in the same chain as `git add`/`git commit`; test added — `.claude/skills/research/SKILL.md` Adding research step 6 (b51235e8)
+- [x] (must-fix) The `gh pr create --fill` guard filters out only the sentence that names it and fails on any remaining line (checked against a copy with a bare command appended: it fails) — `.agent/scripts/tests/test_skill_paths.sh` (c1bb7af9)
+- [x] (suggestion) Usage states that `--ingest` without `--scope` picks the digest from the content — `.claude/skills/research/SKILL.md` Usage (0377a4e8)
+- [x] (suggestion) Scope checks that `$WS_ROOT/.agent/scripts/session_root.sh` exists and says to stop and install the user tier when it does not, naming why (`$WS_ROOT` falls back to the project directory) — `.claude/skills/research/SKILL.md` Scope (bd554cc1; 9ee01dd8 rewords a bare `.agent/scripts/` path test_skill_paths.sh flagged)
+- [x] (suggestion) Verified in `gh_create_issue.sh:336-365`: with `GITBUG_CREATE=1` it runs `git bug new` in the cwd's repo and never reads `-R`. The hand-back command now runs with `GITBUG_CREATE=` (empty, so the gh path that honours `-R` is taken), and the text says why; test string updated — `.claude/skills/research/SKILL.md` Scope step 3 (effbc2f3)
+- [x] (suggestion) The capture.sh guard fails on any `capture.sh" ` argument not starting `"$(cat ` (checked against a copy with a double-quoted argument appended: it fails) — `.agent/scripts/tests/test_skill_paths.sh` (5dabb5a5)
+- [x] (suggestion) The capture and issue snippets keep the script's exit status past `rm -f`, the issue snippet opens nothing when `$ws_repo` is empty, and `git push` is `&&`-chained before `gh_create_pr.sh`; test added — `.claude/skills/research/SKILL.md` Scope steps 2-3, Adding research step 7 (adc86168)
+- [x] (suggestion) Web-text heredocs use the delimiter `RESEARCH_TEXT_END`, and the text says why: a heredoc ends at the first line equal to its delimiter, so a line `EOF` in web text would close it early and the rest would run as shell; pick another if the text holds that line. Guard added that fails on a `'EOF'` heredoc in research — `.claude/skills/research/SKILL.md` Scope step 2 (625cbf77)
+- [x] (suggestion) Ingest step 4's hand-back now follows Project rules for the hand-back text and checks the target digest (`$WS_ROOT/.agent/knowledge/research_digest.md` for the workspace) for related entries, and covers a non-git project root too; test added — `.claude/skills/research/SKILL.md` Ingest step 4 (d613ad77)
+- [x] (suggestion) Worktree setup uses `worktree_enter.sh ... --print-path` and says to carry that path: edit by path under it and chain the commit, push and PR commands after `cd "<worktree path>" &&` (placed after the `$WS_ROOT` line so a failed `cd` runs nothing); step 7's block does so; test added — `.claude/skills/research/SKILL.md` Worktree setup, step 7 (2171e18a)
+
+### Checks
+- `bash .agent/scripts/tests/test_skill_paths.sh`: `test_skill_paths: 191 passed, 0 failed`
+- `test_plugin_manifest.sh` not run: `.claude-plugin/plugin.json` unchanged in this pass. No script changed, so no other suite applies.
+- Full pre-commit pass left to the host, per the handoff.
