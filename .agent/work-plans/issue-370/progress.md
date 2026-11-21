@@ -560,3 +560,28 @@ Checks: `test_skill_paths.sh` 167 passed, 0 failed; `test_plugin_manifest.sh` 12
 - [x] (suggestion) Step 1 reads brainstorm results "recorded on the anchor issue", but nothing writes them there (`brainstorm/SKILL.md:91` creates no issues, output is conversation-only); offer to post a brainstorm's output as a signed comment, or drop the claim — `.claude/skills/design-discussion/SKILL.md:32-34,122-126`
 - [x] (suggestion) "A project that uses no issues" gives no test; point at the `issues=` fact of `project_integration_audit.sh --facts` and ask when it is `unknown`, as `onboard-project/SKILL.md:475` does — `.claude/skills/design-discussion/SKILL.md:78`
 - [x] (suggestion) Landing-check snippet runs both checks back to back, losing `check_design_anchors.sh`'s exit 0/1/2 the text says to report (echo each exit); and "reads only files git tracks" is imprecise (`git ls-files` includes staged files; pointer-named sub-roadmaps and their design.md are added with no tracking check, `check_design_anchors.sh:432-443`) — `.claude/skills/design-discussion/SKILL.md:330-342`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-21 18:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-370 at `0db7a860`
+**Addressed**: Local Review (Pre-Push) at `29b1c00b` (2026-11-21 18:10 -05:00)
+**Commits**: a40e786f, efd99244, 0de63492, 0d9357ec, 35bbb933, 07281f52, 5e999323, 7cfbaaec, 7fe42fcd, 0db7a860
+
+### Actions
+- [x] (must-fix) Declined anchor issue: new "No anchor issue, no record" bullet says plainly nothing can be saved for later sessions and stops before any tracked write, as for a project with no issues; the anchor issue is opened only on a yes — `.claude/skills/design-discussion/SKILL.md` Step 0
+- [x] Repository targeting: trial outcome goes on `rolker/agent_workspace#370`; new "The level's own session" bullet: `gh`, `sitrep_root.sh` and the worktree route act on the session's root, so a level of another root is discussed in a session there, and stops before any tracked write otherwise — `.claude/skills/design-discussion/SKILL.md:9-12`, Step 0
+- [x] Identity before a worktree exists: sourced in the root's own checkout — `.claude/skills/design-discussion/SKILL.md` Step 7 "Identity first"
+- [x] Push offered after each draft commit, or one standing yes for the session — Step 7 "Drafts leave the machine"
+- [x] Draft PR through `gh_create_pr.sh --draft`, never raw `gh pr create` — Step 7 "Drafts leave the machine"
+- [x] Roadmap fallback is per missing section or table — Step 7 "Where each kind goes"
+- [x] Format notes named as the `**Format.**` paragraph of the workspace roadmap's Direction section — Step 7 "Where each kind goes"
+- [x] Brainstorm results found by their `## Brainstorm: <topic>` heading on the anchor issue (the form #552 saves); the "not available in a project session yet (#331, #552)" wording kept — Step 1 "Earlier preparation"
+- [x] No-issues test: the `issues` fact of `project_integration_audit.sh --facts --format text`, asking when `unknown` — Step 0
+- [x] Landing-check snippet echoes each exit; the `check_design_anchors.sh` read set stated exactly (`git ls-files`, tracked and staged; pointer-named sub-roadmaps and their design.md whatever their tracking) — Carve step 4
+
+### Checks
+- `bash .agent/scripts/tests/test_skill_paths.sh`: `test_skill_paths: 167 passed, 0 failed`
+- No script changed; docs/design.md not changed. The full pre-commit pass is left to the host.
