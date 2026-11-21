@@ -89,3 +89,41 @@ The plan takes on the Issue Review's eight actions. Host decisions, listed for t
 **Plan**: `.agent/work-plans/issue-552/plan.md` at `003378d3`
 
 Make brainstorm session_scope both (WS_ROOT idiom, root-relative reads) and add an on-yes save step posting a signed `## Brainstorm: <topic>` comment to the anchor issue; regenerate the plugin list. design-discussion pointer edit is a follow-up after #370 merges.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-21 18:01 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #552 — brainstorm in project sessions, with its results saved for the design discussion
+**Plan**: `.agent/work-plans/issue-552/plan.md` at `003378d3`
+**Branch**: `feature/issue-552`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One skill, the generated plugin list, one test list; single PR. |
+| Issue alignment | Good | All eight Issue Review actions covered; host Checkpoint decisions kept (apart from #331, anchor issue on a yes, no digest writes, pointer edit after #370). Serves: "Flexibility (a skill works from any session root): `docs/design.md#sessions-and-roots`" — anchor exists. Contract with `design-discussion` Step 1 / Step 7 (branch `feature/issue-370`) is met: signed comment on the anchor issue opening `## Brainstorm: <topic>`, `--body-file`, identity in the same chain, never progress.md, digest at `.agents/workspace-context/research_digest.md`. |
+| File targeting | Needs work | `.agent/scripts/tests/test_skill_paths.sh` is missing from Files to Change (finding 1). |
+| Consequences | Needs work | Same gap; plugin list and ADR-0018 snapshot handled correctly (`plugin.json` has 14 entries today; ADR line 85 reads "(13 skills when this ADR was written)"). |
+| Principle alignment | Good | Ask-on-yes for every tracked write, public-project check, prior art named, design picture unchanged and said so. |
+| ADR compliance | Good | ADR-0016 idiom with fallback, ADR-0018 scope + regen, ADR-0013 by exclusion. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Consequences]** (medium) `.agent/scripts/tests/test_skill_paths.sh` keeps a deliberate list of the `session_scope: both` skills (the `for name in start-task plan-task ... orchestrator` loop, "a typo in the field name would silently drop a skill from the user tier"). Plan step 7 only runs the test; it passes without `brainstorm` in the list, so the new scope is unguarded. Add `brainstorm` to that loop and list the test file under Files to Change.
+2. **[File targeting]** (low) Plan step 3 writes the identity command as bare `set_git_identity_env.sh`; in a project session it must be `source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model id>"`, as `design-discussion` Step 7 does (a bare `.agent/scripts/` path would also fail `test_skill_paths.sh`'s BAD_RE).
+3. **[Issue alignment]** (low) Step 2 says "the roadmap" without a path. Name it as `design-discussion` Step 0 does: the root's `docs/roadmap.md`, else `ROADMAP.md` (what `sitrep_root.sh` reports as `roadmap=`), under `$WS_ROOT` for the workspace and in the project root for a project.
+
+### Summary
+
+The plan meets the `design-discussion` contract and the owner's kept decisions. One real gap: the scoped-skill guard in `test_skill_paths.sh` must name `brainstorm`, or the change ships with no check that fails if the scope is dropped. Two small wording fixes. Ready once finding 1 is folded in.
+
+### Recommended Actions
+
+- [ ] Add `brainstorm` to the `session_scope: both` list in `.agent/scripts/tests/test_skill_paths.sh` and list that file in Files to Change.
+- [ ] Write the identity command as `source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" ...` in the save step.
+- [ ] Name the roadmap path (`docs/roadmap.md`, else `ROADMAP.md`) in the Step 1 reads.
