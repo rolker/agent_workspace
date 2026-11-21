@@ -60,11 +60,21 @@ Run this before anything else:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
-"$WS_ROOT/.agent/scripts/session_root.sh"
+if [ -x "$WS_ROOT/.agent/scripts/session_root.sh" ]; then
+    "$WS_ROOT/.agent/scripts/session_root.sh"
+else
+    echo "no workspace scripts under $WS_ROOT: stop" >&2; false
+fi
 ```
 
 It prints `root=`, `type=workspace|project` and `project=` (exit 1: this
-directory is no session's root; stop and report its message).
+directory is no session's root; stop and report its message). When it says
+there are no workspace scripts, stop and tell the user to install the user
+tier (`.agent/scripts/user_tier_install.sh`, run from the workspace): in a
+project session without it, `$WS_ROOT` falls back to `.`, the project
+directory, so every later `$WS_ROOT` command would run against the project
+(`session_root.sh` itself is not found, and `cd "$WS_ROOT" && gh repo view`
+names the project's repo, not the workspace's).
 
 - **No `--scope`**: the session root's digest — `type=workspace` gives the
   workspace digest, `type=project` the project digest of `project=`.
