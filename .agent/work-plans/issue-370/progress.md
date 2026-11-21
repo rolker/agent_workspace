@@ -261,3 +261,63 @@ The owner restated the goal while the round-1 pre-push review's address-findings
 > As for the location of the goals and such. Isn't that asked in the onboarding part with suggested locations? That allows projects to vary how they keep track of those, and to have them considered during onboarding. I guess the decisions could be defered during onboarding to be later settled during a design discussion.
 
 He approved posting the restated goal ("yes"); it is on the issue at https://github.com/rolker/agent_workspace/issues/370#issuecomment-7069803282. The round-1 pre-push review findings (summary-folder resolution, file names without the root, etc.) are not addressed; the new plan decides what of the current branch is kept.
+
+## Issue Review
+**Status**: complete
+**When**: 2026-11-21 16:58 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**Issue**: #370
+
+### Scope Assessment
+
+**Well-scoped?** Yes, once cut as the restatement cuts it. The original body (a challenge conversation ending in a private summary) is superseded; the restated goal (Create / Revise / Carve a level's goals, design and roadmap, written to tracked documents) is more than one PR. It needs the two parts the restatement names (Part 1: skill with level framing, Revise and Carve, using the locations the readers accept today; Part 2: Create plus the location setting). The location setting and the onboarding question change shared readers and `docs/design.md` and belong with #393 or a new issue, not here.
+**Right repo?** Yes, workspace (skill, onboarding step, design rows). The skill itself is `session_scope: both`, so a project session runs it against that project's level.
+**Serves**: "The long view" and shared-picture goals of `README.md#workspace-goals` (direction that survives sessions) — `docs/design.md#documentation-layers`, and ADR-0022 parts (`docs/design.md`, "A root may have parts").
+**Design picture?** Changes `docs/design.md` Documentation layers only through the follow-up that stores a project's location for goals/design/roadmap; Part 1 itself adds no new layout (parts and sub-roadmap pointers already exist per ADR-0022, #488). Carve writes a part's design, a `| Sub-roadmap | Root |` row and a root-design pointer, all inside the existing picture. The settings-key question goes to the owner with #393.
+**Dependencies**: #393 (records lookup, open; the location setting is a sibling of its `location`/`tracking` keys and shares `project_setting.sh` / `_project_registry.sh`) or a new issue beside it; #459 (closed) gives multi-PR delivery in parts, so Part 1 can use `Part of #370` and the final PR `Closes #370`. Readers that fix today's locations: `sitrep_root.sh` (first of `docs/roadmap.md`, `ROADMAP.md`), `update_roadmap.sh` (`ROADMAP.md`, `docs/ROADMAP.md`, `docs/roadmap.md`, never a sub-roadmap elsewhere), `check_design_anchors.sh` (`docs/design.md` and part designs, via the sub-roadmap pointer table), `sitrep_checks.sh` (one level of sub-roadmaps). Onboard-project step 3 asks `instructions` and records (`location`, `tracking`) only; it has no goals/design/roadmap question.
+
+### Principle Alignment
+
+| Principle | Status | Notes |
+|---|---|---|
+| Keep one current design | Action needed | Part 1 stays inside the design as it is (ADR-0022 parts). The location setting and the onboarding question change the Documentation layers row and the readers; bring that to the owner on its own with #393, naming `docs/design.md#documentation-layers`, and keep it out of Part 1. |
+| Put each thing at the level it applies to | Action needed | The location of a project's goals, design and roadmap is a per-project footprint answer, asked in onboarding step 3 next to `instructions` and records, stored once as a project setting; do not store it in the skill or scratchpad. Settle whether it is a new issue or part of #393 before Part 2. |
+| Capture decisions where they will be found | Action needed | The branch's summary-in-scratchpad design contradicts the restated goal (scratch is one machine, untracked). Drop the "Where summaries live" mechanism and the round-1 findings about it (folder resolution, file names without a root); the skill writes to the level's tracked documents on the owner's yes, drafts on a branch or draft PR, scratchpad for in-session notes only. |
+| Only what's needed | Watch | Follow-up (a) goals-down skill is absorbed; follow-up (b) shrinks to whole-roadmap derivation, drift checks and measures. Do not file (a); revise (b)'s draft; (c) only if duplication shows. |
+| A safeguard has to earn its cost | Watch | Skill is still a trial; keep the two-use trial and the 2026-12-31 revisit, with the three uses (Create, Revise, Carve) as the cases. |
+
+### ADR Applicability
+
+| ADR | Triggered | Notes |
+|---|---|---|
+| ADR-0022 (a part owns its inside) | Yes | Carve produces a part's goals, design and roadmap; the parent design keeps only what crosses the boundary and points at the part's design (`<path>/design.md#<section>`); the roadmap row is `| Sub-roadmap | Root |`; one level followed by `sitrep_checks.sh`. |
+| ADR-0017 (design is the current picture) | Yes | Revisions land in the level's one design, not as layers; the design-change row above. |
+| ADR-0013 (progress timeline) | Yes | This entry; delivery in parts needs a checkpoint after each part. |
+| ADR-0010 / 0016 | Light | Skill path idiom (`$WS_ROOT` fallback) already handled on the branch. |
+
+### Consequences
+
+- Reusable from the branch: Steps 1-7 conversation method (purpose first, attack and defend, assumptions, decision-record check, landing, fresh-session second pass), the trial banner, the `brainstorm` "What this is not" pointer, the skill count / `AGENT_ONBOARDING.md` / plugin manifest updates (`design.md` 24 skills, `test_plugin_manifest.sh`, `test_skill_paths.sh`). To rewrite: the scratchpad "Where summaries live" section, the Step 7 "Record" that offers tracked writes only on "continue", and the F5/F6 resolution code. The round-1 pre-push review's two must-fix findings concern the removed mechanism; its suggestions on `skill_workflows.md` Skill Index row and the `agent-workspace-root` claim still apply (the latter only if the idiom stays).
+- Part 1 needs a level framing step at the start (which level; its parent's goals; where its documents are found today, or ask), the three uses, and tracked writes: design decisions into the design, work into Direction lines with checks and issue bodies, deferrals with a revisit check, Decided Against, To Consider.
+- Add a `skill_workflows.md` Skill Index row; `design.md` skill count stays 24.
+- If Carve writes a sub-roadmap, run `check_design_anchors.sh` and `sitrep_checks.sh` over it as the landing check.
+- Part 2 (Create, location setting) changes `project_setting.sh`, `_project_registry.sh`, onboard-project step 3 and `docs/design.md`; it needs tests and belongs with #393 or its sibling.
+
+### Recommendations
+
+- Restart the plan as the restatement's two parts: Part 1 now (`Part of #370`), Part 2 after the location-setting issue lands (`Closes #370` on the last PR).
+- Open one issue for the location of a project's goals, design and roadmap (onboarding step 3 question with suggested locations, "decide later" valid, stored as one project setting, readers keyed to it) next to #393, and cross-link it from #370; ask the owner whether it folds into #393.
+- In Part 1, resolve the level's documents with the locations the readers accept today (root `docs/roadmap.md` or `ROADMAP.md`, `docs/design.md`, a part via the sub-roadmap pointer table) and, where none exist, say so and ask instead of guessing.
+- Rework the existing SKILL.md rather than discarding it: keep the method, replace the scratchpad summary and the "continue only" tracked-write offer with tracked writes on each yes, and remove the F5/F6 resolution code.
+- Revise follow-up draft (b) to whole-roadmap derivation, drift checks and measures; drop draft (a), keep (c) conditional.
+
+### Actions
+- [ ] Part 1 stays inside the design as it is (ADR-0022 parts). The location setting and the onboarding question change the Documentation layers row and the readers; bring that to the owner on its own with #393, naming `docs/design.md#documentation-layers`, and keep it out of Part 1.
+- [ ] The location of a project's goals, design and roadmap is a per-project footprint answer, asked in onboarding step 3 next to `instructions` and records, stored once as a project setting; do not store it in the skill or scratchpad. Settle whether it is a new issue or part of #393 before Part 2.
+- [ ] The branch's summary-in-scratchpad design contradicts the restated goal (scratch is one machine, untracked). Drop the "Where summaries live" mechanism and the round-1 findings about it (folder resolution, file names without a root); the skill writes to the level's tracked documents on the owner's yes, drafts on a branch or draft PR, scratchpad for in-session notes only.
+- [ ] Restart the plan as the restatement's two parts: Part 1 now (`Part of #370`), Part 2 after the location-setting issue lands (`Closes #370` on the last PR).
+- [ ] Open one issue for the location of a project's goals, design and roadmap (onboarding step 3 question with suggested locations, "decide later" valid, stored as one project setting, readers keyed to it) next to #393, and cross-link it from #370; ask the owner whether it folds into #393.
+- [ ] In Part 1, resolve the level's documents with the locations the readers accept today (root `docs/roadmap.md` or `ROADMAP.md`, `docs/design.md`, a part via the sub-roadmap pointer table) and, where none exist, say so and ask instead of guessing.
+- [ ] Rework the existing SKILL.md rather than discarding it: keep the method, replace the scratchpad summary and the "continue only" tracked-write offer with tracked writes on each yes, and remove the F5/F6 resolution code.
+- [ ] Revise follow-up draft (b) to whole-roadmap derivation, drift checks and measures; drop draft (a), keep (c) conditional.
