@@ -957,6 +957,13 @@ if grep -qF 'gh pr create --fill' "$RES" 2>/dev/null \
 else
     pass "research opens no PR with a bare gh pr create --fill"
 fi
+no_empty_guard="$(grep -nF 'cat ~/.claude/agent-workspace-root' "$RES" | grep -vF 'WS_ROOT="${WS_ROOT:-.}"' || true)"
+if [[ -n "$no_empty_guard" ]]; then
+    fail "research: a \$WS_ROOT resolution lacks the empty-file guard WS_ROOT=\"\${WS_ROOT:-.}\":"
+    head -n3 <<< "$no_empty_guard" | sed 's/^/        /'
+else
+    pass "research: every \$WS_ROOT resolution also guards an empty file"
+fi
 if grep -qF 'capture.sh" "research' "$RES" 2>/dev/null; then
     fail "research double-quotes web-derived text on the capture.sh line"
 else

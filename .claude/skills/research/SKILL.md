@@ -40,7 +40,7 @@ Resolve `$WS_ROOT` at the head of each command chain, because shell state does
 not persist between tool calls:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
 "$WS_ROOT/.agent/scripts/<script>" ...
 ```
 
@@ -48,14 +48,16 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 `.agent/scripts/user_tier_install.sh` (ADR-0016). The `|| echo .` fallback is
 required: the user tier is optional, and without it a missing file would leave
 `$WS_ROOT` empty and turn every path into `/.agent/scripts/...`. With the
-fallback, a workspace session on a machine without the user tier keeps working.
+fallback, a workspace session on a machine without the user tier keeps working. The
+`WS_ROOT="${WS_ROOT:-.}"` that follows covers a file that exists but is empty,
+which `|| echo .` does not (`cat` succeeds there and prints nothing).
 
 ## Scope
 
 Run this before anything else:
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
 "$WS_ROOT/.agent/scripts/session_root.sh"
 ```
 
@@ -81,7 +83,7 @@ directory is no session's root; stop and report its message).
      it stays text. Double quotes around the text itself would expand `$` and
      backticks; single quotes break on an apostrophe in it.
      ```bash
-     WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+     WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
      f="$(mktemp)"
      cat > "$f" <<'EOF'
      research for the workspace digest: <topic> — <one-line summary>
@@ -99,7 +101,7 @@ directory is no session's root; stop and report its message).
      inside the project's git checkout the wrapper checks labels against that
      checkout's list, not the workspace's.
      ```bash
-     WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+     WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
      source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model-id>"
      ws_repo="$(cd "$WS_ROOT" && gh repo view --json nameWithOwner --jq .nameWithOwner)"
      t="$(mktemp)"; b="$(mktemp)"
@@ -191,7 +193,7 @@ The worktree type depends on the scope:
 - **Workspace scope** (workspace session only): use a `--skill research` worktree,
   no issue needed.
   ```bash
-  WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+  WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
   "$WS_ROOT/.agent/scripts/worktree_create.sh" --skill research --type workspace
   source "$WS_ROOT/.agent/scripts/worktree_enter.sh" --skill research --type workspace
   ```
@@ -201,7 +203,7 @@ The worktree type depends on the scope:
   for workspace worktrees only: `worktree_create.sh` rejects
   `--skill research --type project`.
   ```bash
-  WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+  WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
   "$WS_ROOT/.agent/scripts/worktree_create.sh" --issue <N> --type project
   source "$WS_ROOT/.agent/scripts/worktree_enter.sh" --issue <N> --type project
   ```
@@ -236,7 +238,7 @@ only those entries. With no such rule, commit as usual.
    The body names the issue: `Closes #<N>` for a project digest (its project
    issue); a workspace `--skill research` worktree has no issue and names none.
    ```bash
-   WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+   WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
    source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model-id>"
    git push -u origin HEAD
    "$WS_ROOT/.agent/scripts/gh_create_pr.sh" --title "research: <topic>" --body-file <body file>
