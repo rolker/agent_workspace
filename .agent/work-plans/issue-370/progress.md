@@ -223,3 +223,23 @@ Not done, by instruction: the three follow-up issues of plan step 5 were not fil
 
 **(c) Title**: Shared conversation rules for design-discussion, the goals-down skill and the orchestrator
 **Body**: Part of #370; related #398. If the goals-down skill (follow-up a) repeats `design-discussion`'s conversation rules (questions per turn, no dependent questions, plain names, one-liner first on resume, parking conditions, own-words before a conclusion counts), move them to one shared knowledge file the skills cite. File only once (a) shows the duplication.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-21 16:37 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-370 at `b1e3a173`
+**Base**: main
+**Depth**: Deep (reason: 523 changed lines, over 200; mostly Markdown, includes governance files)
+**Must-fix**: 2 | **Suggestions**: 4
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+### Findings
+- [ ] (must-fix) Summary-folder resolution does not enforce "never under a project's checkout": check-ignore alone passes a project that ignores `.agent/`; an empty or stale `~/.claude/agent-workspace-root` skips the fallback (`DD_DIR=/.agent/...`); the fallback reassigns `WS_ROOT` to the current repo, so Step 7's `"$WS_ROOT/.agent/scripts/sitrep_root.sh"` points into a project checkout. Keep `WS_ROOT` as the standard idiom, put the folder in its own variable, treat an empty or missing-directory root file as absent, and require a workspace marker (e.g. `sitrep_root.sh` present) besides check-ignore; qualify the bare `sitrep_checks.sh` path (Claude adversarial, Gemini, Codex) — `.claude/skills/design-discussion/SKILL.md:39-48,166-169`
+- [ ] (must-fix) Summary file name `<date>-<plain-topic>.md` in one shared workspace scratchpad names no root: another project's discussion can be found as "an earlier session" or overwritten. Put the root in the path (e.g. `sitrep_root.sh`'s `record_name=`), give the date format, and say whether Step 7 updates the Step 1 session file (Claude adversarial, Codex, Gemini) — `.claude/skills/design-discussion/SKILL.md:46,73-75,158`
+- [ ] (suggestion) Wrong claim: `agent-workspace-root` names "the workspace's main checkout"; `user_tier_install.sh:159` writes the checkout the install ran from — `.claude/skills/design-discussion/SKILL.md:51-52`
+- [ ] (suggestion) Resume rule and "say so before anything else" both claim the first output; "progress against its plan" when the skill makes no plan — say the earlier summary's open items stand in for it — `.claude/skills/design-discussion/SKILL.md:69-75`
+- [ ] (suggestion) `.agent/knowledge/skill_workflows.md` Skill Index (where `brainstorm` is listed) has no `design-discussion` row — `.agent/knowledge/skill_workflows.md:19`
+- [ ] (suggestion) Plan step 5 follow-up issues (a), (b), (c) are drafted in progress.md but not filed; file (a) and (b) before merge, (c) only when (a) shows duplication — `.agent/work-plans/issue-370/plan.md:28`
