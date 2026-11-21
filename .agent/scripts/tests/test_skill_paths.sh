@@ -938,6 +938,13 @@ has "$RES" "research: no real locations in web queries" \
     'Pass this rule in every sub-agent prompt'
 has "$RES" "research: sources-pending mark" \
     '`**Sources**: pending`' '`--refresh` takes pending entries first'
+has "$RES" "research: the workspace digest is written in the worktree, not \$WS_ROOT" \
+    'at that path relative to the worktree'"'"'s root, never as `$WS_ROOT/.agent/knowledge/research_digest.md`'
+if grep -qF '**Location**: `$WS_ROOT/' "$RES" 2>/dev/null; then
+    fail "research still gives a digest location under \$WS_ROOT (the main checkout)"
+else
+    pass "research gives no digest location under \$WS_ROOT"
+fi
 if grep -qF 'manifest repo' "$RES" 2>/dev/null; then
     fail "research still says the project digest lives in the manifest repo"
 else

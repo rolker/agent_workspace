@@ -165,7 +165,7 @@ Issue-body addendum (text draft for the host; not posted):
 **Round**: 1 | **Ship**: continue — round 1: 5 must-fix; first round always re-reviews after fixes
 
 ### Findings
-- [ ] (must-fix) Workspace digest location is `$WS_ROOT/.agent/knowledge/research_digest.md`; $WS_ROOT is the main checkout, so a write edits the main tree, not the research worktree. Write it worktree-relative ($WS_ROOT only for reading) — `.claude/skills/research/SKILL.md:89`
+- [x] (must-fix) Workspace digest location is `$WS_ROOT/.agent/knowledge/research_digest.md`; $WS_ROOT is the main checkout, so a write edits the main tree, not the research worktree. Write it worktree-relative ($WS_ROOT only for reading) — `.claude/skills/research/SKILL.md:89`
 - [ ] (must-fix) Step 7 still says `git push -u origin HEAD && gh pr create --fill`: no AI signature, no `Closes #<N>` for the project issue now required; use `"$WS_ROOT/.agent/scripts/gh_create_pr.sh"` (Ingest/Refresh step 6 inherit it) — `.claude/skills/research/SKILL.md:194`
 - [ ] (must-fix) Ingest step 1 sets up the scope's worktree before step 4 "determine scope from content"; and Ingest/Refresh do not carry the project-session hand-back or the `.agents/README.md` rules check. Decide scope first, then apply both — `.claude/skills/research/SKILL.md:202-223`
 - [ ] (must-fix) `capture.sh` snippet double-quotes web-derived `<topic> — <one-line summary>`: a `$`, backtick or `$(...)` in it expands in the shell. Single-quote it (or say to) — `.claude/skills/research/SKILL.md:78`

@@ -86,8 +86,14 @@ Two digests, each git-tracked so they're shared across agents and sessions:
 
 ### Workspace digest
 
-**Location**: `$WS_ROOT/.agent/knowledge/research_digest.md` (git-tracked in the
-workspace repo; create with the digest format below if it doesn't exist)
+**Location**: `<research worktree>/.agent/knowledge/research_digest.md` in the
+workspace repo (git-tracked; create with the digest format below if it doesn't
+exist). Write it in the `--skill research` worktree, at that path relative to
+the worktree's root, never as `$WS_ROOT/.agent/knowledge/research_digest.md`: `$WS_ROOT` is
+the main checkout, and a write there edits the main tree instead of the
+worktree's branch. `$WS_ROOT/.agent/knowledge/research_digest.md` is for
+reading only, for example to survey the workspace digest from a project
+session.
 
 Topics relevant to any project using this workspace:
 - Agent workflow patterns and multi-framework coordination
