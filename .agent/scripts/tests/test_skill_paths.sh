@@ -941,6 +941,9 @@ has "$RES" "research: sources-pending mark" \
     '`**Sources**: pending`' '`--refresh` takes pending entries first'
 has "$RES" "research: the workspace digest is written in the worktree, not \$WS_ROOT" \
     'at that path relative to the worktree'"'"'s root, never as `$WS_ROOT/.agent/knowledge/research_digest.md`'
+has "$RES" "research: the workspace issue is opened with -R naming the workspace repo" \
+    'ws_repo="$(cd "$WS_ROOT" && gh repo view --json nameWithOwner --jq .nameWithOwner)"' \
+    '"$WS_ROOT/.agent/scripts/gh_create_issue.sh" -R "$ws_repo" --title "$(cat "$t")" --body-file "$b"'
 has "$RES" "research: ingest decides the scope before setting anything up" \
     'Decide the scope before anything is set up' \
     'a workspace-digest write from a project session hands back (see Scope) and stops here'
