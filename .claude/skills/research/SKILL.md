@@ -197,7 +197,20 @@ only those entries. With no such rule, commit as usual.
 6. Commit in the correct repo: workspace digest commits go in the workspace
    repo; project digest commits go in the project repo (not the workspace),
    after the project-rules check above
-7. Push and create a PR: `git push -u origin HEAD && gh pr create --fill`
+7. Push and create the PR with the wrapper, which adds the AI signature and
+   checks the target repo (a bare `gh pr create --fill` does neither). Run it
+   from the worktree, so the PR goes to the repo the digest was committed in.
+   The body names the issue: `Closes #<N>` for a project digest (its project
+   issue); a workspace `--skill research` worktree has no issue and names none.
+   ```bash
+   WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+   source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model-id>"
+   git push -u origin HEAD
+   "$WS_ROOT/.agent/scripts/gh_create_pr.sh" --title "research: <topic>" --body-file <body file>
+   ```
+   The title is your own short wording, with no `$`, backtick or quote in it;
+   anything taken from the web goes in the body file, written through a quoted
+   heredoc (`<<'EOF'`) as in Scope.
 8. Leave the worktree in place: once the owner says to merge, the PR is
    merged, and the worktree cleaned up, by `$WS_ROOT/.agent/scripts/merge_pr.sh --pr <N>`
    (never `gh pr merge --delete-branch` from the worktree). It removes the
@@ -210,7 +223,7 @@ only those entries. With no such rule, commit as usual.
 3. Extract key takeaways relevant to the workspace or project
 4. Determine scope (workspace or project) from content — or ask if unclear
 5. Append to the appropriate digest
-6. Commit, push and create the PR; it is merged, and the worktree cleaned up, by `$WS_ROOT/.agent/scripts/merge_pr.sh --pr <N>`
+6. Commit, push and create the PR as in Adding research steps 6 and 7; it is merged, and the worktree cleaned up, by `$WS_ROOT/.agent/scripts/merge_pr.sh --pr <N>`
 
 ### Refreshing (`/research --refresh`)
 
@@ -226,7 +239,7 @@ only those entries. With no such rule, commit as usual.
    - Update the entry's `Last verified` date to today
    - Mark as stale or remove if no longer relevant
 5. Update the top-level `Last full refresh` timestamp to today
-6. Commit, push and create the PR; it is merged, and the worktree cleaned up, by `$WS_ROOT/.agent/scripts/merge_pr.sh --pr <N>`
+6. Commit, push and create the PR as in Adding research steps 6 and 7; it is merged, and the worktree cleaned up, by `$WS_ROOT/.agent/scripts/merge_pr.sh --pr <N>`
 
 ## Guidelines
 

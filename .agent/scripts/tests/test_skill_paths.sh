@@ -940,6 +940,14 @@ has "$RES" "research: sources-pending mark" \
     '`**Sources**: pending`' '`--refresh` takes pending entries first'
 has "$RES" "research: the workspace digest is written in the worktree, not \$WS_ROOT" \
     'at that path relative to the worktree'"'"'s root, never as `$WS_ROOT/.agent/knowledge/research_digest.md`'
+has "$RES" "research: the PR is opened through the signing wrapper" \
+    '"$WS_ROOT/.agent/scripts/gh_create_pr.sh" --title' '`Closes #<N>` for a project digest'
+if grep -qF 'gh pr create --fill' "$RES" 2>/dev/null \
+        && ! grep -qF 'a bare `gh pr create --fill` does neither' "$RES"; then
+    fail "research still opens its PR with a bare gh pr create --fill"
+else
+    pass "research opens no PR with a bare gh pr create --fill"
+fi
 if grep -qF '**Location**: `$WS_ROOT/' "$RES" 2>/dev/null; then
     fail "research still gives a digest location under \$WS_ROOT (the main checkout)"
 else
