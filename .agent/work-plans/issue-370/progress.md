@@ -72,3 +72,11 @@ issue: 370
 
 Owner answered "Proceed" to: Should plan-task take on the six Issue Review actions (scope, brainstorm overlap and prior art, name, first-PR scope, resume rules, trial) as constraints on the plan?
 On the skill name, the owner answered "Let the plan pick": plan-task proposes a plain-word name and the owner confirms or changes it at the plan checkpoint.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-21 16:06 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-370/plan.md` at `7ef185dd`
+
+First PR adds a `challenge` skill (proposed name, owner to confirm) from the trial draft plus the four decision-record fixes, resume and parking rules, and the list/manifest updates; goals-down skill, long-view work and shared rules go to follow-up issues. Each of the six Issue Review actions is answered in the plan's "Review actions" section.
