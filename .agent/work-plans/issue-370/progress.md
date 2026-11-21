@@ -616,3 +616,19 @@ Checks: `test_skill_paths.sh` 167 passed, 0 failed; pre-commit (`.venv`) on SKIL
 **Decision**: publish
 
 Full pass: .venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD) on HEAD 1ea6fbb2 exited 0 with no file rewritten. Publishing Part 1 as a pull request that says "Part of #370" (Part 2, Create plus the location question, depends on #551).
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-21 18:47 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**PR**: #553 at `9686ddf`
+**Sources**: 1 (Local Review (Pre-Push) round 3 @ `9686ddf` via checkpoint coverage; no Copilot or human review arrived; CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+(none open: round 3 approved with no findings; rounds 1-2 findings are all ticked and addressed; owner decisions of 2026-11-21 are in scope. One stale pre-push entry at b1e3a17 lists 6 open plan-stage actions, superseded by the plan restart into Part 1 / Part 2 and the later reviewed implementation.)
+
+### False positives
+(none)
