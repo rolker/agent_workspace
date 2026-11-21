@@ -134,8 +134,10 @@ session.
 - **Earlier preparation**, when it exists: the level's research digest (the workspace's
   `$WS_ROOT/.agent/knowledge/research_digest.md`; a project's
   `.agents/workspace-context/research_digest.md` in the project repository, if it exists) and any
-  brainstorm results recorded on the anchor issue. Say what you read, or that there was
-  none.
+  brainstorm results saved on the anchor issue: `/brainstorm` saves them, on the user's
+  yes, as a signed comment whose body opens with the line `## Brainstorm: <topic>`, so
+  find them by that heading among the issue's comments. Say what you read, or that there
+  was none.
 - Write down the decisions and assumptions you can see, including your own assumptions
   about what the user wants, as in-session notes. Step 5 checks them against the user's
   answers.
