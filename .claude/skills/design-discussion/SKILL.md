@@ -219,6 +219,12 @@ Everything decided, everything open and every reason is written to a tracked pla
 the session ends. Each write is shown first and made on the user's yes to that item; a
 no leaves it recorded as open on the anchor issue instead. Never start building.
 
+- **Identity first.** Before the first commit or comment, set the agent identity in the
+  worktree the drafts go in, in the same command chain as the write (shell state does not
+  persist between tool calls):
+  `cd <worktree> && source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model id>" && …`.
+  It sets the commit identity and `AGENT_NAME` and `AGENT_MODEL`, which the signature
+  below needs.
 - **Drafts live in the documents from the first session.** The first time the user says
   something is decided, propose the target document and section. On the user's yes, put
   the draft into that document on the anchor issue's branch, commit it, and offer a draft
