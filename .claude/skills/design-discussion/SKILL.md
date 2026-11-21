@@ -295,8 +295,8 @@ lists it among the open questions. Never start building.
   - a pruned or rejected option under Decided Against, with its reason;
   - an offered but unsettled idea under To Consider, marked offered.
 
-  If the roadmap has none of these sections, say so and record the item on the anchor
-  issue (below) rather than adding a section the readers do not know.
+  If the roadmap lacks the section or table for an item's kind, say so and record that
+  item on the anchor issue (below) rather than adding a section the readers do not know.
 - **The why.** Each decision's reason goes to the Decisions role
   (`docs/design.md#documentation-layers`) as a signed comment on the anchor issue (the
   decision, its reason, the date, and where the decided text now lives), and as an ADR
