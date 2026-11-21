@@ -200,3 +200,25 @@ Cross-model: gemini complete (EXIT=0), codex complete (EXIT=0). Claude adversari
 ### Checks
 - `test_skill_paths.sh`: "test_skill_paths: 168 passed, 0 failed"
 - No script changed; no manifest change. The full pre-commit pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-21 18:19 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-552 at `a3788a5e`
+**Base**: main
+**Depth**: Standard (reason: override-trigger file `.claude/skills/*/SKILL.md`)
+**Must-fix**: 1 | **Suggestions**: 5
+**Round**: 2 | **Ship**: recommended — round 2: 1 mechanical must-fix (prev 4), not rising — fix and ship rather than another full round
+
+Round-1 findings: all 9 resolved (checked against `.claude/skills/brainstorm/SKILL.md` lines 49-55, 82-91, 118, 153-203 and `.agent/workflows/README.md`). Contract with design-discussion (feature/issue-370, SKILL.md:138-142, 255-264) met: signed comment opening `## Brainstorm: <topic>`, `--body-file`, identity in the chain. Cross-model: gemini complete (EXIT=0), codex complete (EXIT=0). Claude adversarial complete (Step 4 chain run with stub `gh`: body verbatim, exit status kept on `gh`/`source` failure, file removed). Tests: test_skill_paths 168/0, test_plugin_manifest 12/0; plugin.json valid JSON. Pre-commit on the changed files did not finish within 300 s (not reported as passed); shellcheck not installed.
+
+### Findings
+- [ ] (must-fix) `gh issue create ... --title "<title>"` is double-quoted, so a backtick span, `$` or `$(...)` in the title is run or expanded, the same hazard item 4 guards the body against; prescribe a non-expanding form (single quotes with `'\''`, or the title read from a quoted heredoc) (gemini) — `.claude/skills/brainstorm/SKILL.md:174`
+- [ ] (suggestion) `body="<scratchpad file>"` names no unique file and no directory outside Claude Code (the skill is shared); use `mktemp` in the session scratchpad, else `$WS_ROOT/.agent/scratchpad/` (AGENTS.md Workspace Cleanliness) (adversarial + gemini) — `.claude/skills/brainstorm/SKILL.md:190`
+- [ ] (suggestion) No rule when `<owner/repo>` cannot be resolved (`gh repo view` fails: no GitHub remote, not a git folder) or the topic's project is unregistered; say the result then stays in the conversation, never falling back to the workspace repo (gemini) — `.claude/skills/brainstorm/SKILL.md:153`
+- [ ] (suggestion) The public-project check covers a new anchor issue's body but not its title; check both (gemini) — `.claude/skills/brainstorm/SKILL.md:171`
+- [ ] (suggestion) `### Sources` lists sources read via `$WS_ROOT` / the registered `<path>`, i.e. absolute local paths, which then go into a public comment; write them repo-relative (gemini) — `.claude/skills/brainstorm/SKILL.md:116`
+- [ ] (suggestion) design-discussion Step 7 `cd`s into the root before sourcing the identity (the email follows the cwd's git config); Step 4 sources it in whatever the cwd is; add `cd <topic root> &&` to match (adversarial) — `.claude/skills/brainstorm/SKILL.md:189`
