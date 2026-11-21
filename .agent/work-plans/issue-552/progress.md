@@ -81,3 +81,11 @@ issue: 552
 **Decision**: proceed
 
 The plan takes on the Issue Review's eight actions. Host decisions, listed for the owner's veto: ship #552 apart from #331 (in either order, not waiting for #331); in the no-issue-yet case, offer to open an anchor issue on a yes, never write to the digest from brainstorm; read the project digest at .agents/workspace-context/research_digest.md (the path design-discussion already reads) until #551 settles locations; the design-discussion pointer edit is a follow-up after #370 merges.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-21 17:54 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-552/plan.md` at `003378d3`
+
+Make brainstorm session_scope both (WS_ROOT idiom, root-relative reads) and add an on-yes save step posting a signed `## Brainstorm: <topic>` comment to the anchor issue; regenerate the plugin list. design-discussion pointer edit is a follow-up after #370 merges.
