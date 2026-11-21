@@ -71,3 +71,13 @@ issue: 552
 - [ ] Read the project digest at `.agents/workspace-context/research_digest.md` and the root's `docs/design.md`, roadmap and principles via `WS_ROOT`; treat each as optional and say which were read.
 - [ ] Add a check before posting in a public project: compare against the project's `.agents/README.md` rules (no site data).
 - [ ] Keep the `design-discussion` pointer edit as a follow-up that lands after #370 merges.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-21 17:53 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (orchestrator; every action is mechanism: save contract, plugin list, read paths, ship order; none changes the goal or scope)
+**After**: issue-actions
+**Decision**: proceed
+
+The plan takes on the Issue Review's eight actions. Host decisions, listed for the owner's veto: ship #552 apart from #331 (in either order, not waiting for #331); in the no-issue-yet case, offer to open an anchor issue on a yes, never write to the digest from brainstorm; read the project digest at .agents/workspace-context/research_digest.md (the path design-discussion already reads) until #551 settles locations; the design-discussion pointer edit is a follow-up after #370 merges.
