@@ -503,4 +503,4 @@ Follow-up issue drafts (text only, nothing filed):
 - [x] (suggestion) GitHub comments the skill posts (state, no-document drafts, reasons) carry no AI-signature or `--body-file` instruction (AGENTS.md Always) — `.claude/skills/design-discussion/SKILL.md:244-252`
 - [x] (suggestion) Carve steps 2-4 commit before Step 7's "each write on the user's yes" is stated, and Step 6 runs the landing check that needs those commits; say each Carve write waits for a yes — `.claude/skills/design-discussion/SKILL.md:203-204,283`
 - [x] (suggestion) Resume (Step 1) needs the anchor issue, but Step 0 asks for it only before the first tracked write; ask for an existing anchor up front — `.claude/skills/design-discussion/SKILL.md:69-73,92-95`
-- [ ] (suggestion) The "Workflow skill list" consequence row omits `.agent/knowledge/skill_workflows.md`, which this branch itself updates — `.agent/knowledge/principles_review_guide.md:71`
+- [x] (suggestion) The "Workflow skill list" consequence row omits `.agent/knowledge/skill_workflows.md`, which this branch itself updates — `.agent/knowledge/principles_review_guide.md:71`
