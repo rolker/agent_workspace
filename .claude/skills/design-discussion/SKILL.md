@@ -273,9 +273,10 @@ lists it among the open questions. Never start building.
   in conversation and kept in a scratch file was later read as a gap (#370, 2026-10-02
   and 2026-10-12).*
 - **Drafts leave the machine.** A commit alone is on this machine only, and a session
-  elsewhere cannot resume from it. At every ending, and after the first draft commit,
-  offer to push the branch, or to open a draft PR from it (which pushes it); do either
-  on a yes. The state comment (below) names the branch, the draft PR if there is one,
+  elsewhere cannot resume from it. After each draft commit, and at every ending, offer to
+  push the branch, or to open a draft PR from it (which pushes it); do either on a yes.
+  The user may instead give one standing yes to push after every draft commit for the
+  rest of the session; then push each one and say so. The state comment (below) names the branch, the draft PR if there is one,
   and whether the latest draft commit is pushed; when it is not, it says the drafts are
   on this machine only.
 - **Where each kind goes:**
