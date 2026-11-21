@@ -145,6 +145,24 @@ for every project type. When the workspace gains a per-project setting for where
 such files live, the skill reads the path through that setting and falls back to
 this default when it is unset.
 
+"The project's own repo" is the git repository at the project's root (the
+`root=` that `session_root.sh` prints, or the registered root of `--project
+<name>`). A project whose root is not a git repository (a plain directory
+holding several clones) has no such repo, and `worktree_create.sh --issue <N>
+--type project` refuses there. Until the per-project setting above names a
+place, such a project has no project digest: do not pick one of its clones.
+Show the drafted entry in full in the conversation and record it in the inbox
+as in Scope step 2, with the text starting `research for the <project> project
+digest (root is not a git repository):`, then stop. Check before setting up a
+worktree:
+
+```bash
+root="<root>"
+top="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null)"
+[ -n "$top" ] && [ "$(cd "$top" && pwd -P)" = "$(cd "$root" && pwd -P)" ] \
+    && echo "root is a git repository" || echo "root is not a git repository"
+```
+
 Topics specific to the project domain (varies by project).
 
 ## Digest Format
