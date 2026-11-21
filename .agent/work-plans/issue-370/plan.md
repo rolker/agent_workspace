@@ -6,94 +6,118 @@ https://github.com/rolker/agent_workspace/issues/370
 
 ## Context
 
-The issue body proposes a design conversation (fresh idea or design in progress; ends in continue, prune, shelve or clearer-but-undecided; never builds) and ships a trial `SKILL.md`. Eight later comments add a goals-down skill, resume and pacing rules, and long-view / roadmap items (D1-D9, M1-M10). The Issue Review actions (accepted by the owner) are constraints here; the answers are in "Review actions" below.
+The owner restated the goal (comment 7069803282 and the checkpoint of 2026-11-21 16:54): a discussion bigger than one session must save its details where every later implementation session finds them, until the work is done. The skill works at one of three levels (the workspace, a project, a part of a project, ADR-0022) in three ways: **Create** goals, design and roadmap where a level has none; **Revise** them where it has them; **Carve** a sub-component or new feature out as a sub-design of the parent. The old scope (a challenge conversation ending in a private scratchpad summary) is superseded; this plan replaces the earlier one. Issue Review actions A1-A8 (the newest `## Issue Review`, owner-accepted) are constraints; "Review actions" below answers each.
 
-**Name: `design-discussion`** (`/design-discussion <topic>`), the trial draft's own name, chosen by the owner at the plan checkpoint over the earlier proposal `challenge`. It does not collide with `brainstorm`, `review-plan` or `review-issue`.
+**Delivery in parts** (#459). **This plan is Part 1 only**; its PR says `Part of #370`, not `Closes #370`.
+
+- **Part 1 (this plan):** the skill, with the level framing, Revise and Carve, writing into the level's tracked documents. Locations only where today's readers accept them.
+- **Part 2 (later, `Closes #370`):** Create, plus asking and storing where a project keeps its goals, design and roadmap (an onboarding step 3 question with suggested locations, "decide later" valid, one stored setting, readers keyed to it). It depends on a new location issue beside #393 that the host is drafting for the owner. Not filed here. Part 2 adds the Create mode, the settings and onboarding changes and the `docs/design.md#documentation-layers` edit, each with tests.
+
+**Name `design-discussion`, the trial banner and the 2026-12-31 revisit date** stay (owner decisions earlier on this timeline). The banner text must change (see action 8), because its two cases ("a fresh idea", "an existing design") no longer match the three uses.
 
 ## Approach
 
-1. **Create `.claude/skills/design-discussion/SKILL.md`** from the issue-body trial draft, with `session_scope: both`. Edits to the draft:
-   - Keep the name `design-discussion` and the "Trial version" banner with its revise trigger (see Review actions 6).
-   - Step 1 (existing design): add "list where the design's decisions and evidence live, including unmerged branches and working directories outside git" (comment 2026-10-01, fix 1).
-   - Step 4 (existing design): add the decision-list pass, each item marked kept / waits / changed / dropped (fix 2).
-   - Step 6: before the landing counts, show that list with changed and dropped first; check new terms against existing decisions; follow the design's own change rule or say the landing sets it aside; name settled work the conclusion strands. Ban the blanket "the existing design still stands" (fix 3). Step 7: optional fresh-session second pass when prune or shelve is written visibly (fix 4).
-   - Resume rule (2026-10-05, 2026-10-05 follow-up): new first line of Step 1, "On resuming, the first output is the one-liner of the overall task, then progress against its plan, then only the context for the detail".
-   - Parking rule (2026-10-05): in Step 5, "park a detail only when it does not block work at this level and can be solved later without significant redesign; say both when parking".
-   - Trim: keep a "Why" only where an observed failure backs it. Failure-backed: judging before purpose (step 2), long first reply and seven questions (step 5 question rules), oversold objections (steps 3-4), decision-record check (steps 1, 4, 6), and the "state a conclusion in your own words" prompt (M10, "Decisions by short assent to agent framing", comment 2026-10-12: "sounds good" accepted structures never stated as decisions). Rules from no observed failure (the every-few-rounds open list) are marked "untested" in the text, not removed, because the trial exists to test them.
-   - Record step: the summary always goes to the workspace's git-ignored scratchpad, never under the session root. The skill resolves it with `WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"` and writes to `$WS_ROOT/.agent/scratchpad/design-discussions/` (created if absent), so in a project session no untracked file lands in the project's checkout (its `.gitignore` need not ignore `.agent/scratchpad/`; the workspace's does, `.gitignore:45`). This follows `docs/design.md`'s records-location rule (untracked records live under the workspace's ignored scratchpad). Fallback when `~/.claude/agent-workspace-root` is missing: `$WS_ROOT` is `.`; in a workspace session that is the workspace scratchpad and the skill proceeds; in any other session the skill checks that the resulting directory is git-ignored (`git check-ignore`), and if it is not, says so and shows the summary in the conversation only instead of writing a file. Only the user moves a decision to a tracked place (design doc, roadmap, issue), each on a yes. Text states that scratch is working space, not a home for decisions (D9).
-   - Skill text uses synthetic names only; no real project names, issue or PR numbers as names.
-2. **Add a "What this is not" section to `brainstorm/SKILL.md`** (it has none today; its headings are Usage, Overview, Steps, Guidelines). One line: `brainstorm` lists options in one pass; `/design-discussion` is a two-way conversation that attacks and defends.
-3. **Update lists**: recount the skills line in `docs/design.md#instruction-layers` (`ls -d .claude/skills/*/ | wc -l` at that time; 23 now, 24 with this skill, the line says 22), and add `design-discussion` to the skill list in `.agent/AGENT_ONBOARDING.md` (the only adapter file with a skill list; `.github/copilot-instructions.md` and `.agent/instructions/gemini-cli.instructions.md` have none). The `principles_review_guide.md:71` row that names those two files for skill lists is stale; fix the row in the same change or note it in the PR.
-4. **Regenerate the plugin manifest** with `make generate-user-tier-skills`; confirm `design-discussion` appears in `.claude-plugin/plugin.json`'s `skills` and run `.agent/scripts/tests/test_plugin_manifest.sh`.
-5. **File follow-up issues** (not in this PR; each cites #370): (a) goals-down skill (2026-10-02 comments, includes upward check, evidence labels, level sorting); (b) long-view / route work: roadmap derivation from design, deferral homes, drift checks, measures (D1-D9 minus D9, M1-M10), which touches `docs/design.md` and goes to the owner on its own; (c) shared conversation rules between `design-discussion`, the goals-down skill and `orchestrator` (#398), only if (a) shows the rules duplicate.
-6. **Trial**: see Review actions 6.
+1. **Rework `.claude/skills/design-discussion/SKILL.md`** (already on the branch; keep `session_scope: both`, the trial banner, the plain-names and question rules, and the method of purpose first, attack, defend, rounds, own-words check, decision-record pass, landing checks and fresh-session second pass). Changes:
+   - **Delete "Where summaries live"** and every `$DD_DIR` use in Steps 1, 5 and 7: the folder resolution, the `git check-ignore` probe, the session file, the `<date>-<plain-topic>.md` summary, the "look in `$DD_DIR` for earlier sessions" lookup. Scratchpad stays only as in-session notes (text says: one machine, untracked, never the home of a decision).
+   - **New Step 0, "Level and documents".** Ask which level (workspace, a project, a part) and which use (Revise or Carve; a level with no goals/design/roadmap is Create, not yet available, see below). Read the parent's goals for a part. Find the level's documents with what today's readers accept, and where none exists say so and ask, never guess:
+     - roadmap: `docs/roadmap.md`, else `ROADMAP.md` (what `sitrep_root.sh` reports as `roadmap=`; `update_roadmap.sh` also accepts `docs/ROADMAP.md`);
+     - design: `docs/design.md`; a part's design is the file its `| Sub-roadmap | Root |` row's directory holds, cited `<path>/design.md#<section>`;
+     - goals: the repository's `README.md#<goals section>` for the workspace; for a project, the goals the project's own design or README names; if none, say so.
+     Everything else is per project and waits for the location issue.
+   - **Step 1 resume rule** now reads the tracked documents first: the level's design, roadmap Direction lines, the branch or draft PR holding the draft, open issues citing them; the first output is the one-liner of the overall task, then progress against the roadmap's lines, then only the context for the detail. Delete the "plan" wording ("progress against its plan", round-1 suggestion).
+   - **Drafts live in the documents from the first session.** The first time the user says what is decided, the skill proposes the target document and section; on the user's yes it puts the draft into that document on a branch (a worktree under the root's own rules) and offers a draft PR, so the next session finds it by reading the document. Each later decision is a tracked edit on a yes of its own, one at a time. No decision waits in scratch.
+   - **Step 7 "Record" rewritten.** Tracked writes on each yes, by kind: design decisions into the level's design (ADR-0017: one current picture, no layers; the design's own change rule followed or said to be set aside); work into roadmap `## Direction` lines with a check each (`| Line | Check |`, grammar in `sitrep_checks.sh`'s header) and the issues those lines cite; a deferral into the `| Deferral | Revisit check |` table with its reason and what brings it back; a rejected option into Decided Against; an offered but unsettled idea into To Consider, marked offered. Remove the "only on a continue landing" gate: every ending (continue, prune, shelve, clearer-but-undecided) writes what was decided. If a document is missing, drafts are text in the conversation only (no new file at a location nobody reads) and the skill says Create is Part 2.
+   - **Carve** (a new section): the part's goals, design and roadmap are written as the part's own files; the parent design keeps only what crosses the boundary plus a pointer to `<path>/design.md#<section>`; the parent roadmap gets one `| Sub-roadmap | Root |` row (one level followed). Landing check: run `check_design_anchors.sh` over the new files and `sitrep_checks.sh` on the parent roadmap and report the result; a broken pointer blocks calling it landed.
+   - **Revise** keeps the existing Steps 4 and 6 decision-list pass (kept / waits / changed / dropped) and the ban on "the design still stands". Add the upward check from the 2026-10-02 and 2026-10-12 comments in its smallest form: before landing, compare the draft with the history (issues, branches, deferrals) and sort each finding by level (goal, principle, design, detail) before showing it; label evidence counted, sampled or judged. Mark as *untested*.
+   - **Absorbed from the old follow-up (a)** (goals-down): sort what the user says by level, one item per turn with current and proposed text side by side, user's words first, "let's keep thinking" mode, check each sentence's level before showing it. Only what an observed failure backs (cited by comment date); the side-thoughts queue file is not included (still untested).
+   - Synthetic names only; keep the *Why* only where a failure backs it; rules from no failure stay marked *untested*.
+2. **Banner (action 8).** Rewrite the trial banner: trial until two uses are recorded, one Revise and one Carve (Create's use comes with Part 2, which keeps the trial open for that mode); outcome and the settle / revise / remove decision go in a comment on #370; revisit 2026-12-31 or both uses done, whichever first. The date stays right for Part 1 (about 40 days from today); it judges Part 1 only, since Part 2 waits on an issue not yet filed, and the banner says so.
+3. **`.agent/knowledge/skill_workflows.md`**: add a `design-discussion` row to the Utility skills table (round-1 suggestion, still valid).
+4. **Rerun, do not redo.** Already on the branch and unchanged: the `brainstorm` "What this is not" pointer, the skill count 24 in `docs/design.md#instruction-layers` with its change-log row, the `.agent/AGENT_ONBOARDING.md` list entry, the `principles_review_guide.md` row fix. Regenerate the manifest (`make generate-user-tier-skills`) only if the skill's front matter changes (it should not), and run `test_plugin_manifest.sh` and `test_skill_paths.sh` after the rewrite (the latter flags the path idioms; the `agent-workspace-root` idiom stays only where the skill calls `sitrep_root.sh` or `check_design_anchors.sh`).
+5. **Follow-up issue drafts (text only, nothing filed, per A8):** see the end of this plan.
+6. **Trial uses.** The owner runs, or asks for, one Revise and one Carve session; the SKILL.md PR description says it is a trial.
 
 ## Files to Change
 
 | File | Change |
 |------|--------|
-| `.claude/skills/design-discussion/SKILL.md` | New skill, from the trial draft plus the edits in step 1 |
-| `.claude/skills/brainstorm/SKILL.md` | New "What this is not" section with one line |
-| `docs/design.md` | Skill count in `#instruction-layers` |
-| `.agent/AGENT_ONBOARDING.md` | Add `design-discussion` to the skill list |
-| `.agent/knowledge/principles_review_guide.md` | Fix the stale row at line 71 (adapter files with no skill list) |
-| `.claude-plugin/plugin.json` (generated) | Regenerated |
+| `.claude/skills/design-discussion/SKILL.md` | Rework: level framing step, Revise and Carve, tracked-write record step, resume-from-documents, summary mechanism removed, banner rewritten |
+| `.agent/knowledge/skill_workflows.md` | New skill row |
+| Already on the branch, unchanged | `brainstorm/SKILL.md`, `docs/design.md` (count), `.agent/AGENT_ONBOARDING.md`, `principles_review_guide.md`, `.claude-plugin/plugin.json` |
 
 ## Review actions
 
-1. **Scope.** First PR is the design-discussion skill only (body draft plus items below). Goals-down skill and long-view / roadmap parts go to follow-up issues (step 5). Nothing from D1-D8 or M1-M10 is built here; the skill's step 7 states the D9 rule only.
-2. **brainstorm overlap and prior art.** `brainstorm` reads digests and governance docs and lists possibilities in one pass; it has no purpose-first step, no attack and defend, no assumptions kept and checked, no decision-record check and no landing. Those are what `design-discussion` adds, so a separate skill, cross-referenced both ways (step 2). Prior art: taken from gstack `office-hours` and `plan-ceo-review` (goal question first, rules against easy agreement, premises listed, mandatory alternatives, check for earlier design notes, "a recommendation settles nothing"); from BMAD `bmad-forge-idea` (attack, defend, switch roles; killed or clarified as valid endings); from `reason-grill` and `devils-advocate` (each objection survives its own rebuttal; state what the design gets right first). Rejected: gstack's size (about 80 KB per skill) and startup framing, and one-way grilling. Existing `review-plan` and `review-issue` were also looked at; they check a written artifact against rules, not whether the thing should exist.
-3. **Name.** `design-discussion`, chosen by the owner at the plan checkpoint.
-4. **First-PR scope.** Trial draft plus the four fixes from the 2026-10-01 comment (steps 1, 4, 6, 7), as in step 1 above.
-5. **Resume and parking rules.** Both are folded in: resume one-liner goes in Step 1, parking conditions in Step 5. The side-thoughts queue file is not folded in: its trial result was "still untested whether parked items get picked up", so it goes to follow-up (a).
-6. **Trial.** The SKILL.md banner stays until two uses are recorded: one fresh idea, one existing design. The owner runs them (or asks for them); the outcome is posted as a comment on #370, and the same comment says settle, revise, or remove. Trigger to revisit: both uses done, or 2026-12-31 if not (owner kept this date), whichever comes first, at which point the skill is revised or removed rather than left as a trial. Implementation does not claim the skill settled; the PR description says it is a trial.
+Numbered as the Issue Review's Actions list (A1-A8, in order).
+
+1. **A1 Part 1 stays inside the design as it is.** Carve uses parts and `| Sub-roadmap | Root |` as ADR-0022 and #488 define them; no new layout. The Documentation layers change (location setting) is Part 2 and goes to the owner with the new location issue.
+2. **A2 Location is a per-project answer, stored once.** Not in the skill or scratchpad. Part 1 reads only today's accepted locations (step 1, Step 0); the question and storage are Part 2. The owner chose a new issue beside #393 (checkpoint 16:59); the host drafts and files it on his yes. This plan neither files nor depends on it for Part 1.
+3. **A3 Scratchpad mechanism dropped.** Step 1 above removes "Where summaries live" and with it the round-1 must-fix findings (folder resolution, root-less file names); the remaining round-1 suggestions are answered by the resume rewrite and the `skill_workflows.md` row (step 3); the `agent-workspace-root` wording survives only if the skill still calls workspace scripts.
+4. **A4 Two parts.** Context above: `Part of #370` now, `Closes #370` on Part 2.
+5. **A5 New location issue.** Named as Part 2's dependency; not filed by this work.
+6. **A6 Locations the readers accept today.** Step 0 lists them (`sitrep_root.sh`, `update_roadmap.sh`, `check_design_anchors.sh`, `sitrep_checks.sh`); where none exists, say so and ask.
+7. **A7 Rework, not discard.** Step 1 keeps the method and replaces the summary and the continue-only offer; the F5/F6 resolution code goes.
+8. **A8 Follow-ups.** (a) dropped, absorbed into step 1; (b) revised below; (c) conditional, below.
 
 ## Prior Art
 
-See action 2 above. Also looked at: other skills' `session_scope: both` front matter (`plan-task`, `orchestrator`), the `~/.claude/agent-workspace-root` idiom other skills use, and the manifest generation for the plugin list. Nothing new is built in tooling; this is one skill text.
+Earlier plan's prior art stands (gstack `office-hours` and `plan-ceo-review`, BMAD `bmad-forge-idea`, `reason-grill` and `devils-advocate`; rejected: size, startup framing, one-way grilling; `brainstorm`, `review-plan` and `review-issue` checked, none attacks and defends or lands decisions). Added: the roadmap Direction grammar, Decided Against / To Consider, the deferral table and the `Sub-roadmap | Root` pointer (all existing, used as is); `orchestrator` and `sitrep` for the one-liner-then-progress resume shape; ADR-0022's own boundary rule for what a parent keeps about a part. No new mechanism is built.
 
 ## Serves
 
-Quality of the work and Trust, control and information (`README.md#workspace-goals`); `docs/design.md#instruction-layers` (layer 3, skills).
+The long view, Trust, control and information, and Quality of the work (`README.md#workspace-goals`); `docs/design.md#documentation-layers` (Direction row, parts) and `docs/design.md#instruction-layers` (skills).
 
 ## Design Picture
 
-No change to how the parts fit. A new `SKILL.md` is not a new mechanism; only the skill count in `docs/design.md#instruction-layers` is updated in this PR. Writing into the roadmap or design from a later mode is out of scope and goes to the owner on its own.
+No change to the design picture in Part 1: a skill text over existing documents and the parts mechanism; only the skill count in `docs/design.md#instruction-layers` changed (already on the branch). Part 2 changes `docs/design.md#documentation-layers` (a stored location for goals, design and roadmap, and the readers keyed to it), brought to the owner with the location issue.
 
 ## Principles Self-Check
 
 | Principle | Consideration |
 |---|---|
-| Small steps | First PR is one skill; the rest is filed separately |
-| Look for prior art | Action 2 |
-| Only what's needed | Rules without an observed failure are marked untested; no queue file, no second skill |
-| Know whether it works | Two-use trial with a date (2026-12-31) and a recorded outcome (action 6) |
-| Put each thing at the level it applies to | Synthetic names in the skill text; summaries always go to the workspace's ignored scratchpad via `~/.claude/agent-workspace-root`, never into a project checkout |
-| Leave a trail | Summary is private; only the user moves a decision to a tracked place |
-| Test what breaks | No code; plugin manifest test covers the generated list |
+| Capture decisions where they will be found | Drafts and decisions go to the level's tracked documents on a branch or draft PR from the first session; scratch is in-session only; resume reads the documents first |
+| Keep one current design | Revisions edit the level's one design; a part's design is separate and the parent keeps only the boundary (ADR-0017, ADR-0022) |
+| Put each thing at the level it applies to | Level named first; locations per level, project locations left to Part 2; synthetic names in the skill |
+| Small steps | Part 1 is Revise and Carve over existing locations; Create and settings are Part 2 |
+| Look for prior art | Above |
+| Only what's needed | Goals-down skill absorbed rather than a second skill; side-thoughts queue not included; untested rules marked |
+| A safeguard has to earn its cost | Two-use trial (Revise, Carve) and the 2026-12-31 revisit |
+| Test what breaks | `check_design_anchors.sh` and `sitrep_checks.sh` as Carve's landing check; manifest and skill-path tests |
 
 ## ADR Compliance
 
 | ADR | Triggered | How addressed |
 |---|---|---|
-| 0018 Plugin-based skill delivery | Yes | `session_scope: both`; regenerate manifest; run manifest test |
-| 0013 progress.md vocabulary | No | Skill never writes `progress.md` |
-| 0017 Design document is the current picture | Yes, minor | Skill count recounted in the same change |
-| 0014 In-process phase handoff | No | Not a `run-issue` phase |
+| 0022 A part owns its inside | Yes | Carve writes the part's own files, a pointer row and a boundary-only parent entry |
+| 0017 Design is the current picture | Yes | Revisions land in the one design; count update already done |
+| 0018 Plugin delivery | Yes | `session_scope: both`; manifest test |
+| 0013 Progress timeline | Yes | A checkpoint after Part 1 before Part 2 starts |
+| 0016 User tier | Light | `$WS_ROOT` idiom only where the skill calls workspace scripts |
 
 ## Consequences
 
 | If we change... | Also update... | Included in plan? |
 |---|---|---|
-| Skill list | `docs/design.md#instruction-layers` count; `.agent/AGENT_ONBOARDING.md` list; stale `principles_review_guide.md:71` row | Yes (step 3) |
-| `session_scope: both` | `plugin.json` via generator | Yes (step 4) |
-| Overlap with `brainstorm` | `brainstorm` new "What this is not" section | Yes (step 2) |
-| Goals-down skill, long-view items | New issues | No, follow-up (step 5) |
+| Skill text | `skill_workflows.md` row; manifest and skill-path tests | Yes (steps 3, 4) |
+| Carve writes sub-roadmap pointers | Landing check with `check_design_anchors.sh`, `sitrep_checks.sh` | Yes (step 1) |
+| Location of project goals/design/roadmap | `project_setting.sh`, `_project_registry.sh`, onboard-project step 3, `docs/design.md#documentation-layers` | No, Part 2 |
+| Round-1 findings about the scratchpad | Withdrawn with the mechanism | Yes |
 
 ## Open Questions
 
-None open: name (`design-discussion`) and trial date (2026-12-31) are settled by the owner.
+- **Branch for the first session's draft needs an issue** (Issue-First Policy). Proposed: the skill asks the user for the issue (or to open one) before its first tracked write, and uses the root's worktree route. Confirm or choose another.
+- **A level with no goals/design/roadmap before Part 2:** proposed that the skill says Create is not yet available there, and offers the conversation with text-only drafts. Alternative: refuse. Confirm.
+- **Goals location for a project** (README section vs. a design section) is not guessed in Part 1; confirm that "say so and ask" is enough until the location issue lands.
 
 ## Estimated Scope
 
-Single PR for the skill; three follow-up issues.
+One PR for Part 1 (`Part of #370`); Part 2 is a separate plan and PR(s) after the location issue.
+
+## Follow-up issue drafts (text only; none filed)
+
+**(b) Title**: Long view: derive a whole roadmap from a design, check drift, measure
+**Body**: Part of #370. Comments of 2026-10-12 on #370 (D1-D8, M1-M10) record failures on two redesigns. `design-discussion` (Part 1) writes decided items into the Direction lines of the level's roadmap one at a time; what remains: deriving a whole route from a design for each acceptance case (M1, D1), drift checks between design, roadmap and open issues (M4, M5, M6), a check that nothing in flight was missed before publishing (D6), measures of whether a change helped (M7), protection of the acceptance case from meta-work (M8), and status said in conversation but never checked (M9). Deferral homes (M3, D3) are covered by the skill's record step and are out of scope here. Touches `docs/design.md` (Direction and Measures roles), so it goes to the owner on its own.
+
+**(c) Title**: Shared conversation rules for design-discussion and the orchestrator
+**Body**: Part of #370; related #398. If `orchestrator` repeats `design-discussion`'s conversation rules (questions per turn, no dependent questions, plain names, one-liner first on resume, parking conditions, own-words before a conclusion counts), move them to one knowledge file both skills cite. File only once the duplication is shown (the goals-down skill, previously (a), is absorbed into `design-discussion`, so it is no longer a third party).
+
+(a), the goals-down skill, is not filed: absorbed (step 1).
