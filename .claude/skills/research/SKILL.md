@@ -218,16 +218,27 @@ only those entries. With no such rule, commit as usual.
 
 ### Ingesting a URL (`/research --ingest <url>`)
 
-1. Resolve the scope and set up the worktree for it (see above)
-2. Fetch and read the URL content
-3. Extract key takeaways relevant to the workspace or project
-4. Determine scope (workspace or project) from content — or ask if unclear
-5. Append to the appropriate digest
+1. Fetch and read the URL content (reading needs no worktree)
+2. Extract key takeaways relevant to the workspace or project
+3. Decide the scope before anything is set up: `--scope` when given;
+   otherwise from the content, the session root's digest when it fits there,
+   the other root's when it is clearly about that root, and ask when unclear
+4. Apply that scope as Adding research step 1 does: a workspace-digest write
+   from a project session hands back (see Scope) and stops here; otherwise set
+   up the worktree for it (see Worktree setup), and for a project digest
+   follow Project rules before writing it
+5. Check the digest for related entries, then append or update (dates as in
+   Adding research step 5)
 6. Commit, push and create the PR as in Adding research steps 6 and 7; it is merged, and the worktree cleaned up, by `$WS_ROOT/.agent/scripts/merge_pr.sh --pr <N>`
 
 ### Refreshing (`/research --refresh`)
 
-1. Resolve the scope and set up the worktree for it (see above)
+1. Resolve the scope (see Scope: `--scope`, else the session root). A refresh
+   of the workspace digest from a project session reads and re-surveys but
+   writes nothing: steps 2 to 4 run on the digest read from `$WS_ROOT`, and the
+   updated entries are handed back together, once, as in Scope; no step 5 or
+   6. Otherwise set up the worktree for it (see Worktree setup), and for a
+   project digest follow Project rules before editing it
 2. Read the digest for the target scope
 3. Identify the entries to re-survey:
    - **`**Sources**: pending`**: first in line, to get links

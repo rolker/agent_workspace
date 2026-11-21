@@ -940,6 +940,11 @@ has "$RES" "research: sources-pending mark" \
     '`**Sources**: pending`' '`--refresh` takes pending entries first'
 has "$RES" "research: the workspace digest is written in the worktree, not \$WS_ROOT" \
     'at that path relative to the worktree'"'"'s root, never as `$WS_ROOT/.agent/knowledge/research_digest.md`'
+has "$RES" "research: ingest decides the scope before setting anything up" \
+    'Decide the scope before anything is set up' \
+    'a workspace-digest write from a project session hands back (see Scope) and stops here'
+has "$RES" "research: a workspace refresh from a project session hands back" \
+    'A refresh of the workspace digest from a project session reads and re-surveys but writes nothing'
 has "$RES" "research: the PR is opened through the signing wrapper" \
     '"$WS_ROOT/.agent/scripts/gh_create_pr.sh" --title' '`Closes #<N>` for a project digest'
 if grep -qF 'gh pr create --fill' "$RES" 2>/dev/null \
