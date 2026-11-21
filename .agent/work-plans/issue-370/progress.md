@@ -132,3 +132,11 @@ Scope, alignment with the Issue Review and the consequences are sound, and the g
 Owner answered "Revise": plan-task fixes the four Plan Review findings (F1 drop the Copilot and Gemini adapter files, which have no skill list; F2 brainstorm gets a new "What this is not" section; F3 summaries always go to the workspace's ignored scratchpad via ~/.claude/agent-workspace-root, never the session root; F4 mark the own-words rule failure-backed, citing M10).
 Name: the owner chose "design-discussion" (the trial draft's name), not the plan's proposed "challenge". Rename throughout the plan.
 Trial revisit date: the owner kept 2026-12-31.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-21 16:22 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-370/plan.md` at `abf77b71`
+
+Revised after the owner's "revise": skill named `design-discussion`; only AGENT_ONBOARDING.md gets the list line (F1); brainstorm gets a new "What this is not" section (F2); summaries go to the workspace scratchpad via ~/.claude/agent-workspace-root with a stated fallback (F3); the own-words rule is failure-backed, citing M10 (F4); trial revisit date stays 2026-12-31.
