@@ -61,3 +61,14 @@ issue: 370
 - [ ] Scope the first PR to the body's trial draft plus the four fixes the first comment proposes for steps 1 and 4 (decision record and where evidence lives, kept/waits/changed/dropped list); put the goals-down skill and long-view items in follow-up issues.
 - [ ] Fold in the cheap rules from the 2026-10-05 comments (sit-rep or one-liner first on resume, park a detail with the two stated conditions) only if the plan can name where each goes in the draft.
 - [ ] Run the trial on one fresh idea and one existing design before calling the skill settled, and record the outcome in this issue.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-21 16:05 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Owner answered "Proceed" to: Should plan-task take on the six Issue Review actions (scope, brainstorm overlap and prior art, name, first-PR scope, resume rules, trial) as constraints on the plan?
+On the skill name, the owner answered "Let the plan pick": plan-task proposes a plain-word name and the owner confirms or changes it at the plan checkpoint.
