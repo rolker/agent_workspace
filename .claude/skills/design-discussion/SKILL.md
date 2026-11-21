@@ -120,7 +120,7 @@ session.
 - **Carve:** read the parent's design and roadmap, and what the project already has that
   partly does the part's job.
 - **Earlier preparation**, when it exists: the level's research digest (the workspace's
-  `.agent/knowledge/research_digest.md`; a project's
+  `$WS_ROOT/.agent/knowledge/research_digest.md`; a project's
   `.agents/workspace-context/research_digest.md` in the project repository, if it exists) and any
   brainstorm results recorded on the anchor issue. Say what you read, or that there was
   none.
