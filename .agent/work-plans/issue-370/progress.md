@@ -408,3 +408,43 @@ The owner approved filing the location issue: #551 (https://github.com/rolker/ag
 **Plan**: `.agent/work-plans/issue-370/plan.md` at `d4cab127`
 
 Revision of the Part 1 plan. Applied Plan Review F1-F7: undecided state, the why of decisions and no-document drafts are recorded on the anchor issue (resume reads it first); a part's design is the design.md beside the sub-roadmap file (Root cell is the checks' base directory); Carve proposes and confirms the part directory and Root cell, treats a nested "not followed" row as expected, and writes the part's goals in its design naming the root goal served. Q-a..Q-c moved into the plan as owner-accepted; Part 2 cites #551. No open questions remain.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-21 17:11 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #370 — A skill for high-level design discussions: find the blind spots in an idea or a design, on both sides
+**Plan**: `.agent/work-plans/issue-370/plan.md` at `d4cab127`
+**Branch**: `feature/issue-370`
+
+Second review of the Part 1 plan, against the restated goal (comment 7069803282, Checkpoint 16:54 restart), the post-restart Issue Review Actions A1-A8 and the previous Plan Review F1-F7 (Checkpoint 17:10: revise, Q-a..Q-c accepted, Part 2 depends on #551).
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Part 1 only (`Part of #370`): SKILL.md rework plus one `skill_workflows.md` row; Create and the location setting are Part 2 after #551. |
+| Issue alignment | Good | Serves: "The long view, Trust, control and information, and Quality of the work (`README.md#workspace-goals`); `docs/design.md#documentation-layers` (Direction row, parts) and `docs/design.md#instruction-layers` (skills)." Goal sections checked (README.md lines 26-118); anchors checked (design.md lines 87, 950). The owner's "all the details saved" concern is now covered: decisions to documents on a branch/draft PR, undecided state and reasons on the anchor issue, no-document drafts on the issue, resume reads the issue first. A1-A8 each answered. |
+| File targeting | Good | SKILL.md (185 lines today, still has the `$DD_DIR` scratchpad mechanism the plan removes) and `skill_workflows.md` (Utility skills table, line 25); on-branch files listed as unchanged; skill count 24 matches `.claude/skills/` (24 dirs). |
+| Consequences | Needs work | Carve's landing check is described against the wrong interface of both scripts (finding 1). |
+| Principle alignment | Good | "Capture decisions where they will be found": decisions, open questions, reasons and drafts all have tracked homes. "Keep one current design": no change in Part 1, correct. "Test what breaks": skill-only change, landing checks and manifest/skill-path tests named. Prior art stated. |
+| ADR compliance | Good | ADR-0022 decisions 1, 2, 4, 5, 6, 7 carried into Carve; part design located beside the sub-roadmap, matching `check_design_anchors.sh` lines 101-103 ("with the design.md beside it"); Root cell as the checks' base directory, matching `sitrep_checks.sh` lines 69-76. ADR-0017, 0018, 0013, 0016 handled. |
+| ROS conventions | N/A | Workspace plan. |
+
+**Previous findings F1-F7**: all resolved. F1 undecided state on the anchor issue / draft PR body, resume reads it first. F2 reasons to the anchor issue (comment or progress entry) and an ADR draft for a rule. F3 no-document drafts on the issue, Create said to be Part 2. F4 part design is the `design.md` beside the sub-roadmap file; Root cell is the checks' base. F5 Carve proposes and confirms the part directory and Root cell, design beside roadmap, parent cites `<path>/design.md#<section>`, nested "not followed" treated as expected. F6 part goals in a goals section of its design, naming the root goal served. F7 the issue is the anchor; no allowlist change.
+
+### Findings
+
+1. **[Consequences, should-fix]** Carve's landing check does not match the scripts' interfaces. `check_design_anchors.sh` takes a root (`check_design_anchors.sh [<root>]`), not "the new files"; it reads only tracked (`git ls-files`) files, so the part's files must be committed (or added) first; it reads a part's design and roadmap as citers only when they sit under a `docs/` directory or are named in the root roadmap's pointer table, so a nested part outside `docs/` is checked only where cited; and it exits 2 when `<root>/docs/design.md` is missing (a project with no design). `sitrep_checks.sh` run "on the parent roadmap" (`--roadmap <parent>`) follows that roadmap's pointers, so the new row is followed, not "not followed"; "not followed" appears only when run on the root's roadmap with a nested part. Resolution: the skill says `check_design_anchors.sh <root>` after the files are committed, and `sitrep_checks.sh --root <root>` on the root's roadmap (plus `--roadmap <parent>` with the parent's Root as `--root` when the parent is a part, to check the new row itself); exit 2 for a missing root design is reported as "no design to check against", not a pass.
+2. **[ADR compliance, suggestion]** The Decisions row of `docs/design.md#documentation-layers` (line 104) names ADRs and the issue's `progress.md`, not issue comments. Say the reason goes to a progress entry where the anchor issue has a worktree (or a comment on the issue otherwise), so the plan's "Decisions role" claim matches the table.
+
+### Summary
+
+The revision resolves F1-F7 and answers A1-A8; the skill now keeps every kind of detail the owner named in a tracked place a later session reads first. Ready for implementation; finding 1 is a wording fix to Carve's landing check to make while writing that section.
+
+### Recommended Actions
+
+- [ ] Carve landing check: `check_design_anchors.sh <root>` after the part's files are committed; `sitrep_checks.sh` on the root's roadmap (and on the parent part's roadmap with its Root when nested); exit 2 for a missing root design reported, not passed.
+- [ ] Name the reason's destination as a progress entry on the anchor issue (comment where no worktree), matching the Decisions row.
