@@ -122,3 +122,13 @@ Sound plan that follows the owner's decisions and the root rule; the planner's h
 - [ ] Drop the `test_user_tier_guard.sh` / new `session_root.sh` case rows; rely on existing `test_plugin_manifest.sh`, `test_session_root.sh` and the `test_skill_paths.sh` `both` list.
 - [ ] Make the workspace-write hand-back concrete: `$WS_ROOT/.agent/scripts/capture.sh` line saying it is for the workspace digest, or a workspace issue after a yes carrying the drafted entry.
 - [ ] When the second of #331/#552 lands, resolve the `test_skill_paths.sh` list conflict by keeping both names and re-run the manifest generator and both tests.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-21 18:03 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (orchestrator; four mechanism fixes, none changes scope; same "proceed, fixes in the implementer's handoff" pattern the owner chose at #370's plan checkpoints)
+**After**: plan
+**Decision**: proceed
+
+The implementer applies the Plan Review's findings beyond plan.md: (1) run make generate-user-tier-skills and list .claude-plugin/plugin.json under the files changed, so the plugin ships research; (2) drop the step-8 tests the review showed are redundant (test_user_tier_guard.sh, a new plugin-list or session_root test); the guards are research in test_skill_paths.sh's both list plus the regenerated manifest; (3) make the workspace-digest hand-back concrete: $WS_ROOT/.agent/scripts/capture.sh with text saying it is for the workspace digest, a workspace issue only after a yes, and the drafted entry text kept in the issue body or the conversation so the result is not lost; (4) #552 also edits test_skill_paths.sh's both list: an ordinary merge, keep both names, and whichever lands second re-runs generate-user-tier-skills, test_plugin_manifest.sh and test_skill_paths.sh. The planner's own decision (no workspace-digest write from a project session) stands: the review confirmed it against ADR-0018 decision 6.
