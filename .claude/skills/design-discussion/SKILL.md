@@ -207,8 +207,10 @@ why the work had been started; the real reason came out four rounds in.*
   "The existing design still stands" is not a landing statement on its own. *Why: a
   landing that said so left settled items unnamed, changed others without saying, and
   suspended a decision the design's own change rule protected.*
-- **Carve:** run the landing check in the Carve section; a broken pointer blocks calling
-  the carve landed.
+- **Carve:** run the landing check in the Carve section, once its writes are committed on
+  the user's yes (Step 7); a broken pointer blocks calling the carve landed. If the user
+  declines a write the check needs, the carve is not landed; say so and record it as
+  open.
 - Say where the conversation ended up, the one assumption the conclusion rests on, the
   cheapest test of that assumption, and what is still open.
 - If the conclusion follows your own framing, say so.
@@ -294,7 +296,8 @@ lists it among the open questions. Never start building.
 ## Carve
 
 A part has its own goals, design and roadmap (ADR-0022); the parent keeps only what
-crosses the boundary.
+crosses the boundary. Each file written and each commit below is a tracked write: shown
+first and made on the user's yes to it (Step 7's rule), the identity set first (Step 7).
 
 1. **Place.** Propose the part's directory and confirm it with the user. Its `design.md`
    and `roadmap.md` go side by side in that one directory: the checkers read the design
