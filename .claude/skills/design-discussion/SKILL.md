@@ -87,8 +87,11 @@ session.
   but stop before any tracked write (no worktree, commit, comment or file), as for a
   project that uses no issues (below). Offer the anchor issue again before the session
   ends.
-- **A project that uses no issues is not supported yet.** Say so plainly and stop before
-  any tracked write: no worktree, commit, comment or file. The skill has no anchor to
+- **A project that uses no issues is not supported yet.** Whether it uses them is the
+  `issues` fact of `"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --facts
+  --format text`, run in the project's root; ask the user when it is `unknown`. When it
+  is `no`, say so plainly and stop before any tracked write: no worktree, commit,
+  comment or file. The skill has no anchor to
   write to or resume from there, and no worktree route that needs no issue. The
   modular-workflow issue (#544: GitHub-optional backends, files as work items, work keyed
   by branch) and the records-lookup issue (#393: where a project's records live) are
