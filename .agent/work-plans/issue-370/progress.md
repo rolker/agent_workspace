@@ -340,3 +340,51 @@ On where "where a project keeps its goals, design and roadmap" is tracked, the o
 **Plan**: `.agent/work-plans/issue-370/plan.md` at `384cc328`
 
 Rewritten for the restated goal. Part 1 only (`Part of #370`): rework the existing design-discussion SKILL.md with a level framing step (workspace, project, part), Revise and Carve, tracked writes on each yes with drafts in the level's documents on a branch or draft PR from the first session, resume reading the tracked documents first, scratchpad for in-session notes only, locations only where today's readers accept them. Part 2 (Create plus the location ask and storage, `Closes #370`) waits on a new location issue beside #393, not filed here. A1-A8 are answered in the plan; follow-up drafts (b) revised and (c) conditional are text only, (a) absorbed. Name, trial banner and 2026-12-31 date kept; banner text changes to the Revise and Carve uses.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-21 17:02 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #370 — A skill for high-level design discussions: find the blind spots in an idea or a design, on both sides
+**Plan**: `.agent/work-plans/issue-370/plan.md` at `384cc328`
+**Branch**: `feature/issue-370`
+
+Reviewed against the restated goal (comment 7069803282, Checkpoint 16:54 restart) and the post-restart Issue Review Actions A1-A8 (owner-accepted at 16:59), not the original body.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Part 1 only (`Part of #370`): one skill rework plus one `skill_workflows.md` row; Create and the location setting left to Part 2 as A4 asks. |
+| Issue alignment | Needs work | Serves: "The long view, Trust, control and information, and Quality of the work (`README.md#workspace-goals`); `docs/design.md#documentation-layers` (Direction row, parts) and `docs/design.md#instruction-layers` (skills)." Goal sections and both anchors checked (README.md lines 26-118; design.md lines 87, 950). A1-A8 each answered. But the owner's core concern (every detail of a multi-session discussion saved where later sessions find it) has three gaps: undecided state, the why of decisions, and the no-document case (findings 1-3). |
+| File targeting | Good | SKILL.md and `skill_workflows.md`; already-on-branch files listed as unchanged. |
+| Consequences | Needs work | Carve's file placement and pointer rows are stated loosely against ADR-0022 and `docs/design.md` (findings 4-6). |
+| Principle alignment | Needs work | "Capture decisions where they will be found": decisions are covered, open questions and rationale are not (findings 1, 2). "Test what breaks": skill-only change, landing checks named; fine. "Keep one current design": Design Picture says no change in Part 1, correct. Prior art: stated. |
+| ADR compliance | Needs work | ADR-0022 decisions 2, 4, 6 followed in outline; the design-location wording contradicts how the pointer table works (finding 4); decision 7 (Serves for work inside a part) not carried into the Carve step (finding 6). ADR-0017, 0018, 0013, 0016 handled. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Issue alignment, must-fix]** Undecided state between sessions has no tracked home. The plan routes decisions (design), work (Direction lines), deferrals, Decided Against and offered ideas (To Consider), but the open questions, options still under attack, and "where the discussion stands" live only in the conversation and in-session scratch ("No decision waits in scratch" covers decisions only). A clearer-but-undecided ending, or a session cut off mid-round, loses exactly the details the owner named. Resolution: the skill records open questions and the current state in a tracked place on every ending (and on the user's yes mid-session): the discussion's issue (a comment) or the draft PR body, which the Step 1 resume rule then reads first.
+2. **[Principle alignment, must-fix]** The *why* of a decision has no destination. ADR-0017 keeps the design as the current picture only; the Documentation layers table (`docs/design.md#documentation-layers`, Decisions row) puts what was decided, why and when in ADRs or the issue's `progress.md`. Step 7 must name that destination (a comment or progress entry on the discussion's issue; an ADR draft when the decision is a rule), or each revision silently drops the reasoning later sessions need to not reopen it.
+3. **[Issue alignment, must-fix]** "If a document is missing, drafts are text in the conversation only" contradicts the core concern: text in the conversation is lost when the session ends. Before Part 2, record the drafts on the discussion's issue (a comment), not the conversation, and say Create is Part 2. Same for the Revise case where a target document (e.g. no Direction section) is missing.
+4. **[ADR compliance, must-fix]** Step 0's "a part's design is the file its `| Sub-roadmap | Root |` row's directory holds" is wrong. The Root column is the directory the sub-roadmap's checks are relative to (`docs/roadmap.md` Format notes; the `docs/manifest/roadmap.md` row has Root `.`), not where the design is. `check_design_anchors.sh` reads a part's design as the `design.md` beside the sub-roadmap the table names (`docs/design.md` lines ~119-125). Resolution: "the `design.md` in the sub-roadmap file's directory".
+5. **[Consequences, should-fix]** Carve does not say where the part's files go or what the Root cell is. To be read by the checkers the part's `design.md` must sit beside its `roadmap.md` (finding 4); the Root cell must be chosen (part directory vs `.`) because every check path in the sub-roadmap resolves against it; both are proposed and confirmed with the user. Also the parent's design pointer cites `<path>/design.md#<section>` with `<path>` the design file's directory (ADR-0022 decision 6), and a parent that is itself a part gets a row that `sitrep_checks.sh` lists as not followed: the landing check should report that as expected, not as a failure.
+6. **[ADR compliance, should-fix]** Where a part's goals live is unstated (ADR-0022 decision 1 lets a part carry goals; no reader looks for them). Say Carve writes them as a goals section of the part's design (or asks), and that the part's goals cite which root goal they serve (decision 7).
+7. **[Scope, suggestion]** The issue-first open question: the Skill Worktree Exception allowlist (`worktree_create.sh`) does not include `design-discussion`, so the plan's proposal (ask for or open an issue before the first tracked write) is the only route that follows AGENTS.md. Make that issue the discussion's anchor (findings 1-3 write to it; resume starts from it). For a project that uses no issues, say so and use the draft PR body, or ask; do not extend the allowlist in Part 1.
+
+### Summary
+
+The plan answers A1-A8 and moves decisions into tracked documents, but the owner's core concern is "all the details": open questions, rationale and no-document drafts still end in the conversation, and the part-design location is described against the wrong column of the pointer table. Fix findings 1-4 before implementing; 5-6 are small additions to the Carve section.
+
+### Recommended Actions
+
+- [ ] Give undecided state (open questions, options in play, where the discussion stands) a tracked home on every ending: the discussion's issue or draft PR body; Step 1 resume reads it first.
+- [ ] Route each decision's why to the Decisions role (issue comment / progress entry; ADR draft for a rule) in Step 7.
+- [ ] Replace "text in the conversation only" for missing documents with drafts recorded on the discussion's issue, saying Create is Part 2.
+- [ ] Correct Step 0: a part's design is the `design.md` in the sub-roadmap file's directory; the Root column is the checks' base directory.
+- [ ] Carve: propose and confirm the part's directory and Root cell, keep design beside roadmap, cite `<path>/design.md#<section>`, treat "not followed" for a nested pointer as expected.
+- [ ] Carve: say where the part's goals are written and that they name the root goal served (ADR-0022 decision 7).
+- [ ] Close the three open questions: (1) issue-first, the issue as the discussion's anchor; (2) no-document level, drafts on the issue, not refusal and not conversation-only; (3) project goals, "say so and ask" is enough until the location issue lands, with the answer recorded on the issue.
