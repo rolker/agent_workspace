@@ -321,3 +321,14 @@ He approved posting the restated goal ("yes"); it is on the issue at https://git
 - [ ] In Part 1, resolve the level's documents with the locations the readers accept today (root `docs/roadmap.md` or `ROADMAP.md`, `docs/design.md`, a part via the sub-roadmap pointer table) and, where none exist, say so and ask instead of guessing.
 - [ ] Rework the existing SKILL.md rather than discarding it: keep the method, replace the scratchpad summary and the "continue only" tracked-write offer with tracked writes on each yes, and remove the F5/F6 resolution code.
 - [ ] Revise follow-up draft (b) to whole-roadmap derivation, drift checks and measures; drop draft (a), keep (c) conditional.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-21 16:59 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Owner answered "Proceed": the new plan takes on Issue Review actions A1-A8 (after the restart).
+On where "where a project keeps its goals, design and roadmap" is tracked, the owner chose "New issue beside #393": the host drafts it, shows the owner the text, and files it only on his yes; it cross-links #393 and #370. Part 1 does not depend on it; Part 2 does.
