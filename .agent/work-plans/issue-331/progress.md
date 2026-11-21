@@ -220,6 +220,6 @@ Round-1 findings: all 8 resolved in the text (the gh pr create --fill guard adde
 - [ ] (suggestion) With GITBUG_CREATE=1, gh_create_issue.sh runs git bug new in the cwd repo and ignores -R, so the hand-back issue lands in the project; prefix GITBUG_CREATE= or fix the wrapper — `.claude/skills/research/SKILL.md:114` (`gh_create_issue.sh:336-365`)
 - [ ] (suggestion) capture.sh guard only matches the literal `capture.sh" "research`; fail on any `capture.sh" "` not followed by `$(cat` — `.agent/scripts/tests/test_skill_paths.sh:971`
 - [ ] (suggestion) Snippets mask failures: trailing rm -f hides capture.sh/gh_create_issue.sh status, empty $ws_repo not checked, git push not &&-chained before gh_create_pr.sh — `.claude/skills/research/SKILL.md:91,106-115,270-271`
-- [ ] (suggestion) A line equal to EOF in web text closes the quoted heredoc early and runs the rest as shell; use a unique delimiter — `.claude/skills/research/SKILL.md:88-90,108-113`
+- [x] (suggestion) A line equal to EOF in web text closes the quoted heredoc early and runs the rest as shell; use a unique delimiter — `.claude/skills/research/SKILL.md:88-90,108-113`
 - [ ] (suggestion) Ingest hand-back path names neither Project rules (for the hand-back text) nor a dedup check against the $WS_ROOT digest — `.claude/skills/research/SKILL.md:288-291`
 - [ ] (suggestion) source worktree_enter.sh's cd does not carry to later tool calls in per-command shells; carry the worktree path into the edit/commit/PR steps — `.claude/skills/research/SKILL.md:213-229`

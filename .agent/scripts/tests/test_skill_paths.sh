@@ -929,7 +929,8 @@ has "$RES" "research: --skill research is for workspace worktrees only" \
     '`--skill research` is for workspace worktrees only: `worktree_create.sh` rejects `--skill research --type project`'
 has "$RES" "research: a workspace-digest write from a project session hands back" \
     'a workspace-digest **write** from a project session does not create a workspace worktree' \
-    "cat > \"\$f\" <<'EOF' research for the workspace digest:" \
+    "cat > \"\$f\" <<'RESEARCH_TEXT_END' research for the workspace digest:" \
+    'a line `EOF` in web text would close it early' \
     '"$WS_ROOT/.agent/scripts/capture.sh" "$(cat "$f")"' \
     "open it only after the user's yes"
 has "$RES" "research: project rules read before editing a project digest" \
@@ -972,6 +973,11 @@ if grep -qF 'capture.sh" "research' "$RES" 2>/dev/null; then
     fail "research double-quotes web-derived text on the capture.sh line"
 else
     pass "research passes no web-derived text to capture.sh in double quotes"
+fi
+if grep -qE "<<-?[[:space:]]*'EOF'" "$RES" 2>/dev/null; then
+    fail "research writes web text through a heredoc delimited EOF (a line EOF in it would close the heredoc early)"
+else
+    pass "research's web-text heredocs use a delimiter other than EOF"
 fi
 if grep -qF '**Location**: `$WS_ROOT/' "$RES" 2>/dev/null; then
     fail "research still gives a digest location under \$WS_ROOT (the main checkout)"

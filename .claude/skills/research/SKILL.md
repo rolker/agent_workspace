@@ -88,18 +88,23 @@ names the project's repo, not the workspace's).
   1. Draft the entry in the digest format and show the full entry text in the
      conversation, so the survey is not lost.
   2. Record it in the inbox. The topic and summary come from the web, so they
-     are written to a temporary file through a quoted heredoc (`<<'EOF'`) and
+     are written to a temporary file through a quoted heredoc (`<<'RESEARCH_TEXT_END'`) and
      passed as `"$(cat "$f")"`: the quoted heredoc copies every character
      verbatim, and the text a command substitution returns inside double
      quotes is not expanded again, so a `$`, backtick, `$(...)` or quote in
      it stays text. Double quotes around the text itself would expand `$` and
-     backticks; single quotes break on an apostrophe in it.
+     backticks; single quotes break on an apostrophe in it. The delimiter is
+     `RESEARCH_TEXT_END`, not `EOF`: a heredoc ends at the first line that is
+     exactly its delimiter, so a line `EOF` in web text would close it early
+     and the shell would run the lines after it as commands. Check the text
+     has no line `RESEARCH_TEXT_END` either; if it does, pick another
+     delimiter no line of it equals.
      ```bash
      WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
      f="$(mktemp)"
-     cat > "$f" <<'EOF'
+     cat > "$f" <<'RESEARCH_TEXT_END'
      research for the workspace digest: <topic> — <one-line summary>
-     EOF
+     RESEARCH_TEXT_END
      "$WS_ROOT/.agent/scripts/capture.sh" "$(cat "$f")"; rm -f "$f"
      ```
      The script tags the line with the project the cwd is in, so the text itself
@@ -117,12 +122,12 @@ names the project's repo, not the workspace's).
      source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model-id>"
      ws_repo="$(cd "$WS_ROOT" && gh repo view --json nameWithOwner --jq .nameWithOwner)"
      t="$(mktemp)"; b="$(mktemp)"
-     cat > "$t" <<'EOF'
+     cat > "$t" <<'RESEARCH_TEXT_END'
      research for the workspace digest: <topic>
-     EOF
-     cat > "$b" <<'EOF'
+     RESEARCH_TEXT_END
+     cat > "$b" <<'RESEARCH_TEXT_END'
      <the drafted digest entry>
-     EOF
+     RESEARCH_TEXT_END
      "$WS_ROOT/.agent/scripts/gh_create_issue.sh" -R "$ws_repo" --title "$(cat "$t")" --body-file "$b"
      rm -f "$t" "$b"
      ```
@@ -284,7 +289,7 @@ say it in generic terms or leave it out.
    ```
    The title is your own short wording, with no `$`, backtick or quote in it;
    anything taken from the web goes in the body file, written through a quoted
-   heredoc (`<<'EOF'`) as in Scope.
+   heredoc (`<<'RESEARCH_TEXT_END'`) as in Scope.
 8. Leave the worktree in place: once the owner says to merge, the PR is
    merged, and the worktree cleaned up, by `$WS_ROOT/.agent/scripts/merge_pr.sh --pr <N>`
    (never `gh pr merge --delete-branch` from the worktree). It removes the
