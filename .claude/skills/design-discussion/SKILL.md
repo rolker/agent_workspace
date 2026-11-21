@@ -283,16 +283,21 @@ crosses the boundary.
    pointer to the part cited `<path>/design.md#<section>` (ADR-0022 decision 6). The
    parent's roadmap gets one `| Sub-roadmap | Root |` row in its Direction section.
 4. **Landing check.** Commit the part's files and the parent's edits first:
-   `check_design_anchors.sh` reads only files git tracks. Then run, from the root
-   (`$ROOT`, as `sitrep_root.sh` reports it):
+   `check_design_anchors.sh` reads only files git tracks. Then run the checks against
+   the worktree the drafts were committed in (`$WT`), never against the root
+   `sitrep_root.sh` reports: that is the main checkout, which does not hold the drafts,
+   so the checks there pass without having read them. Paths in `<…>` are relative to
+   the root, as the parent roadmap's pointer row writes them:
 
    ```bash
-   "$WS_ROOT/.agent/scripts/check_design_anchors.sh" "$ROOT"
-   "$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$ROOT" --roadmap "<root roadmap>"
+   WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
+   WT="$(git -C <the drafts' worktree> rev-parse --show-toplevel)"
+   "$WS_ROOT/.agent/scripts/check_design_anchors.sh" "$WT"
+   "$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$WT" --roadmap "$WT/<root roadmap>"
    ```
 
    and, when the parent is itself a part, also
-   `sitrep_checks.sh --root "$ROOT/<parent's Root>" --roadmap "<parent's roadmap>"`,
+   `"$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$WT/<parent's Root>" --roadmap "$WT/<parent's roadmap>"`,
    which follows the new row. Report the results:
    - `check_design_anchors.sh` exit 0 is clean; exit 1 lists the broken citations; exit
      2 when the root has no `docs/design.md` means there was nothing to check against:
