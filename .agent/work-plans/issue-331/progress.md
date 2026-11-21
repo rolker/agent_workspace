@@ -250,3 +250,20 @@ Round-1 findings: all 8 resolved in the text (the gh pr create --fill guard adde
 - `bash .agent/scripts/tests/test_skill_paths.sh`: `test_skill_paths: 191 passed, 0 failed`
 - `test_plugin_manifest.sh` not run: `.claude-plugin/plugin.json` unchanged in this pass. No script changed, so no other suite applies.
 - Full pre-commit pass left to the host, per the handoff.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-21 18:42 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-331 at `e8c8ca7e`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Scope: the 11 round-2 findings (review at `8f6a8835`) against fix commits 0377a4e8..d613ad77; all 11 resolved, no new defect in the fix diff. Snippets checked: capture and issue hand-backs use quoted `RESEARCH_TEXT_END` heredocs and `"$(cat "$f")"`, keep the script's status (`rc=$?; rm ...; [ "$rc" -eq 0 ]`), skip on empty `$ws_repo`, run with `GITBUG_CREATE=` (verified gh_create_issue.sh:336 tests `= "1"`); step 6 and 7 chains start `cd "<worktree path>" &&` and source the identity in the same chain; `worktree_enter.sh --print-path` exists (worktree_enter.sh:101). Checks: test_skill_paths.sh 191 passed, 0 failed. Cross-model: skipped (round-3 convergence check, per handoff). Pre-commit left to the host.
+
+### Findings
+- [ ] No issues found. LGTM.
