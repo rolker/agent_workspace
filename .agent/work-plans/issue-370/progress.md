@@ -388,3 +388,15 @@ The plan answers A1-A8 and moves decisions into tracked documents, but the owner
 - [ ] Carve: propose and confirm the part's directory and Root cell, keep design beside roadmap, cite `<path>/design.md#<section>`, treat "not followed" for a nested pointer as expected.
 - [ ] Carve: say where the part's goals are written and that they name the root goal served (ADR-0022 decision 7).
 - [ ] Close the three open questions: (1) issue-first, the issue as the discussion's anchor; (2) no-document level, drafts on the issue, not refusal and not conversation-only; (3) project goals, "say so and ask" is enough until the location issue lands, with the answer recorded on the issue.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-21 17:10 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+Owner answered "Revise": plan-task fixes the Part 1 Plan Review findings F1-F7 (undecided state on the issue/draft PR at every ending and resume from it; reasons to an issue comment/progress entry or an ADR draft; missing-document drafts on the issue, Create in Part 2; a part's design is the design.md beside the sub-roadmap file, not in the Root column's directory; Carve proposes and confirms the part's directory and Root cell, parent cites <path>/design.md#<section>, a nested part's row showing "not followed" is expected; a part's goals in a goals section of its design naming the root goal served (ADR-0022 decision 7); the required issue is the discussion's anchor, no allowlist change).
+On the plan's open questions the owner answered "Accept all three" (Q-a issue-first anchor, draft PR body or ask for a project with no issues; Q-b no-documents level: conversation plus drafts and open questions on the issue, Create in Part 2; Q-c say so and ask, record the answer on the issue).
+The owner approved filing the location issue: #551 (https://github.com/rolker/agent_workspace/issues/551), with pointer comments on #370 and #393. Part 2 depends on #551.
