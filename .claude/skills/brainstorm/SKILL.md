@@ -181,8 +181,8 @@ is not the session's own root.
 2. **Anchor issue.** Ask which issue the brainstorm belongs to. If there is
    none, offer to open one (Issue-First Policy). Its body is a short statement
    of the topic, not the brainstorm. Give its title and body the
-   public-project check (item 3) and show both in full; open it only on a yes, posted
-   as in item 4 with the title written verbatim too: in the same chain, a
+   public-project check (item 3) and show both in full; open it only on a
+   yes, posted as in item 4 with the title written verbatim too: in the same chain, a
    second scratchpad file `t` filled by its own quoted heredoc
    (`cat > "$t" <<'TITLE'`, the title, `TITLE`), then
    `gh issue create [-R <owner/repo>] --title "$(cat "$t")" --body-file "$body"`
@@ -195,14 +195,16 @@ is not the session's own root.
    `.agents/README.md` rules (for example, no site data) and remove what they
    forbid. Say what was removed.
 4. **Show, then post on a yes.** Show the full comment text. On the user's
-   yes, in one command chain: resolve `$WS_ROOT`, set the identity, write the
-   body to a file in the session's scratchpad **verbatim** (a quoted heredoc,
+   yes, in one command chain: resolve `$WS_ROOT`, `cd` into the topic's
+   root, set the identity, write the body to a file in the session's
+   scratchpad **verbatim** (a quoted heredoc,
    so no backtick span, `$` or `$(...)` in the text is run or expanded),
    append the signature with `printf`, post it, remove the file, and keep the
    chain's exit status, so a failed post is never reported as posted:
 
    ```bash
    WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"; \
+   WS_ROOT="$(cd "$WS_ROOT" && pwd)" && cd "<topic root>" && \
    source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model id>" && \
    body="$(mktemp "<scratch dir>/brainstorm.XXXXXX")" && \
    cat > "$body" <<'BODY' &&
@@ -215,10 +217,14 @@ is not the session's own root.
    `<scratch dir>` is the session's scratchpad directory when the framework
    gives one (Claude Code does), else `$WS_ROOT/.agent/scratchpad/` (AGENTS.md
    Workspace Cleanliness); `mktemp` makes the name unique, and the item 2
-   title file `t` is made the same way. The closing `BODY` stands alone at the start of its line (no list
-   indent); if the text holds a line that is exactly `BODY`, pick another
-   delimiter. Use `-R <owner/repo>` whenever the topic's root is not the
-   session's own root (above). Never `--body`. Report the comment's URL,
+   title file `t` is made the same way. The chain `cd`s into the topic's
+   root before sourcing the identity, because the identity's email follows
+   the current folder's git email; `$WS_ROOT` is made absolute first, so a
+   `.` fallback still names the workspace after the `cd`. The closing `BODY`
+   stands alone at the start of its line (no list indent); if the text holds
+   a line that is exactly `BODY`, pick another delimiter. Use
+   `-R <owner/repo>` whenever the topic's root is not the session's own root
+   (above). Never `--body`. Report the comment's URL,
    which `gh issue comment` prints, only when the chain exits 0; otherwise
    say the post failed.
 
