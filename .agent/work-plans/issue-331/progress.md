@@ -151,3 +151,25 @@ Issue-body addendum (text draft for the host; not posted):
 > Replace "Blocks: rolker/geozui4d#7" with: "No longer blocks rolker/geozui4d#7 (owner correction); makes it convenient."
 > Replace point 4 with: "Decided 2026-11-21: `research` keeps its worktree rule. `worktree_create.sh` rejects `--skill research --type project`; a project digest update needs a project issue. No allowlist or `AGENTS.md` change."
 > Add to Acceptance: "- [ ] Before committing a project digest, the skill reads the project's `.agents/README.md` for commit rules. - [ ] Web queries carry no real locations unless the owner approves. - [ ] Entries without links are marked `**Sources**: pending` and `--refresh` takes them first. - [ ] A project-rooted run defaults to the project digest, with `--scope workspace` available (a workspace-digest write hands back)."
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-21 18:25 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-331 at `b98619c7`
+**Base**: main
+**Depth**: Deep (reason: 475 changed lines, 200+; skill definition is an override trigger)
+**Must-fix**: 5 | **Suggestions**: 3
+**Round**: 1 | **Ship**: continue — round 1: 5 must-fix; first round always re-reviews after fixes
+
+### Findings
+- [ ] (must-fix) Workspace digest location is `$WS_ROOT/.agent/knowledge/research_digest.md`; $WS_ROOT is the main checkout, so a write edits the main tree, not the research worktree. Write it worktree-relative ($WS_ROOT only for reading) — `.claude/skills/research/SKILL.md:89`
+- [ ] (must-fix) Step 7 still says `git push -u origin HEAD && gh pr create --fill`: no AI signature, no `Closes #<N>` for the project issue now required; use `"$WS_ROOT/.agent/scripts/gh_create_pr.sh"` (Ingest/Refresh step 6 inherit it) — `.claude/skills/research/SKILL.md:194`
+- [ ] (must-fix) Ingest step 1 sets up the scope's worktree before step 4 "determine scope from content"; and Ingest/Refresh do not carry the project-session hand-back or the `.agents/README.md` rules check. Decide scope first, then apply both — `.claude/skills/research/SKILL.md:202-223`
+- [ ] (must-fix) `capture.sh` snippet double-quotes web-derived `<topic> — <one-line summary>`: a `$`, backtick or `$(...)` in it expands in the shell. Single-quote it (or say to) — `.claude/skills/research/SKILL.md:78`
+- [ ] (must-fix) "Offer a workspace issue ... open it only after the user's yes" names no command; from a project cwd a bare `gh issue create` lands in the project repo. Name `"$WS_ROOT/.agent/scripts/gh_create_issue.sh" -R <workspace repo> --body-file <file>` — `.claude/skills/research/SKILL.md:80-81`
+- [ ] (suggestion) An existing but empty `~/.claude/agent-workspace-root` leaves $WS_ROOT empty; add `; WS_ROOT="${WS_ROOT:-.}"` as sitrep does — `.claude/skills/research/SKILL.md:44`
+- [ ] (suggestion) "In the project's own repo" is undefined for a multi-repo project whose root is not a git repo (`worktree_create.sh` refuses there); say what happens — `.claude/skills/research/SKILL.md:101-105`
+- [ ] (suggestion) Read `.agents/README.md` before editing the project digest, not only before committing (AGENTS.md "before modifying"), and keep project-private data out of the workspace hand-back text — `.claude/skills/research/SKILL.md:174`
