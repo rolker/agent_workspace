@@ -105,8 +105,11 @@ names the project's repo, not the workspace's).
      cat > "$f" <<'RESEARCH_TEXT_END'
      research for the workspace digest: <topic> — <one-line summary>
      RESEARCH_TEXT_END
-     "$WS_ROOT/.agent/scripts/capture.sh" "$(cat "$f")"; rm -f "$f"
+     "$WS_ROOT/.agent/scripts/capture.sh" "$(cat "$f")"; rc=$?
+     rm -f "$f"; [ "$rc" -eq 0 ]
      ```
+     The exit status is `capture.sh`'s, not the `rm`'s; a non-zero one means
+     no inbox line was written, so say so instead of reporting it recorded.
      The script tags the line with the project the cwd is in, so the text itself
      must say it is for the workspace digest.
   3. Offer a workspace issue that carries the drafted entry in its body; open it
@@ -131,9 +134,16 @@ names the project's repo, not the workspace's).
      cat > "$b" <<'RESEARCH_TEXT_END'
      <the drafted digest entry>
      RESEARCH_TEXT_END
-     GITBUG_CREATE= "$WS_ROOT/.agent/scripts/gh_create_issue.sh" -R "$ws_repo" --title "$(cat "$t")" --body-file "$b"
-     rm -f "$t" "$b"
+     if [ -n "$ws_repo" ]; then
+         GITBUG_CREATE= "$WS_ROOT/.agent/scripts/gh_create_issue.sh" -R "$ws_repo" --title "$(cat "$t")" --body-file "$b"; rc=$?
+     else
+         echo "could not look up the workspace repo in $WS_ROOT: no issue opened" >&2; rc=1
+     fi
+     rm -f "$t" "$b"; [ "$rc" -eq 0 ]
      ```
+     An empty `$ws_repo` (the lookup failed) opens nothing rather than letting
+     `-R ""` fall back to the cwd's repo; the exit status is the wrapper's, so a
+     failure is reported as one.
 
 ## Digests
 
@@ -287,7 +297,7 @@ say it in generic terms or leave it out.
    ```bash
    WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
    source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model-id>"
-   git push -u origin HEAD
+   git push -u origin HEAD && \
    "$WS_ROOT/.agent/scripts/gh_create_pr.sh" --title "research: <topic>" --body-file <body file>
    ```
    The title is your own short wording, with no `$`, backtick or quote in it;

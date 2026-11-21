@@ -946,6 +946,10 @@ has "$RES" "research: the workspace digest is written in the worktree, not \$WS_
 has "$RES" "research: the workspace issue is opened with -R naming the workspace repo" \
     'ws_repo="$(cd "$WS_ROOT" && gh repo view --json nameWithOwner --jq .nameWithOwner)"' \
     'GITBUG_CREATE= "$WS_ROOT/.agent/scripts/gh_create_issue.sh" -R "$ws_repo" --title "$(cat "$t")" --body-file "$b"'
+has "$RES" "research: hand-back snippets keep the script's exit status and check the repo lookup" \
+    '"$(cat "$f")"; rc=$? rm -f "$f"; [ "$rc" -eq 0 ]' \
+    'if [ -n "$ws_repo" ]; then' 'rm -f "$t" "$b"; [ "$rc" -eq 0 ]' \
+    'git push -u origin HEAD && \'
 has "$RES" "research: a project root that is not a git repository has no project digest" \
     'such a project has no project digest: do not pick one of its clones' \
     '`research for the <project> project digest (root is not a git repository):`'
