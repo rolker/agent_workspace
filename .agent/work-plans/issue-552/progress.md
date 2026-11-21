@@ -127,3 +127,13 @@ The plan meets the `design-discussion` contract and the owner's kept decisions. 
 - [ ] Add `brainstorm` to the `session_scope: both` list in `.agent/scripts/tests/test_skill_paths.sh` and list that file in Files to Change.
 - [ ] Write the identity command as `source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" ...` in the save step.
 - [ ] Name the roadmap path (`docs/roadmap.md`, else `ROADMAP.md`) in the Step 1 reads.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-21 18:01 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (orchestrator; three small mechanism fixes, none changes scope; the owner chose the same "proceed, fixes in the implementer's handoff" pattern at #370's plan checkpoints)
+**After**: plan
+**Decision**: proceed
+
+The implementer applies the Plan Review's three findings beyond plan.md: (1) add brainstorm to test_skill_paths.sh's session_scope: both list and list that test file under the files changed; (2) the identity line is source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" ..., as design-discussion Step 7 does; (3) Step 2 names the roadmap path as design-discussion Step 0 does: docs/roadmap.md, else ROADMAP.md (sitrep_root.sh roadmap=).
