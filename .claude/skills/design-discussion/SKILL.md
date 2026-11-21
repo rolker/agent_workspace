@@ -239,8 +239,9 @@ lists it among the open questions. Never start building.
   It sets the commit identity and `AGENT_NAME` and `AGENT_MODEL`, which the signature
   below needs.
 - **Every comment is signed.** Each comment the skill posts (a reason, the undecided
-  state, drafts with no document) is written to a file in the session's scratchpad and
-  posted with `gh issue comment <N> --body-file <file>`, never `--body`; the file is
+  state, drafts with no document), and each issue body it opens, is written to a file in
+  the session's scratchpad and posted with `gh issue comment <N> --body-file <file>` (or
+  `gh issue create --body-file <file>`), never `--body`; the file is
   removed afterwards. The body ends with the AI signature, the variables expanded to
   their values:
 
@@ -296,8 +297,8 @@ lists it among the open questions. Never start building.
   questions go in a comment on the anchor issue, not in a new file at a location no
   reader looks, and not only in the conversation. Say that Create comes in Part 2.
 - **Second pass.** On a prune or shelve landing, offer a second pass by a fresh session
-  (or a different model) that reads only the tracked record (documents, anchor issue,
-  timeline) and the design's decision record, and reports what the record does not
+  (or a different model) that reads only the tracked record (documents, the anchor issue
+  and its comments) and the design's decision record, and reports what the record does not
   account for. *Why: a fresh session, asked only whether the note was a useful redirect,
   found most of what the discussing session had missed in one read of the history.*
 - Deriving a whole roadmap from a design is not part of this skill.
