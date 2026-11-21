@@ -174,8 +174,8 @@ is not the session's own root.
    fall back to the workspace repository for a project's topic.
 2. **Anchor issue.** Ask which issue the brainstorm belongs to. If there is
    none, offer to open one (Issue-First Policy). Its body is a short statement
-   of the topic, not the brainstorm. Give that body the public-project check
-   (item 3) and show its title and full text; open it only on a yes, posted
+   of the topic, not the brainstorm. Give its title and body the
+   public-project check (item 3) and show both in full; open it only on a yes, posted
    as in item 4 with the title written verbatim too: in the same chain, a
    second scratchpad file `t` filled by its own quoted heredoc
    (`cat > "$t" <<'TITLE'`, the title, `TITLE`), then
@@ -184,9 +184,10 @@ is not the session's own root.
    never typed inside double quotes, so no backtick span, `$` or `$(...)` in
    it is run or expanded. Then save the brainstorm on it as a separate
    comment (items 3 and 4), which needs its own yes.
-3. **Public-project check.** Before showing the comment, check its text
-   against the project's `.agents/README.md` rules (for example, no site
-   data) and remove what they forbid. Say what was removed.
+3. **Public-project check.** Before showing the comment, or a new anchor
+   issue's title and body, check that text against the project's
+   `.agents/README.md` rules (for example, no site data) and remove what they
+   forbid. Say what was removed.
 4. **Show, then post on a yes.** Show the full comment text. On the user's
    yes, in one command chain: resolve `$WS_ROOT`, set the identity, write the
    body to a file in the session's scratchpad **verbatim** (a quoted heredoc,
