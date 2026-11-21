@@ -243,3 +243,21 @@ Not done, by instruction: the three follow-up issues of plan step 5 were not fil
 - [ ] (suggestion) Resume rule and "say so before anything else" both claim the first output; "progress against its plan" when the skill makes no plan — say the earlier summary's open items stand in for it — `.claude/skills/design-discussion/SKILL.md:69-75`
 - [ ] (suggestion) `.agent/knowledge/skill_workflows.md` Skill Index (where `brainstorm` is listed) has no `design-discussion` row — `.agent/knowledge/skill_workflows.md:19`
 - [ ] (suggestion) Plan step 5 follow-up issues (a), (b), (c) are drafted in progress.md but not filed; file (a) and (b) before merge, (c) only when (a) shows duplication — `.agent/work-plans/issue-370/plan.md:28`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-21 16:54 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: unexpected
+**Decision**: restart
+
+The owner restated the goal while the round-1 pre-push review's address-findings was next (no checkpoint pending). His words, verbatim:
+
+> A big struggle with agents is having a discussion for something bigger than what can be done in a single session and making sure all the details get saved where they are remebered for all the implementation sessions until the work is done. That's why I'm asking about the path to a roadmap so the details are not lost. I think the initial issue was opened before all the work was done to setup the goals, design, and roadmap for the workspace, so I want to make sure it evolves with those capabiliteis.
+
+> I want to step back and look at a couple of scenarios of how I might want to use this skill. For a project missing the top level design docs or components, it would help define the goals, the design, and the roadmap for the project. If a project has those, the skill could be used to revise them, or to carve out a sub-component or new feature and help come up with those documents as sub-designs of the parent design. This could be used for the workspace of projects. Does this framing make sense?
+
+> As for the location of the goals and such. Isn't that asked in the onboarding part with suggested locations? That allows projects to vary how they keep track of those, and to have them considered during onboarding. I guess the decisions could be defered during onboarding to be later settled during a design discussion.
+
+He approved posting the restated goal ("yes"); it is on the issue at https://github.com/rolker/agent_workspace/issues/370#issuecomment-7069803282. The round-1 pre-push review findings (summary-folder resolution, file names without the root, etc.) are not addressed; the new plan decides what of the current branch is kept.
