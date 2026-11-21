@@ -296,7 +296,20 @@ say it in generic terms or leave it out.
    `Last verified` to today for new entries; update `Last verified` for existing)
 6. Commit in the correct repo: workspace digest commits go in the workspace
    repo; project digest commits go in the project repo (not the workspace),
-   holding to the project rules read in step 1
+   holding to the project rules read in step 1. Source the identity in the
+   same chain as the commit: shell state does not carry between tool calls,
+   so an identity sourced in an earlier call (or only in step 7's) leaves the
+   commit with the default author.
+   ```bash
+   WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
+   cd "<worktree path>" && \
+   source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model-id>" && \
+   git add <digest path> && \
+   git commit -m "research: <topic>"
+   ```
+   The digest path is `<worktree path>/.agent/knowledge/research_digest.md`
+   (workspace) or `<worktree path>/.agents/workspace-context/research_digest.md`
+   (project); the message, like the PR title, is your own wording.
 7. Push and create the PR with the wrapper, which adds the AI signature and
    checks the target repo (a bare `gh pr create --fill` does neither). Run it
    from the worktree, so the PR goes to the repo the digest was committed in.
