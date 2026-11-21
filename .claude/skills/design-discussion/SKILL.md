@@ -287,8 +287,8 @@ lists it among the open questions. Never start building.
     revision layers (ADR-0017); follow the design's own change rule, or say it is set
     aside;
   - work into the roadmap's `## Direction` section as a `| Line | Check |` row, each line
-    with a check (grammar in the header of `sitrep_checks.sh` and the roadmap's Format
-    notes), and into the issues the lines cite, each issue body carrying the detail an
+    with a check (grammar in the header of `sitrep_checks.sh` and, in the workspace's
+    `docs/roadmap.md`, the `**Format.**` paragraph of its Direction section), and into the issues the lines cite, each issue body carrying the detail an
     implementer needs;
   - a parked or shelved item into the `| Deferral | Revisit check |` table, with its
     reason and what brings it back;
