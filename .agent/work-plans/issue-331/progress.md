@@ -222,4 +222,4 @@ Round-1 findings: all 8 resolved in the text (the gh pr create --fill guard adde
 - [x] (suggestion) Snippets mask failures: trailing rm -f hides capture.sh/gh_create_issue.sh status, empty $ws_repo not checked, git push not &&-chained before gh_create_pr.sh — `.claude/skills/research/SKILL.md:91,106-115,270-271`
 - [x] (suggestion) A line equal to EOF in web text closes the quoted heredoc early and runs the rest as shell; use a unique delimiter — `.claude/skills/research/SKILL.md:88-90,108-113`
 - [ ] (suggestion) Ingest hand-back path names neither Project rules (for the hand-back text) nor a dedup check against the $WS_ROOT digest — `.claude/skills/research/SKILL.md:288-291`
-- [ ] (suggestion) source worktree_enter.sh's cd does not carry to later tool calls in per-command shells; carry the worktree path into the edit/commit/PR steps — `.claude/skills/research/SKILL.md:213-229`
+- [x] (suggestion) source worktree_enter.sh's cd does not carry to later tool calls in per-command shells; carry the worktree path into the edit/commit/PR steps — `.claude/skills/research/SKILL.md:213-229`

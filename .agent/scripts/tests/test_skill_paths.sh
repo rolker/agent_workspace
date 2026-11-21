@@ -950,6 +950,10 @@ has "$RES" "research: hand-back snippets keep the script's exit status and check
     '"$(cat "$f")"; rc=$? rm -f "$f"; [ "$rc" -eq 0 ]' \
     'if [ -n "$ws_repo" ]; then' 'rm -f "$t" "$b"; [ "$rc" -eq 0 ]' \
     'git push -u origin HEAD && \'
+has "$RES" "research: the worktree path is carried, not a sourced cd" \
+    '"$WS_ROOT/.agent/scripts/worktree_enter.sh" --skill research --type workspace --print-path' \
+    '"$WS_ROOT/.agent/scripts/worktree_enter.sh" --issue <N> --type project --print-path' \
+    'chain every command after `cd "<worktree path>" &&`'
 has "$RES" "research: a project root that is not a git repository has no project digest" \
     'such a project has no project digest: do not pick one of its clones' \
     '`research for the <project> project digest (root is not a git repository):`'

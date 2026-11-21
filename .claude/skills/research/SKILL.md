@@ -243,7 +243,7 @@ The worktree type depends on the scope:
   ```bash
   WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
   "$WS_ROOT/.agent/scripts/worktree_create.sh" --skill research --type workspace
-  source "$WS_ROOT/.agent/scripts/worktree_enter.sh" --skill research --type workspace
+  "$WS_ROOT/.agent/scripts/worktree_enter.sh" --skill research --type workspace --print-path
   ```
 
 - **Project scope**: the project digest lives in the project repo, so a project
@@ -253,10 +253,18 @@ The worktree type depends on the scope:
   ```bash
   WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
   "$WS_ROOT/.agent/scripts/worktree_create.sh" --issue <N> --type project
-  source "$WS_ROOT/.agent/scripts/worktree_enter.sh" --issue <N> --type project
+  "$WS_ROOT/.agent/scripts/worktree_enter.sh" --issue <N> --type project --print-path
   ```
   In a project session the project is the one the cwd is in; from a workspace
   session add `--project <name>`.
+
+The last command prints the worktree's path. A `cd`, and a `source`d
+`worktree_enter.sh`'s `cd` with it, does not carry from one tool call to the
+next where each command runs in a fresh shell, so the steps that touch the
+worktree carry that path instead: edit the digest by its path under the
+worktree, and in the commit, push and PR steps chain every command after
+`cd "<worktree path>" &&` (after the `$WS_ROOT` line), so a failed `cd` runs
+none of them in the wrong checkout.
 
 ### Project rules before editing a project digest
 
@@ -296,7 +304,8 @@ say it in generic terms or leave it out.
    issue); a workspace `--skill research` worktree has no issue and names none.
    ```bash
    WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
-   source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model-id>"
+   cd "<worktree path>" && \
+   source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model-id>" && \
    git push -u origin HEAD && \
    "$WS_ROOT/.agent/scripts/gh_create_pr.sh" --title "research: <topic>" --body-file <body file>
    ```
