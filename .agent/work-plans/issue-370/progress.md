@@ -140,3 +140,46 @@ Trial revisit date: the owner kept 2026-12-31.
 **Plan**: `.agent/work-plans/issue-370/plan.md` at `abf77b71`
 
 Revised after the owner's "revise": skill named `design-discussion`; only AGENT_ONBOARDING.md gets the list line (F1); brainstorm gets a new "What this is not" section (F2); summaries go to the workspace scratchpad via ~/.claude/agent-workspace-root with a stated fallback (F3); the own-words rule is failure-backed, citing M10 (F4); trial revisit date stays 2026-12-31.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-21 16:22 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #370 — A skill for high-level design discussions: find the blind spots in an idea or a design, on both sides
+**Plan**: `.agent/work-plans/issue-370/plan.md` at `abf77b71`
+**Branch**: `feature/issue-370`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One new skill, a new section in `brainstorm`, three list/count updates and a regenerated manifest; goals-down skill and D1-D8 / M1-M10 go to follow-up issues (step 5). |
+| Issue alignment | Good | All six Issue Review actions answered; the four 2026-10-01 fixes and both 2026-10-05 rules placed by step; owner's name (`design-discussion`) and date (2026-12-31) applied. Serves: "Quality of the work and Trust, control and information (`README.md#workspace-goals`); `docs/design.md#instruction-layers` (layer 3, skills)." |
+| File targeting | Good | Verified: only `.agent/AGENT_ONBOARDING.md` (lines 65-69) has a skill list; `brainstorm/SKILL.md` headings are Usage, Overview, Steps, Guidelines; `docs/design.md:965` says 22, 23 directories today; `principles_review_guide.md:71` names the two list-less adapters. |
+| Consequences | Good | Count, onboarding list, stale guide row, manifest regeneration (`Makefile:170`) and `test_plugin_manifest.sh` all listed. One path inside the skill text is not covered by the scratchpad change (finding 1). |
+| Principle alignment | Good | Records location follows `docs/design.md:705` (untracked records under the workspace's ignored scratchpad, `.gitignore:45`); untested rules marked, not removed; trial has a trigger, a date and a recording place. |
+| ADR compliance | Good | ADR-0018 (`session_scope: both`, regenerate, test), ADR-0017 (count in the same change); 0013 and 0014 correctly not triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Earlier findings (Plan Review at `7ef185dd`)
+
+- F1 (Copilot/Gemini adapters have no skill list): resolved — dropped; the stale guide row is fixed in this PR.
+- F2 (`brainstorm` has no "What this is not"): resolved — step 2 adds the section.
+- F3 (summary path in a project session): resolved — `$WS_ROOT/.agent/scratchpad/design-discussions/` via `~/.claude/agent-workspace-root`, with a `git check-ignore` fallback; see finding 1 for one place the draft still uses the old path.
+- F4 (own-words rule): resolved — failure-backed, citing M10.
+
+### Findings
+
+1. **[Consequences]** — The trial draft names `.agent/scratchpad/design-discussions/` in Step 1 too ("Look in ... for earlier sessions"; "Keep them in the session file"), not only in Step 7. The plan's record-step edit covers only the write. Step 1's lookup must use the same `$WS_ROOT` path, or a project session never finds earlier sessions; and when the fallback shows the summary in the conversation only, Step 1's "session file" needs the same fallback (keep the list in the conversation). Severity: minor (settle at implementation; wording only).
+2. **[Principle alignment]** — Fallback with no `~/.claude/agent-workspace-root`: in a workspace worktree session, `.` is the worktree, whose scratchpad is ignored but is deleted with the worktree, so the summary is lost and later Step 1 lookups miss it. Say so in the fallback text (or resolve the main checkout with `git rev-parse --git-common-dir`). Severity: minor.
+
+### Summary
+
+All four earlier findings are resolved and the plan's claims check out against the tree. The two remaining findings are wording-level gaps in how the new scratchpad path is applied and can be handled during implementation. Ready.
+
+### Recommended Actions
+
+- [ ] Apply the `$WS_ROOT` scratchpad path (and the conversation-only fallback) to Step 1's lookup and session-file lines, not only Step 7.
+- [ ] State in the fallback what happens in a workspace worktree session (summary goes with the worktree), or resolve the main checkout.
