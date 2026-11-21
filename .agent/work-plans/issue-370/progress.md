@@ -80,3 +80,43 @@ On the skill name, the owner answered "Let the plan pick": plan-task proposes a 
 **Plan**: `.agent/work-plans/issue-370/plan.md` at `7ef185dd`
 
 First PR adds a `challenge` skill (proposed name, owner to confirm) from the trial draft plus the four decision-record fixes, resume and parking rules, and the list/manifest updates; goals-down skill, long-view work and shared rules go to follow-up issues. Each of the six Issue Review actions is answered in the plan's "Review actions" section.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-21 16:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #370 — A skill for high-level design discussions: find the blind spots in an idea or a design, on both sides
+**Plan**: `.agent/work-plans/issue-370/plan.md` at `7ef185dd`
+**Branch**: `feature/issue-370`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One new skill plus list updates; goals-down skill and D1-D8 / M1-M10 go to follow-up issues (step 5). |
+| Issue alignment | Good | All six Issue Review actions answered in "Review actions"; the four 2026-10-01 fixes and both 2026-10-05 rules are placed by step. Serves: "Quality of the work and Trust, control and information (`README.md#workspace-goals`); `docs/design.md#instruction-layers` (layer 3, skills)" — both goal headings exist in README.md and the anchor exists in docs/design.md. |
+| File targeting | Needs work | Two of the three adapter files named have no skill list (findings 1, 2). |
+| Consequences | Good | Design count (line 965 says 22; 23 directories today), manifest regeneration, brainstorm cross-reference all listed. `make generate-user-tier-skills`, `.claude-plugin/plugin.json` and `.agent/scripts/tests/test_plugin_manifest.sh` all exist at the paths the plan guesses. |
+| Principle alignment | Concern | "Put each thing at the level it applies to": the summary location in a project session (finding 3). "Only what's needed": one rule misclassified as untested (finding 4). |
+| ADR compliance | Good | ADR-0018 (`session_scope: both`, regenerate, test), ADR-0017 (count recount in the same change); 0013 and 0014 correctly not triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[File targeting]** — `.github/copilot-instructions.md` (17 lines) and `.agent/instructions/gemini-cli.instructions.md` (18 lines) contain no skill list at all (`grep -i skill` finds nothing in either); only `.agent/AGENT_ONBOARDING.md:65-69` has one. Step 3 and the Files table should drop those two files (the `principles_review_guide.md:71` row that names them is stale; noting that in the PR, or a one-line fix to the row, is enough). Severity: minor.
+2. **[File targeting]** — `brainstorm/SKILL.md` has no "What this is not" section (its headings are Usage, Overview, Steps, Guidelines). Step 2 should say it adds that section (or one line under Guidelines), not that it updates an existing one. Severity: minor.
+3. **[Principle alignment]** — The summary goes to `.agent/scratchpad/design-discussions/` "under the session root (created if absent)". In a project session that is the project's checkout, whose `.gitignore` need not ignore `.agent/scratchpad/` (only the workspace's does, `.gitignore:45`), so private notes would show as untracked files in the project and could be committed — against "kept private" and the light-touch goal. Prior art already settles this: `docs/design.md` (records location table, ~line 705) allows untracked records "under the workspace's ignored scratchpad", and other skills resolve it with the `WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"` idiom. Decide the path in the plan (e.g. `$WS_ROOT/.agent/scratchpad/design-discussions/`, with the topic naming the root) rather than "verify at implementation". Severity: major (should be settled before implementing).
+4. **[Issue alignment]** — The plan marks "state a conclusion in your own words" as from no observed failure, but comment 2026-10-12 M10 ("Decisions by short assent to agent framing": "sounds good" accepted structures never stated as decisions) is that failure. Mark it failure-backed, citing M10, rather than "untested". Severity: minor.
+
+### Summary
+
+Scope, alignment with the Issue Review and the consequences are sound, and the guessed tooling paths are all correct. The summary location in a project session is the one real design gap and should be fixed in the plan; the other three are small corrections to targeting and the trim list.
+
+### Recommended Actions
+
+- [ ] Drop `.github/copilot-instructions.md` and `.agent/instructions/gemini-cli.instructions.md` from step 3 and the Files table; keep `.agent/AGENT_ONBOARDING.md`.
+- [ ] Reword step 2: add a "What this is not" section (or line) to `brainstorm/SKILL.md`.
+- [ ] Fix the summary path to the workspace's ignored scratchpad via `~/.claude/agent-workspace-root`, citing the design's records-location rule, so a project session leaves no untracked files in the project.
+- [ ] Reclassify the "state a conclusion in your own words" rule as failure-backed (M10).
