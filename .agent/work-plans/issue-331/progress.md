@@ -82,3 +82,43 @@ Owner answered "Proceed, keep defaults": plan #331 now with the project digest a
 **Plan**: `.agent/work-plans/issue-331/plan.md` at `05f27884`
 
 Make research a session_scope: both skill (WS_ROOT idiom, session_root.sh default scope, project digest at the default path pending #551, worktree rule unchanged) and fold in the project lessons (project-rules check, no real-location queries, sources-pending mark), with test_skill_paths and plugin-list test coverage. Includes a text draft of the issue-body addendum.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-21 18:03 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #331 — research skill is not available in project-rooted sessions (no session_scope; workspace-relative paths; workspace default scope)
+**Plan**: `.agent/work-plans/issue-331/plan.md` at `05f27884`
+**Branch**: `feature/issue-331`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One skill file plus test edits; one PR. |
+| Issue alignment | Good | Covers all review-issue actions under the owner's Checkpoint (default path, read through #551 later; worktree rule kept; ice_cube lessons; project-rooted default scope; issue-body addendum drafted). Serves: "Light touch on projects and Easy to use (README `## Workspace goals`); `docs/design.md#sessions-and-roots`, with `docs/design.md#registry-and-adapters` untouched because the location setting is #551's." Checked: both anchors exist; no rule broken. |
+| File targeting | Needs work | `.claude-plugin/plugin.json` is missing (finding 1). The `test_user_tier_guard.sh` row targets a test that does not assert the skill set (finding 2). |
+| Consequences | Needs work | `session_scope` -> plugin manifest regeneration not planned (finding 1); merge interaction with #552 (finding 4). |
+| Principle alignment | Good | Safeguard earns its cost (rules check, not ceremony); Keep one current design addressed with a fallback; prior art named. |
+| ADR compliance | Good | ADR-0016/0018: `$WS_ROOT`, `session_root.sh`, `both`. ADR-0018 decision 6 (root rule): the hand-back decision complies (see finding 3). ADR-0003: no project named. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Consequences]** (medium) Adding `session_scope: both` changes the plugin's skill set, but the plan never regenerates `.claude-plugin/plugin.json`. `test_plugin_manifest.sh` re-derives the list from frontmatter and fails until `make generate-user-tier-skills` is run and the manifest committed; without it the plugin does not ship `research` to project sessions at all, which is the point of the issue. Add the regeneration step and list `.claude-plugin/plugin.json` in Files to Change (as #552's plan does).
+2. **[File targeting]** (low) Step 8's "add a case to `test_user_tier_guard.sh` or the plugin-list test that `research` is listed" is unneeded: `test_user_tier_guard.sh` does not assert the skill set, `test_plugin_manifest.sh` already checks the manifest equals the scoped set, and `test_user_tier_install.sh` covers `--list-skills` with fixtures. Likewise `test_session_root.sh` (line 165) already asserts `type=project` for a registered root, so no new `session_root.sh` case. Drop that row; the guard that matters is `research` in `test_skill_paths.sh`'s `both` loop plus finding 1.
+3. **[ADR compliance]** (low) The planner's decision (a workspace-digest write from a project session stops and hands back; reading stays allowed) matches ADR-0018 decision 6 and `docs/design.md#sessions-and-roots` ("Work that belongs to another root becomes an issue there (or an inbox line) ... Reading across roots is allowed"); creating a workspace worktree from a project session would break it. Make the step concrete: name `$WS_ROOT/.agent/scripts/capture.sh` for the inbox line (it tags the line with the project the cwd is in, so the text must say it is for the workspace digest), say that a workspace issue is opened only after a yes, and say where the drafted entry text goes (the issue body, or shown in the conversation) so the survey is not lost to a one-line inbox note.
+4. **[Consequences]** (low) Merge with #552: both branches add a name to the same `for name in start-task ... orchestrator; do` lines in `test_skill_paths.sh`, which will be a textual conflict if both edit the same line; resolution is keeping both names. Both regenerate `plugin.json`; the inserts (`brainstorm` after `audit-project`, `research` after `plan-task`) are non-adjacent and should merge cleanly. Nothing beyond an ordinary merge, but whichever lands second re-runs `make generate-user-tier-skills` and `test_plugin_manifest.sh`/`test_skill_paths.sh` after rebasing to confirm the manifest has both.
+
+### Summary
+
+Sound plan that follows the owner's decisions and the root rule; the planner's hand-back decision is correct. One real gap: the plugin manifest must be regenerated or the skill still does not reach project sessions and `test_plugin_manifest.sh` fails. Ready once finding 1 is folded in.
+
+### Recommended Actions
+
+- [ ] Add `make generate-user-tier-skills` and `.claude-plugin/plugin.json` to the plan (Approach and Files to Change); run `test_plugin_manifest.sh`.
+- [ ] Drop the `test_user_tier_guard.sh` / new `session_root.sh` case rows; rely on existing `test_plugin_manifest.sh`, `test_session_root.sh` and the `test_skill_paths.sh` `both` list.
+- [ ] Make the workspace-write hand-back concrete: `$WS_ROOT/.agent/scripts/capture.sh` line saying it is for the workspace digest, or a workspace issue after a yes carrying the drafted entry.
+- [ ] When the second of #331/#552 lands, resolve the `test_skill_paths.sh` list conflict by keeping both names and re-run the manifest generator and both tests.
