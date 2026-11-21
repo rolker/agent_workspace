@@ -276,7 +276,10 @@ lists it among the open questions. Never start building.
   elsewhere cannot resume from it. After each draft commit, and at every ending, offer to
   push the branch, or to open a draft PR from it (which pushes it); do either on a yes.
   The user may instead give one standing yes to push after every draft commit for the
-  rest of the session; then push each one and say so. The state comment (below) names the branch, the draft PR if there is one,
+  rest of the session; then push each one and say so. Open a draft PR with
+  `"$WS_ROOT/.agent/scripts/gh_create_pr.sh" --draft --title <title> --body-file <file>`,
+  never raw `gh pr create`: the wrapper adds the signature and refuses a repository
+  that is not the workspace's or a registered project's. The state comment (below) names the branch, the draft PR if there is one,
   and whether the latest draft commit is pushed; when it is not, it says the drafts are
   on this machine only.
 - **Where each kind goes:**
