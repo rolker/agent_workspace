@@ -245,9 +245,12 @@ item. A no makes no write: the item stays open, and the next state comment offer
 lists it among the open questions. Never start building.
 
 - **Identity first.** Before the first commit or comment, set the agent identity in the
-  worktree the drafts go in, in the same command chain as the write (shell state does not
-  persist between tool calls):
+  same command chain as the write (shell state does not persist between tool calls), in
+  the worktree the drafts go in:
   `cd <worktree> && source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model id>" && …`.
+  A write made before any worktree exists (opening the anchor issue, a comment on a
+  path with no drafts yet) sources it in the root's own checkout instead, the session's
+  starting directory: `cd <root> && source … && …`.
   It sets the commit identity and `AGENT_NAME` and `AGENT_MODEL`, which the signature
   below needs.
 - **Every comment is signed.** Each comment the skill posts (a reason, the undecided
