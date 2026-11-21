@@ -144,17 +144,36 @@ After presenting the findings, offer to save them. Nothing is written without
 the user's yes.
 
 **The saved form (the contract `design-discussion` Step 1 reads).** A signed
-comment on the topic's anchor issue, in the repository that owns the issue,
-whose body opens with the line `## Brainstorm: <topic>` and holds the Step 3
-findings, citing the digest entries used. A reader finds it on the issue by
-that heading.
+comment of its own on the topic's anchor issue, in the repository that owns
+the issue, whose body opens with the line `## Brainstorm: <topic>` and holds
+the Step 3 findings, citing the digest entries used. A reader finds it on the
+issue by that heading. The brainstorm never goes in an issue's body, not even
+one this step opens for it.
 
-1. **Anchor issue.** Ask which issue the brainstorm belongs to. If there is
-   none, offer to open one; open it only on a yes (Issue-First Policy), with
-   its body written and posted as below (`gh issue create --body-file`).
-2. **No issues, no `gh`.** If the project uses no issues, or `gh` is not
-   available or not authenticated, the result stays in the conversation. Say
-   so plainly; write nothing anywhere else.
+The topic's root is the project root (the Workspace root section, above)
+when the topic is a project's, else the workspace. Its repository (`<owner/repo>`) is what
+`gh repo view --json nameWithOwner --jq .nameWithOwner` prints, run in that
+root. Pass `-R <owner/repo>` on every `gh` call below whenever the topic's root
+is not the session's own root.
+
+1. **Issues and `gh` first.** Before asking about an issue, check that the
+   result can be saved at all:
+   - `gh auth status` succeeds;
+   - for a project's topic, the project uses issues: the `issues` fact of
+     `"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --facts --format
+     text --dir <project root>` (as `onboard-project` reads it); ask the user
+     when it is `unknown`. The workspace uses issues.
+
+   If `gh` is missing or not authenticated, or the fact is `no`, the result
+   stays in the conversation. Say so plainly; write nothing anywhere else.
+2. **Anchor issue.** Ask which issue the brainstorm belongs to. If there is
+   none, offer to open one (Issue-First Policy). Its body is a short statement
+   of the topic, not the brainstorm. Give that body the public-project check
+   (item 3) and show its title and full text; open it only on a yes, written
+   to the scratchpad and posted as in item 4, with
+   `gh issue create [-R <owner/repo>] --title "<title>" --body-file "$body"`
+   in place of `gh issue comment`. Then save the brainstorm on it as a
+   separate comment (items 3 and 4), which needs its own yes.
 3. **Public-project check.** Before showing the comment, check its text
    against the project's `.agents/README.md` rules (for example, no site
    data) and remove what they forbid. Say what was removed.
@@ -178,10 +197,10 @@ that heading.
 
    The closing `BODY` stands alone at the start of its line (no list
    indent); if the text holds a line that is exactly `BODY`, pick another
-   delimiter.
-   Use `-R <owner/repo>` when the issue is in a repository other than the
-   cwd's. Never `--body`. Report the comment's URL, which `gh issue comment`
-   prints, only when the chain exits 0; otherwise say the post failed.
+   delimiter. Use `-R <owner/repo>` whenever the topic's root is not the
+   session's own root (above). Never `--body`. Report the comment's URL,
+   which `gh issue comment` prints, only when the chain exits 0; otherwise
+   say the post failed.
 
 **Never** a `progress.md` entry: brainstorm results are not an entry type on
 an issue's timeline (ADR-0013), and an entry there derails a later
