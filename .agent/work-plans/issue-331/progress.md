@@ -132,3 +132,22 @@ Sound plan that follows the owner's decisions and the root rule; the planner's h
 **Decision**: proceed
 
 The implementer applies the Plan Review's findings beyond plan.md: (1) run make generate-user-tier-skills and list .claude-plugin/plugin.json under the files changed, so the plugin ships research; (2) drop the step-8 tests the review showed are redundant (test_user_tier_guard.sh, a new plugin-list or session_root test); the guards are research in test_skill_paths.sh's both list plus the regenerated manifest; (3) make the workspace-digest hand-back concrete: $WS_ROOT/.agent/scripts/capture.sh with text saying it is for the workspace digest, a workspace issue only after a yes, and the drafted entry text kept in the issue body or the conversation so the result is not lost; (4) #552 also edits test_skill_paths.sh's both list: an ordinary merge, keep both names, and whichever lands second re-runs generate-user-tier-skills, test_plugin_manifest.sh and test_skill_paths.sh. The planner's own decision (no workspace-digest write from a project session) stands: the review confirmed it against ADR-0018 decision 6.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-21 18:11 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-331 at `8430c19c`
+
+- `.claude/skills/research/SKILL.md` (229c07fc): `session_scope: both`; "Workspace root" idiom section and every script as `$WS_ROOT/.agent/scripts/...`; new "Scope" step from `session_root.sh` (no `--scope` = session root's digest; `--scope workspace` added to Usage); a workspace-digest write from a project session shows the drafted entry in the conversation, records `"$WS_ROOT/.agent/scripts/capture.sh" "research for the workspace digest: ..."`, and opens a workspace issue carrying the entry only after a yes; project digest location stated once (default `.agents/workspace-context/research_digest.md`, read through a per-project setting once one exists); worktree rule explicit (`--skill research` workspace only, project digest needs a project issue); project-rules check (`.agents/README.md`) before committing a project digest; no real locations in web queries (passed to sub-agents); `**Sources**: pending` mark taken first by `--refresh`; description no longer says "manifest repo". No project named.
+- `.claude-plugin/plugin.json` (229c07fc): regenerated with `make generate-user-tier-skills`; now lists `research`.
+- `.agent/scripts/tests/test_skill_paths.sh` (8430c19c): `research` in the `both` list; text guards for the scope step, workspace-only `--skill research`, capture.sh hand-back, `.agents/README.md` check, no-real-location rule, sources-pending mark, no "manifest repo". The redundant step-8 tests (user-tier guard, plugin-list, session_root cases) were dropped per the Checkpoint.
+- `docs/design.md`: no change; no sentence there states the digest location or the skill's scope.
+- #552 overlap: ordinary merge; whichever lands second keeps both names in the `both` list and re-runs `make generate-user-tier-skills`, `test_plugin_manifest.sh`, `test_skill_paths.sh`.
+
+Suites (each run on its own): `test_skill_paths.sh`: 175 passed, 0 failed; `test_plugin_manifest.sh`: 12 passed, 0 failed; `test_project_integration_audit.sh`: 279 passed, 0 failed; `test_project_file.sh`: 694 passed, 0 failed; `test_user_tier_install.sh`: 276 passed, 0 failed. The full pre-commit pass and full suite run are left to the host.
+
+Issue-body addendum (text draft for the host; not posted):
+> Replace "Blocks: rolker/geozui4d#7" with: "No longer blocks rolker/geozui4d#7 (owner correction); makes it convenient."
+> Replace point 4 with: "Decided 2026-11-21: `research` keeps its worktree rule. `worktree_create.sh` rejects `--skill research --type project`; a project digest update needs a project issue. No allowlist or `AGENTS.md` change."
+> Add to Acceptance: "- [ ] Before committing a project digest, the skill reads the project's `.agents/README.md` for commit rules. - [ ] Web queries carry no real locations unless the owner approves. - [ ] Entries without links are marked `**Sources**: pending` and `--refresh` takes them first. - [ ] A project-rooted run defaults to the project digest, with `--scope workspace` available (a workspace-digest write hands back)."
