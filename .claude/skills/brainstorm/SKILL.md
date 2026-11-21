@@ -115,6 +115,7 @@ Structure the output as:
 ### Sources
 - Read: <each source read>
 - Absent: <each source looked for and not found>
+- Digest entries used: <each entry cited below, as digest file and entry heading>
 
 ### Current State
 <what exists today>
