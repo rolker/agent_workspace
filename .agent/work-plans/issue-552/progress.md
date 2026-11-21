@@ -151,3 +151,28 @@ The implementer applies the Plan Review's three findings beyond plan.md: (1) add
 - Not done here (follow-up after #370 merges): design-discussion's "neither is available yet (#331, #552)" pointer.
 
 Suites: `test_skill_paths.sh` — "test_skill_paths: 168 passed, 0 failed"; `test_plugin_manifest.sh` — "test_plugin_manifest: 12 passed, 0 failed"; `test_user_tier_install.sh` — "test_user_tier_install: 276 passed, 0 failed". The full pre-commit pass (`make lint`) was left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-21 18:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-552 at `71a5481b`
+**Base**: main
+**Depth**: Standard (reason: override-trigger file `.claude/skills/*/SKILL.md`)
+**Must-fix**: 4 | **Suggestions**: 5
+**Round**: 1 | **Ship**: continue — round 1: 4 must-fix; first round always re-reviews after fixes
+
+Cross-model: gemini complete (EXIT=0), codex complete (EXIT=0). Claude adversarial complete. Tests: test_skill_paths 168/0, test_plugin_manifest 12/0, test_user_tier_install 276/0; plugin.json valid JSON; shellcheck not installed (static analysis of the one-line .sh change skipped).
+
+### Findings
+- [ ] (must-fix) Step 4 body write invites an unquoted heredoc ("signature expanded from $AGENT_NAME / $AGENT_MODEL"), which runs every markdown backtick span and `$`/`$(...)` in the brainstorm text; write the body verbatim (quoted heredoc or Write tool) and append the signature with `printf` and `"$AGENT_NAME" "$AGENT_MODEL"` (adversarial + gemini) — `.claude/skills/brainstorm/SKILL.md:158`
+- [ ] (must-fix) Trailing `; rm -f <file>` makes the chain exit 0 when `source`, the body write or `gh issue comment` fails, so a failed post can be reported as posted; keep the status (`rc=$?; rm -f ...; (exit $rc)` or a trap) (codex + gemini + adversarial) — `.claude/skills/brainstorm/SKILL.md:159`
+- [ ] (must-fix) `sitrep_root.sh` reports the session root's roadmap (its header: "a session in a registered project root gets that project's"), so the parenthetical on the workspace-roadmap bullet is false in a project session; move it to the project roadmap bullet (line 79) or drop it — `.claude/skills/brainstorm/SKILL.md:67`
+- [ ] (must-fix) Opening an anchor issue: `gh issue create` has no `-R <owner/repo>` (a workspace session on a project topic opens it in agent_workspace), the issue body gets no public-project check or preview, and it is unstated whether the brainstorm goes in the issue body or in a separate `## Brainstorm: <topic>` comment (the contract design-discussion Step 1 reads); say: `-R` for the owning repo, show and check the body first, then post the brainstorm as its own comment (adversarial + gemini) — `.claude/skills/brainstorm/SKILL.md:142`
+- [ ] (suggestion) "A path without `$WS_ROOT` is the session root's own file" contradicts reading a project's files from a workspace session "from that project's registered folder", and no lookup for that folder is named; resolve the relative paths against the registered folder and name how it is found (adversarial + gemini) — `.claude/skills/brainstorm/SKILL.md:49`
+- [ ] (suggestion) "Uses no issues" has no test, and is checked after asking for an anchor issue; check first, via `"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --facts` (`issues=yes|no|unknown`, as onboard-project does) and `gh auth status` (adversarial + gemini) — `.claude/skills/brainstorm/SKILL.md:145`
+- [ ] (suggestion) A part's `design.md` has no location rule; reuse design-discussion Step 0's (the `design.md` beside the sub-roadmap file the parent's `| Sub-roadmap | Root |` row names) — `.claude/skills/brainstorm/SKILL.md:81`
+- [ ] (suggestion) Step 4 requires citing the digest entries used, but the Step 3 template only lists source files; add the citation to the template (gemini) — `.claude/skills/brainstorm/SKILL.md:108`
+- [ ] (suggestion) `.agent/workflows/README.md` still lists brainstorm among the skills that append a progress.md section and shows a `## Brainstorm` entry, contradicting the new "Never a progress.md entry" rule and ADR-0013's entry types — `.agent/workflows/README.md:58`
