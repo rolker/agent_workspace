@@ -448,3 +448,16 @@ The revision resolves F1-F7 and answers A1-A8; the skill now keeps every kind of
 
 - [ ] Carve landing check: `check_design_anchors.sh <root>` after the part's files are committed; `sitrep_checks.sh` on the root's roadmap (and on the parent part's roadmap with its Root when nested); exit 2 for a missing root design reported, not passed.
 - [ ] Name the reason's destination as a progress entry on the anchor issue (comment where no worktree), matching the Decisions row.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-21 17:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Owner answered "Proceed with F8/F9". The implementer applies, beyond plan.md:
+- F8: Carve's landing check matches the scripts: check_design_anchors.sh takes a root and reads only committed files, and reads a part's files only under a docs/ directory or when named in the root roadmap's pointer table, so commit the part's files first and say when the placement keeps them out of its reach; it exits 2 when the root has no docs/design.md, which the skill reports, not counts as a pass. sitrep_checks.sh run on the parent roadmap follows the new row; "not followed" appears only when run on the root's roadmap with a nested part.
+- F9: a decision's reason goes to a progress entry on the anchor issue's timeline (docs/design.md#documentation-layers, Decisions row), or an issue comment when there is no worktree; an ADR draft when the decision is a rule.
+Note: the Plan Authored entry above says 17:30, but it was written about 17:10 (the Plan Review after it says 17:11 from the system clock); the entry is left as written.
