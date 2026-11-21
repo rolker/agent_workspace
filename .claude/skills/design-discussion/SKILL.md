@@ -1,19 +1,22 @@
 ---
 name: design-discussion
-description: A two-way conversation about whether an idea or a design in progress is a good one. Finds blind spots on both sides, researches alternatives, and helps the user decide to continue, prune, shelve, or just see it more clearly. Never implements.
+description: A two-way conversation that works out the goals, design and roadmap of one level (the workspace, a project, or a part of either). Revises a level that has them, or carves a part out as a sub-design of its parent. Finds blind spots on both sides, and saves every decision, open question and reason in tracked documents and the discussion's issue, so later sessions resume from them. Never implements.
 session_scope: both
 ---
 
 # Design discussion
 
-> **Trial version.** Written after one session on an existing design. It stays a trial
-> until two uses are recorded, one on a fresh idea and one on an existing design. The
-> outcome of those uses, and whether to settle, revise or remove the skill, goes in a
-> comment on the workspace issue that introduced it (#370). Revisit when both uses are
-> done, or on 2026-12-31 if they are not, whichever comes first; at that point the skill
-> is revised or removed, not left as a trial. A rule marked *untested* came from no
-> observed failure and is here for the trial to test. A rule with a *Why* came from a
-> failure seen in a real session; it can go when its reason does.
+> **Trial version.** Part 1 of the workspace issue that introduced it (#370): the Revise
+> and Carve uses. It stays a trial until two uses are recorded, one Revise and one Carve.
+> The outcome of those uses, and whether to settle, revise or remove the skill, goes in a
+> comment on #370. Revisit when both uses are done, or on 2026-12-31 if they are not,
+> whichever comes first; at that point the skill is revised or removed, not left as a
+> trial. That date judges Part 1 only. Create (a level with no goals, design or roadmap)
+> comes in Part 2, which waits on #551 (where a project keeps its goals, design and
+> roadmap); its own trial use keeps the trial open for that use. A rule marked *untested*
+> came from no observed failure and is here for the trial to test. A rule with a *Why*
+> came from a failure seen in a real session (the dated comments on #370); it can go when
+> its reason does.
 
 ## Usage
 
@@ -21,77 +24,102 @@ session_scope: both
 /design-discussion <topic>
 ```
 
-Use it when the user asks whether something is a good idea, asks for holes to be found,
-or wants help deciding whether to keep going. Reach for it before the first
-implementation issue of a new design, not only when doubts appear. It is a conversation.
-It produces no code and no plan.
+Use it when the user wants to work out or challenge the goals, design or roadmap of the
+workspace, a project, or a part of one; asks whether something is a good idea; or wants
+to split a sub-component or a new feature off as a part with its own design. Reach for
+it before the first implementation issue of a new design, not only when doubts appear.
+
+It is a conversation, and its product is the level's tracked documents. A discussion
+bigger than one session loses its details unless they are saved where every later
+session reads them, until the work is done. So everything decided, everything still open
+and the reason for each decision is written to a tracked place during the session, each
+write on the user's yes (Step 7). The scratchpad holds in-session notes only: it is one
+machine, untracked, and a fresh session does not see it, so it is never the home of a
+decision. The skill writes no code and no work plan.
 
 Run the conversation on the strongest model available. Send research and measurements to
 cheaper agents.
 
-## Where summaries live
-
-Summaries are private working notes, kept in the workspace's git-ignored scratchpad, never
-under a project's checkout. Resolve the folder at the head of each command chain (shell
-state does not persist between tool calls):
+Workspace scripts are written `$WS_ROOT/.agent/scripts/...`. Resolve `$WS_ROOT` at the
+head of each command chain (shell state does not persist between tool calls):
 
 ```bash
-WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-if [ "$WS_ROOT" = . ]; then
-  # No user tier on this machine: use the main checkout of the current repository,
-  # so a summary written from a worktree survives the worktree's removal.
-  common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
-  [ -n "$common" ] && WS_ROOT="$(dirname "$common")"
-fi
-DD_DIR="$WS_ROOT/.agent/scratchpad/design-discussions"
-git -C "$WS_ROOT" check-ignore -q .agent/scratchpad/design-discussions/probe.md \
-  && echo "dd_dir=$DD_DIR" || echo "dd_dir="
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
 ```
 
-`~/.claude/agent-workspace-root` is written by the user-tier install
-(`user_tier_install.sh`) and names the workspace's main checkout. Without it, the
-fallback is the current repository's main checkout, which is the workspace only in a
-workspace session.
-
-If `dd_dir=` comes back empty, the folder is not git-ignored there (a project session on a
-machine without the user tier, or no git repository at all). Then write no file: say so
-once, keep the session's notes and the summary in the conversation only, and skip the
-lookup of earlier sessions with a one-line note that it was skipped.
-
-The scratchpad is working space, not a home for decisions. It stays on one machine and is
-not tracked. A decision lives where the root keeps decisions (its design document,
-roadmap or issues), and only the user moves it there, each move on its own yes.
+`~/.claude/agent-workspace-root` is written by the user-tier install and names the
+workspace's main checkout; without it the fallback is the cwd, right in a workspace
+session.
 
 ## Steps
 
+### 0. Level, use, anchor and documents
+
+- **Level.** Ask which level the discussion is about: the workspace, a project, or a part
+  of either (ADR-0022). For a part, read its parent's goals first. *Why: the same failures
+  showed up on a workspace redesign and a project redesign; the level and its parent's
+  goals were never named up front (#370, 2026-10-12).*
+- **Use.**
+  - **Revise**: the level has goals, design and roadmap; challenge and revise them.
+  - **Carve**: split a sub-component or a new feature off as a part, with its own goals,
+    design and roadmap, as a sub-design of the parent (the Carve section below).
+  - **Create** (a level with none of the three) is not available yet; it comes in
+    Part 2. Say so. The conversation still runs, and what it produces is recorded on the
+    anchor issue (Step 7, "No document").
+- **Anchor issue.** Before the first tracked write, ask the user for the discussion's
+  issue, or offer to open one (Issue-First Policy). Every session writes to that issue and
+  resumes from it. For a project that uses no issues, the anchor is the draft PR's body,
+  or ask the user where. Drafts go on that issue's branch, in a worktree made by the
+  root's own route for issues.
+- **Documents.** Find the level's documents in the places today's readers accept. Where
+  one is missing, say so and ask; never guess a location.
+  - **Roadmap:** the root's `docs/roadmap.md`, else `ROADMAP.md`, which is what
+    `"$WS_ROOT/.agent/scripts/sitrep_root.sh"` reports as `roadmap=` (`update_roadmap.sh`
+    also reads `docs/ROADMAP.md`). A part's roadmap is the sub-roadmap file its parent's
+    `| Sub-roadmap | Root |` row names.
+  - **Design:** the root's `docs/design.md`. A part's design is the `design.md` in the
+    same directory as its sub-roadmap file (`check_design_anchors.sh` reads "the design.md
+    beside it"); the row's `Root` cell is only the directory the sub-roadmap's check paths
+    resolve against, not where the design is. Cite a part's design section as
+    `<path>/design.md#<section>`, `<path>` being the design file's directory.
+  - **Goals:** for the workspace, `README.md#workspace-goals`; for a project, the goals
+    its own design or README names; for a part, the goals section of its `design.md`. If
+    none is found, say so and ask where they are, and record the answer on the anchor
+    issue (where a project keeps them is settled for good by #551).
+
 ### 1. Prepare quietly
 
-- **On resuming** a discussion (the user comes back to one, or an earlier session on this
-  topic is found), the first output is the one-liner of the overall task, then progress
-  against its plan, then only the context needed for the detail being resumed. *Why: a
-  resumed session went straight into the detail, and the user had to ask for the context.*
-- Look in `$DD_DIR` for earlier sessions on this topic (file names are
-  `<date>-<plain-topic>.md`; also search their text for the topic's words). If there is
-  one, say so before anything else.
-- **Existing design:** read it and its history, and measure what exists: how much data,
-  how much code, who uses it, how much effort has gone in. List where the design's
+- **On resuming** (the user comes back to a discussion, or the anchor issue shows earlier
+  sessions), read in this order: the anchor issue's latest state comment (Step 7,
+  "Undecided state") and its progress timeline; the level's design; the roadmap's
+  Direction lines; the branch or draft PR holding the drafts; open issues that cite them.
+  The first output is the one-liner of the overall task, then progress against the
+  roadmap's lines (which are true, which is next), then only the context needed for the
+  detail being resumed. *Why: a resumed session went straight into the detail, and the
+  user had to ask for the context; another resumed without the status and produced it
+  only when asked (#370, 2026-10-05).*
+- **Revise:** read the design and its history, and measure what exists: how much data,
+  how much code, who uses it, how much effort has gone in. List everywhere the design's
   decisions and evidence live: the main document, its decision record or change log,
-  unmerged branches, issue comments, and working directories outside git. *Why: a
-  conclusion that parked a branch also parked design corrections that existed only on
-  that branch, and the evidence for the decided sections sat in an untracked directory.*
-  **Fresh idea:** look at what the project already has that partly solves it, and at what
-  others do.
+  unmerged branches, issue comments, deferrals, and working directories outside git.
+  *Why: a conclusion that parked a branch also parked design corrections that existed
+  only on that branch, and the evidence for the decided sections sat in an untracked
+  directory.* Say whether earlier attempts at the design exist; the discussion leans on
+  them (#370, 2026-10-02).
+- **Carve:** read the parent's design and roadmap, and what the project already has that
+  partly does the part's job.
 - Write down the decisions and assumptions you can see, including your own assumptions
-  about what the user wants. Keep them in the session file in `$DD_DIR` (created if
-  absent), or in the conversation when there is no folder (see above). Step 5 checks them
-  against the user's answers.
-- Look facts up yourself. Ask the user only what they alone know.
+  about what the user wants, as in-session notes. Step 5 checks them against the user's
+  answers.
+- Look facts up yourself. Ask the user only what they alone know. A statement about what
+  the system does today comes from the code or the records, not memory. *Why: such
+  statements made from memory were wrong twice (#370, 2026-10-02 and 2026-10-12).*
 
 ### 2. Purpose before critique
 
 Ask why the work was started, what must be true when it is done, who it is for, and what
-kind of session this is: a fresh idea or an existing design, and whether the aim is to
-clarify, to test, or to decide between continuing, pruning and shelving.
+the session is for: to clarify, to test, or to decide between continuing, pruning and
+shelving.
 
 Give no verdict before these are answered. *Why: an agent judged a design before it knew
 why the work had been started; the real reason came out four rounds in.*
@@ -106,11 +134,12 @@ why the work had been started; the real reason came out four rounds in.*
 
 ### 4. Defend
 
-- **Existing design:** say what would be lost by changing course. Then go through the
-  design's own decision list, item by item, and mark each one *kept*, *waits*, *changed* or
+- **Revise:** say what would be lost by changing course. Then go through the design's
+  own decision list, item by item, and mark each one *kept*, *waits*, *changed* or
   *dropped*. *Why: "what do we lose" answered in features hid decisions that were quietly
   reversed.*
-  **Fresh idea:** make the case for doing nothing and the case for the smallest version.
+- **Carve:** make the case for keeping it inside the parent's design, and the case for the
+  smallest part.
 - Correct anything you oversold in step 3.
 
 ### 5. Rounds
@@ -120,6 +149,18 @@ why the work had been started; the real reason came out four rounds in.*
   position moved.
 - List your own assumptions and invite the user to attack them. The user can say
   "attack this", "defend this" or "switch sides" at any time.
+- **Sort by level.** Sort what the user says, and each finding, by level before showing
+  it: goal, principle, design, or detail. Check each sentence of draft goal text for its
+  level; text that says how rather than what moves to the design, it is not lost. *Why:
+  review findings were shown as "missing goals" when they were details, and the user cut
+  draft goal bullets twice for saying how (#370, 2026-10-02).*
+- **One item per turn** when settling text: the current and the proposed text side by
+  side, starting from the user's words and making the smallest edit. *Why: the user
+  refused a batch edit so he could add context to each item (#370, 2026-10-02).*
+- **"Let's keep thinking" is a mode.** When the user says it, stop offering text to
+  accept: say what the history shows, where you would push back, and ask a few
+  independent questions. *Why: the goal sentence that stuck came from the user, not
+  from a draft (#370, 2026-10-02).*
 - Questions. *Why: a first reply was a long report with seven questions.*
   - usually two to five in a turn; more than five means you have not chosen;
   - no question may depend on the answer to another one in the same turn;
@@ -127,11 +168,14 @@ why the work had been started; the real reason came out four rounds in.*
     you say that is what you are doing;
   - no recommended answers on questions about purpose.
 - Park a detail only when it does not block work at the level the discussion is at and
-  can be solved later without significant redesign. Say both when parking it.
+  can be solved later without significant redesign. Say both when parking it, and
+  record it (Step 7). *Why: once this rule was stated, details settled or parked in one
+  or two exchanges instead of several rounds (#370, 2026-10-05).*
 - Every few rounds, show a short list of what is still open. *(untested)*
 - Before a conclusion counts, ask the user to state it in their own words. *Why: short
   assent ("sounds good") to the agent's framing accepted structures that were never
-  stated as decisions.*
+  stated as decisions.* Record an idea only offered as offered, not settled. *Why: an
+  offered idea was recorded as settled (#370, 2026-10-12).*
 - Use the user's words. Give each thing a plain name the first time and keep to it.
   Define a term before leaning on it. Never use an issue or PR number as a name. *Why:
   the agent used names the user did not recognise, and numbers as names.*
@@ -139,47 +183,132 @@ why the work had been started; the real reason came out four rounds in.*
 ### 6. Land
 
 - Any of these is a valid ending: continue, prune, shelve, or clearer but undecided.
-- **Existing design**, before the landing counts:
+  Every ending records what it settled and what is open (Step 7).
+- **Revise**, before the landing counts:
   - show the step 4 list with the *changed* and *dropped* items first;
   - check every new term in the conclusion against the existing decisions;
   - if the design says how it may be changed, follow that, or say plainly that the
     landing sets it aside;
-  - name any settled work the conclusion strands, and where it is.
+  - name any settled work the conclusion strands, and where it is;
+  - **upward check:** compare the draft with the history (issues, branches, deferrals)
+    and say what the history contradicts or the draft leaves out, each finding sorted by
+    level, its evidence labelled *counted*, *sampled* or *judged*. A judged finding alone
+    does not change a goal. *Why: the upward check found a gap and statements the
+    history contradicted that the downward pass could not (#370, 2026-10-02).*
+    *(untested in this skill)*
 
   "The existing design still stands" is not a landing statement on its own. *Why: a
   landing that said so left settled items unnamed, changed others without saying, and
   suspended a decision the design's own change rule protected.*
+- **Carve:** run the landing check in the Carve section; a broken pointer blocks calling
+  the carve landed.
 - Say where the conversation ended up, the one assumption the conclusion rests on, the
   cheapest test of that assumption, and what is still open.
 - If the conclusion follows your own framing, say so.
 
 ### 7. Record
 
-- Always keep a summary: `$DD_DIR/<date>-<plain-topic>.md`, or in the conversation when
-  there is no folder (see "Where summaries live"). It holds the user's goals in their own
-  words, what was agreed, what waits and what that costs, and what is open.
-- Anything visible (an issue, a comment, an edit to a design document or roadmap) is
-  optional and only on the user's say. Each next step is approved on its own.
-- **On a "continue" landing**, offer to draft the session root's roadmap Direction line
-  for the work, and the issues that line needs. The root is the workspace, or the project
-  the session was started in; its roadmap is the one
-  `"$WS_ROOT/.agent/scripts/sitrep_root.sh"` reports as `roadmap=` (`docs/roadmap.md`,
-  else `ROADMAP.md`). A Direction line comes with a check that says whether it is true
-  (the `| Line | Check |` table; the grammar is in that roadmap's Format notes and the
-  header of `sitrep_checks.sh`). Show each draft in the conversation. Write the line,
-  and file each issue, only on the user's yes to that item, through the root's usual
-  route for changes. If the root has no roadmap or no Direction section, say so and offer
-  the drafts as text only. Deriving a whole roadmap from a design is not part of this
-  skill.
-- **On a prune or shelve landing written somewhere visible**, offer a second pass by a
-  fresh session (or a different model) that reads only the visible record and the
-  design's decision record, and reports what the record does not account for. *Why: a
-  fresh session, asked only whether the note was a useful redirect, found most of what
-  the discussing session had missed in one read of the history.*
-- Never start building.
+Everything decided, everything open and every reason is written to a tracked place before
+the session ends. Each write is shown first and made on the user's yes to that item; a
+no leaves it recorded as open on the anchor issue instead. Never start building.
+
+- **Drafts live in the documents from the first session.** The first time the user says
+  something is decided, propose the target document and section. On the user's yes, put
+  the draft into that document on the anchor issue's branch, commit it, and offer a draft
+  PR, so the next session finds it by reading the document. Each later decision is a
+  tracked edit on a yes of its own, one at a time. No decision waits in scratch. *Why:
+  settled text lived only in scratch notes for days, and a deferral said in conversation
+  and kept in a scratch file was later read as a gap (#370, 2026-10-02 and 2026-10-12).*
+- **Where each kind goes:**
+  - a design decision into the level's design: one current picture, edited in place, no
+    revision layers (ADR-0017); follow the design's own change rule, or say it is set
+    aside;
+  - work into the roadmap's `## Direction` section as a `| Line | Check |` row, each line
+    with a check (grammar in the header of `sitrep_checks.sh` and the roadmap's Format
+    notes), and into the issues the lines cite, each issue body carrying the detail an
+    implementer needs;
+  - a parked or shelved item into the `| Deferral | Revisit check |` table, with its
+    reason and what brings it back;
+  - a pruned or rejected option under Decided Against, with its reason;
+  - an offered but unsettled idea under To Consider, marked offered.
+
+  If the roadmap has none of these sections, say so and record the item on the anchor
+  issue (below) rather than adding a section the readers do not know.
+- **The why.** Each decision's reason goes to the Decisions role
+  (`docs/design.md#documentation-layers`): a progress entry on the anchor issue's
+  timeline (`"$WS_ROOT/.agent/scripts/progress_append.sh" -C <worktree> <N>`, a
+  `## Checkpoint` entry with `**Decided-by**: owner`, the decision and its reason) when
+  the issue has a worktree, else a comment on the anchor issue; and an ADR draft when the
+  decision is a rule. The design keeps the current picture only, so without this the
+  reasoning is lost and later sessions reopen what was settled.
+- **Undecided state.** On every ending, and on the user's yes mid-session, a comment on
+  the anchor issue (or the draft PR's body for a project with no issues) with the open
+  questions, the options still in play, what was parked and why, and where the
+  discussion stands. Step 1 reads the latest one first. When a session may be cut off
+  mid-round, leave one before the next long research step. *(untested)*
+- **No document.** If the level has no goals, design or roadmap, or a Revise target is
+  missing (say, no Direction section), the conversation still runs: drafts and open
+  questions go in a comment on the anchor issue, not in a new file at a location no
+  reader looks, and not only in the conversation. Say that Create comes in Part 2.
+- **Second pass.** On a prune or shelve landing, offer a second pass by a fresh session
+  (or a different model) that reads only the tracked record (documents, anchor issue,
+  timeline) and the design's decision record, and reports what the record does not
+  account for. *Why: a fresh session, asked only whether the note was a useful redirect,
+  found most of what the discussing session had missed in one read of the history.*
+- Deriving a whole roadmap from a design is not part of this skill.
+
+## Carve
+
+A part has its own goals, design and roadmap (ADR-0022); the parent keeps only what
+crosses the boundary.
+
+1. **Place.** Propose the part's directory and confirm it with the user. Its `design.md`
+   and `roadmap.md` go side by side in that one directory: the checkers read the design
+   beside the sub-roadmap file. Propose the pointer row's `Root` cell too (the part's
+   directory, or `.`): every check path in the sub-roadmap resolves against it, and the
+   sub-roadmap file must sit inside it. Confirm both. Both cells are relative to the
+   parent roadmap's root (for a parent that is itself a part, the parent's own `Root`).
+   The part's directory must be in the parent's git repository, not a nested repository
+   or submodule.
+2. **The part's files.**
+   - `design.md`: a goals section (no reader looks for a part's goals anywhere else),
+     each goal naming the root goal it serves (ADR-0022 decision 7); then the part's
+     design.
+   - `roadmap.md`: a `## Direction` section with at least one `| Line | Check |` or
+     `| Deferral | Revisit check |` row; a sub-roadmap with nothing to check is
+     reported broken.
+3. **The parent.** The parent's design keeps only what crosses the boundary, plus a
+   pointer to the part cited `<path>/design.md#<section>` (ADR-0022 decision 6). The
+   parent's roadmap gets one `| Sub-roadmap | Root |` row in its Direction section.
+4. **Landing check.** Commit the part's files and the parent's edits first:
+   `check_design_anchors.sh` reads only files git tracks. Then run, from the root
+   (`$ROOT`, as `sitrep_root.sh` reports it):
+
+   ```bash
+   "$WS_ROOT/.agent/scripts/check_design_anchors.sh" "$ROOT"
+   "$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$ROOT" --roadmap "<root roadmap>"
+   ```
+
+   and, when the parent is itself a part, also
+   `sitrep_checks.sh --root "$ROOT/<parent's Root>" --roadmap "<parent's roadmap>"`,
+   which follows the new row. Report the results:
+   - `check_design_anchors.sh` exit 0 is clean; exit 1 lists the broken citations; exit
+     2 when the root has no `docs/design.md` means there was nothing to check against:
+     say so, never count it as a pass.
+   - It reads a part's design and roadmap as citers only when they sit under a `docs/`
+     directory or the root roadmap's pointer table names the roadmap. A nested part
+     outside `docs/` is checked only where another checked file cites it; say so when
+     the placement keeps the part's files out of its reach.
+   - In `sitrep_checks.sh`, the new row's `part` result must be `true`; `unchecked` is a
+     broken pointer, which blocks calling the carve landed. Run on the root's roadmap
+     with a nested part, the row shows `not-followed` (the checker follows one level):
+     expected, not a failure.
 
 ## What this is not
 
-- `brainstorm` lists options in one pass. This is a conversation that attacks and defends.
+- `brainstorm` lists options in one pass. This is a conversation that attacks and
+  defends, and records what it settles.
 - `review-plan` and `review-issue` check a written plan or issue against the rules. This
   asks whether the thing should exist in its current form.
+- `sitrep` reports where a root stands. This changes the root's goals, design and
+  roadmap, on the user's yes.
