@@ -138,6 +138,12 @@ Structure the output as:
 - <concrete actions to explore further or begin implementation>
 ```
 
+In `### Sources`, name every file repo-relative: a workspace file from the
+workspace root (`docs/principles.md`, never `$WS_ROOT` expanded to a local
+path), a project file from the project root (`.agents/README.md`), and name
+the repository once when the brainstorm draws on both. Never write an
+absolute local path: the findings may be posted as a public comment (Step 4).
+
 ### 4. Offer to save
 
 After presenting the findings, offer to save them. Nothing is written without
