@@ -606,3 +606,13 @@ Checks: `test_skill_paths.sh` 167 passed, 0 failed; pre-commit (`.venv`) on SKIL
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-21 18:34 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (orchestrator; round-3 pre-push review approved with no findings, and the host's full pre-commit pass over the branch passed)
+**After**: publish
+**Decision**: publish
+
+Full pass: .venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD) on HEAD 1ea6fbb2 exited 0 with no file rewritten. Publishing Part 1 as a pull request that says "Part of #370" (Part 2, Create plus the location question, depends on #551).
