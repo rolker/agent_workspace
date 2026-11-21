@@ -68,9 +68,14 @@ session.
     anchor issue (Step 7, "No document").
 - **Anchor issue.** Before the first tracked write, ask the user for the discussion's
   issue, or offer to open one (Issue-First Policy). Every session writes to that issue and
-  resumes from it. For a project that uses no issues, the anchor is the draft PR's body,
-  or ask the user where. Drafts go on that issue's branch, in a worktree made by the
-  root's own route for issues.
+  resumes from it. Drafts go on that issue's branch, in a worktree made by the root's own
+  route for issues.
+- **A project that uses no issues is not supported yet.** Say so plainly and stop before
+  any tracked write: no worktree, commit, comment or file. The skill has no anchor to
+  write to or resume from there, and no worktree route that needs no issue. The
+  modular-workflow issue (#544: GitHub-optional backends, files as work items, work keyed
+  by branch) and the records-lookup issue (#393: where a project's records live) are
+  where that support comes from.
 - **Documents.** Find the level's documents in the places today's readers accept. Where
   one is missing, say so and ask; never guess a location.
   - **Roadmap:** the root's `docs/roadmap.md`, else `ROADMAP.md`, which is what
@@ -244,7 +249,7 @@ no leaves it recorded as open on the anchor issue instead. Never start building.
   entries. The design keeps the current picture only, so without this the reasoning is
   lost and later sessions reopen what was settled.
 - **Undecided state.** On every ending, and on the user's yes mid-session, a comment on
-  the anchor issue (or the draft PR's body for a project with no issues) with the open
+  the anchor issue with the open
   questions, the options still in play, what was parked and why, and where the
   discussion stands. Step 1 reads the latest one first. When a session may be cut off
   mid-round, leave one before the next long research step. *(untested)*
