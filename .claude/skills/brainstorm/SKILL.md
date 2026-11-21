@@ -47,7 +47,12 @@ become `/.agent/...`. With the fallback, `$WS_ROOT` is `.`, which is right in
 a workspace session.
 
 A path written without `$WS_ROOT` (such as `.agents/README.md` or
-`docs/design.md` in the project list below) is the session root's own file.
+`docs/design.md` in the project list below) is relative to the **project
+root**: in a project session, the session's root; in a workspace session on a
+project's topic, that project's registered folder, the `<path>` field of its
+line in `$WS_ROOT/.agent/projects.local` (a relative `<path>` resolves against
+`$WS_ROOT`). Ask the user which project when the topic does not name one, and
+say so when it is not registered: there is then no project to read.
 
 ## Steps
 
@@ -65,9 +70,8 @@ Every source is optional. Read what exists, and say in the output (the
 - `$WS_ROOT/docs/decisions/` — ADRs for historical context
 - the workspace roadmap: `$WS_ROOT/docs/roadmap.md`, else `$WS_ROOT/ROADMAP.md`
 
-**Project sources** (in a project session, from the project root; in a
-workspace session, when the topic is about a project, from that project's
-registered folder):
+**Project sources** (from the project root above; in a workspace session,
+only when the topic is about a project):
 
 - `.agents/workspace-context/research_digest.md` — the project's research
   digest (the path `design-discussion` reads; #335/#551 may move it)
