@@ -351,8 +351,10 @@ first and made on the user's yes to it (Step 7's rule), the identity set first (
 3. **The parent.** The parent's design keeps only what crosses the boundary, plus a
    pointer to the part cited `<path>/design.md#<section>` (ADR-0022 decision 6). The
    parent's roadmap gets one `| Sub-roadmap | Root |` row in its Direction section.
-4. **Landing check.** Commit the part's files and the parent's edits first:
-   `check_design_anchors.sh` reads only files git tracks. Then run the checks against
+4. **Landing check.** Commit the part's files and the parent's edits first, so what is
+   checked is what is landed: `check_design_anchors.sh` finds most citing files through
+   `git ls-files` (tracked and staged files), but reads a sub-roadmap the pointer table
+   names, and the `design.md` beside it, whether git tracks them or not. Then run the checks against
    the worktree the drafts were committed in (`$WT`), never against the root
    `sitrep_root.sh` reports: that is the main checkout, which does not hold the drafts,
    so the checks there pass without having read them. Paths in `<…>` are relative to
@@ -361,8 +363,8 @@ first and made on the user's yes to it (Step 7's rule), the identity set first (
    ```bash
    WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
    WT="$(git -C <the drafts' worktree> rev-parse --show-toplevel)"
-   "$WS_ROOT/.agent/scripts/check_design_anchors.sh" "$WT"
-   "$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$WT" --roadmap "$WT/<root roadmap>"
+   "$WS_ROOT/.agent/scripts/check_design_anchors.sh" "$WT"; echo "check_design_anchors exit $?"
+   "$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$WT" --roadmap "$WT/<root roadmap>"; echo "sitrep_checks exit $?"
    ```
 
    and, when the parent is itself a part, also
