@@ -169,11 +169,15 @@ is not the session's own root.
 2. **Anchor issue.** Ask which issue the brainstorm belongs to. If there is
    none, offer to open one (Issue-First Policy). Its body is a short statement
    of the topic, not the brainstorm. Give that body the public-project check
-   (item 3) and show its title and full text; open it only on a yes, written
-   to the scratchpad and posted as in item 4, with
-   `gh issue create [-R <owner/repo>] --title "<title>" --body-file "$body"`
-   in place of `gh issue comment`. Then save the brainstorm on it as a
-   separate comment (items 3 and 4), which needs its own yes.
+   (item 3) and show its title and full text; open it only on a yes, posted
+   as in item 4 with the title written verbatim too: in the same chain, a
+   second scratchpad file `t` filled by its own quoted heredoc
+   (`cat > "$t" <<'TITLE'`, the title, `TITLE`), then
+   `gh issue create [-R <owner/repo>] --title "$(cat "$t")" --body-file "$body"`
+   in place of `gh issue comment`, and `rm -f "$body" "$t"`. The title is
+   never typed inside double quotes, so no backtick span, `$` or `$(...)` in
+   it is run or expanded. Then save the brainstorm on it as a separate
+   comment (items 3 and 4), which needs its own yes.
 3. **Public-project check.** Before showing the comment, check its text
    against the project's `.agents/README.md` rules (for example, no site
    data) and remove what they forbid. Say what was removed.
