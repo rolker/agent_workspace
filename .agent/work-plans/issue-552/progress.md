@@ -176,3 +176,27 @@ Cross-model: gemini complete (EXIT=0), codex complete (EXIT=0). Claude adversari
 - [x] (suggestion) A part's `design.md` has no location rule; reuse design-discussion Step 0's (the `design.md` beside the sub-roadmap file the parent's `| Sub-roadmap | Root |` row names) — `.claude/skills/brainstorm/SKILL.md:81`
 - [x] (suggestion) Step 4 requires citing the digest entries used, but the Step 3 template only lists source files; add the citation to the template (gemini) — `.claude/skills/brainstorm/SKILL.md:108`
 - [x] (suggestion) `.agent/workflows/README.md` still lists brainstorm among the skills that append a progress.md section and shows a `## Brainstorm` entry, contradicting the new "Never a progress.md entry" rule and ADR-0013's entry types — `.agent/workflows/README.md:58`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-21 18:12 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-552 at `4f22c930`
+**Addressed**: Local Review (Pre-Push) at `71a5481b` (2026-11-21 18:08 -05:00)
+**Commits**: adaac04f, b1cbfa09, 60fd653b, 112c45d3, 08700eb8, 43a94862, 4f22c930
+
+### Actions
+- [x] (must-fix) Comment body written verbatim with a quoted heredoc; signature appended with `printf` and "$AGENT_NAME" "$AGENT_MODEL" — `.claude/skills/brainstorm/SKILL.md` Step 4 item 4 (08700eb8)
+- [x] (must-fix) Exit status kept: `rc=$?; rm -f "$body"; (exit $rc)`, URL reported only on exit 0 (checked with a stub `gh`: exit 0 and 3 passed through) — Step 4 item 4 (08700eb8)
+- [x] (must-fix) `sitrep_root.sh` note moved to the project roadmap bullet, with `--dir <project root>` — Step 1 (adaac04f)
+- [x] (must-fix) The brainstorm is its own signed `## Brainstorm: <topic>` comment, never an issue body; a new anchor issue's body gets the public-project check and a preview before the yes; `-R <owner/repo>` (from `gh repo view` in the topic's root) whenever that root is not the session's own — Step 4 (43a94862)
+- [x] (suggestion) Relative paths resolve against the project root: in a workspace session, the `<path>` of the project's line in `$WS_ROOT/.agent/projects.local` — Workspace root section (b1cbfa09)
+- [x] (suggestion) `gh auth status` and the `issues` fact of `project_integration_audit.sh --facts --format text --dir <project root>` checked first, before asking for an issue — Step 4 item 1 (43a94862)
+- [x] (suggestion) A part's `design.md` is the one beside its sub-roadmap file (design-discussion Step 0's rule) — Step 1 (60fd653b)
+- [x] (suggestion) Sources template gains "Digest entries used" — Step 3 (112c45d3)
+- [x] (suggestion) `.agent/workflows/README.md`: `## Brainstorm` example and brainstorm in the skills list removed, with a line that it writes no section; no script or test reads that section name — `.agent/workflows/README.md:58` (4f22c930)
+
+### Checks
+- `test_skill_paths.sh`: "test_skill_paths: 168 passed, 0 failed"
+- No script changed; no manifest change. The full pre-commit pass is left to the host.
