@@ -64,3 +64,13 @@ issue: 331
 - [ ] Add the ice_cube lessons to the acceptance list: check the project's `.agents/README.md` rules before committing a project digest (private draft when required); no real-location web queries without owner approval; a "sources pending" mark or required link collection.
 - [ ] Update the issue body (or add an Acceptance addendum comment) to replace the "blocks geozui4d#7" line and the stale point 4.
 - [ ] Add acceptance test coverage for a project-rooted run: default scope follows the session root and `--scope workspace` stays available.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-21 18:00 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+Owner answered "Proceed, keep defaults": plan #331 now with the project digest at .agents/workspace-context/research_digest.md (what ice_cube and design-discussion already use), read through #551's setting once that exists; research keeps its current worktree rule (a project digest update needs a project issue; no --skill research --type project, no AGENTS.md change). #331 ships apart from #552 (owner kept the host's ship-apart decision on #552). Easy to revisit after the workspace design review.
