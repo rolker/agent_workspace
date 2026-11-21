@@ -68,7 +68,7 @@ Skip rows that clearly do not apply.
 | The adapter contract (`REQUIRED_VERBS` in `.agent/scripts/adapter`) | Every `.agent/project_types/*/adapter.sh`; ADR-0011 (or a new ADR per ADR-0008 if the verb count changes); `test_adapter.sh` |
 | A template in `.agent/templates/` | Docs that reference the template; skills that use it |
 | A framework skill (e.g., `.claude/skills/`) | That framework's adapter file; regenerate skills if needed |
-| Workflow skill list (add/remove a skill) | Skill list in non-Claude adapters (`.github/copilot-instructions.md`, `.agent/instructions/gemini-cli.instructions.md`, `.agent/AGENT_ONBOARDING.md`) |
+| Workflow skill list (add/remove a skill) | Skill list in `.agent/AGENT_ONBOARDING.md` (the only adapter file with one; `.github/copilot-instructions.md` and `.agent/instructions/gemini-cli.instructions.md` have none); skill count in `docs/design.md#instruction-layers`; plugin manifest via `make generate-user-tier-skills` when `session_scope` is `project` or `both` |
 | Project interfaces or public APIs | Downstream consumers, documentation, tests |
 | Worktree scripts | `.agent/WORKTREE_GUIDE.md` (the command blocks); `AGENTS.md` Worktree Workflow (the rule) |
 | `review-code` skill | `.agent/knowledge/review_depth_classification.md`; `.agent/scripts/cross_model_review.sh` |

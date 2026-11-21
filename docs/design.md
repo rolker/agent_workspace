@@ -962,7 +962,7 @@ This file describes the four layers an agent's instructions load in, and gives t
    `SessionStart` hook ([Sessions and roots](#sessions-and-roots)).
 2. Path-scoped. Rules that load only when the agent works on matching files. The workspace has none
    (`.claude/` holds `hooks`, `settings.json` and `skills`).
-3. Skill. A `SKILL.md` loads when its skill is invoked (22 skills in `.claude/skills/`).
+3. Skill. A `SKILL.md` loads when its skill is invoked (24 skills in `.claude/skills/`).
 4. On demand. Files an agent opens because a pointer sent it there: this file, the ADRs, the
    knowledge files. This file is not always loaded.
 
@@ -1156,6 +1156,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-18 | Documentation layers, Rules, Registry and adapters, Decision register | The manifest tool is renamed repos-manifest (path `tools/repos-manifest`, package, command, make target `install-repos-manifest`, stamp, environment variable, cache directory), with no change to what it does; `make setup` removes the old install on a machine that has it. Earlier rows keep the old name as history | #497 | 1194 |
 | 2026-11-18 | Worktrees | A project root need not be a git repository (issue 503 part 1A): `worktree_create.sh` requires the root to be a directory and checks each repository the worktree is made of before it makes anything; one sentence in the bullet on where project worktrees live, and the `.git/info/exclude` line is said to apply to a root that is a git repository. Registration of a root in no git repository is unchanged (part 1B) | #503 | 1199 |
 | 2026-11-18 | Sessions and roots, Registry and adapters | `ros2_colcon` gains the tool route (issue 503 part 1B): a root holding the manifest tool's `.repos-manifest/` is read from its resolved files for the distro the calling directory chooses (the dispatcher's new `ACTIVE_PROJECT_FROM`), checked before the two routes of #436, with `setup`/`sync` running the tool's `sync`; the type bullet names the tool's resolved directory and the routes; the distro sentence names the tool route's rule; registration's "needs a git repository today" and the onboarding bullet's known gap are narrowed to a single-repository folder, as a root the tool set up registers outside git from the workspace or its own session. Registry and adapters grows by 9 lines and Sessions and roots by 1; the route's rules live in the `ros2_colcon/adapter.sh` header and its mechanics in `docs/manifest/design.md` | #503 | 1211 |
+| 2026-11-21 | Instruction layers | The skill count is recounted to 24 (`ls -d .claude/skills/*/`): the line said 22 while 23 existed, and `design-discussion` is added (a skill, no new mechanism) | #370 | 1213 |
 
 ## Glossary
 
