@@ -585,3 +585,24 @@ Checks: `test_skill_paths.sh` 167 passed, 0 failed; `test_plugin_manifest.sh` 12
 ### Checks
 - `bash .agent/scripts/tests/test_skill_paths.sh`: `test_skill_paths: 167 passed, 0 failed`
 - No script changed; docs/design.md not changed. The full pre-commit pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-21 18:21 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-370 at `342d69fb`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — no must-fix findings; all 10 round-2 findings resolved
+
+Scope: the round-2 findings (Local Review at `29b1c00b`) and the fix diff `29b1c00b..342d69fb` (`.claude/skills/design-discussion/SKILL.md`, progress.md). Cross-model: skipped (round-3 convergence check, per handoff).
+
+Round-2 findings, each checked against SKILL.md and the sources it cites: declined anchor issue stops before any tracked write ("No anchor issue, no record", Step 0); trial outcome names `rolker/agent_workspace#370` (`gh repo view` confirms the name) and "The level's own session" stops for another root's level; identity sourced in the root's checkout before a worktree exists; push offered after each draft commit or one standing yes; draft PR through `gh_create_pr.sh --draft --body-file` (wrapper passes `--draft` through and refuses unregistered repos, `gh_create_pr.sh:48,143-169`); roadmap fallback per missing section or table; `**Format.**` paragraph is in `docs/roadmap.md`'s Direction section (line 62, section 9-127); brainstorm results found by `## Brainstorm: <topic>` (the heading `brainstorm/SKILL.md:59` outputs; saving it per #552, owner decision 2026-11-21); no-issues test is the `issues` fact of `project_integration_audit.sh --facts --format text` (yes/no/unknown, lines 521-554); landing-check snippet echoes each exit, and the read-set wording matches `check_design_anchors.sh:403-443` (`git ls-files` citers plus pointer-named sub-roadmaps and their design.md). The fix diff introduces no new defect.
+
+Checks: `test_skill_paths.sh` 167 passed, 0 failed; pre-commit (`.venv`) on SKILL.md and progress.md: no failures.
+
+### Findings
+- [ ] No issues found. LGTM.
