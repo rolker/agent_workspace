@@ -18,6 +18,8 @@ session_scope: both
 
 No `--scope` means the digest of the session's root (see Scope below): the
 workspace digest in a workspace session, the project digest in a project session.
+`--ingest` is the exception: without `--scope` it picks the digest from the
+content (Ingesting a URL, step 3).
 
 ## Overview
 
