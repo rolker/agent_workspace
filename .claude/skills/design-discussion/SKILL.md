@@ -66,8 +66,9 @@ session.
   - **Create** (a level with none of the three) is not available yet; it comes in
     Part 2. Say so. The conversation still runs, and what it produces is recorded on the
     anchor issue (Step 7, "No document").
-- **Anchor issue.** Before the first tracked write, ask the user for the discussion's
-  issue, or offer to open one (Issue-First Policy). Every session writes to that issue and
+- **Anchor issue.** At the start, ask whether the discussion already has an issue: a
+  resumed discussion is read from it (Step 1). If it has none, offer to open one before
+  the first tracked write (Issue-First Policy). Every session writes to that issue and
   resumes from it. Drafts go on that issue's branch, in a worktree made by the root's own
   route for issues.
 - **A project that uses no issues is not supported yet.** Say so plainly and stop before
