@@ -977,10 +977,15 @@ if [[ -n "$no_empty_guard" ]]; then
 else
     pass "research: every \$WS_ROOT resolution also guards an empty file"
 fi
-if grep -qF 'capture.sh" "research' "$RES" 2>/dev/null; then
-    fail "research double-quotes web-derived text on the capture.sh line"
+# Any argument to capture.sh other than "$(cat <file>)" puts web text in
+# double quotes (or single quotes) on the command line itself.
+bad_capture="$(grep -nF 'capture.sh" ' "$RES" 2>/dev/null \
+    | grep -vF 'capture.sh" "$(cat ' || true)"
+if [[ -n "$bad_capture" ]]; then
+    fail "research passes capture.sh text other than \"\$(cat <file>)\":"
+    head -n3 <<< "$bad_capture" | sed 's/^/        /'
 else
-    pass "research passes no web-derived text to capture.sh in double quotes"
+    pass "research passes capture.sh its text only as \"\$(cat <file>)\""
 fi
 if grep -qE "<<-?[[:space:]]*'EOF'" "$RES" 2>/dev/null; then
     fail "research writes web text through a heredoc delimited EOF (a line EOF in it would close the heredoc early)"
