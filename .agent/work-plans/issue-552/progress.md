@@ -137,3 +137,17 @@ The plan meets the `design-discussion` contract and the owner's kept decisions. 
 **Decision**: proceed
 
 The implementer applies the Plan Review's three findings beyond plan.md: (1) add brainstorm to test_skill_paths.sh's session_scope: both list and list that test file under the files changed; (2) the identity line is source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" ..., as design-discussion Step 7 does; (3) Step 2 names the roadmap path as design-discussion Step 0 does: docs/roadmap.md, else ROADMAP.md (sitrep_root.sh roadmap=).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-21 18:04 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-552 at `9194800f`
+
+- `.claude/skills/brainstorm/SKILL.md` (150517d2): `session_scope: both`; `## Workspace root` section with the `WS_ROOT` idiom and `|| echo .` fallback; Step 1 reads workspace sources via `$WS_ROOT/...` and project sources from the project root (digest at `.agents/workspace-context/research_digest.md`, `.agents/README.md`, principles, design, ADRs), roadmap named as `docs/roadmap.md`, else `ROADMAP.md` (sitrep_root.sh `roadmap=`), a part's own `design.md` (ADR-0022); output gains a `### Sources` read/absent section; the stale `.agent/project_knowledge/` paths are dropped (no such path exists). New Step 4: on a yes only, a signed comment on the anchor issue opening `## Brainstorm: <topic>` (the contract for design-discussion Step 1), identity via `source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" ...` in the same chain, `--body-file` from the scratchpad then removed, `-R` for another repo; offer an anchor issue on a yes; conversation-only when no issues or no `gh`; public-project check against `.agents/README.md`; never a progress.md entry, never a digest write. Overview, lifecycle text and the "Don't create issues" guideline reworded.
+- `.agent/scripts/tests/test_skill_paths.sh` (150517d2): `brainstorm` added to the `session_scope: both` list.
+- `.claude-plugin/plugin.json` (9194800f): regenerated, 14 to 15 skills.
+- Unchanged after checking: ADR-0018's "(13 skills when this ADR was written)" is a dated snapshot; `skill_workflows.md`, `AGENT_ONBOARDING.md` and `docs/design.md` state no scope for brainstorm.
+- Not done here (follow-up after #370 merges): design-discussion's "neither is available yet (#331, #552)" pointer.
+
+Suites: `test_skill_paths.sh` — "test_skill_paths: 168 passed, 0 failed"; `test_plugin_manifest.sh` — "test_plugin_manifest: 12 passed, 0 failed"; `test_user_tier_install.sh` — "test_user_tier_install: 276 passed, 0 failed". The full pre-commit pass (`make lint`) was left to the host.
