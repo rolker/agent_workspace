@@ -177,9 +177,15 @@ is not the session's own root.
      text --dir <project root>` (as `onboard-project` reads it); ask the user
      when it is `unknown`. The workspace uses issues.
 
-     The audit's `no` covers two cases; tell them apart with `gh repo view
-     [-R <owner/repo>] --json hasIssuesEnabled --jq .hasIssuesEnabled` (the
-     field the audit itself reads):
+     The audit's `no` covers more than one case. Read its `github` fact from
+     the same output first: when it is `no` or `unknown`, the root has no
+     GitHub repository of its own that gh could read, and nothing can be
+     saved (below). When it is `yes`, its evidence names the repository
+     (`gh repo view resolves the repository to github.com/<owner/repo>`);
+     check that it is the `<owner/repo>` resolved above, and tell the two
+     cases apart with `gh repo view <owner/repo> --json hasIssuesEnabled
+     --jq .hasIssuesEnabled` (the field the audit itself reads), naming the
+     repository explicitly rather than letting gh walk up from a folder:
      - `false`, or the call fails: **issues are disabled** (or cannot be
        read), and nothing can be saved (below).
      - `true`: **issues are enabled but none was ever opened**, which the
@@ -191,7 +197,8 @@ is not the session's own root.
        brainstorm there (items 3 and 4); on a no, nothing is saved.
 
    If `gh` is missing or not authenticated, the project is not registered,
-   `<owner/repo>` does not resolve, issues are disabled, or the user declines
+   `<owner/repo>` does not resolve, the audit's `github` fact is not `yes`,
+   issues are disabled, or the user declines
    the project's first issue, the result stays in the conversation. Say so
    plainly, naming which of these it is; write nothing anywhere else, and
    never fall back to the workspace repository for a project's topic.
