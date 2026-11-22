@@ -167,7 +167,7 @@ fi
 # typo in the field name would silently drop a skill from the user tier.
 for name in start-task plan-task review-plan review-code triage-reviews \
             test-engineering sitrep run-issue review-issue address-findings \
-            orchestrator brainstorm; do
+            orchestrator research brainstorm; do
     f="$SKILLS/$name/SKILL.md"
     [[ -f "$f" ]] || { fail "expected skill is missing: $name"; continue; }
     [[ "$(scope_of "$f")" == "both" ]] \
@@ -914,6 +914,103 @@ if [[ -f "$ROADMAP" && -z "$paths_out" ]]; then
     pass "roadmap: Path 1, Path 2 and Path 3 paragraphs in ## Direction, no table row between them"
 else
     fail "roadmap paths: ${paths_out:-docs/roadmap.md is missing}"
+fi
+
+# --- research runs in a project session (#331) --------------------------
+# The default scope comes from session_root.sh; a project digest needs a
+# project issue (no --skill research --type project); a workspace-digest
+# write from a project session hands back through capture.sh; and the
+# project lessons (rules check, generic queries, pending sources) stay.
+RES="$SKILLS/research/SKILL.md"
+has "$RES" "research: default scope from the session root" \
+    '"$WS_ROOT/.agent/scripts/session_root.sh"' \
+    "No \`--scope\` means the digest of the session's root"
+has "$RES" "research: --skill research is for workspace worktrees only" \
+    '`--skill research` is for workspace worktrees only: `worktree_create.sh` rejects `--skill research --type project`'
+has "$RES" "research: a workspace-digest write from a project session hands back" \
+    'a workspace-digest **write** from a project session does not create a workspace worktree' \
+    "cat > \"\$f\" <<'RESEARCH_TEXT_END' research for the workspace digest:" \
+    'a line `EOF` in web text would close it early' \
+    '"$WS_ROOT/.agent/scripts/capture.sh" "$(cat "$f")"' \
+    "open it only after the user's yes"
+has "$RES" "research: project rules read before editing a project digest" \
+    "Before editing a project digest (not only before committing it), read the project's \`.agents/README.md\` for rules about what may be committed" \
+    'keep project-private data (site names, locations, unpublished results, anything the rules keep in the project) out of their text'
+has "$RES" "research: no real locations in web queries" \
+    'no real coordinates, bounding boxes, site names or addresses, unless the owner approves that query' \
+    'Pass this rule in every sub-agent prompt'
+has "$RES" "research: sources-pending mark" \
+    '`**Sources**: pending`' '`--refresh` takes pending entries first'
+has "$RES" "research: the workspace digest is written in the worktree, not \$WS_ROOT" \
+    'at that path relative to the worktree'"'"'s root, never as `$WS_ROOT/.agent/knowledge/research_digest.md`'
+has "$RES" "research: the workspace issue is opened with -R naming the workspace repo" \
+    'ws_repo="$(cd "$WS_ROOT" && gh repo view --json nameWithOwner --jq .nameWithOwner)"' \
+    'GITBUG_CREATE= "$WS_ROOT/.agent/scripts/gh_create_issue.sh" -R "$ws_repo" --title "$(cat "$t")" --body-file "$b"'
+has "$RES" "research: hand-back snippets keep the script's exit status and check the repo lookup" \
+    '"$(cat "$f")"; rc=$? rm -f "$f"; [ "$rc" -eq 0 ]' \
+    'if [ -n "$ws_repo" ]; then' 'rm -f "$t" "$b"; [ "$rc" -eq 0 ]' \
+    'git push -u origin HEAD && \'
+has "$RES" "research: the worktree path is carried, not a sourced cd" \
+    '"$WS_ROOT/.agent/scripts/worktree_enter.sh" --skill research --type workspace --print-path' \
+    '"$WS_ROOT/.agent/scripts/worktree_enter.sh" --issue <N> --type project --print-path' \
+    'chain every command after `cd "<worktree path>" &&`'
+has "$RES" "research: the digest commit sources the identity in its own chain" \
+    'source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model-id>" && \ git add <digest path> && \ git commit'
+has "$RES" "research: adding research hands back after the survey, instead of steps 5 to 8" \
+    'run steps 2 to 4 (step 4 against `$WS_ROOT/.agent/knowledge/research_digest.md` for the workspace digest), then hand the drafted entry back instead of steps 5 to 8'
+has "$RES" "research: an ingest hand-back follows Project rules and checks the digest first" \
+    'Before handing back, follow Project rules for the hand-back text and check the target digest for related entries'
+has "$RES" "research: a project root that is not a git repository has no project digest" \
+    'such a project has no project digest: do not pick one of its clones' \
+    '`research for the <project> project digest (root is not a git repository):`'
+has "$RES" "research: ingest decides the scope before setting anything up" \
+    'Decide the scope before anything is set up' \
+    'a workspace-digest write from a project session hands back (see Scope) and stops here'
+has "$RES" "research: a workspace refresh from a project session hands back" \
+    'A refresh of the workspace digest from a project session reads and re-surveys but writes nothing'
+has "$RES" "research: the PR is opened through the signing wrapper" \
+    '"$WS_ROOT/.agent/scripts/gh_create_pr.sh" --title' '`Closes #<N>` for a project digest'
+# The one sentence that names it (to say why not) is filtered out by
+# itself, so a real command on any other line still fails.
+bare_fill="$(grep -nF 'gh pr create --fill' "$RES" 2>/dev/null \
+    | grep -vF 'a bare `gh pr create --fill` does neither' || true)"
+if [[ -n "$bare_fill" ]]; then
+    fail "research still opens its PR with a bare gh pr create --fill:"
+    head -n3 <<< "$bare_fill" | sed 's/^/        /'
+else
+    pass "research opens no PR with a bare gh pr create --fill"
+fi
+no_empty_guard="$(grep -nF 'cat ~/.claude/agent-workspace-root' "$RES" | grep -vF 'WS_ROOT="${WS_ROOT:-.}"' || true)"
+if [[ -n "$no_empty_guard" ]]; then
+    fail "research: a \$WS_ROOT resolution lacks the empty-file guard WS_ROOT=\"\${WS_ROOT:-.}\":"
+    head -n3 <<< "$no_empty_guard" | sed 's/^/        /'
+else
+    pass "research: every \$WS_ROOT resolution also guards an empty file"
+fi
+# Any argument to capture.sh other than "$(cat <file>)" puts web text in
+# double quotes (or single quotes) on the command line itself.
+bad_capture="$(grep -nF 'capture.sh" ' "$RES" 2>/dev/null \
+    | grep -vF 'capture.sh" "$(cat ' || true)"
+if [[ -n "$bad_capture" ]]; then
+    fail "research passes capture.sh text other than \"\$(cat <file>)\":"
+    head -n3 <<< "$bad_capture" | sed 's/^/        /'
+else
+    pass "research passes capture.sh its text only as \"\$(cat <file>)\""
+fi
+if grep -qE "<<-?[[:space:]]*'EOF'" "$RES" 2>/dev/null; then
+    fail "research writes web text through a heredoc delimited EOF (a line EOF in it would close the heredoc early)"
+else
+    pass "research's web-text heredocs use a delimiter other than EOF"
+fi
+if grep -qF '**Location**: `$WS_ROOT/' "$RES" 2>/dev/null; then
+    fail "research still gives a digest location under \$WS_ROOT (the main checkout)"
+else
+    pass "research gives no digest location under \$WS_ROOT"
+fi
+if grep -qF 'manifest repo' "$RES" 2>/dev/null; then
+    fail "research still says the project digest lives in the manifest repo"
+else
+    pass "research no longer names the manifest repo"
 fi
 
 # --- Path 3's marker (#477): the sit-rep marks work Path 3 by the README

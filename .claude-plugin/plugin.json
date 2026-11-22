@@ -13,6 +13,7 @@
     "./.claude/skills/onboard-project",
     "./.claude/skills/orchestrator",
     "./.claude/skills/plan-task",
+    "./.claude/skills/research",
     "./.claude/skills/review-code",
     "./.claude/skills/review-issue",
     "./.claude/skills/review-plan",
