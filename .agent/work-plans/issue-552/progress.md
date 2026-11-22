@@ -414,3 +414,20 @@ Fix diff verified: merge resolution in test_skill_paths.sh keeps both research a
 **Decision**: address
 
 Owner answered "Re-review, then merge". The triage-reviews phase fixed the four suggestions itself in commit 2506b7b1 (brainstorm/SKILL.md, workflows/collaborative.md), outside triage's role and with no review. The address pass records that commit as the fix (an Implementation entry with **Addressed**), checks it, and the PR-mode review-code then reviews it. Behaviour choice to check in review: issues "no" includes "enabled but none ever opened", so brainstorm leaves a project's first issue to the user.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-21 20:26 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**PR**: #555 at `9ad4a377`
+**Addressed**: Integrated Review at `32c36b5` (2026-11-21 20:10 -05:00)
+**Commits**: 2506b7b1 (from triage, outside its role), 9ad4a377 (this pass)
+
+### Actions
+- [x] Non-git folder nested in a git repo: 2506b7b1 adds the `git rev-parse --show-toplevel` check (same test as research/SKILL.md:191) and shows the resolved owner/repo; it did not show the issue title, so 9ad4a377 adds the target owner/repo#N with its title to item 4 — `.claude/skills/brainstorm/SKILL.md:170`, `:222`
+- [x] issues fact `no` for enabled-but-never-used: 2506b7b1 states it is intended; matches project_integration_audit.sh:548-551 (`none was ever opened` gives `no`) — `.claude/skills/brainstorm/SKILL.md:172`
+- [x] "#335/#551" reference: 2506b7b1 cites #551 only — `.claude/skills/brainstorm/SKILL.md:77`
+- [x] collaborative.md brainstorm row: 2506b7b1 notes it writes no progress.md section, consistent with workflows/README.md:97 — `.agent/workflows/collaborative.md:10`
+
+Verified by reading the 2506b7b1 diff and the cited code. Checks: test_skill_paths.sh 198 passed, 0 failed. Full pre-commit pass left to the host.
