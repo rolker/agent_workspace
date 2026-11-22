@@ -473,3 +473,18 @@ Narrow scope: the four suggestions of the Local Review at `32c36b5f` and the fix
 The owner, asked whether to fix the open suggestion (tell the user to open the first issue themselves) or merge, answered: "Why can't it save? If it's because it's unclear if an issue should be opened, why not just explain the situation and ask?"
 
 Direction for the fix pass: the audit's issues fact "no" covers two cases. Issues disabled: nothing can be saved; say so. Issues enabled but none ever opened: explain the situation and ask whether to open the project's first issue as the anchor; on a yes, open it (with the existing preview and public-project check) and save. Apply the same change to design-discussion/SKILL.md (its Step 0 uses the same fact). Check first how the audit distinguishes the two cases.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-21 20:34 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #555 at `a2545601`
+**Addressed**: Integrated Review at `57007aa` (2026-11-21 20:28 -05:00), per Checkpoint 2026-11-21 20:33 -05:00 (owner: explain and ask instead of not saving)
+**Commits**: a2545601
+
+Signal: `gh repo view --json hasIssuesEnabled`, the structured field the audit itself reads (project_integration_audit.sh:531,544); the audit's evidence text also differs but is free text, so it is not parsed. Audit script unchanged. test_skill_paths.sh: 198 passed, 0 failed. No other suite touches the changed files; the full pre-commit pass is left to the host.
+
+### Actions
+- [x] issues fact `no` split: disabled (or gh repo view fails) keeps the result in the conversation and says so; enabled but none ever opened explains and asks to open the project's first issue as the anchor, through item 2's existing offer, then saves there — `.claude/skills/brainstorm/SKILL.md:178-199`
+- [x] same split and ask in Step 0 — `.claude/skills/design-discussion/SKILL.md:89-108`
