@@ -324,3 +324,19 @@ Scope: fix diff 6eda5b17..5e127255 against the Checkpoint (After: publish, Decis
 **Decision**: publish
 
 Full pass: .venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD) on HEAD 31ac4293 (main merged in, PR #553) exited 0 with no file rewritten. The previous full pass (on 5dfa4647) also passed; the address answer before this one was for a merge conflict, not a failed pass.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-21 20:01 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**PR**: #555 at `ba06055`
+**Sources**: 2 (Local Review rounds 1-4 @ `ba06055` covering head, round 4 approved with no open findings; host observation, verified)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+- [ ] (must-fix, host, verified) Branch no longer merges with main after #554 (#331) merged: `git merge-tree --write-tree HEAD origin/main` reports `CONFLICT (content): Merge conflict in .agent/scripts/tests/test_skill_paths.sh` (both branches add a name to the session_scope: both list; keep both). Also regenerate `.claude-plugin/plugin.json` with `make generate-user-tier-skills` so it lists research, brainstorm and design-discussion — `.agent/scripts/tests/test_skill_paths.sh`
+- [ ] (must-fix, host, verified) `.claude/skills/design-discussion/SKILL.md` lines 34-35 say "In a project session `/brainstorm` is available (#552); `/research` is not yet (#331)" on this branch (main: "neither is available yet"). #331 is merged, so after this PR both are available and the line must say so — `.claude/skills/design-discussion/SKILL.md`
+
+### False positives
