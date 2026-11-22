@@ -386,3 +386,21 @@ Fix diff verified: merge resolution in test_skill_paths.sh keeps both research a
 - [ ] (suggestion) issues fact is "no" when issues are enabled but none was ever opened, so a fresh project can never get its first anchor issue; say whether that is intended — `.claude/skills/brainstorm/SKILL.md:172`
 - [ ] (suggestion) "#335/#551 may move it": #335 is closed and unrelated; cite #551 (or research's Project digest section) only — `.claude/skills/brainstorm/SKILL.md:77`
 - [ ] (suggestion) README now says brainstorm writes no progress section, but collaborative.md still lists brainstorm as a step without noting the exception — `.agent/workflows/README.md:97` vs `.agent/workflows/collaborative.md:10`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-21 20:10 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**PR**: #555 at `32c36b5`
+**Sources**: 1 (Local Review @ `32c36b5`; no GitHub reviews or comments; CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+- [x] (suggestion, Local Review) non-git folder nested in a git repo makes `gh repo view` resolve the parent repo; added the toplevel check and showing the resolved repo — `.claude/skills/brainstorm/SKILL.md` (fixed in the working tree, uncommitted)
+- [x] (suggestion, Local Review) issues fact `no` when issues enabled but never used is the audit's rule (`project_integration_audit.sh`); stated as intended — `.claude/skills/brainstorm/SKILL.md` (fixed, uncommitted)
+- [x] (suggestion, Local Review) "#335/#551" reference: #335 is closed and unrelated; now cites #551 only — `.claude/skills/brainstorm/SKILL.md` (fixed, uncommitted)
+- [x] (suggestion, Local Review) collaborative.md brainstorm step now notes it writes no progress.md section — `.agent/workflows/collaborative.md` (fixed, uncommitted)
+
+### False positives
