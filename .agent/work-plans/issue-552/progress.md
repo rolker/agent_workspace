@@ -260,7 +260,7 @@ Round-1 findings: all 9 resolved (checked against `.claude/skills/brainstorm/SKI
 Round-2 findings: all 6 resolved by 4af32bcd..99eed9ef (checked in `.claude/skills/brainstorm/SKILL.md` Step 3 lines 141-145, Step 4 items 1-4 lines 165-229). Exit status: the item-4 comment chain still ends `rc=$?; rm -f "$body"; (exit $rc)`; the item-2 issue-create chain composed as written (item-4 chain, `t` by mktemp + quoted heredoc, `gh issue create --title "$(cat "$t")"`, `rm -f "$body" "$t"` in the rm slot) was run with a stub `gh`: title with backticks/`$(...)`/`$HOME` passed verbatim, chain exit 0 on gh 0 and 1 on gh 1, both scratch files removed. Cross-model: skipped (round-3 convergence check, per handoff). Tests: test_skill_paths 168 passed, 0 failed. Pre-commit not run (host runs the full pass).
 
 ### Findings
-- [ ] (suggestion) Item 2 gives the issue-create chain as edits to item 4's in prose ("and `rm -f "$body" "$t"`") without saying that replaces item 4's `rm -f "$body"` while `rc=$?;` and `(exit $rc)` stay; spell out the final line (`gh issue create ... --body-file "$body"; rc=$?; rm -f "$body" "$t"; (exit $rc)`) and where `t="$(mktemp ...)"` goes, so a reader cannot drop the kept status — `.claude/skills/brainstorm/SKILL.md:189`
+- [x] (suggestion) Item 2 gives the issue-create chain as edits to item 4's in prose ("and `rm -f "$body" "$t"`") without saying that replaces item 4's `rm -f "$body"` while `rc=$?;` and `(exit $rc)` stay; spell out the final line (`gh issue create ... --body-file "$body"; rc=$?; rm -f "$body" "$t"; (exit $rc)`) and where `t="$(mktemp ...)"` goes, so a reader cannot drop the kept status — `.claude/skills/brainstorm/SKILL.md:189`
 
 ## Checkpoint
 **Status**: complete

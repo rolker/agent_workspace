@@ -182,13 +182,33 @@ is not the session's own root.
    none, offer to open one (Issue-First Policy). Its body is a short statement
    of the topic, not the brainstorm. Give its title and body the
    public-project check (item 3) and show both in full; open it only on a
-   yes, posted as in item 4 with the title written verbatim too: in the same chain, a
-   second scratchpad file `t` filled by its own quoted heredoc
-   (`cat > "$t" <<'TITLE'`, the title, `TITLE`), then
-   `gh issue create [-R <owner/repo>] --title "$(cat "$t")" --body-file "$body"`
-   in place of `gh issue comment`, and `rm -f "$body" "$t"`. The title is
-   never typed inside double quotes, so no backtick span, `$` or `$(...)` in
-   it is run or expanded. Then save the brainstorm on it as a separate
+   yes, with item 4's chain and the title written verbatim too. It is item 4's
+   chain with two additions: a second scratchpad file `t`, made right after
+   `body` and filled by its own quoted heredoc after the body's; and a last
+   line that creates the issue in place of `gh issue comment`, removes both
+   files and still keeps the exit status (`rc=$?` and `(exit $rc)` stay):
+
+   ```bash
+   WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"; \
+   WS_ROOT="$(cd "$WS_ROOT" && pwd)" && cd "<topic root>" && \
+   source "$WS_ROOT/.agent/scripts/set_git_identity_env.sh" --agent <framework> "<model id>" && \
+   body="$(mktemp "<scratch dir>/brainstorm.XXXXXX")" && \
+   t="$(mktemp "<scratch dir>/brainstorm-title.XXXXXX")" && \
+   cat > "$body" <<'BODY' &&
+   <the issue body exactly as shown, without the signature>
+   BODY
+   cat > "$t" <<'TITLE' &&
+   <the issue title exactly as shown>
+   TITLE
+   printf '\n---\n**Authored-By**: `%s`\n**Model**: `%s`\n' "$AGENT_NAME" "$AGENT_MODEL" >> "$body" && \
+   gh issue create [-R <owner/repo>] --title "$(cat "$t")" --body-file "$body"; rc=$?; rm -f "$body" "$t"; (exit $rc)
+   ```
+
+   The title is never typed inside double quotes, so no backtick span, `$`
+   or `$(...)` in it is run or expanded; the closing `TITLE` stands alone at
+   the start of its line, like `BODY` (item 4). Report the issue's URL, which
+   `gh issue create` prints, only when the chain exits 0; otherwise say the
+   issue was not opened. Then save the brainstorm on it as a separate
    comment (items 3 and 4), which needs its own yes.
 3. **Public-project check.** Before showing the comment, or a new anchor
    issue's title and body, check that text against the project's
