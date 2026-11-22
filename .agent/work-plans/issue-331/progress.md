@@ -267,3 +267,13 @@ Scope: the 11 round-2 findings (review at `8f6a8835`) against fix commits 0377a4
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-21 19:43 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (orchestrator; round-3 pre-push review approved with no findings, and the host's full pre-commit pass over the branch passed)
+**After**: publish
+**Decision**: publish
+
+Full pass: .venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD) on HEAD 7e72a46d exited 0 with no file rewritten. main moved meanwhile (PR #553 merged); git merge-tree shows this branch merges with the new main without conflict, so it is published unmerged, keeping the reviewed head as the pushed head.
