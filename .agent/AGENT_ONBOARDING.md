@@ -63,8 +63,9 @@ task, review a PR, brainstorm, or run research, read the corresponding
 `SKILL.md` and follow its steps.
 
 Available workflow skills: `review-issue`, `plan-task`, `review-plan`,
-`review-code`, `brainstorm`, `research`, `audit-workspace`, `audit-project`,
-`gather-project-knowledge`, `onboard-project`, `brand-guidelines`,
+`review-code`, `brainstorm`, `design-discussion`, `research`,
+`audit-workspace`, `audit-project`, `gather-project-knowledge`,
+`onboard-project`, `brand-guidelines`,
 `triage-reviews`, `address-findings`, `run-issue`, `skill-importer`,
 `document-package`, `issue-triage`, `test-engineering`.
 

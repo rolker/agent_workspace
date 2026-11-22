@@ -248,3 +248,10 @@ an issue's timeline (ADR-0013), and an entry there derails a later
   ideas is the user's call, not this skill's.
 - **Keep it conversational** — this is the most informal of the lifecycle
   skills. Be thorough but not rigid.
+
+## What this is not
+
+- Not a challenge to an idea. `brainstorm` lists options in one pass;
+  `/design-discussion` is a two-way conversation that attacks and defends an
+  idea or a design in progress and lands on continue, prune, shelve or
+  clearer but undecided.
