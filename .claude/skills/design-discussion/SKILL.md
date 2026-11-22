@@ -98,8 +98,8 @@ session.
     in another git repository would resolve that enclosing repository.
   - `github` is `yes`: its evidence names the repository (`gh repo view resolves the
     repository to github.com/<owner/repo>`). Show that `<owner/repo>` to the user and
-    query it explicitly, `gh repo view <owner/repo> --json hasIssuesEnabled --jq
-    .hasIssuesEnabled` (the field the audit itself reads), passing `-R <owner/repo>`
+    query it explicitly, `gh repo view github.com/<owner/repo> --json hasIssuesEnabled --jq
+    .hasIssuesEnabled` (the field the audit itself reads), passing `-R github.com/<owner/repo>`
     on every later `gh` call for this project too:
     - `false`, or the call fails (issues disabled, or cannot be read): say so
       plainly and stop before any tracked write: no worktree, commit, comment or file.
@@ -112,7 +112,7 @@ session.
       `--body-file`). Write the body with a quoted heredoc and pass the title without
       shell expansion, never typed inside double quotes, so no backtick span, `$` or
       `$(...)` in either is run or expanded: the chain in `brainstorm` Step 4 item 2,
-      with `-R <owner/repo>`. Report the issue's URL only when that chain exits 0. The
+      with `-R github.com/<owner/repo>`. Report the issue's URL only when that chain exits 0. The
       session then proceeds as for any anchored discussion. On a no, say
       plainly that nothing can be saved and stop before any tracked write, as above.
 

@@ -159,7 +159,7 @@ one this step opens for it.
 The topic's root is the project root (the Workspace root section, above)
 when the topic is a project's, else the workspace. Its repository (`<owner/repo>`) is what
 `gh repo view --json nameWithOwner --jq .nameWithOwner` prints, run in that
-root. Pass `-R <owner/repo>` on every `gh` call below whenever the topic's root
+root. Pass `-R github.com/<owner/repo>` on every `gh` call below whenever the topic's root
 is not the session's own root.
 
 1. **Issues and `gh` first.** Before asking about an issue, check that the
@@ -183,7 +183,7 @@ is not the session's own root.
      saved (below). When it is `yes`, its evidence names the repository
      (`gh repo view resolves the repository to github.com/<owner/repo>`);
      check that it is the `<owner/repo>` resolved above, and tell the two
-     cases apart with `gh repo view <owner/repo> --json hasIssuesEnabled
+     cases apart with `gh repo view github.com/<owner/repo> --json hasIssuesEnabled
      --jq .hasIssuesEnabled` (the field the audit itself reads), naming the
      repository explicitly rather than letting gh walk up from a folder:
      - `false`, or the call fails: **issues are disabled** (or cannot be
@@ -225,7 +225,7 @@ is not the session's own root.
    <the issue title exactly as shown>
    TITLE
    printf '\n---\n**Authored-By**: `%s`\n**Model**: `%s`\n' "$AGENT_NAME" "$AGENT_MODEL" >> "$body" && \
-   gh issue create [-R <owner/repo>] --title "$(cat "$t")" --body-file "$body"; rc=$?; rm -f "$body" "$t"; (exit $rc)
+   gh issue create [-R github.com/<owner/repo>] --title "$(cat "$t")" --body-file "$body"; rc=$?; rm -f "$body" "$t"; (exit $rc)
    ```
 
    The title is never typed inside double quotes, so no backtick span, `$`
@@ -239,7 +239,7 @@ is not the session's own root.
    `.agents/README.md` rules (for example, no site data) and remove what they
    forbid. Say what was removed.
 4. **Show, then post on a yes.** Show the full comment text and the target
-   `<owner/repo>#<N>` with its title (`gh issue view <N> [-R <owner/repo>] --json
+   `<owner/repo>#<N>` with its title (`gh issue view <N> [-R github.com/<owner/repo>] --json
    title --jq .title`). On the user's yes, in one command chain: resolve `$WS_ROOT`, `cd` into the topic's
    root, set the identity, write the body to a file in the session's
    scratchpad **verbatim** (a quoted heredoc,
@@ -256,7 +256,7 @@ is not the session's own root.
    <the comment text exactly as shown, without the signature>
    BODY
    printf '\n---\n**Authored-By**: `%s`\n**Model**: `%s`\n' "$AGENT_NAME" "$AGENT_MODEL" >> "$body" && \
-   gh issue comment <N> [-R <owner/repo>] --body-file "$body"; rc=$?; rm -f "$body"; (exit $rc)
+   gh issue comment <N> [-R github.com/<owner/repo>] --body-file "$body"; rc=$?; rm -f "$body"; (exit $rc)
    ```
 
    `<scratch dir>` is the session's scratchpad directory when the framework
@@ -268,7 +268,7 @@ is not the session's own root.
    `.` fallback still names the workspace after the `cd`. The closing `BODY`
    stands alone at the start of its line (no list indent); if the text holds
    a line that is exactly `BODY`, pick another delimiter. Use
-   `-R <owner/repo>` whenever the topic's root is not the session's own root
+   `-R github.com/<owner/repo>` whenever the topic's root is not the session's own root
    (above). Never `--body`. Report the comment's URL,
    which `gh issue comment` prints, only when the chain exits 0; otherwise
    say the post failed.
