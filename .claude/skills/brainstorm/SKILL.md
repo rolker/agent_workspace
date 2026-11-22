@@ -219,8 +219,9 @@ is not the session's own root.
    issue's title and body, check that text against the project's
    `.agents/README.md` rules (for example, no site data) and remove what they
    forbid. Say what was removed.
-4. **Show, then post on a yes.** Show the full comment text. On the user's
-   yes, in one command chain: resolve `$WS_ROOT`, `cd` into the topic's
+4. **Show, then post on a yes.** Show the full comment text and the target
+   `<owner/repo>#<N>` with its title (`gh issue view <N> [-R <owner/repo>] --json
+   title --jq .title`). On the user's yes, in one command chain: resolve `$WS_ROOT`, `cd` into the topic's
    root, set the identity, write the body to a file in the session's
    scratchpad **verbatim** (a quoted heredoc,
    so no backtick span, `$` or `$(...)` in the text is run or expanded),
