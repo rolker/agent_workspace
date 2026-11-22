@@ -297,3 +297,20 @@ Findings for the fix pass: (1) merge origin/main into the branch; resolve .claud
 - `bash .agent/scripts/tests/test_plugin_manifest.sh`: `test_plugin_manifest: 12 passed, 0 failed`
 - item 2's chain, placeholders filled and `gh` stubbed as a shell function: title with backticks, `$(...)` and `$HOME` passed verbatim; exit 0 on gh 0, 1 on gh 1; both scratch files removed
 - No script changed; the full pre-commit pass was left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-21 19:46 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-552 at `5e127255`
+**Base**: main
+**Depth**: Standard (reason: round 4 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 4 | **Ship**: recommended — no must-fix findings; all three checkpoint findings and the round-3 suggestion resolved
+
+Scope: fix diff 6eda5b17..5e127255 against the Checkpoint (After: publish, Decision: address) findings and the round-3 suggestion; main's own content from the merge of PR #553 not reviewed. (1) origin/main is an ancestor of HEAD; `.claude-plugin/plugin.json` differs from origin/main only by the added `./.claude/skills/brainstorm` line, `design-discussion` kept; re-running `make generate-user-tier-skills` left the tree clean (matches generator output). `brainstorm/SKILL.md` keeps main's `## What this is not` section verbatim (now line 272). (2) Step 4 item 2 now spells the issue-create chain in full: `t` by mktemp right after `body`, quoted `TITLE` heredoc after `BODY`, last line `gh issue create [-R ...] --title "$(cat "$t")" --body-file "$body"; rc=$?; rm -f "$body" "$t"; (exit $rc)`, identical prefix to item 4's chain; URL reported only on exit 0. (3) design-discussion line 34-35: "`/brainstorm` is available (#552); `/research` is not yet (#331)" — accurate once this branch merges. Cross-model: skipped (round-4 convergence check, per handoff). Tests: test_skill_paths 171 passed, 0 failed; test_plugin_manifest 12 passed, 0 failed. A stub-gh re-run of item 2's chain was denied by the sandbox and not run in this round (the implementation entry and round 3 report one). Pre-commit not run (host runs the full pass).
+
+### Findings
+- [ ] No issues found. LGTM.
