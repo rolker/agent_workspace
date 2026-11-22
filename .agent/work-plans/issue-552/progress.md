@@ -575,3 +575,18 @@ Keep the host the audit checked: gh repo view github.com/<owner/repo> and -R git
 - [x] Keep the audited host: `gh repo view github.com/<owner/repo>` and `-R github.com/<owner/repo>` — `.claude/skills/design-discussion/SKILL.md:101,102,115`, `.claude/skills/brainstorm/SKILL.md:162,186,228,242,259,271`
 
 Suites run: test_skill_paths.sh — `test_skill_paths: 198 passed, 0 failed`. Full pre-commit pass left to the host.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-21 20:40 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #555 at `ff748bc6`
+**Depth**: Deep (reason: round 5 convergence check per handoff; whole-diff tier unchanged)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Narrow scope: the Local Review at `998cce3d` (1 suggestion) and the fix diff since it (5bdc6bd7, progress entries). Cross-model: skipped (convergence check, per handoff). The suggestion is resolved: every gh call that takes the audit's repository now names the host, `gh repo view github.com/<owner/repo>` and `-R github.com/<owner/repo>` (design-discussion:101-102,115; brainstorm:162,186,228,242,259,271); grep finds no remaining bare `<owner/repo>` passed to gh (the other mentions are prose or the nameWithOwner comparison). gh accepts `[HOST/]OWNER/REPO` for both forms. The fix diff introduces no defect. test_skill_paths.sh 198 passed, 0 failed. No pre-commit pass (per handoff).
+
+### Findings
+- [ ] No issues found. LGTM.
