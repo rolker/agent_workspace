@@ -458,7 +458,7 @@ Narrow scope: the four suggestions of the Local Review at `32c36b5f` and the fix
 **CI**: pending
 
 ### Findings
-- [ ] (suggestion, Local Review @ `57007aa`) when the fact is `no` because the project is "enabled but none was ever opened", the plain "say so" message states the rule but not the remedy; tell the user that opening the project's first issue themselves makes the result saveable on a re-run — `.claude/skills/brainstorm/SKILL.md:178-185`
+- [x] (suggestion, Local Review @ `57007aa`) when the fact is `no` because the project is "enabled but none was ever opened", the plain "say so" message states the rule but not the remedy; tell the user that opening the project's first issue themselves makes the result saveable on a re-run — `.claude/skills/brainstorm/SKILL.md:178-185`
 
 ### False positives
 

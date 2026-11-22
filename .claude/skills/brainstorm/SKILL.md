@@ -175,14 +175,26 @@ is not the session's own root.
    - for a project's topic, the project uses issues: the `issues` fact of
      `"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --facts --format
      text --dir <project root>` (as `onboard-project` reads it); ask the user
-     when it is `unknown`. `no` includes "enabled but none was ever opened"
-     (the audit's rule), so a project's first issue is the user's call, not
-     this skill's. The workspace uses issues.
+     when it is `unknown`. The workspace uses issues.
+
+     The audit's `no` covers two cases; tell them apart with `gh repo view
+     [-R <owner/repo>] --json hasIssuesEnabled --jq .hasIssuesEnabled` (the
+     field the audit itself reads):
+     - `false`, or the call fails: **issues are disabled** (or cannot be
+       read), and nothing can be saved (below).
+     - `true`: **issues are enabled but none was ever opened**, which the
+       audit counts as not using them. Explain that to the user: the
+       brainstorm is saved as a comment on an issue, and this project has
+       none yet. Ask whether to open the project's first issue as its
+       anchor. On a yes, open it through item 2's offer (title and body
+       shown in full, the public-project check, its chain) and save the
+       brainstorm there (items 3 and 4); on a no, nothing is saved.
 
    If `gh` is missing or not authenticated, the project is not registered,
-   `<owner/repo>` does not resolve, or the fact is `no`, the result stays in
-   the conversation. Say so plainly; write nothing anywhere else, and never
-   fall back to the workspace repository for a project's topic.
+   `<owner/repo>` does not resolve, issues are disabled, or the user declines
+   the project's first issue, the result stays in the conversation. Say so
+   plainly, naming which of these it is; write nothing anywhere else, and
+   never fall back to the workspace repository for a project's topic.
 2. **Anchor issue.** Ask which issue the brainstorm belongs to. If there is
    none, offer to open one (Issue-First Policy). Its body is a short statement
    of the topic, not the brainstorm. Give its title and body the

@@ -88,10 +88,23 @@ session.
   ends.
 - **A project that uses no issues is not supported yet.** Whether it uses them is the
   `issues` fact of `"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --facts
-  --format text`, run in the project's root; ask the user when it is `unknown`. When it
-  is `no`, say so plainly and stop before any tracked write: no worktree, commit,
-  comment or file. The skill has no anchor to
-  write to or resume from there, and no worktree route that needs no issue. The
+  --format text`, run in the project's root; ask the user when it is `unknown`. The
+  audit's `no` covers two cases; tell them apart with `gh repo view --json
+  hasIssuesEnabled --jq .hasIssuesEnabled` in the project's root (the field the audit
+  itself reads):
+  - `false`, or the call fails (issues disabled, or no GitHub repository): say so
+    plainly and stop before any tracked write: no worktree, commit, comment or file.
+  - `true` (issues enabled, but none was ever opened, which the audit counts as not
+    using them): explain that to the user, since the discussion is saved on an anchor
+    issue and the project has none yet, and ask whether to open the project's first
+    issue as the anchor. On a yes, open it as the anchor issue (above), with its title
+    and body shown in full and checked against the project's `.agents/README.md` rules
+    first, and the body written and signed as Step 7 says (identity in the same chain,
+    `--body-file`); the session then proceeds as for any anchored discussion. On a no, say
+    plainly that nothing can be saved and stop before any tracked write, as above.
+
+  Where no anchor can be had, the skill has nothing to
+  write to or resume from, and no worktree route that needs no issue. The
   modular-workflow issue (#544: GitHub-optional backends, files as work items, work keyed
   by branch) and the records-lookup issue (#393: where a project's records live) are
   where that support comes from.
