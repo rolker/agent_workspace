@@ -314,3 +314,13 @@ Scope: fix diff 6eda5b17..5e127255 against the Checkpoint (After: publish, Decis
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-21 19:57 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (orchestrator; round-4 pre-push review approved with no findings, and the host's full pre-commit pass over the merged branch passed)
+**After**: publish
+**Decision**: publish
+
+Full pass: .venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD) on HEAD 31ac4293 (main merged in, PR #553) exited 0 with no file rewritten. The previous full pass (on 5dfa4647) also passed; the address answer before this one was for a merge conflict, not a failed pass.
