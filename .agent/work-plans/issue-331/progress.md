@@ -293,3 +293,13 @@ None open. The sources helper returned no local findings, no dropped entries, an
 
 ### False positives
 None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-21 20:00 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Owner answered "Merge" for PR #554 after a plain-words restatement of what it does: reviews clean (round 3 approved, triage no open findings), all 10 CI checks passed, Copilot disabled.
