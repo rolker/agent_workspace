@@ -561,3 +561,17 @@ Narrow scope: the Local Review at `5cc44242` (1 must-fix, 1 suggestion) and the 
 **Decision**: address
 
 Keep the host the audit checked: gh repo view github.com/<owner/repo> and -R github.com/<owner/repo> in design-discussion/SKILL.md (about lines 101-103) and brainstorm/SKILL.md (about lines 186-187), and anywhere else those skills pass the audit's repository to gh.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-21 20:39 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**PR**: #555 at `5bdc6bd`
+**Addressed**: Integrated Review at `998cce3` (2026-11-21 20:38 -05:00)
+**Commits**: 5bdc6bd
+
+### Actions
+- [x] Keep the audited host: `gh repo view github.com/<owner/repo>` and `-R github.com/<owner/repo>` — `.claude/skills/design-discussion/SKILL.md:101,102,115`, `.claude/skills/brainstorm/SKILL.md:162,186,228,242,259,271`
+
+Suites run: test_skill_paths.sh — `test_skill_paths: 198 passed, 0 failed`. Full pre-commit pass left to the host.
