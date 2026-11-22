@@ -277,3 +277,23 @@ The host's full pre-commit pass on HEAD 5dfa4647 passed (exit 0). But main moved
     Auto-merging .claude/skills/brainstorm/SKILL.md
 
 Findings for the fix pass: (1) merge origin/main into the branch; resolve .claude-plugin/plugin.json by regenerating it with make generate-user-tier-skills (it must list both design-discussion and brainstorm), and check the auto-merged brainstorm/SKILL.md keeps main's "What this is not" pointer to /design-discussion. (2) The round-3 review's one open suggestion: Step 4 item 2 gives the issue-create chain in prose; spell out its final line (gh issue create ... --body-file "$body"; rc=$?; rm -f "$body" "$t"; (exit $rc)) and where t="$(mktemp ...)" goes. (3) design-discussion (now on main) says brainstorm is not available in a project session yet (#552); update that line in .claude/skills/design-discussion/SKILL.md now that this branch makes it available.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-21 19:45 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-552 at `2eb96bca`
+**Addressed**: Local Review (Pre-Push) at `6eda5b17` (2026-11-21 18:38 -05:00), and the host's findings in Checkpoint 2026-11-21 19:43 -05:00
+**Commits**: 6ab50bf3 (merge of origin/main), f33ab550, 2eb96bca
+
+### Actions
+- [x] (checkpoint 1) merged origin/main (PR #553) with a merge commit; the `.claude-plugin/plugin.json` conflict resolved by `make generate-user-tier-skills` (16 skill paths, lists both `brainstorm` and `design-discussion`); auto-merged `.claude/skills/brainstorm/SKILL.md` keeps main's `## What this is not` pointer to `/design-discussion` — 6ab50bf3
+- [x] (checkpoint 2 / review suggestion) Step 4 item 2 now gives the issue-create chain in full: `t` made right after `body`, its quoted `TITLE` heredoc after the body's, last line `gh issue create ... --body-file "$body"; rc=$?; rm -f "$body" "$t"; (exit $rc)`; URL reported only on exit 0 — `.claude/skills/brainstorm/SKILL.md` Step 4 item 2
+- [x] (checkpoint 3) design-discussion's "Before this" line now says `/brainstorm` is available in a project session (#552) and `/research` is not yet (#331) — `.claude/skills/design-discussion/SKILL.md:33-35`
+
+### Checks
+- `bash .agent/scripts/tests/test_skill_paths.sh`: `test_skill_paths: 171 passed, 0 failed`
+- `bash .agent/scripts/tests/test_plugin_manifest.sh`: `test_plugin_manifest: 12 passed, 0 failed`
+- item 2's chain, placeholders filled and `gh` stubbed as a shell function: title with backticks, `$(...)` and `$HOME` passed verbatim; exit 0 on gh 0, 1 on gh 1; both scratch files removed
+- No script changed; the full pre-commit pass was left to the host.
