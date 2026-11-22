@@ -261,3 +261,19 @@ Round-2 findings: all 6 resolved by 4af32bcd..99eed9ef (checked in `.claude/skil
 
 ### Findings
 - [ ] (suggestion) Item 2 gives the issue-create chain as edits to item 4's in prose ("and `rm -f "$body" "$t"`") without saying that replaces item 4's `rm -f "$body"` while `rc=$?;` and `(exit $rc)` stay; spell out the final line (`gh issue create ... --body-file "$body"; rc=$?; rm -f "$body" "$t"; (exit $rc)`) and where `t="$(mktemp ...)"` goes, so a reader cannot drop the kept status — `.claude/skills/brainstorm/SKILL.md:189`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-21 19:43 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (orchestrator; the branch no longer merges with main, so the reviewed head cannot be the merged head)
+**After**: publish
+**Decision**: address
+
+The host's full pre-commit pass on HEAD 5dfa4647 passed (exit 0). But main moved after the round-3 review: PR #553 (design-discussion, #370 Part 1) merged, and `git merge-tree --write-tree HEAD origin/main` reports:
+
+    Auto-merging .claude-plugin/plugin.json
+    CONFLICT (content): Merge conflict in .claude-plugin/plugin.json
+    Auto-merging .claude/skills/brainstorm/SKILL.md
+
+Findings for the fix pass: (1) merge origin/main into the branch; resolve .claude-plugin/plugin.json by regenerating it with make generate-user-tier-skills (it must list both design-discussion and brainstorm), and check the auto-merged brainstorm/SKILL.md keeps main's "What this is not" pointer to /design-discussion. (2) The round-3 review's one open suggestion: Step 4 item 2 gives the issue-create chain in prose; spell out its final line (gh issue create ... --body-file "$body"; rc=$?; rm -f "$body" "$t"; (exit $rc)) and where t="$(mktemp ...)" goes. (3) design-discussion (now on main) says brainstorm is not available in a project session yet (#552); update that line in .claude/skills/design-discussion/SKILL.md now that this branch makes it available.
