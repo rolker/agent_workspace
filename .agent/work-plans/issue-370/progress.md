@@ -632,3 +632,13 @@ Full pass: .venv/bin/pre-commit run --files $(git diff --name-only origin/main..
 
 ### False positives
 (none)
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-21 19:42 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Owner answered "Merge" for PR #553 (Part 1 of #370): reviews clean (round 3 approved, triage no open findings), all 10 CI checks passed. The issue stays open; Part 2 (Create plus the location question) depends on #551.
