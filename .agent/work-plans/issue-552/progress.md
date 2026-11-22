@@ -461,3 +461,15 @@ Narrow scope: the four suggestions of the Local Review at `32c36b5f` and the fix
 - [ ] (suggestion, Local Review @ `57007aa`) when the fact is `no` because the project is "enabled but none was ever opened", the plain "say so" message states the rule but not the remedy; tell the user that opening the project's first issue themselves makes the result saveable on a re-run — `.claude/skills/brainstorm/SKILL.md:178-185`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-21 20:33 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: findings
+**Decision**: address
+
+The owner, asked whether to fix the open suggestion (tell the user to open the first issue themselves) or merge, answered: "Why can't it save? If it's because it's unclear if an issue should be opened, why not just explain the situation and ask?"
+
+Direction for the fix pass: the audit's issues fact "no" covers two cases. Issues disabled: nothing can be saved; say so. Issues enabled but none ever opened: explain the situation and ask whether to open the project's first issue as the anchor; on a yes, open it (with the existing preview and public-project check) and save. Apply the same change to design-discussion/SKILL.md (its Step 0 uses the same fact). Check first how the audit distinguishes the two cases.
