@@ -368,3 +368,21 @@ Fix the two findings in the newest Integrated Review: merge origin/main (keep bo
 - `bash .agent/scripts/tests/test_skill_paths.sh` (after merge and after the edit): `test_skill_paths: 198 passed, 0 failed`
 - `bash .agent/scripts/tests/test_plugin_manifest.sh` (after merge): `test_plugin_manifest: 12 passed, 0 failed`
 - No pre-commit pass over the files; the full pass is left to the host. All commits used SKIP=validate-script-tests.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-21 20:09 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #555 at `32c36b5f`
+**Depth**: Deep (reason: whole-diff 721 lines; fix diff since ba060554 is the origin/main merge, plugin.json and a design-discussion sentence)
+**Must-fix**: 0 | **Suggestions**: 4
+
+Fix diff verified: merge resolution in test_skill_paths.sh keeps both research and brainstorm in the session_scope both list; plugin.json matches the generator (test_plugin_manifest.sh 12/0, incl. claude plugin validate); design-discussion:34 is accurate now that #331 is closed. test_skill_paths.sh 198/0. Cross-model: gemini and codex completed (EXIT=0); their must-fix claims on brainstorm Step 4 were triaged to suggestions or dropped (scratchpad dir is tracked; GH_HOST speculative; plugin.json already lists research).
+
+### Findings
+- [ ] (suggestion) "it fails in a folder that is not git" is false for a non-git project folder nested in another git repo: gh repo view walks up and may resolve an unrelated repo; check git rev-parse --show-toplevel as research does, and show the resolved <owner/repo>#<N> with its title (gh issue view) before the yes — `.claude/skills/brainstorm/SKILL.md:170`, `:181`
+- [ ] (suggestion) issues fact is "no" when issues are enabled but none was ever opened, so a fresh project can never get its first anchor issue; say whether that is intended — `.claude/skills/brainstorm/SKILL.md:172`
+- [ ] (suggestion) "#335/#551 may move it": #335 is closed and unrelated; cite #551 (or research's Project digest section) only — `.claude/skills/brainstorm/SKILL.md:77`
+- [ ] (suggestion) README now says brainstorm writes no progress section, but collaborative.md still lists brainstorm as a step without noting the exception — `.agent/workflows/README.md:97` vs `.agent/workflows/collaborative.md:10`
