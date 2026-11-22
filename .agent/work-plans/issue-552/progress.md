@@ -431,3 +431,18 @@ Owner answered "Re-review, then merge". The triage-reviews phase fixed the four 
 - [x] collaborative.md brainstorm row: 2506b7b1 notes it writes no progress.md section, consistent with workflows/README.md:97 — `.agent/workflows/collaborative.md:10`
 
 Verified by reading the 2506b7b1 diff and the cited code. Checks: test_skill_paths.sh 198 passed, 0 failed. Full pre-commit pass left to the host.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-21 20:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #555 at `57007aa1`
+**Depth**: Deep (reason: round 2 convergence check per handoff; whole-diff tier unchanged)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Narrow scope: the four suggestions of the Local Review at `32c36b5f` and the fix diff since it (2506b7b1, 9ad4a377, progress entries). Cross-model: skipped (convergence check, per handoff). All four are resolved: brainstorm/SKILL.md:170-174 adds the git-toplevel check (same test as research/SKILL.md:191) and shows the resolved repo; item 4 (:222-224) shows `<owner/repo>#<N>` with its title; :77 cites #551 only (#551 open, about where a project keeps its documents); collaborative.md:10 notes brainstorm writes no progress.md section. Behaviour choice checked: project_integration_audit.sh:548-553 gives `issues no` for "enabled ..., but none was ever opened", and design-discussion/SKILL.md:89-93 stops before any tracked write on the same `no`, so brainstorm keeping the result in the conversation and leaving the first issue to the user is consistent; one opened issue flips the fact to `yes` (`_OI -gt 0`). test_skill_paths.sh 198 passed, 0 failed. No pre-commit pass (per handoff).
+
+### Findings
+- [ ] (suggestion) when the `no` comes from "enabled but none was ever opened", the "say so plainly" message should tell the user that opening the project's first issue themselves makes the result saveable on a re-run; today the skill states the rule but not the remedy — `.claude/skills/brainstorm/SKILL.md:178-185`
