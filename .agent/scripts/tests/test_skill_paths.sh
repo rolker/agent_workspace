@@ -167,7 +167,7 @@ fi
 # typo in the field name would silently drop a skill from the user tier.
 for name in start-task plan-task review-plan review-code triage-reviews \
             test-engineering sitrep run-issue review-issue address-findings \
-            orchestrator research; do
+            orchestrator research brainstorm; do
     f="$SKILLS/$name/SKILL.md"
     [[ -f "$f" ]] || { fail "expected skill is missing: $name"; continue; }
     [[ "$(scope_of "$f")" == "both" ]] \

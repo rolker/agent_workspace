@@ -55,13 +55,6 @@ Each step appends a section when it runs. No blank sections — headers appear
 only when work actually happens.
 
 ```markdown
-## Brainstorm
-**Status**: complete
-**When**: 2026-03-30 16:00
-**By**: Roland + Claude Code (claude-opus-4-6)
-
-Key decisions from the brainstorm session...
-
 ## Plan
 **Status**: complete
 **When**: 2026-03-30 17:00
@@ -99,8 +92,11 @@ Free-form markdown after the metadata. Can include:
 
 ### Who writes entries
 
-- **Skills** append their section when they run (brainstorm, plan-task,
-  review-code, triage-reviews, etc.)
+- **Skills** append their section when they run (plan-task, review-code,
+  triage-reviews, etc.)
+- **brainstorm** writes no section: its result is not an entry type
+  (ADR-0013) and is saved, on a yes, as a `## Brainstorm: <topic>` comment
+  on the issue (the `brainstorm` skill's Step 4)
 - **Humans** can write entries directly (e.g., user-testing notes)
 - **worktree_create.sh** creates the file with frontmatter and heading
 
