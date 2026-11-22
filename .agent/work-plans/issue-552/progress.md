@@ -504,3 +504,20 @@ Narrow scope: the Integrated Review's one suggestion at `57007aa` and the fix di
 ### Findings
 - [x] (must-fix) design-discussion runs `gh repo view --json hasIssuesEnabled` in the project's root with no toplevel or `github`-fact guard; when the audit's `no` comes from github `no` because the root is not a git toplevel (project_integration_audit.sh:428-430), gh walks up to an enclosing repository, can answer `true`, and the skill would offer to open the "first issue" in the wrong repository (before this change that case stopped). Take the enabled branch only when the audit's `github` fact is `yes`, and query that repository (`-R github.com/<repo>`) — `.claude/skills/design-discussion/SKILL.md:91-99`
 - [x] (suggestion) the pointer to Step 7 covers file, `--body-file`, signature and identity but not a quoted heredoc for the body or a title passed without shell expansion (brainstorm item 2 spells both out); a first issue in a possibly public project is where that matters. Name both, or point at brainstorm item 2's chain — `.claude/skills/design-discussion/SKILL.md:100-103`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-21 20:37 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #555 at `8599d79e`
+**Addressed**: Local Review at `5cc44242` (2026-11-21 20:35 -05:00)
+**Commits**: ebcc553d, 8599d79e
+
+### Actions
+- [x] (must-fix) take the first-issue branch only when the audit's `github` fact is `yes`; query the repository its evidence names (`gh repo view <owner/repo> --json hasIssuesEnabled`, `-R` on later calls), never gh from the root; brainstorm Step 4 item 1 given the same `github`-fact guard alongside its toplevel check — `.claude/skills/design-discussion/SKILL.md:91-115`, `.claude/skills/brainstorm/SKILL.md:180-201`
+- [x] (suggestion) name the quoted heredoc body and the unexpanded title, pointing at brainstorm Step 4 item 2's chain, URL reported only on exit 0 — `.claude/skills/design-discussion/SKILL.md:111-116`
+
+### Checks
+- `bash .agent/scripts/tests/test_skill_paths.sh`: `test_skill_paths: 198 passed, 0 failed`
+- No scripts changed; full pre-commit pass left to the host.
