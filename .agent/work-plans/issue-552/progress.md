@@ -536,3 +536,18 @@ Narrow scope: the Local Review at `5cc44242` (1 must-fix, 1 suggestion) and the 
 
 ### Findings
 - [ ] (suggestion) the audit resolves the repository with `GH_HOST=github.com` (project_integration_audit.sh:452) and names it as `github.com/<owner/repo>`, but both skills query bare `gh repo view <owner/repo>` / `-R <owner/repo>`, which gh resolves against `GH_HOST` or its default host; with an enterprise host configured it would read a different server than the audit checked. Keep the host: `gh repo view github.com/<owner/repo>` and `-R github.com/<owner/repo>` — `.claude/skills/design-discussion/SKILL.md:101-103`, `.claude/skills/brainstorm/SKILL.md:186-187`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-21 20:38 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**PR**: #555 at `998cce3`
+**Sources**: 2 (Local Review @ `998cce3`, CI rollup); no GitHub reviews or comments (Copilot disabled, no human review)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+- [ ] (suggestion, Local Review @ `998cce3`) Valid, low severity: the audit reads the repository with `GH_HOST=github.com` (`project_integration_audit.sh:452`) and reports it as `github.com/<owner/repo>`, but the skills then run bare `gh repo view <owner/repo>` / `-R <owner/repo>`. gh resolves a bare OWNER/REPO against `GH_HOST` or its default host (documented form `[HOST/]OWNER/REPO`), so a shell with an enterprise `GH_HOST` would query a different server than the audit checked. Not reachable on this owner's setup (`~/.config/gh/hosts.yml` holds only github.com, `GH_HOST=github.com` in the environment), but the skills ship to other setups and the fix is a prefix. Keep the host: `gh repo view github.com/<owner/repo>` and `-R github.com/<owner/repo>` — `.claude/skills/design-discussion/SKILL.md:101-103`, `.claude/skills/brainstorm/SKILL.md:186-187`
+
+### False positives
