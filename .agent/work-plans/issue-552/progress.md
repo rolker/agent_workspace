@@ -446,3 +446,18 @@ Narrow scope: the four suggestions of the Local Review at `32c36b5f` and the fix
 
 ### Findings
 - [ ] (suggestion) when the `no` comes from "enabled but none was ever opened", the "say so plainly" message should tell the user that opening the project's first issue themselves makes the result saveable on a re-run; today the skill states the rule but not the remedy — `.claude/skills/brainstorm/SKILL.md:178-185`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-21 20:28 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**PR**: #555 at `57007aa`
+**Sources**: 2 (Local Review @ `57007aa`, CI rollup); Copilot disabled, no human review
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+- [ ] (suggestion, Local Review @ `57007aa`) when the fact is `no` because the project is "enabled but none was ever opened", the plain "say so" message states the rule but not the remedy; tell the user that opening the project's first issue themselves makes the result saveable on a re-run — `.claude/skills/brainstorm/SKILL.md:178-185`
+
+### False positives
