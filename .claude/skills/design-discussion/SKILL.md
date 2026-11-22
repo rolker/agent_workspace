@@ -31,8 +31,8 @@ to split a sub-component or a new feature off as a part with its own design. Rea
 it before the first implementation issue of a new design, not only when doubts appear.
 
 **Before this** (optional): `/research` on the topic, then `/brainstorm` for options;
-Step 1 reads what they left. In a project session neither is available yet (#331 for
-`research`, #552 for `brainstorm`).
+Step 1 reads what they left. In a project session `/brainstorm` is available (#552);
+`/research` is not yet (#331).
 
 It is a conversation, and its product is the level's tracked documents. A discussion
 bigger than one session loses its details unless they are saved where every later
