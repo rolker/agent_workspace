@@ -337,7 +337,7 @@ Full pass: .venv/bin/pre-commit run --files $(git diff --name-only origin/main..
 
 ### Findings
 - [x] (must-fix, host, verified) Branch no longer merges with main after #554 (#331) merged: `git merge-tree --write-tree HEAD origin/main` reports `CONFLICT (content): Merge conflict in .agent/scripts/tests/test_skill_paths.sh` (both branches add a name to the session_scope: both list; keep both). Also regenerate `.claude-plugin/plugin.json` with `make generate-user-tier-skills` so it lists research, brainstorm and design-discussion — `.agent/scripts/tests/test_skill_paths.sh`
-- [ ] (must-fix, host, verified) `.claude/skills/design-discussion/SKILL.md` lines 34-35 say "In a project session `/brainstorm` is available (#552); `/research` is not yet (#331)" on this branch (main: "neither is available yet"). #331 is merged, so after this PR both are available and the line must say so — `.claude/skills/design-discussion/SKILL.md`
+- [x] (must-fix, host, verified) `.claude/skills/design-discussion/SKILL.md` lines 34-35 say "In a project session `/brainstorm` is available (#552); `/research` is not yet (#331)" on this branch (main: "neither is available yet"). #331 is merged, so after this PR both are available and the line must say so — `.claude/skills/design-discussion/SKILL.md`
 
 ### False positives
 
