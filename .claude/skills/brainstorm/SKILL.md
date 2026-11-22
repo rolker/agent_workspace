@@ -74,7 +74,7 @@ Every source is optional. Read what exists, and say in the output (the
 only when the topic is about a project):
 
 - `.agents/workspace-context/research_digest.md` — the project's research
-  digest (the path `design-discussion` reads; #335/#551 may move it)
+  digest (the path `design-discussion` reads; #551 may move it)
 - `.agents/README.md` — the project's agent rules, including what may not be
   written in its public places
 - the project's principles (`PRINCIPLES.md` or `docs/principles.md`), design
@@ -167,12 +167,17 @@ is not the session's own root.
    - `gh auth status` succeeds;
    - the topic's root is known and `<owner/repo>` resolves: a project's topic
      names a registered project (Workspace root, above), and `gh repo view`
-     run in that root prints a repository (it fails in a folder that is not
-     git or has no GitHub remote);
+     run in that root prints a repository (it fails with no GitHub remote).
+     `gh repo view` walks up from a folder, so a folder inside another git
+     repository resolves that one: first check the root is itself a git
+     toplevel (`git -C <root> rev-parse --show-toplevel` equals the root, as
+     `research` checks), and show the resolved `<owner/repo>` to the user;
    - for a project's topic, the project uses issues: the `issues` fact of
      `"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --facts --format
      text --dir <project root>` (as `onboard-project` reads it); ask the user
-     when it is `unknown`. The workspace uses issues.
+     when it is `unknown`. `no` includes "enabled but none was ever opened"
+     (the audit's rule), so a project's first issue is the user's call, not
+     this skill's. The workspace uses issues.
 
    If `gh` is missing or not authenticated, the project is not registered,
    `<owner/repo>` does not resolve, or the fact is `no`, the result stays in

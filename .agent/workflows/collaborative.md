@@ -7,7 +7,7 @@ Use for features, design work, and tasks where judgment calls matter.
 
 | Step | Owner | Description |
 |------|-------|-------------|
-| brainstorm | human checkpoint | Explore approaches. Agent presents options, human decides direction. Includes assessing the issue for readiness. |
+| brainstorm | human checkpoint | Explore approaches. Agent presents options, human decides direction. Includes assessing the issue for readiness. Writes no progress.md section (its result is an optional issue comment). |
 | plan | human approves | Agent drafts work plan, human reviews and approves before implementation begins. |
 | plan-review | agent | Independent evaluation of the committed plan (scope, approach, principle alignment). |
 | implement | agent | Write code, make changes. Agent drives; human available for questions. |
