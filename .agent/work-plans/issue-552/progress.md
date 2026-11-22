@@ -340,3 +340,13 @@ Full pass: .venv/bin/pre-commit run --files $(git diff --name-only origin/main..
 - [ ] (must-fix, host, verified) `.claude/skills/design-discussion/SKILL.md` lines 34-35 say "In a project session `/brainstorm` is available (#552); `/research` is not yet (#331)" on this branch (main: "neither is available yet"). #331 is merged, so after this PR both are available and the line must say so — `.claude/skills/design-discussion/SKILL.md`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-21 20:02 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (orchestrator; both open findings are mechanical consequences of PR #554 merging: a merge conflict and a now-stale pointer line)
+**After**: findings
+**Decision**: address
+
+Fix the two findings in the newest Integrated Review: merge origin/main (keep both names in test_skill_paths.sh's both list; regenerate plugin.json), and make design-discussion lines 34-35 say /research and /brainstorm are both available in a project session.
