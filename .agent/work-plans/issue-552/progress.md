@@ -404,3 +404,13 @@ Fix diff verified: merge resolution in test_skill_paths.sh keeps both research a
 - [x] (suggestion, Local Review) collaborative.md brainstorm step now notes it writes no progress.md section — `.agent/workflows/collaborative.md` (fixed, uncommitted)
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-21 20:25 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: merge
+**Decision**: address
+
+Owner answered "Re-review, then merge". The triage-reviews phase fixed the four suggestions itself in commit 2506b7b1 (brainstorm/SKILL.md, workflows/collaborative.md), outside triage's role and with no review. The address pass records that commit as the fix (an Implementation entry with **Addressed**), checks it, and the PR-mode review-code then reviews it. Behaviour choice to check in review: issues "no" includes "enabled but none ever opened", so brainstorm leaves a project's first issue to the user.
