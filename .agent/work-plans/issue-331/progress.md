@@ -277,3 +277,19 @@ Scope: the 11 round-2 findings (review at `8f6a8835`) against fix commits 0377a4
 **Decision**: publish
 
 Full pass: .venv/bin/pre-commit run --files $(git diff --name-only origin/main...HEAD) on HEAD 7e72a46d exited 0 with no file rewritten. main moved meanwhile (PR #553 merged); git merge-tree shows this branch merges with the new main without conflict, so it is published unmerged, keeping the reviewed head as the pushed head.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-21 19:54 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**PR**: #554 at `88662d19`
+**Sources**: 1 (Local Review (Pre-Push) rounds 1-3, round 3 approved with no findings; Copilot disabled, no human review)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+None open. The sources helper returned no local findings, no dropped entries, and no GitHub comments at this head.
+
+### False positives
+None.
