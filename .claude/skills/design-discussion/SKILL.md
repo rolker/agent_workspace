@@ -109,7 +109,11 @@ session.
       issue as the anchor. On a yes, open it as the anchor issue (above), with its title
       and body shown in full and checked against the project's `.agents/README.md` rules
       first, and the body written and signed as Step 7 says (identity in the same chain,
-      `--body-file`); the session then proceeds as for any anchored discussion. On a no, say
+      `--body-file`). Write the body with a quoted heredoc and pass the title without
+      shell expansion, never typed inside double quotes, so no backtick span, `$` or
+      `$(...)` in either is run or expanded: the chain in `brainstorm` Step 4 item 2,
+      with `-R <owner/repo>`. Report the issue's URL only when that chain exits 0. The
+      session then proceeds as for any anchored discussion. On a no, say
       plainly that nothing can be saved and stop before any tracked write, as above.
 
   Where no anchor can be had, the skill has nothing to
