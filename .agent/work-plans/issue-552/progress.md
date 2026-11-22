@@ -521,3 +521,18 @@ Narrow scope: the Integrated Review's one suggestion at `57007aa` and the fix di
 ### Checks
 - `bash .agent/scripts/tests/test_skill_paths.sh`: `test_skill_paths: 198 passed, 0 failed`
 - No scripts changed; full pre-commit pass left to the host.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-21 20:38 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #555 at `998cce3d`
+**Depth**: Deep (reason: round 4 convergence check per handoff; whole-diff tier unchanged)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Narrow scope: the Local Review at `5cc44242` (1 must-fix, 1 suggestion) and the fix diff since it (ebcc553d, 8599d79e, progress entries). Cross-model: skipped (convergence check, per handoff). Both prior findings are resolved. Checked: project_integration_audit.sh:457 prints `gh repo view resolves the repository to github.com/$GH_REPO; <where>`, the exact wording both skills parse; `yes` is reachable only when the root is a git toplevel with a remote (:428-430, :434-436), so the enclosing-repository case now stops at `github` `no`. design-discussion:91-117 and brainstorm:180-201 read `github` first, take the issues-enabled branch only on `yes`, query `<owner/repo>` explicitly and pass `-R` on later calls. No tracked write without a yes (issue shown in full, opened on a yes; brainstorm comment needs its own yes). The title/body chain (brainstorm item 2) uses quoted heredocs for both and `--title "$(cat "$t")"`, which is not re-expanded; design-discussion points at it with `-R`. The owner's direction (explain the situation and ask) holds in both skills. test_skill_paths.sh 198 passed, 0 failed. No pre-commit pass (per handoff).
+
+### Findings
+- [ ] (suggestion) the audit resolves the repository with `GH_HOST=github.com` (project_integration_audit.sh:452) and names it as `github.com/<owner/repo>`, but both skills query bare `gh repo view <owner/repo>` / `-R <owner/repo>`, which gh resolves against `GH_HOST` or its default host; with an enterprise host configured it would read a different server than the audit checked. Keep the host: `gh repo view github.com/<owner/repo>` and `-R github.com/<owner/repo>` — `.claude/skills/design-discussion/SKILL.md:101-103`, `.claude/skills/brainstorm/SKILL.md:186-187`
