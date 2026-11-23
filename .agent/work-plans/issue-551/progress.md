@@ -81,3 +81,21 @@ issue: 551
 - [ ] Sequence after #452, or rebase on it, because both edit `onboard-project` and `audit-project` `SKILL.md`.
 - [ ] Plan two PRs: setting keys, resolver, script readers and tests; then the skills' question and the design-discussion "ask when unset".
 - [ ] State in the plan the single candidate list the resolver uses, so `update_roadmap.sh` and `sitrep_root.sh` stop disagreeing about `docs/ROADMAP.md`.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 18:11 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: issue-actions
+**Decision**: proceed
+
+The owner answered the issue review's two open design questions (2026-11-23):
+- Q1, one lookup shared with issue 393 or separate: "Separate, same file (Recommended)". Documents get their own settings (`goals`, `design`, `roadmap`) in `.agent/projects.d/<name>`, read through one helper all six readers call; this issue does not wait for 393.
+- Q2, allowed locations: "Inside the project only (Recommended)". A tracked path inside the project, optionally with `#heading` for a section, or `none`; paths outside the project and separate repositories are refused; a part's documents stay named only by the root's `| Sub-roadmap | Root |` pointer table (ADR-0022).
+
+Host decisions on the rest of the actions (owner may veto):
+- Q3, the design text wording, follows from Q1 and Q2 and is a host decision: the Documentation layers Target drops "not decided" and names the three settings with the fixed search as the fallback for an unset one; OQ-1 is marked answered by this issue; the Direction Format paragraph says its grammar applies to the file the roadmap setting names.
+- One shared candidate list in the helper replaces the differing fixed searches of `update_roadmap.sh` and `sitrep_root.sh`.
+- Two pull requests: first the settings, helper, script readers and tests; then the skills' onboarding and design-discussion question.
+- Sequencing: issue 452 (Copilot review optional) also edits `onboard-project` and `audit-project`; whichever merges second merges main first. No wait: 551's first pull request does not touch the skills.
