@@ -2041,9 +2041,59 @@ adapter_setup() {
     echo "Setup complete. Next: .agent/scripts/adapter build"
 }
 
+# `build` on the tool route: the manifest tool's build for the chosen
+# distro, in the root, with the distro's environment sourced first in the
+# adapter's shell (the inherited prefix paths scrubbed, then
+# /opt/ros/<distro>/setup.bash), as the tool builds in the environment it
+# is run in. The adapter's colcon flags go after `--`, the caller's
+# arguments after them, so they reach every layer; the tool gives colcon
+# the repos on disk as --base-paths, keeps its record and writes
+# <root>/<distro>/setup.bash. Its output and exit status are passed
+# through. No layer argument: one layer is built with the tool directly.
+# The distro rule and the one read of layers.txt run first (a resolve
+# that cannot be used is refused naming the tool's sync); the key check of
+# _rc_check_manifest does not, since the tool reads the resolved files
+# itself: a nested key (grp/repo) builds, while env, test, validate, repos
+# and the worktree verbs still refuse it. The tool refuses package
+# selection (--packages-select and the like) for a layer not built yet,
+# and --packages-up-to (and the other selections colcon resolves in each
+# layer) when the run builds two or more layers; when such a run fails,
+# the adapter says how to run the tool's own step with the environment
+# sourced, since the step the tool names sources nothing.
+_rc_tool_build() {
+    local root bin underlay rc=0 arg selecting=0
+    root="$(_rc_root)" || return 1
+    _rc_tool_distro_select || return 1
+    _rc_tool_read_layers || return 1
+    bin="$(_rc_resolver_bin)"
+    if [ ! -x "$bin" ]; then
+        echo "ERROR: the manifest tool is not installed at $bin; run: make install-repos-manifest (from the workspace main checkout)" >&2
+        return 1
+    fi
+    underlay="$(_rc_underlay)" || return 1
+    unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
+    _rc_source_setup "$underlay" || return 1
+    echo "Running: $bin build --distro $_RC_TOOL_DISTRO -- --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON $* (in $root, $underlay sourced)"
+    (cd "$root" && _rc_nofd "$bin" build --distro "$_RC_TOOL_DISTRO" -- --symlink-install \
+        --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@") || rc=$?
+    for arg in "$@"; do
+        case "$arg" in --packages*|--cmake-target*) selecting=1 ;; esac
+    done
+    if [ "$rc" -ne 0 ] && [ "$selecting" -eq 1 ]; then
+        printf 'NOTE: with package selection the manifest tool builds only layers built before, and --packages-up-to only one layer at a time; the adapter builds every layer, so build without selection first, or run the tool'"'"'s step yourself with the distro'"'"'s environment sourced: source %q && cd %q && %q build --distro %q <layer> -- <colcon arguments>\n' \
+            "$underlay" "$root" "$bin" "$_RC_TOOL_DISTRO" >&2
+    fi
+    return "$rc"
+}
+
 adapter_build() {
     # Build layers in layers.txt order, sourcing each successful layer's
     # local_setup.bash so later layers overlay it. Stop on first failure.
+    # On the tool route: the manifest tool's build (_rc_tool_build).
+    if [ "$(_rc_route)" = tool ]; then
+        _rc_tool_build "$@"
+        return
+    fi
     _rc_require_manifest || return 1
     local underlay layer layer_dir rc
     underlay="$(_rc_underlay)" || return 1

@@ -4215,7 +4215,7 @@ EOF
 # status: prints the file TOOL_STATUS_FILE names and exits TOOL_EXIT; with
 # no TOOL_STATUS_FILE, a format 1 document made from the last resolve and
 # what is on disk (status_stub.py) and its exit status. build: records the
-# underlay's SOURCED_LAYERS and COLCON_PREFIX_PATH as well.
+# underlay's SOURCED_LAYERS, COLCON_PREFIX_PATH and GIT_DIR as well.
 case "\${1:-}" in
     status)
         echo "STATUS_RAN_IN:\$(pwd -P) ARGS:\$*" >> "$sb/status.log"
@@ -4227,7 +4227,7 @@ case "\${1:-}" in
         ;;
     build)
         echo "build stub: ran"
-        echo "TOOL_RAN_IN:\$(pwd -P) ARGS:\$* EXIT:\${TOOL_EXIT:-0} SOURCED:\${SOURCED_LAYERS:-none} PREFIX:\${COLCON_PREFIX_PATH:-unset}" >> "$sb/tool.log"
+        echo "TOOL_RAN_IN:\$(pwd -P) ARGS:\$* EXIT:\${TOOL_EXIT:-0} SOURCED:\${SOURCED_LAYERS:-none} PREFIX:\${COLCON_PREFIX_PATH:-unset} GIT_DIR:\${GIT_DIR:-unset}" >> "$sb/tool.log"
         exit "\${TOOL_EXIT:-0}"
         ;;
 esac
@@ -4543,28 +4543,79 @@ test_tool_setup_and_sync_run_the_tool() {
     assert_eq "no fetch: curl not reached" "false" "$([ -e "$sb/curl.log" ] && echo true || echo false)"
 }
 
-test_tool_build_and_test_over_the_resolved_layers() {
-    echo "TEST: tool route: build and test run colcon per resolved layer, in order, with --base-paths src"
-    local sb root out rc=0
+test_tool_build_runs_the_tool() {
+    echo "TEST: tool route: build runs the manifest tool's build in the root, the distro's environment sourced first, its status passed through"
+    local sb root out rc=0 flags
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     root="$(make_tool_root "$sb" fakefox)"
-    out="$(run_tool "$sb" "$root" build 2>&1)" || rc=$?
+    flags="--symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+    out="$(export COLCON_PREFIX_PATH=/stale GIT_DIR=/elsewhere/.git; run_tool "$sb" "$root/fakefox/core" build 2>&1)" || rc=$?
     assert_eq "build: exit 0" "0" "$rc"
-    assert_eq "build: the unnamed layer, core, then extra, each over the layers before it" \
-        "COLCON_RAN_IN:$root/fakefox CMD:build SOURCED:base
-COLCON_RAN_IN:$root/fakefox/core CMD:build SOURCED:base+fakefox
-COLCON_RAN_IN:$root/fakefox/extra CMD:build SOURCED:base+fakefox+core" "$(cat "$sb/colcon.log")"
-    assert_contains "build: --base-paths src before --cmake-args" \
-        "COLCON_ARGS:$root/fakefox build --base-paths src --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON" \
-        "$(cat "$sb/colcon.log.args")"
-    : > "$sb/colcon.log"
-    : > "$sb/colcon.log.args"
+    assert_eq "build: the tool's build for the distro, in the root, after the underlay; the prefix paths and GIT_DIR not passed on" \
+        "TOOL_RAN_IN:$root ARGS:build --distro fakefox -- $flags EXIT:0 SOURCED:base PREFIX:unset GIT_DIR:unset" "$(cat "$sb/tool.log")"
+    assert_contains "build: the tool's output passed through" "build stub: ran" "$out"
+    assert_eq "build: the adapter runs no colcon of its own" "false" "$([ -e "$sb/colcon.log" ] && echo true || echo false)"
+    : > "$sb/tool.log"
+    rc=0; out="$(run_tool "$sb" "$root" build --packages-select pkg_a 2>&1)" || rc=$?
+    assert_eq "build with extra arguments: exit 0" "0" "$rc"
+    assert_eq "build: the caller's arguments after the adapter's colcon flags" \
+        "TOOL_RAN_IN:$root ARGS:build --distro fakefox -- $flags --packages-select pkg_a EXIT:0 SOURCED:base PREFIX:unset GIT_DIR:unset" "$(cat "$sb/tool.log")"
+    assert_not_contains "a selection that worked: no note" "NOTE:" "$out"
+    rc=0; out="$(TOOL_EXIT=1 run_tool "$sb" "$root" build --packages-up-to pkg_a 2>&1)" || rc=$?
+    assert_eq "a selection the tool refuses: its exit status 1" "1" "$rc"
+    assert_contains "a selection the tool refuses: the step with the environment sourced" \
+        "the adapter builds every layer, so build without selection first, or run the tool's step yourself with the distro's environment sourced: source $sb/rosroot/fakefox/setup.bash && cd $root && $sb/.venv/bin/repos-manifest build --distro fakefox <layer> -- <colcon arguments>" "$out"
+    rc=0; out="$(TOOL_EXIT=1 run_tool "$sb" "$root" build 2>&1)" || rc=$?
+    assert_eq "a failed build: exit 1" "1" "$rc"
+    assert_not_contains "a failed build with no selection: no note" "NOTE:" "$out"
+    rc=0; out="$(TOOL_EXIT=130 run_tool "$sb" "$root" build 2>&1)" || rc=$?
+    assert_eq "a signal's status 130 passed through" "130" "$rc"
+    # A nested key: the tool reads it, so build runs; env and test still refuse it.
+    printf '  grp/pkg_n:\n    type: git\n    url: git@github.com:owner/pkg_n.git\n    version: main\n' \
+        >> "$root/.repos-manifest/resolved/fakefox/core.repos"
+    : > "$sb/tool.log"
+    rc=0; out="$(run_tool "$sb" "$root" build 2>&1)" || rc=$?
+    assert_eq "a nested key: build runs the tool, exit 0" "0" "$rc"
+    assert_contains "a nested key: the tool ran" "ARGS:build --distro fakefox" "$(cat "$sb/tool.log")"
+    for verb in env test; do
+        rc=0; out="$(run_tool "$sb" "$root" "$verb" 2>&1)" || rc=$?
+        assert_eq "a nested key: $verb still refuses" "1" "$rc"
+        assert_contains "a nested key: $verb names it" "core: grp/pkg_n" "$out"
+    done
+    sed -i '/grp\/pkg_n/,$d' "$root/.repos-manifest/resolved/fakefox/core.repos"
+    # No underlay, no tool: refused before anything runs.
+    : > "$sb/tool.log"
+    mv "$sb/rosroot/fakefox/setup.bash" "$sb/setup.bash.aside"
+    rc=0; out="$(run_tool "$sb" "$root" build 2>&1)" || rc=$?
+    assert_eq "no underlay: exit 1" "1" "$rc"
+    assert_contains "no underlay: said" "ROS underlay not found: $sb/rosroot/fakefox/setup.bash" "$out"
+    assert_eq "no underlay: the tool not run" "" "$(cat "$sb/tool.log")"
+    mv "$sb/setup.bash.aside" "$sb/rosroot/fakefox/setup.bash"
+    rm "$sb/.venv/bin/repos-manifest"
+    rc=0; out="$(run_tool "$sb" "$root" build 2>&1)" || rc=$?
+    assert_eq "tool not installed: exit 1" "1" "$rc"
+    assert_contains "tool not installed: says how to install it" "make install-repos-manifest" "$out"
+}
+
+test_tool_test_over_the_resolved_layers() {
+    echo "TEST: tool route: test runs colcon per resolved layer, in order, with --base-paths src; env sources each built layer"
+    local sb root out rc=0 layer
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb" fakefox)"
+    # A built tree, as the tool's colcon leaves it.
+    for layer in "" core extra; do
+        mkdir -p "$root/fakefox${layer:+/$layer}/install"
+        printf 'export SOURCED_LAYERS="${SOURCED_LAYERS:-}+%s"\n' "${layer:-fakefox}" \
+            > "$root/fakefox${layer:+/$layer}/install/local_setup.bash"
+    done
     rc=0; out="$(run_tool "$sb" "$root" test 2>&1)" || rc=$?
     assert_eq "test: exit 0" "0" "$rc"
-    assert_eq "test: every layer, in order" \
-        "$root/fakefox $root/fakefox/core $root/fakefox/extra" \
-        "$(sed -n 's/^COLCON_RAN_IN:\([^ ]*\) CMD:test.*/\1/p' "$sb/colcon.log" | tr '\n' ' ' | sed 's/ $//')"
+    assert_eq "test: every layer, in order, each over the layers built" \
+        "COLCON_RAN_IN:$root/fakefox CMD:test SOURCED:base+fakefox
+COLCON_RAN_IN:$root/fakefox/core CMD:test SOURCED:base+fakefox+core
+COLCON_RAN_IN:$root/fakefox/extra CMD:test SOURCED:base+fakefox+core+extra" "$(cat "$sb/colcon.log")"
     assert_contains "test: --base-paths src" "COLCON_ARGS:$root/fakefox/core test --base-paths src --event-handlers" "$(cat "$sb/colcon.log.args")"
     rc=0; out="$(run_tool "$sb" "$root" env 2>&1)" || rc=$?
     assert_eq "env: the underlay, then each built layer in order" \
@@ -4830,21 +4881,17 @@ test_tool_layers_read_once_per_call() {
     make_toolchain_stubs "$sb"
     root="$(make_tool_root "$sb" fakefox)"
     # The underlay, sourced after the read and before the loop, moves the
-    # resolved directory aside, as the tool's first rename would.
+    # resolved directory aside, as the tool's first rename would. (build
+    # runs the tool's build, which reads the resolved files itself.)
     printf 'export SOURCED_LAYERS=base\nmv %q %q 2>/dev/null || true\n' \
         "$root/.repos-manifest/resolved/fakefox" "$root/.repos-manifest/resolved/.aside" > "$sb/rosroot/fakefox/setup.bash"
-    for verb in build test; do
-        if [ -d "$root/.repos-manifest/resolved/.aside" ]; then
-            mv "$root/.repos-manifest/resolved/.aside" "$root/.repos-manifest/resolved/fakefox"
-        fi
-        : > "$sb/colcon.log"
-        rc=0
-        out="$(run_tool "$sb" "$root" "$verb" 2>&1)" || rc=$?
-        assert_eq "$verb, resolve moved aside mid-run: exit 0" "0" "$rc"
-        assert_eq "$verb, resolve moved aside mid-run: every layer of the one read, in order" \
-            "$root/fakefox $root/fakefox/core $root/fakefox/extra" \
-            "$(sed -n 's/^COLCON_RAN_IN:\([^ ]*\) .*/\1/p' "$sb/colcon.log" | tr '\n' ' ' | sed 's/ $//')"
-    done
+    : > "$sb/colcon.log"
+    rc=0
+    out="$(run_tool "$sb" "$root" test 2>&1)" || rc=$?
+    assert_eq "test, resolve moved aside mid-run: exit 0" "0" "$rc"
+    assert_eq "test, resolve moved aside mid-run: every layer of the one read, in order" \
+        "$root/fakefox $root/fakefox/core $root/fakefox/extra" \
+        "$(sed -n 's/^COLCON_RAN_IN:\([^ ]*\) .*/\1/p' "$sb/colcon.log" | tr '\n' ' ' | sed 's/ $//')"
     mv "$root/.repos-manifest/resolved/.aside" "$root/.repos-manifest/resolved/fakefox"
     printf 'export SOURCED_LAYERS=base\n' > "$sb/rosroot/fakefox/setup.bash"
     # A layers.txt that lists no layer (the head comment alone).
@@ -5416,7 +5463,8 @@ mr_test test_tool_unusable_root_is_an_error_never_a_fetch
 mr_test test_tool_nested_key_refused_by_name
 mr_test test_tool_distro_rule
 mr_test test_tool_setup_and_sync_run_the_tool
-mr_test test_tool_build_and_test_over_the_resolved_layers
+mr_test test_tool_build_runs_the_tool
+mr_test test_tool_test_over_the_resolved_layers
 mr_test test_tool_validate
 mr_test test_tool_repos_pin_and_worktree_verbs
 mr_test test_worktree_env_names_unbuilt_lower_layers
