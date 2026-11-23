@@ -162,3 +162,11 @@ Revise the plan to close M1 to M6 and S1 to S7 of the Plan Review. Host decision
 - S5: the top of the report gives one line per path: its name, how many of its lines are true, and its first line not yet true as written. The full lists stay in the Steps section. The line after the heading names the acceptance case as Path 1's test. Branches that match any path's unmet line come first in In flight.
 - S6: the run-record suffix lists paths in roadmap order; two records are compared per path only when both carry the same labels.
 - S7: correct the three claims the review found untrue.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-23 14:21 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-563/plan.md` at `2a3c82bc`
+
+Revision 2, closing the Plan Review (M1 to M6, S1 to S7) per the host's checkpoint. Ungrouped lines form a `no path` group; the skill's steps 1, 3, 5, 8, the design rows, script_reference.md and the roadmap's Across line (a file-contains check) are all named; existing tests to rewrite are listed; marks have exact texts. Read #560's roadmap at b4b8b8af. Owner direction kept: "To keep things simple, it's ok if something breaks with the sit-rep skill if one lands before the other".
