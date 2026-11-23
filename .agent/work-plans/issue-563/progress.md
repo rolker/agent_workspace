@@ -85,6 +85,8 @@ Instructions for the plan (host decisions, listed for the owner's veto):
 **Status**: complete
 **When**: 2026-11-23 14:14 -05:00
 **By**: Claude Code Agent (claude-sonnet-5-5)
-**Plan**: `.agent/work-plans/issue-563/plan.md` at `c384581d`
+**Plan**: `.agent/work-plans/issue-563/plan.md` at `26296dba`
 
 One PR in two commit groups: the checker emits a `path` row per Path paragraph (five fields kept), with per-path summary suffix and next steps, plus `named_path` in sitrep_root.sh; then skill text and the Direction row. A roadmap with no Path paragraph reads as today.
+
+Owner direction recorded (2026-11-23): "To keep things simple, it's ok if something breaks with the sit-rep skill if one lands before the other". The plan adds no work for the interval between #560 and this change landing and plans no split into two pull requests for it; the no-Path-paragraph compatibility rule stays, for other roots.
