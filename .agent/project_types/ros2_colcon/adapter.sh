@@ -1133,10 +1133,13 @@ for g in gone:
 # Then the keys status names, by layer, against the last resolve's .repos
 # files: a difference is a ⚠️ (the last resolve is out of date with the
 # manifest), with the tool's sync step. Sets _RC_STATUS_ISSUES (the number
-# of ❌ lines) and, when it is 0, _RC_STATUS_PASS (the pass line).
+# of ❌ lines) and, when it is 0, _RC_STATUS_PASS (the pass line). Its
+# counts are of the manifest's repos and add up (as expected, with a
+# warning, optional and skipped); a not_in_manifest path and the
+# out-of-date warning are named after them, apart.
 _rc_tool_status() {
     local d="$1" root bin py doc lines rc=0 prc=0 kind a b c e f g h i
-    local doc_ok="" dist_ok="" problem="" failing=0 unknown=0 expected=0 warned=0 skipped=0 total=0
+    local doc_ok="" dist_ok="" problem="" failing=0 unknown=0 expected=0 warned=0 skipped=0 total=0 gone=0 outdated=""
     local from_status="" from_resolve="" layer file only_status only_resolve resolve_ok=1
     _RC_STATUS_ISSUES=0
     _RC_STATUS_PASS=""
@@ -1206,7 +1209,7 @@ _rc_tool_status() {
                 ;;
             gone)
                 echo "⚠️ distro $d: $root/$b is still on disk and no longer in the manifest (recorded by an earlier sync, which does not remove it); remove it if nothing needs it" >&2
-                warned=$((warned + 1))
+                gone=$((gone + 1))
                 ;;
         esac
     done <<< "$lines"
@@ -1239,11 +1242,12 @@ _rc_tool_status() {
             only_resolve="$(LC_ALL=C comm -13 <(printf '%s' "$from_status" | LC_ALL=C sort -u) <(printf '%s' "$from_resolve" | LC_ALL=C sort -u) | tr '\n' ' ' | sed 's/ $//')"
             if [ -n "$only_status" ] || [ -n "$only_resolve" ]; then
                 echo "⚠️ distro $d: the last resolve ($(_rc_manifest_dir)) is out of date with the manifest (${only_status:+in the manifest only: $only_status}${only_status:+${only_resolve:+; }}${only_resolve:+in the last resolve only: $only_resolve}); the adapter's other verbs read the last resolve; run: $(_rc_tool_sync_step "$d")" >&2
+                outdated="; the last resolve out of date with the manifest, warned above"
             fi
         fi
     fi
     [ "$_RC_STATUS_ISSUES" -eq 0 ] && \
-        _RC_STATUS_PASS="✅ ros2_colcon checkout read against the manifest for distro $d (repos-manifest status: $total repo(s), $expected as expected, $warned with a warning above, $skipped optional and skipped; clones read as last fetched, nothing fetched)"
+        _RC_STATUS_PASS="✅ ros2_colcon checkout read against the manifest for distro $d (repos-manifest status: $total repo(s), $expected as expected, $warned with a warning above, $skipped optional and skipped$([ "$gone" -gt 0 ] && echo "; besides them, $gone path(s) on disk no longer in the manifest, warned above")$outdated; clones read as last fetched, nothing fetched)"
     return 0
 }
 

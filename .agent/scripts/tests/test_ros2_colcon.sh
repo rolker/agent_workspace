@@ -4759,6 +4759,8 @@ r["pkg_a"]["state"] = "different"; r["pkg_a"]["detail"] = "is on branch caf\udce
     assert_eq "not_in_manifest: exit 0" "0" "$rc"
     assert_contains "not_in_manifest: a warning naming the path" \
         "⚠️ distro fakefox: $root/fakefox/core/src/pkg_old is still on disk and no longer in the manifest" "$out"
+    assert_contains "not_in_manifest: the pass line counts the manifest's repos, the path apart" \
+        "(repos-manifest status: 4 repo(s), 4 as expected, 0 with a warning above, 0 optional and skipped; besides them, 1 path(s) on disk no longer in the manifest, warned above; clones read as last fetched, nothing fetched)" "$out"
     tool_status_doc "$sb" "$root" "$doc" 'r["pkg_b"]["state"] = "unusable"; r["pkg_b"]["detail"] = "has no commit checked out"'
     rc=0; out="$(TOOL_STATUS_FILE="$doc" run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
     assert_eq "an optional repo unusable: exit 0" "0" "$rc"
@@ -4816,6 +4818,8 @@ d["repos"].append(dict(r["pkg_a"], key="pkg_new", path="fakefox/core/src/pkg_new
     assert_eq "a resolve out of date: exit 0" "0" "$rc"
     assert_contains "a resolve out of date: a warning naming both sides and the sync" \
         "is out of date with the manifest (in the manifest only: core/pkg_new; in the last resolve only: extra/pkg_c); the adapter's other verbs read the last resolve; run: $step" "$out"
+    assert_contains "a resolve out of date: the pass line names the warning apart from the counts" \
+        "(repos-manifest status: 4 repo(s), 4 as expected, 0 with a warning above, 0 optional and skipped; the last resolve out of date with the manifest, warned above; clones read as last fetched, nothing fetched)" "$out"
     # The same comparison under a UTF-8 locale whose collation puts
     # "_unnamed" after "core" (C order puts it first): the lists are sorted
     # in C order, so comm must compare in C order too. GNU comm (CI's) says

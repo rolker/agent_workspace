@@ -222,7 +222,9 @@ The root need not be a git repository. The registry line holds its name, type an
 
   The repos `status` names, by layer, are compared with the keys of the last resolve: a
   difference (a manifest change the tool's `sync` has not resolved yet) is a warning naming
-  that `sync`, not a failure. The success line, one per distro, gives the counts and says the
+  that `sync`, not a failure. The success line, one per distro, counts the manifest's repos
+  (as expected, with a warning, optional and skipped, which add up to the total), names a
+  `not_in_manifest` path and the out-of-date warning apart from those counts, and says the
   clones were read as last fetched. Since `status` reads the manifest, `validate` now also
   fails when the manifest cannot be read, or when a repo that is not optional was added to it
   and not synced yet.
