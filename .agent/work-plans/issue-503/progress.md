@@ -1243,3 +1243,30 @@ Scope: part 4 only. The six round 1 findings and the python3 message are fixed a
 - [x] (suggestion) the venv rebuild step is correct against the Makefile, but it is the only adapter message that prints an `rm -rf` (the others say "remove it"), and it removes the .venv every worktree's pre-commit hook runs from; give it a Makefile target (it would also be testable) or name what to remove in words — `.agent/project_types/ros2_colcon/adapter.sh:1162`
 - [x] (suggestion) the status reader takes a missing or null repos / not_in_manifest as an empty list even on an entry with no problem, so a malformed ok document passes as zero repos; require both lists when there is no problem — `.agent/project_types/ros2_colcon/adapter.sh:1098`
 - [x] (suggestion) the selection NOTE's manual step sources the underlay but does not clear COLCON_PREFIX_PATH, AMENT_PREFIX_PATH and CMAKE_PREFIX_PATH as the adapter's own build does, so run from a shell with another workspace sourced it builds against that — `.agent/project_types/ros2_colcon/adapter.sh:2133`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 12:18 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-503 at `18c33dbf`
+**Addressed**: Local Review (Pre-Push) at `c0233251` (2026-11-23 11:58 -05:00)
+**Commits**: 0427cccc, 607e941e, a68832a7, bd3e4cdf, 18c33dbf
+
+### Actions
+- [x] (must-fix) the locale part of test_tool_validate now counts its skip: a LOCALE_SKIPPED counter, its own SKIPPED banner, added to the results line's skipped number; the gnucomm link is removed whichever branch ran (0427cccc) — `.agent/scripts/tests/test_ros2_colcon.sh:4838`. Checked by forcing the skip (locale pattern made unmatchable for one run): `SKIPPED (locale part)` printed and `=== Results: 1509 passed, 0 failed, 1 skipped ===`. With the adapter's `LC_ALL=C` taken off its two `comm` calls, the part fails: `FAIL: under en_US.utf8 with gnucomm: the unnamed layer's repo alone, in the last resolve only` and `FAIL: ... comm did not see unsorted input` (`1510 passed, 2 failed`). Locale on CI: `LC_ALL=C.utf8 gnucomm` on the test's lists gives the right difference with no "not in sorted order" (C.UTF-8 collates `_unnamed` before `core`, as C does), so C.UTF-8 cannot reproduce the misordering and en_US.UTF-8 stays. The runner image installs the `locales` package (runner-images toolsets), but nothing in its build scripts was found to generate en_US.UTF-8, so on CI this part may be a counted skip.
+- [x] (suggestion) the selection build's status is the tool's own, `${PIPESTATUS[0]}`, whatever the caller's pipefail; the reader falls back to the file alone when stderr cannot be written and drains what is left; no temporary file to be had runs the build as without selection; the file is removed on INT, TERM and HUP too, the earlier traps restored (607e941e) — `.agent/project_types/ros2_colcon/adapter.sh:2126`. Tests in test_tool_build_runs_the_tool: without pipefail (the sandbox dispatcher's copy) the tool's status 3 and a refusal's exit 1 with the note pass through; stderr closed, a successful build exits 0 and the tool runs to the end; stderr on /dev/full exits 0 with no temporary file left. Against the old code the pipefail and /dev/full tests fail (4 failed); the stderr-closed test passes on old and new alike, since inside the dispatcher fd 2 is reused by the first file opened.
+- [x] (suggestion) the venv rebuild message says in words what to remove (the .venv directory and the two stamp files) and the make target to run after; no rm command printed; no Makefile target added (a68832a7) — `.agent/project_types/ros2_colcon/adapter.sh:1162`. Test: the step text in test_tool_validate, and no `rm -rf` in the output.
+- [x] (suggestion) a status entry with no problem and a missing or null repos or not_in_manifest is a failure saying the document is malformed, naming the missing list; the docs/manifest/design.md table names it (bd3e4cdf) — `.agent/project_types/ros2_colcon/adapter.sh:1098`. Tests in test_tool_validate: repos deleted, not_in_manifest null, and an empty problem with repos null, each exit 1 with the malformed line.
+- [x] (suggestion) the selection NOTE's manual step unsets COLCON_PREFIX_PATH, AMENT_PREFIX_PATH, CMAKE_PREFIX_PATH and AMENT_CURRENT_PREFIX before sourcing the underlay, as the adapter's build does; the note_text test and docs/manifest/design.md quote it (18c33dbf) — `.agent/project_types/ros2_colcon/adapter.sh:2133`.
+
+### Checks
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: `=== Results: 1530 passed, 0 failed, 0 skipped ===` (at 18c33dbf)
+- `bash .agent/scripts/tests/test_adapter.sh`: `=== Results: 248 passed, 0 failed ===`
+- `bash .agent/scripts/validate_adapter.sh`: `✅ ros2_colcon: all 13 verbs implemented`, `✅ single_project: all 13 verbs implemented`
+- `bash .agent/scripts/tests/test_register_project.sh`: `test_register_project: 222 passed, 0 failed`
+- `bash .agent/scripts/tests/test_register_session_root.sh`: `test_register_session_root: 72 passed, 0 failed`
+- `bash .agent/scripts/tests/test_project_file.sh`: `=== Results: 701 passed, 0 failed ===`
+- `bash .agent/scripts/tests/test_project_registry.sh`: `=== Results: 425 passed, 0 failed ===`
+- `bash .agent/scripts/tests/test_worktree_create.sh`: `PASS: 109`, `FAIL: 0`
+- Commits made with `SKIP=validate-script-tests`; every other hook ran (shellcheck passed). The full pre-commit pass is left to the host.
