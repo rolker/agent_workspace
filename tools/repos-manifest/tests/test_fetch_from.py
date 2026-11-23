@@ -154,12 +154,70 @@ def test_one_repo_listed_twice_with_one_url_is_taken():
     assert {r.url for r in done.layers[0].repos} == {"git@gitcloud:field/tools.git"}
 
 
-@pytest.mark.parametrize(
-    "url", ["https://host/owner/..", "git@host:-x", "git@host:owner/.git", "/srv/_x"]
-)
+@pytest.mark.parametrize("url", ["https://host/owner/..", "/srv/_x", "https://h/o/r.git?x=1"])
 def test_a_name_that_cannot_follow_a_prefix_is_refused(url):
     with pytest.raises(FetchFromError, match="not a repo name a prefix can be followed by"):
         apply(_resolved(_repo("a", url)), FetchFrom(FIELD), "--fetch-from")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://host/",
+        "https://host",
+        "https://host:8443/",
+        "https://user:pw@host/",
+        "ssh://git@host:2222/",
+        "file://host",
+        "git@host:/",
+    ],
+)
+def test_a_url_with_no_path_after_its_host_gives_no_name(url):
+    """The name is never read out of the host, the port or the user information."""
+    with pytest.raises(FetchFromError, match="no path after its host"):
+        repo_name(url)
+    with pytest.raises(FetchFromError, match="repo a: its url .* gives no name"):
+        apply(_resolved(_repo("a", url)), FetchFrom(FIELD), "--fetch-from")
+
+
+@pytest.mark.parametrize("url", ["/srv/b/.git", "git@host:owner/.git", "https://h/o/.git/"])
+def test_a_last_path_part_of_dot_git_gives_an_empty_name(url):
+    with pytest.raises(FetchFromError, match="leaves the repo's name empty"):
+        repo_name(url)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "/srv/team:tools.git",
+        "https://h/o/foo:bar.git",
+        "ssh://git@h/o/foo:bar.git",
+        "git@host:o/foo:bar",
+        "user:pass@host:repo",
+    ],
+)
+def test_a_colon_in_the_last_path_part_is_part_of_the_name_and_refused(url):
+    """git reads the whole last part as the path's last part, so the name is all of it, never
+    what follows the ':' (which would fetch another repo); a name with ':' is refused."""
+    with pytest.raises(FetchFromError, match="not a repo name a prefix can be followed by"):
+        repo_name(url)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://user:s3cret@host/",
+        "https://tok3n@host:8443/",
+        "https://user:s3cret@host/o/foo:bar.git",
+        "https://user:s3cret@host/o/.git",
+    ],
+)
+def test_a_url_that_gives_no_name_is_not_shown_with_its_password(url):
+    with pytest.raises(FetchFromError) as raised:
+        apply(_resolved(_repo("a", url)), FetchFrom(FIELD), "--fetch-from")
+    text = str(raised.value)
+    assert "https://***@host" in text
+    assert "s3cret" not in text and "tok3n" not in text and "user" not in text
 
 
 def test_the_config_key_is_written_and_read_back(tmp_path):

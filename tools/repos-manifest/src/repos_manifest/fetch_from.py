@@ -2,8 +2,9 @@
 `config.yaml` (``docs/design.md``, "Where repos are fetched from").
 
 For each repo the url to fetch from is the prefix, the repo's name (the last part of its
-published url, without a `.git` ending) and `.git`. `apply` gives a resolved system those urls:
-each `Selected.url` becomes the built url and `Selected.published` keeps the manifest's, so
+published url's path, without a `.git` ending) and `.git`. `apply` gives a resolved system
+those urls: each `Selected.url` becomes the built url and `Selected.published` keeps the
+manifest's, so
 `init`, `sync`, `status` and `show` all act on the built url through the same code, and `sync`'s
 url rule moves a clone's `origin` to it.
 
@@ -21,7 +22,7 @@ import re
 from dataclasses import dataclass, replace
 from typing import Dict, Tuple
 
-from .manifest import check_url
+from .manifest import check_url, url_path
 from .masking import quoted_url, remember_url, type_name
 from .selection import Layer, Resolved
 from .yamlload import ManifestError, has_unsafe_char
@@ -42,13 +43,31 @@ class FetchFromError(ManifestError):
 
 
 def repo_name(url: str) -> str:
-    """The repo's name in its published url: one trailing `/`, then one trailing `.git` taken
-    off, and what follows the last `/` or `:`."""
-    if url.endswith("/"):
-        url = url[:-1]
-    if url.endswith(".git"):
-        url = url[:-4]
-    return re.split(r"[/:]", url)[-1]
+    """The repo's name in its published url: the last part of the url's path, as the url rules
+    separate the path from the scheme, user, host and port (``manifest.url_path``), with one
+    trailing `/` and then one trailing `.git` taken off. The whole last part is the name, as git
+    reads the path, so a `:` in it is part of it (and refused, below). A `FetchFromError` that
+    says why when there is none: a url with no path after its host, an empty name (a last part
+    of `.git`), or one a prefix cannot be followed by. The message names neither the url nor
+    the name: the caller names the url, masked."""
+    try:
+        path = url_path(url, "", "url")
+    except ManifestError:
+        raise FetchFromError("it is not a url a manifest may name") from None
+    if path.endswith("/"):
+        path = path[:-1]
+    last = path.rpartition("/")[2]
+    if last == "":
+        raise FetchFromError("it has no path after its host, so it names no repo")
+    name = last[:-4] if last.endswith(".git") else last
+    if name == "":
+        raise FetchFromError("its last path part is '.git', which leaves the repo's name empty")
+    if not NAME.fullmatch(name):
+        raise FetchFromError(
+            "its last path part is not a repo name a prefix can be followed by (letters,"
+            " digits, '.', '_' and '-', starting with a letter or digit)"
+        )
+    return name
 
 
 def effective_url(prefix: str, name: str) -> str:
@@ -107,13 +126,13 @@ def apply(resolved: Resolved, fetch_from: FetchFrom, named: str) -> Resolved:
         repos = []
         for repo in layer.repos:
             remember_url(repo.url)
-            name = repo_name(repo.url)
-            if not NAME.fullmatch(name):
+            try:
+                name = repo_name(repo.url)
+            except FetchFromError as exc:
                 raise FetchFromError(
-                    f"{named}: repo {repo.key}: its url {quoted_url(repo.url)} ends in"
-                    f" {quoted_url(name)}, which is not a repo name a prefix can be followed by"
-                    " (letters, digits, '.', '_' and '-', starting with a letter or digit)"
-                )
+                    f"{named}: repo {repo.key}: its url {quoted_url(repo.url)} gives no name to"
+                    f" put after the prefix: {exc}"
+                ) from None
             other = seen.get(name.casefold())
             if other is not None and not same_url(other[1], repo.url):
                 raise FetchFromError(

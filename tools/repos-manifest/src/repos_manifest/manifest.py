@@ -209,6 +209,15 @@ def check_url(url, where: str, source: str) -> str:
     return _Checker(source).url(url, where)
 
 
+def url_path(url, where: str, source: str) -> str:
+    """The path of `url`, as the rules a manifest's `url` is checked by separate it from the
+    scheme, user, host and port (`_Checker.url_path`), with the url checked by them: what
+    follows the host (from its '/') in a url with `://`, what follows the host's ':' in the
+    `[user@]host:path` form, and the whole of a path on the local disk. Empty when a url with
+    `://` has nothing after its host."""
+    return _Checker(source).url_path(url, where)
+
+
 # A value of the wrong type is described by its kind, never shown: a url inside it would not
 # be masked.
 _type_name = type_name
@@ -292,6 +301,11 @@ class _Checker:
         return seen
 
     def url(self, value, where: str) -> str:
+        self.url_path(value, where)
+        return value
+
+    def url_path(self, value, where: str) -> str:
+        """Check `value` as a url (`url`) and return its path (`url_path` at module level)."""
         remember_url(value)  # before any message that quotes it
         url = self.not_an_option(self.string(value, where), where)
         if _TRANSPORT_FORM.match(url):
@@ -318,7 +332,7 @@ class _Checker:
             self.authority(
                 url, authority, _bracketed_host(authority), where, ssh=scheme == "ssh://"
             )
-            return url
+            return "" if slash < 0 else rest[slash:]
         if "://" not in url and _colon_before_slash(url):
             # git's scp-like form, `[user@]host:path`: the host ends at the first ':' after it.
             brackets = self.ssh_address(url, url, where)
@@ -329,7 +343,7 @@ class _Checker:
             if url[sep + 1] == "-":
                 # git refuses such a path ("strange pathname") rather than hand it to ssh.
                 raise self.error(where, f"{quoted_url(url)}: the path starts with '-'")
-            return url
+            return url[sep + 1 :]
         # No ':', or a '/' before the first ':': a path on the local disk.
         if url.startswith("/"):
             return url

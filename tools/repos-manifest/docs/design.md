@@ -1774,7 +1774,7 @@ having to say so:
 
 `fetch_from` in `config.yaml` covers both. It names a place by a URL prefix. For each repo,
 the tools build another URL from the prefix, the repo's name (the last part of its published
-URL, without a `.git` ending) and `.git`: with the prefix `git@git.example.org:field/`, the
+URL's path, without a `.git` ending) and `.git`: with the prefix `git@git.example.org:field/`, the
 repo published as `https://github.com/example/unh_marine_autonomy.git` is fetched from
 `git@git.example.org:field/unh_marine_autonomy.git`, whatever owner the published URL names.
 
@@ -1811,6 +1811,16 @@ be fetched this way: `init`, `sync`, `status` and `show` in a system, the comman
 `resolve` reads no `config.yaml` and does not check it. One repo listed twice with one URL is
 fine. A name that could not follow a prefix (one that is not letters, digits, `.`, `_` and
 `-` starting with a letter or a digit) is refused the same way.
+
+The name is read from the URL's path only, separated from the scheme, user, host and port by
+the URL rule a manifest's URL passes: after the host in a URL with `://`, after the host's `:`
+in the `[user@]host:path` form, and the whole of a local path. A URL with nothing after its
+host (`https://host/`, `https://host:8443/`) names no repo, and a last part of `.git` leaves
+an empty name; both are refused the same way, with the URL masked, so a name is never read
+out of a host, a port or a password. The name is the whole last part of the path, as git reads
+it: in `/srv/team:tools.git` and `https://host/o/foo:bar.git` it is `team:tools` and
+`foo:bar`, which hold a `:` and so break the name rule above and are refused. Taking what
+follows the `:` instead would fetch `tools` or `bar` from the place, another repo.
 
 The prefix ends in `/`, or in `:` in the `[user@]host:` form only (`git@git.example.org:`; an
 `https://host:` would read the repo's name as a port). With a repo's name after it, it is a

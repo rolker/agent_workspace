@@ -145,8 +145,8 @@ pushes). Both need `git` 2.23 or later, and `vcs` from vcs2l or vcstool, on `PAT
 
 A field machine can fetch every repo from one place, such as a private server, from the one
 published manifest: `fetch_from` in `.repos-manifest/config.yaml` names a url prefix, and each
-repo is fetched from the prefix, its name (the last part of its published url, without `.git`)
-and `.git`, whatever owner the published url names. `init --fetch-from git@git.example.org:field/`
+repo is fetched from the prefix, its name (the last part of its published url's path, without
+`.git`) and `.git`, whatever owner the published url names. `init --fetch-from git@git.example.org:field/`
 sets it for a new system; a system set up before gets it by an edit of `config.yaml`, made in the
 same edit that points `manifest:` at the published manifest when it named a copy kept by hand,
 and followed by `status`, which says what the next `sync` would repoint, before `sync`. `sync`
