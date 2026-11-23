@@ -226,3 +226,21 @@ The revision closes 11 of the 13 round-1 findings and follows each host decision
 ### Recommended Actions
 
 - [ ] Steps 5 and 8: read step 1's printed rows, or move the rows file's removal from step 4 to the end of step 8; say which.
+
+## Checkpoint
+**When**: 2026-11-23 14:29 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 2 of the plan review closed every earlier finding; its one new must-fix is a one-sentence fix the reviewer said could be given here, and a third plan round would add a wait without a decision in it)
+**After**: plan
+**Decision**: proceed
+
+Implement the plan at 2a3c82bc with these instructions, which answer N1 to N6 of the round 2 Plan Review and bind the implementer (host decisions, listed for the owner's veto):
+- N1: steps 5 and 8 of the skill read the rows step 1 printed, as step 5 does today, never the rows file, which step 4 removes. When the file is removed does not change.
+- N2: the closing question's path list keeps its own block that reads the roadmap's prose, so it still works when step 1 printed no rows.
+- N3: with path groups there is no single "Next:" line. Each group's line at the top carries its first line not yet true. "Running:" stays in In flight; one line there names the groups with no work on this machine ("No work on this machine for: ..."). When every line of every group is true, Suggested next comes from elsewhere, as today.
+- N4: the checker-header sentence the roadmap's Across check looks for stays on one comment line; the planned test covers it.
+- N5: in a section with no Path paragraph, an "Across the paths" paragraph opens no group: no path rows at all (the compatibility rule wins).
+- N6: step 5 reuses the pull request list step 3 already fetched; the per-issue title lookups are accepted, and the plan's cost note says so in the pull request.
+- Re-read docs/roadmap.md and the Direction row of docs/design.md as they are on main (or on feature/issue-560 if pull request 564 has not merged) before editing them.
+
+The owner's words: "the roadmap was done with an expected sequence, and any deviation from that sequence might trip up the tracking of actual progress."; "To keep things simple, it's ok if something breaks with the sit-rep skill if one lands before the other".
