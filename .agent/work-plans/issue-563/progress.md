@@ -170,3 +170,59 @@ Revise the plan to close M1 to M6 and S1 to S7 of the Plan Review. Host decision
 **Plan**: `.agent/work-plans/issue-563/plan.md` at `2a3c82bc`
 
 Revision 2, closing the Plan Review (M1 to M6, S1 to S7) per the host's checkpoint. Ungrouped lines form a `no path` group; the skill's steps 1, 3, 5, 8, the design rows, script_reference.md and the roadmap's Across line (a file-contains check) are all named; existing tests to rewrite are listed; marks have exact texts. Read #560's roadmap at b4b8b8af. Owner direction kept: "To keep things simple, it's ok if something breaks with the sit-rep skill if one lands before the other".
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-23 14:23 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #563 — sit-rep: report each path on its own, as the roadmap's Direction section writes them
+**Plan**: `.agent/work-plans/issue-563/plan.md` at `2a3c82bc`
+**Branch**: `feature/issue-563`
+
+Round 2: a convergence check of revision 2 against the round-1 findings and the host's Checkpoint (After: plan, Decision: revise). Not a full review.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Unchanged: one pull request, two commit groups; no hidden second pull request now that #560 is assumed on main first (host order) |
+| Issue alignment | Good | Every host decision M1 to S7 is followed. Serves, as checked: "Easy to use (the sit-rep is the user's view of what is next), and A safeguard has to earn its cost; `docs/design.md#documentation-layers` (the Direction row)" |
+| File targeting | Good | `script_reference.md`, `docs/roadmap.md` and the existing tests are now listed |
+| Consequences | Needs work | One new gap: steps 5 and 8 read the rows file after step 4 has deleted it (finding 1) |
+| Principle alignment | Good | The tests to rewrite are named; the design rows are edited against #560's wording, which was checked on `feature/issue-560` (both quoted sentences are present) |
+| ADR compliance | Good | ADR-0017 added; ADR-0022, 0016 and 0013 unchanged |
+| ROS conventions | N/A | Workspace plan |
+
+Round-1 findings:
+- M1 (lines above the first path): closed. A `no path` group with its own count, next step, suffix label `nopath` and `named_path`, and a test, as the host decided.
+- M2 (SKILL.md steps 1, 5, 8): partly closed. All three are named, but steps 5 and 8 read a file that no longer exists (finding 1).
+- M3 (existing tests): closed. Sections 13 and 14 are named with what they will assert; the section 14 claim is corrected.
+- M4 (mark texts): closed. Exact texts as the host decided; a root with no Path paragraph prints no path word.
+- M5 (#560's Direction row): closed. Both of #560's sentences are named and are present on `feature/issue-560`; the Measures row is included.
+- M6 (`script_reference.md`): closed.
+- S1 (nearest paragraph rule, main's interval said plainly): closed.
+- S2 (what "opens" a path): closed.
+- S3 (path rows not counted, Across result): closed. Across is `true`/`group` or `unchecked`/`no lines`.
+- S4 (a real check for the Across line): closed, with finding 4.
+- S5 (report length): partly closed. One line per group at the top, the acceptance case as Path 1's test, and in-flight order per group are set; where `Next:` and `Running:` go is not (finding 3).
+- S6 (suffix in roadmap order, compare only on the same labels): closed.
+- S7 (the three untrue claims): closed.
+
+### Findings
+
+1. **[Consequences] must-fix**: Steps 5 and 8 read a rows file that step 4 has already deleted. Item 13 has step 5 "take its check cell from the saved rows file", and item 14 marks a pull request with no worktree "read from the saved rows". But step 4 ends with `[ -z "$rows" ] || rm -f -- "$rows"` (SKILL.md line 644, "The rows file is removed either way"), and steps 5 and 8 run after it. As written, step 5's lookup and step 8's mark would find no file. Say which: read from step 1's printed rows, as step 5 does today ("as step 1 printed them"), or move the removal to the end of step 8 (and say so in step 4's text).
+2. **[Consequences] suggestion**: The closing question's path list is to be "read from the `path` rows". When step 1 printed no rows (checks failed), it would then have no paths. Step 1's text (lines 182-185) says the Paths "still come from the section's prose" in that case. Keep the awk block as the source of the names, or say what the question offers when there are no rows.
+3. **[Consequences] suggestion**: Item 14 gives one line per group at the top and renames "Running: nothing advances it" to "Running: nothing on this machine", but does not say where `Next:` and `Running:` now go. Options are: per group, at the end of each group's line; or only for the focus the owner picks. Say the same for the rule "only when every line is true does Suggested next come from elsewhere".
+4. **[Approach] suggestion**: The Across check works under the existing grammar. `file-contains` takes the rest of the check as one fixed string (`^file-contains\s+(\S+)\s+(.*\S)$`, then `grep -qF`), so a multi-word text is fine. But `grep` matches within one line, so the header sentence "a path row governs the line rows up to the next path row" must sit unwrapped on one comment line. Say so in item 2 or 10; section 16's test of the check will catch a wrap.
+5. **[Approach] suggestion**: An `**Across the paths` paragraph in a section with no `**Path` paragraph is decided both ways. Item 1 says it opens a group; items 3 and 5 say no `**Path` paragraph means no `path` rows. Pick one, for example "Across opens a group only when a path paragraph exists".
+6. **[Consequences] suggestion**: The cost of step 5 per path is acceptable but should be stated. On the five-path text, about five groups have an issue in their first unmet line, so about ten `gh` calls instead of two. Step 3's `gh pr list` already holds the open pull requests and could be reused instead of one `gh pr list` per issue.
+
+### Summary
+
+The revision closes 11 of the 13 round-1 findings and follows each host decision. One new defect blocks: steps 5 and 8 are told to read the rows file after step 4 has deleted it. It is a one-sentence fix (read step 1's printed rows, or move the removal), which the host can give as an instruction at the plan checkpoint instead of another plan round.
+
+### Recommended Actions
+
+- [ ] Steps 5 and 8: read step 1's printed rows, or move the rows file's removal from step 4 to the end of step 8; say which.
