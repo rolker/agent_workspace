@@ -1107,7 +1107,7 @@ merge, by either of the two ways to one:
 
 - **`next` prints `action=checkpoint:merge`** (the last fix round and its
   triage are done): 9a runs after step 9's re-fetch ("A review not yet
-  read", below) and before the checkpoint is presented.
+  read", above) and before the checkpoint is presented.
 - **A `findings` checkpoint answered `merge`** (row 21 merges with the
   `## Integrated Review`'s boxes still open): 9a runs after step 11's
   re-fetch on the merge answer and before `merge_pr.sh`, which a
