@@ -122,6 +122,14 @@ gh pr diff <N>
 gh pr view <N> --json body --jq '.body' | grep -o '#[0-9]*'
 ```
 
+In cold-read mode (step 2, "Cold read, cross-model only") fetch the
+metadata without `comments,reviews`, so no earlier finding reaches the
+lead's context either:
+
+```bash
+gh pr view <N> --json title,body,baseRefName,headRefName,headRefOid,files,additions,deletions,url
+```
+
 #### 1b. Branch mode (--branch [<base-ref>])
 
 This snippet is illustrative pseudo-code; the skill body describes
@@ -218,8 +226,8 @@ Copilot is not available. When the words are there: skip 5a-5d, the
 Claude adversarial pass included, and run 5e with only the one agent the
 handoff names (`--agents codex`, or `--agents gemini`); do not read
 earlier review entries or findings from `progress.md`, the issue's
-comments or the pull request's reviews, and do not pass them to the
-agent: `cross_model_review.sh` gives it the title, URL and diff only, with
+comments or the pull request's comments and reviews (step 1a's cold-read
+query leaves them out), and do not pass them to the agent: `cross_model_review.sh` gives it the title, URL and diff only, with
 the issue's work-plan files left out, and that is what keeps the read
 cold.
 Classify the depth as usual for the header, then record `**Depth**: <tier>

@@ -366,6 +366,12 @@ if [[ "$RC_FLAT" == *'no cross-model reviewers'* \
 else
     fail "review-code SKILL.md: a handoff-word path is missing ($RC_SKILL)"
 fi
+# The cold read's metadata query leaves out comments and reviews.
+if grep -qxF 'gh pr view <N> --json title,body,baseRefName,headRefName,headRefOid,files,additions,deletions,url' "$RC_SKILL"; then
+    pass "review-code SKILL.md: cold-read mode fetches PR metadata without comments,reviews"
+else
+    fail "review-code SKILL.md: no cold-read metadata query without comments,reviews ($RC_SKILL)"
+fi
 
 echo ""
 echo "test_review_code_convergence: $PASS passed, $FAIL failed"
