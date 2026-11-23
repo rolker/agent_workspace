@@ -283,3 +283,22 @@ The revision answers both must-fix findings with the mechanisms the earlier revi
 **Decision**: proceed
 
 The owner's answer in the dialog, to "Implement part 2 as planned, with F1 to F3 passed to the implementer?": "Proceed (Recommended)". The dialog showed the Plan Review at 7db5a37c (verdict ready) and part 2 as planned, including that it changes .github/workflows/validate.yml (Ask First). F1, should-fix during implementation: in the new test, the variable-unset case must unset ROS2_COLCON_TESTS_REQUIRE_VCS explicitly inside its subshell and the other case must set it there, because the test runs inside the CI step that sets the variable. F2, note: the real-tool test must return after the required-vcs FAIL, as the skip branch does. F3, note: the workflow pin ==1.1.7 and the test extra's floor >=1.1.7 are two places to keep in step; a comment on the workflow step pointing to the extra. F4, the mechanism choice not to install vcs in the Lint job (the case still skips there, shown as 1 skipped): offered for veto and not vetoed. This proceed covers part 2 only; part 1 is delivered (pull request 540).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 10:12 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-539 at `df37b3b4`
+
+Part 2 of the plan (part 1's line untouched).
+
+- `02d07168` test_ros2_colcon.sh: `test_tool_real_init_and_sync` fails (FAIL+1, returns, no real-tool steps; F2) when vcs is missing and `ROS2_COLCON_TESTS_REQUIRE_VCS` is set and non-empty; otherwise the loud skip stays. Comment above the function names the variable and the job. Results line counts `MR_SKIPPED + TOOL_SKIPPED`. New `test_real_tool_case_without_vcs` (registered after `test_setup_requires_vcs`, not behind `mr_test`): two subshells with an empty bin dir as PATH, one unsetting and one exporting the variable explicitly (F1), checking the output and the printed counters (`TOOL_SKIPPED=1 FAIL=0` / `TOOL_SKIPPED=0 FAIL=1`).
+- `df37b3b4` validate.yml, Validate Adapter Contract: new step `pip install vcs2l==1.1.7` then `vcs --version`, with a comment that the pin is kept in step with the `[test]` extra's floor (F3); `env: ROS2_COLCON_TESTS_REQUIRE_VCS: '1'` on "Run ros2_colcon adapter tests". Lint job unchanged (the case still skips there, now counted).
+
+Verification (local, vcs = /usr/bin/vcs, vcstool 0.3.0):
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: `=== Results: 1379 passed, 0 failed, 0 skipped ===`, real-tool case ran, no SKIPPED line.
+- Same with `ROS2_COLCON_TESTS_REQUIRE_VCS=1` in the environment (as CI): `=== Results: 1379 passed, 0 failed, 0 skipped ===`; the variable-unset case still passes (F1 confirmed).
+- Mutation (require branch changed to `&& false`, reverted, tree clean after): `=== Results: 1377 passed, 2 failed, 0 skipped ===`, both "variable set" assertions failed.
+- `bash .agent/scripts/tests/test_script_tests_hook_scope.sh` (names test_ros2_colcon.sh): `test_script_tests_hook_scope: 347 passed, 0 failed`.
+- Docs checked: no `.md` outside work plans names the suite's summary line, the variable or the adapter-contract job's steps (grep of test_ros2_colcon, REQUIRE_VCS, vcs2l, Validate Adapter Contract); `script_reference.md` and `build_and_test.md` need no change.
+- Full pre-commit pass left to the host. Host still to do: CI log check (real-tool case with no SKIPPED line in adapter-contract; Lint green with `1 skipped`) and the job-time measurement before/after.
