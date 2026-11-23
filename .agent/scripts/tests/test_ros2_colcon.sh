@@ -4771,6 +4771,22 @@ COLCON_RAN_IN:$root/fakefox/extra CMD:test SOURCED:base+fakefox+core+extra" "$(c
     assert_not_contains "test, a layer's .repos file missing: no success said" "passed" "$out"
     assert_eq "test, a layer's .repos file missing: colcon not run" "" "$(cat "$sb/colcon.log")"
     mv "$sb/core.repos.aside" "$root/.repos-manifest/resolved/fakefox/core.repos"
+    # A layer's resolved .repos file that cannot be read is not "none on
+    # disk" either: test fails before colcon runs, naming the file.
+    chmod 000 "$root/.repos-manifest/resolved/fakefox/core.repos"
+    if [ -r "$root/.repos-manifest/resolved/fakefox/core.repos" ]; then
+        echo "  SKIPPED: an unreadable file is readable here (running as root)"
+    else
+        : > "$sb/colcon.log"
+        rc=0; out="$(run_tool "$sb" "$root" test 2>&1)" || rc=$?
+        assert_eq "test, a layer's .repos file unreadable: exit 1" "1" "$rc"
+        assert_contains "test, a layer's .repos file unreadable: the file named" \
+            "ERROR: $root/.repos-manifest/resolved/fakefox/core.repos could not be read, and the last resolve's layers.txt lists layer 'core'" "$out"
+        assert_not_contains "test, a layer's .repos file unreadable: no layer skipped as if empty" "Skipping layer core" "$out"
+        assert_not_contains "test, a layer's .repos file unreadable: no success said" "passed" "$out"
+        assert_eq "test, a layer's .repos file unreadable: colcon not run" "" "$(cat "$sb/colcon.log")"
+    fi
+    chmod 644 "$root/.repos-manifest/resolved/fakefox/core.repos"
     rc=0; out="$(run_tool "$sb" "$root" env 2>&1)" || rc=$?
     assert_eq "env: the underlay, then each built layer in order" \
         "unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX

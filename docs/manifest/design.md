@@ -200,7 +200,7 @@ The root need not be a git repository. The registry line holds its name, type an
   an optional repo that is not there is left out; a layer with none of its repos on disk, every
   one of them optional, is skipped with a line. A layer whose resolved `.repos` file is missing
   fails the run before colcon runs, naming the file and the tool's `sync`, as the tool's
-  build refuses it.
+  build refuses it; one that cannot be read fails the run before colcon runs too.
 - **`validate`** checks, for each distro it covers, the workspace's own records, then the
   checkouts through the tool's `status`. It fails when the registry line carries `role=` or
   `distro=`, or the settings file `source`, `source_ref`, `source_path` or `bootstrap_url`:

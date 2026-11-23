@@ -2219,7 +2219,8 @@ adapter_test() {
     # left out; a layer with none of its repos on disk (every one of them
     # optional) is skipped with a line. A layer whose resolved .repos file
     # is missing fails before anything runs too, naming the file and the
-    # tool's sync, as the tool's build refuses it.
+    # tool's sync, as the tool's build refuses it; one the reader cannot
+    # read fails before anything runs as well.
     _rc_require_manifest || return 1
     local underlay layer layer_dir rc failed="" route key list file entries missing="" i=0
     local -a paths=() tool_paths=()
@@ -2233,7 +2234,10 @@ adapter_test() {
                 echo "Run: $(_rc_tool_sync_step "$_RC_TOOL_DISTRO")" >&2
                 return 1
             fi
-            entries="$(_rc_repos_entries "$file" --detail)"
+            if ! entries="$(_rc_repos_entries "$file" --detail)"; then
+                echo "ERROR: $file could not be read, and the last resolve's layers.txt lists layer '$layer'; test reads from it which repos of the layer to test" >&2
+                return 1
+            fi
             list=""
             while IFS= read -r key; do
                 [ -n "$key" ] || continue
