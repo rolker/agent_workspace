@@ -1128,3 +1128,19 @@ The plan's reading of the tool is right: every state, field, exit status and the
 - [ ] State the package-selection consequences of moving `build` to the tool (finding 2) in the header or design text, and cover passthrough in a stub test.
 - [ ] Skip, with a line, a layer in `test` whose resolved repos are none on disk (finding 3).
 - [ ] Settle findings 4-9 in the implementation: nested-key text, capture without a temp file, `python3`, `_rc_nofd` for build, the underlay stub's variable, local changes in validate.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 11:10 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the Plan Review's verdict is ready; its ten findings are one missing document and wording or mechanism details, none changing what the work is for, and all go into the implement handoff)
+**After**: plan
+**Decision**: proceed
+
+Read: the Plan Review at 0a72bbfc for plan a1be602a, verdict ready. The reviewer ran the installed tool on a throwaway system directory with real colcon: every status state, field name and exit status the plan relies on, and the build argument form, behaved as the plan says. This proceed covers part 4 only; parts 2 and 3 stay later parts and the pull request says Part of #503. Carried into the implement handoff, to be done in this part: finding 1 (docs/design.md#registry-and-adapters, lines 476-478, is updated too); 2 (the documents and the build refusal text say what package selection through adapter build does now); 3 (test skips a layer with none of its resolved repos on disk, with a message line); 4 (say that env and test still refuse a nested key); 5 (capture the status output in a variable); 6 (the interpreter is python3 beside the tool); 7 (the build call goes through _rc_nofd); 8 (the stub's variable is SOURCED_LAYERS); 9 (the mapping says local changes and unpushed commits are not reported by validate, or reports them as a note); 10 (the roadmap checks name text a comment cannot satisfy).
+
+### Decisions made (owner may veto)
+- The adapter's build takes no layer argument; one layer is built with the tool directly (repos-manifest build <layer>) — undoing it: add a pass-through argument to the adapter's build verb, a small change.
+- A resolve that is out of date with the manifest is a validate warning, not a failure — undoing it: one branch in validate and its test.
+- validate on the tool route fails when the manifest cannot be read or when a non-optional repo added to the manifest is not synced yet, as docs/manifest/design.md states as the target — undoing it: map those status results to warnings.
+- Repos on another version, with local changes or with unpushed commits stay a pass for validate (the tool exits 0 for them, by the owner's "Only unusable repos"); they are shown as a note — undoing it: change the tool's exit rule, which is the tool's design.
