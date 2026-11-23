@@ -1253,6 +1253,7 @@ def standing(
     branch: Optional[str],
     unpushed: Optional[int],
     held: Optional[str],
+    push_to: Optional[str] = None,
 ) -> Standing:
     """`status`'s reading of `update_repo`'s rules after the fetch, for a repo whose version
     `found` was found: it acts on nothing. It is a second copy of those rules, not code they
@@ -1269,7 +1270,11 @@ def standing(
     are said as what `sync` tries: `_change` can still stop either (a path or a submodule in the
     way), and so can a repoint of origin that fails. For the move, the checks `sync` makes
     first are read here, in its order: commits not on origin, then the new branch held by
-    another work tree or a local branch of it with commits not on origin. Reads only."""
+    another work tree or a local branch of it with commits not on origin. Reads only.
+
+    `push_to` is the url `fetch_from` builds when `sync` would repoint origin to it: commits
+    only here are then pushed there, as `sync`'s refusal to repoint says
+    (`push_to_place`), not to origin, the published repo."""
     wanted = repo.version if repo.version is not None else f"origin's default branch {found.name}"
     if found.kind == BRANCH and branch == found.name:
         if head == found.target:
@@ -1295,6 +1300,13 @@ def standing(
                 text += (
                     f"; to bring origin's in by hand: git -C {quoted(git.place)} pull --rebase"
                     f" origin {quoted(found.name)}"
+                )
+            elif push_to is not None:
+                text += (
+                    f"; origin's {found.name} has nothing this clone lacks, so the commits are"
+                    " only here; origin is repointed to the place fetch_from names only once"
+                    " they are there; to push them there (sync never pushes): "
+                    + push_to_place(git.place, push_to, branch)
                 )
             else:
                 text += (
@@ -1704,7 +1716,7 @@ def _repoint_steps(git: Git, repo: Selected, names: Sequence[str]) -> str:
     place = quoted(git.place)
     shown = quoted(mask_url(repo.url))
     branches = [name[len("branch ") :] for name in names if name.startswith("branch ")]
-    pushes = [f"git -C {place} push {shown} {quoted(b)}" for b in branches]
+    pushes = [push_to_place(git.place, repo.url, b) for b in branches]
     if len(branches) < len(names) or not names:  # a detached HEAD: its commit, to a branch
         pushes.append(f"git -C {place} push {shown} <commit>:refs/heads/<a branch>")
     push = " && ".join(pushes)
@@ -1712,6 +1724,12 @@ def _repoint_steps(git: Git, repo: Selected, names: Sequence[str]) -> str:
         f". To fetch from {shown}: push them there first ({push}), and sync again; or point"
         f" origin at it by hand ({set_url_command(git.place, repo.url, repo.key, built=True)})"
     )
+
+
+def push_to_place(place: Path, url: str, branch: str) -> str:
+    """The command that pushes `branch` of the clone at `place` to the url `fetch_from` built,
+    `url`: the next step `sync`'s refusal to repoint names, and `status` with it."""
+    return f"git -C {quoted(place)} push {quoted(mask_url(url))} {quoted(branch)}"
 
 
 def _ref_conflicts(git: Git) -> List[Tuple[str, str]]:

@@ -182,6 +182,10 @@ def test_commits_not_at_the_place_keep_origin_and_name_the_ways_on(existing, cap
     commit_file(clone, "mine", "mine\n", "mine")
     found = _status(system, capsys)
     assert found["state"] == "expected" and "sync tries to repoint origin" in found["detail"]
+    # status names the step sync names: a push to the place, not to origin.
+    push = f"git -C {clone} push {field}/a.git main"
+    assert f"to push them there (sync never pushes): {push}" in found["detail"]
+    assert "push origin" not in found["detail"]
     before = snapshot_repo(clone)
     recorded = state_of(system)["a"]
     out = _sync(system, capsys)
@@ -191,7 +195,7 @@ def test_commits_not_at_the_place_keep_origin_and_name_the_ways_on(existing, cap
         f"src/a: left alone: url changed to {field}/a.git but 1 local commit (branch main) is"
         f" not on it; origin stays {remote}" in out
     )
-    assert f"push {field}/a.git main" in out
+    assert push in out
     assert f"remote set-url origin {field}/a.git" in out
     assert "left alone (1): src/a" in out
     # Once the commit is at the place, the next sync repoints.

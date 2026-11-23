@@ -1678,6 +1678,9 @@ they are when that fetch fails or a local commit is not on the new url), or `syn
 remote named `repos-manifest-probe` is set here; or it was set by hand and is left. With `fetch_from` the text
 names the url built from its prefix ("fetch_from now names ...", or "fetch_from names ... (the
 manifest says ...)" for an `origin` set by hand); an `origin` that is that url already has no note.
+When `sync` would repoint `origin` to that url and the branch has commits only here, the `git
+push` command the text gives pushes them to that url, the step `sync`'s refusal to repoint names,
+not to `origin`.
 In the JSON `url` is the manifest's url, with `fetch_from` too, and `fetched_from` the clone's
 `origin`; the url built from the prefix is only in the text. A repo can be expected and have
 changes and unpushed commits at once, as `sync` leaves such a repo as it is; the state is the

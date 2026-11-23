@@ -355,7 +355,11 @@ def _version(git, place, repo, record, head, origin, found):
                 f"version {repo.version} is a commit here that no branch of origin, and no tag"
                 f" origin has, holds; sync does not follow it{remote_note}",
             )
-    standing = update.standing(git, repo, record, version, head, branch, unpushed, held)
+    # With `fetch_from`, commits only here go to the place `sync` would repoint origin to.
+    push_to = repo.url if repoint and not taken and repo.published is not None else None
+    standing = update.standing(
+        git, repo, record, version, head, branch, unpushed, held, push_to=push_to
+    )
     found.behind = standing.behind
     return (EXPECTED if standing.on_version else DIFFERENT), standing.text + remote_note
 
