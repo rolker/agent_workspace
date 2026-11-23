@@ -27,6 +27,7 @@ from .schema import ManifestError
 from .selectors import select_repos
 from .show import render, shown_path
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
+from .status import run_status
 from .sync import recorded_manifest, run_sync
 from .system import (
     SYSTEM_DIR,
@@ -251,6 +252,10 @@ def cmd_sync(args: argparse.Namespace) -> int:
     return run_sync(args.distro or [])
 
 
+def cmd_status(args: argparse.Namespace) -> int:
+    return run_status(args.distro or [], args.json)
+
+
 def cmd_build(args: argparse.Namespace) -> int:
     if args.distro == "":
         raise ManifestError("--distro is given an empty name; name the distro to build")
@@ -366,6 +371,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--distro", action="append", help="Sync only this distro; may be given more than once"
     )
     sync_p.set_defaults(func=cmd_sync, parser=sync_p)
+
+    status_p = sub.add_parser(
+        "status",
+        help=(
+            "Show what the system directory holds against what the manifest says; changes"
+            " nothing and fetches nothing. Exit status 1 when a repo that is not optional is"
+            " not at its place or cannot be used"
+        ),
+    )
+    status_p.add_argument(
+        "--distro", action="append", help="Show only this distro; may be given more than once"
+    )
+    status_p.add_argument(
+        "--json", action="store_true", help="Print one JSON document a script can read"
+    )
+    status_p.set_defaults(func=cmd_status, parser=status_p)
 
     build_p = sub.add_parser(
         "build",

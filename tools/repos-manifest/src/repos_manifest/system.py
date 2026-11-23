@@ -305,23 +305,36 @@ def paths_init_creates(layout: str, distro: Optional[str], layers: Sequence[str]
     return list(dict.fromkeys(tops + [setup_parts(layout, distro)]))
 
 
+# What `place_problem_kind` finds on the way to a place.
+BLOCKED_PLACE = "blocked-place"  # a link on the way leads somewhere else
+NOT_A_DIRECTORY = "not-a-directory"  # something on the way is not a directory
+
+
 def place_problem(system: Path, parts: Parts) -> Optional[str]:
     """The check on the real destination, before a clone and again before its rename: why
-    `parts` cannot be put in place, or None. The directory that will hold it must be, with
-    every link resolved, the system directory's real path joined with the parts above it, so a
-    link on the way, a layer directory or a directory of a repo's key, fails it; and the
-    nearest of those directories that exists must be a directory, not a file."""
+    `parts` cannot be put in place, or None (`place_problem_kind`, without the kind)."""
+    return place_problem_kind(system, parts)[1]
+
+
+def place_problem_kind(system: Path, parts: Parts) -> Tuple[Optional[str], Optional[str]]:
+    """The check on the real destination: what kind of problem stops `parts` from being put
+    in place, and why, or (None, None). The directory that will hold it must be, with every
+    link resolved, the system directory's real path joined with the parts above it, so a link
+    on the way, a layer directory or a directory of a repo's key, fails it (BLOCKED_PLACE);
+    and the nearest of those directories that exists must be a directory, not a file
+    (NOT_A_DIRECTORY)."""
     target = system.joinpath(*parts)
     expected = os.path.join(os.path.realpath(system), *parts[:-1])
     if os.path.realpath(target.parent) != expected:
-        return "a link on the way leads outside its place"
+        return BLOCKED_PLACE, "a link on the way leads outside its place"
     for depth in range(len(parts) - 1, 0, -1):
         above = system.joinpath(*parts[:depth])
         if os.path.lexists(above):
             if not above.is_dir():
-                return f"{'/'.join(parts[:depth])} is on the way and is not a directory"
+                where = "/".join(parts[:depth])
+                return NOT_A_DIRECTORY, f"{where} is on the way and is not a directory"
             break
-    return None
+    return None, None
 
 
 # --- Files in .repos-manifest/ --------------------------------------------------------------
