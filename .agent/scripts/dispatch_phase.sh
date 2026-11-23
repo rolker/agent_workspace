@@ -628,7 +628,13 @@ cmd_handoff() {
     # every tool call, so a command chain without its own `cd` runs there,
     # not in the worktree, and its commits land in whatever repository that
     # folder is (issue 429 plan review, finding 3).
-    echo "conventions=\`**When**\` fields are local time with offset (e.g. \`2026-09-21 14:40 -04:00\`); write scratch files to the session scratchpad, never \`/tmp\` directly, and remove what you create. Start every command chain with \`cd $wt_q &&\`: your shell returns to the session's start folder on each call, so a chain without it runs and commits there.${pass_rule}"
+    # The job-count rule (issue 428, item 1) is for every phase and every
+    # issue type: a parallel build with no count started one compiler per
+    # core, the out-of-memory killer took the session down (2026-11-09).
+    # The flags are printed only with a count, so the handoff itself never
+    # shows the bare form; the command that carried it came from issue text,
+    # which this script never sees, hence the "copied" clause.
+    echo "conventions=\`**When**\` fields are local time with offset (e.g. \`2026-09-21 14:40 -04:00\`); write scratch files to the session scratchpad, never \`/tmp\` directly, and remove what you create. Start every command chain with \`cd $wt_q &&\`: your shell returns to the session's start folder on each call, so a chain without it runs and commits there. A parallel build or test command always names its job count, for example \`-j 4\` or \`--parallel 4\`, never the flag alone (an uncounted build ran out of memory and took a session down); this holds for a command copied from an issue or a plan too.${pass_rule}"
     if [[ -n "$prompt_file" ]]; then
         echo "prompt_file=$prompt_file"
     fi
