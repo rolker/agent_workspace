@@ -973,6 +973,13 @@ The wait after the request ends when either is true:
 - a hosted review whose `commit_id` is the output's `head_sha` has
   arrived.
 
+A check-run that concludes with anything but `failure` and no review on
+the head yet gets one more poll, about 60 s later, before step 9a calls
+Copilot "not available": the review can become visible a few seconds
+after its check-run completes, and a cold read spent on that gap is
+wasted. A `failure` conclusion needs no second poll (the could-not-review
+notice lands with it).
+
 An earlier round's review, a could-not-review one included, is about an
 older commit and does not end this wait. Being read is wider:
 `triage-reviews` reads every review the pull request holds, whatever its
@@ -1190,7 +1197,9 @@ in this order.
      running one). A review on the head arrived: dispatch
      `triage-reviews`, which reads it, and no cold read follows. A
      could-not-review notice, a check-run that concluded with no review
-     on the head, or no answer within the bound: "not available". Verified: `gh` 2.104.0's `gh pr edit --help` documents
+     on the head (after step 9's one extra poll on a non-`failure`
+     conclusion), or no answer within the bound: "not available".
+     Verified: `gh` 2.104.0's `gh pr edit --help` documents
      `--add-reviewer "@copilot"`. Not verified: what the request does
      under exhausted quota, or when it is accepted and never answered;
      every outcome that is not a review counts as "not available".
