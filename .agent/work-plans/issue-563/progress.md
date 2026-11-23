@@ -80,3 +80,11 @@ Instructions for the plan (host decisions, listed for the owner's veto):
 - A `gh-issue N closed` line whose fact is true while the issue stays open is out of scope for the checker: the roadmap uses another existing check kind where one fits, else an empty cell. The plan says so.
 - Tests: fixtures for the path-attribution cases the review lists, plus one run against the real five-path Direction text (branch feature/issue-560 until it is on main); the plan says which roadmap each test reads.
 - The plan names every consequence the review lists (checker header grammar, the summary options and the run-record line, both test files, check_design_anchors.sh, sub-roadmap reading, skill steps 3, 5 and 8 and the closing question).
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-23 14:14 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-563/plan.md` at `c384581d`
+
+One PR in two commit groups: the checker emits a `path` row per Path paragraph (five fields kept), with per-path summary suffix and next steps, plus `named_path` in sitrep_root.sh; then skill text and the Direction row. A roadmap with no Path paragraph reads as today.
