@@ -50,3 +50,22 @@ Every check cell follows the grammar (gh-issue, owner/repo#N, ' ; ' joins, empty
 - [x] (suggestion) Direction row: Paths 1 to 4 have line tables, Path 5 none yet, one line under Across the paths — `docs/design.md:105` (9ca37d57)
 
 Checks: sitrep_checks.sh --root/--roadmap on the worktree exit 0: 15 line, 10 deferral, 2 part, 37 subline, 10 subdeferral rows, 0 format rows. check_design_anchors.sh exit 0. update_roadmap.sh --issue N --dry-run for 544, 563, 398 finds no entries. Suites: test_skill_paths.sh 198 passed, 0 failed; test_sitrep_checks.sh 252 passed, 0 failed. Every commit used SKIP=validate-script-tests; the full pre-commit pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-23 14:23 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-560 at `e1d515f5`
+**Base**: origin/main
+**Depth**: Standard (reason: round 2 convergence check per handoff, on the round 1 findings and the fix diff since 711f23d5)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round 1 findings, all closed: the Format block matches origin/main byte for byte plus the new bullet; test_skill_paths.sh now passes and fails on a missing, misnumbered or unreadable Path paragraph, a non-Line table among the paths, a table row inside a paragraph, and a three-column header (mutations run by hand); the design.md Direction row matches sitrep SKILL.md:444-450 (named line first gives Path 1, project-goal override, Path 3, Path 2; Paths 4 and 5 never marked); the Path 5 Design later row is empty and the orchestrator session has its own row; Path 2 and Path 5 now quote the owner with dates, and the principle is quoted as docs/principles.md:10 has it; Across the paths leads with "To be built (#563)"; the shared-issue line names #544; the design row says Path 5 has no lines and one line sits under Across the paths.
+Host decision recorded, not a finding: the acceptance-case paragraph drops the sentence about the fresh OS install on the second machine; it is listed for the owner's veto at the merge.
+Checks: test_skill_paths.sh 198 passed 0 failed; test_sitrep_checks.sh 252 passed 0 failed; sitrep_checks.sh exit 0 (15 lines, 10 deferrals, no format rows); check_design_anchors.sh exit 0; pre-commit on the three changed files clean (validate-script-tests skipped). Cross-model skipped: the fix commits restore reviewed text or change a test and wording the local checks cover.
+
+### Findings
+- [ ] No issues found. LGTM.
