@@ -4599,6 +4599,31 @@ test_tool_build_runs_the_tool() {
     rc=0; out="$(TOOL_EXIT=130 run_tool "$sb" "$root" build --packages-select pkg_a 2>&1)" || rc=$?
     assert_eq "selection, a signal's status 130 passed through" "130" "$rc"
     assert_not_contains "selection, a signal: no note" "NOTE:" "$out"
+    # The status is the tool's whatever the caller's pipefail: the
+    # dispatcher's set -o pipefail taken out in this sandbox's copy.
+    sed -i 's/^set -euo pipefail$/set -eu/' "$sb/.agent/scripts/adapter"
+    assert_eq "the sandbox's dispatcher runs without pipefail" "0" \
+        "$(grep -c pipefail "$sb/.agent/scripts/adapter" || true)"
+    rc=0; out="$(TOOL_EXIT=3 TOOL_STDERR="ERROR: colcon failed in layer core" run_tool "$sb" "$root" build --packages-select pkg_a 2>&1)" || rc=$?
+    assert_eq "selection without pipefail: the tool's status 3 passed through" "3" "$rc"
+    rc=0; out="$(TOOL_EXIT=1 TOOL_STDERR="$not_built_refusal" run_tool "$sb" "$root" build --packages-select pkg_a 2>&1)" || rc=$?
+    assert_eq "selection without pipefail, refused: exit 1" "1" "$rc"
+    assert_contains "selection without pipefail, refused: the note" "$note_text" "$out"
+    cp "$REAL_ROOT/.agent/scripts/adapter" "$sb/.agent/scripts/adapter"
+    # With stderr closed the tool runs to the end, its status passed through.
+    : > "$sb/tool.log"
+    rc=0; out="$(TOOL_STDERR="a line on stderr" run_tool "$sb" "$root" build --packages-select pkg_a 2>&-)" || rc=$?
+    assert_eq "selection, stderr closed: a successful build exits 0" "0" "$rc"
+    assert_contains "selection, stderr closed: the tool ran to the end" \
+        "ARGS:build --distro fakefox -- $flags --packages-select pkg_a EXIT:0" "$(cat "$sb/tool.log")"
+    assert_contains "selection, stderr closed: its stdout passed through" "build stub: ran" "$out"
+    rc=0; out="$(TOOL_EXIT=1 TOOL_STDERR="$not_built_refusal" run_tool "$sb" "$root" build --packages-select pkg_a 2>&-)" || rc=$?
+    assert_eq "selection, stderr closed, refused: exit 1" "1" "$rc"
+    # A stderr that cannot take the writes (a full device): the same.
+    mkdir -p "$sb/tmp"
+    rc=0; out="$(TMPDIR="$sb/tmp" TOOL_STDERR="a line on stderr" run_tool "$sb" "$root" build --packages-select pkg_a 2>/dev/full)" || rc=$?
+    assert_eq "selection, stderr on /dev/full: a successful build exits 0" "0" "$rc"
+    assert_eq "selection: no temporary file left behind" "" "$(ls -A "$sb/tmp")"
     rc=0; out="$(TOOL_EXIT=130 run_tool "$sb" "$root" build 2>&1)" || rc=$?
     assert_eq "a signal's status 130 passed through" "130" "$rc"
     # A nested key: the tool reads it, so build runs; env and test still refuse it.

@@ -2120,15 +2120,35 @@ _rc_tool_build() {
         return "$rc"
     fi
     # With selection, the tool's stderr is passed through and kept, to tell
-    # its selection refusal from any other failure.
-    errlog="$(mktemp)" || return 1
+    # its selection refusal from any other failure. The status is the
+    # tool's own (PIPESTATUS, whatever the caller's pipefail). The reader
+    # never stops the tool: a stderr it cannot write to (closed, full)
+    # leaves the copy in the file, a file it cannot write leaves stderr,
+    # and whatever is left is drained. With no temporary file to be had,
+    # the build runs as without selection, with no note. The file goes on
+    # every way out, an interrupt included.
+    if ! errlog="$(mktemp 2>/dev/null)"; then
+        (cd "$root" && _rc_nofd "$bin" build --distro "$_RC_TOOL_DISTRO" -- --symlink-install \
+            --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@") || rc=$?
+        return "$rc"
+    fi
+    local sig traps
+    traps="$(trap -p INT TERM HUP)"
+    for sig in INT TERM HUP; do
+        # shellcheck disable=SC2064  # the file's name is fixed now
+        trap "rm -f -- $(printf '%q' "$errlog"); trap - $sig; kill -$sig \$\$" "$sig"
+    done
     { (cd "$root" && _rc_nofd "$bin" build --distro "$_RC_TOOL_DISTRO" -- --symlink-install \
-        --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@") 2>&1 1>&7 7>&- | tee "$errlog" >&2; } 7>&1 || rc=$?
+        --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@") 2>&1 1>&7 7>&- \
+        | { tee "$errlog" >&2 2>/dev/null || tee -a "$errlog" >/dev/null 2>&1 || :; cat >/dev/null 2>&1 || :; } \
+        && rc="${PIPESTATUS[0]}" || rc="${PIPESTATUS[0]}"; } 7>&1
     if [ "$rc" -eq 1 ] && grep -qF -e "builds only part of a layer, so it only rebuilds layers that are built" \
             -e "names packages colcon must find in each layer it builds" "$errlog"; then
         refused=1
     fi
-    rm -f "$errlog"
+    rm -f -- "$errlog"
+    trap - INT TERM HUP
+    eval "$traps"
     if [ "$refused" -eq 1 ]; then
         printf 'NOTE: with package selection the manifest tool builds only layers built before, and --packages-up-to only one layer at a time; the adapter builds every layer, so build without selection first, or run the tool'"'"'s step yourself with the distro'"'"'s environment sourced: source %q && cd %q && %q build --distro %q <layer> -- <colcon arguments>\n' \
             "$underlay" "$root" "$bin" "$_RC_TOOL_DISTRO" >&2
