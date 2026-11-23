@@ -159,3 +159,21 @@ The mechanism is sound and checked by running: today's url rule does exactly wha
 - [ ] Allow a trailing `:` in the prefix only for the scp-like form; test `https://host:`.
 - [ ] Add to the design edits: the `state.yaml` comment, "`U` is recorded" in the url rule, "the url `sync` recorded", the conditional repoint in "Where repos are fetched from", `show`'s "gave the URL printed" sentence, `status` JSON `url` as the manifest's, `fallback`'s default, the same-name refusal's commands.
 - [ ] Register `published` with `remember_url` beside `E` in `update.py` and `status.py`.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 13:01 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+The Plan Review at cb1e933a said needs-work; its first finding (part 1 with fallback off does not fit a manifest whose repos have several owners, and the case the drive was started for, pushing over ssh from https clones, is already answered by git's pushInsteadOf, as the tool's design says) was put to the owner as a question about what the work is for. His answers, in the session, 2026-11-23:
+
+"The goal is that a public user can pull project11 via https, but if I want to work on it, I need to use ssh. I would rather not maintain two versions of the manifest to support this as they could easily drift."
+
+"The other scenario is field machine interacting with gitcloud, our internal git server for that purpose. The machine do have ssh keys setup so a switch to ssh, and different server and user (for example git@gitcloud/field/repo.git) works."
+
+To "Shall I continue #519 on that basis?" (part 1, fallback off, aimed at the field machine's server; the fork part with fallback on later; the development machine's ssh pushes handled by a git setting, not by the tool): "yes, continue 519, and use the combination setting".
+
+What this settles for the plan: part 1 stays fallback off and its first real use is a field machine that fetches every repo, whatever its published owner, from one prefix on a private server (for example git@gitcloud:field/<repo>.git), with no second copy of the manifest. Finding 1's objection does not apply to that case. The development machine's case is met outside the tool by git's own url rules, set on this machine the same day (pushInsteadOf for the public host, insteadOf for the one owner with a private repo); the tool's documents say so where they describe pushing over ssh. The plan is revised for the review's findings 2 to 8 and for this aim; part 2 (fallback on, a developer's forks) stays outlined.
