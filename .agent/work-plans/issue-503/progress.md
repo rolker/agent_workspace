@@ -1301,3 +1301,26 @@ Read the Local Review (Pre-Push) at 75e7d1dd (round 3, a convergence check, appr
 
 ### Decisions made (owner may veto)
 - Published with the two round 3 suggestions open instead of a fourth fix round: no current caller sets a signal handler, and the other is a CI change only the owner approves; both are in the pull request's text and go through triage to the merge decision — undoing it: a fix pass on the open pull request before the merge.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-23 12:48 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #562 at `1db4680`
+**Sources**: 2 (Local Review (Pre-Push) @ `5bb1a59` (covers `1db4680` via bookkeeping), CI rollup: 10 check runs)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+No GitHub reviews, inline comments, conversation comments or hosted-reviewer check run on the pull request. The two open suggestions of the pre-push review are the only findings to rule on.
+
+CI facts read from the Validate Adapter Contract job's log (run 45228617141): Python 3.10.22; both real-tool tests ran (`tool route with the real tool and vcs: init by hand ...` and `... validate reads the real status, build runs the real build`); no SKIPPED line; `=== Results: 1530 passed, 0 failed, 0 skipped ===`. So the locale part of the suite ran on CI and the status reader works on Python 3.10: the two points the pull request body lists as not verified are settled.
+
+CI cost: the job took 141 s and 174 s on main's two runs today and 216 s and 231 s on this pull request's two runs. The ros2_colcon test step alone went from 94 s (main, 1366 checks) to 173 s (this head, 1530 checks, a second real-tool test): the suite's growth costs about 80 s in that job.
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) @ `5bb1a59`) the interrupt path of the build with selection is untested: nothing checks that INT, TERM or HUP during the tool's build removes the temporary stderr file and ends with the signal's status (143 for TERM). Its second half, that the handler resets the signal to default and re-raises so a caller's own INT/TERM/HUP trap is skipped on an interrupt, cannot occur with any caller on this branch: the only route in is `.agent/scripts/adapter` (and `build.sh`, which execs it), which sets no trap before calling `adapter_build`; the traps in `_project_registry.sh` live in `project_file_set`'s own subshell. Fix, about 20 lines: in the handler, `eval "$traps"` (the saved caller traps) before `kill -$sig $$` instead of `trap - $sig` (one line), and a case in `test_tool_build_runs_the_tool` with a stub tool that sleeps, TERM sent to the dispatcher, then the temporary file gone and exit 143 — `.agent/project_types/ros2_colcon/adapter.sh:2146`
+
+### False positives
+- (Local Review (Pre-Push) @ `5bb1a59`) on CI the locale part may always be a counted skip, so add a `sudo locale-gen en_US.UTF-8` step to validate.yml — the failure mode did not occur: the CI image has en_US.UTF-8 and GNU comm, and this head's Validate Adapter Contract log shows both real-tool tests running, no SKIPPED line and `1530 passed, 0 failed, 0 skipped`. Should a future image drop the locale, the skip is counted and printed in that Results line, not silent, so the CI change (Ask First) is not needed — `.agent/scripts/tests/test_ros2_colcon.sh:4880`
