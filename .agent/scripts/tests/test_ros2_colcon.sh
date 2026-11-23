@@ -4212,6 +4212,25 @@ EOF
 # A stub of the manifest tool: records where it ran, its arguments and the
 # exit status it gives (TOOL_EXIT, default 0); TOOL_NEW_LAYER adds a layer
 # to every resolved layers.txt, as a sync of a changed manifest would.
+# status: prints the file TOOL_STATUS_FILE names and exits TOOL_EXIT; with
+# no TOOL_STATUS_FILE, a format 1 document made from the last resolve and
+# what is on disk (status_stub.py) and its exit status. build: records the
+# underlay's SOURCED_LAYERS and COLCON_PREFIX_PATH as well.
+case "\${1:-}" in
+    status)
+        echo "STATUS_RAN_IN:\$(pwd -P) ARGS:\$*" >> "$sb/status.log"
+        if [ -n "\${TOOL_STATUS_FILE:-}" ]; then
+            cat "\$TOOL_STATUS_FILE"
+            exit "\${TOOL_EXIT:-0}"
+        fi
+        exec "$MR_PY" -I "$sb/status_stub.py" "\$@"
+        ;;
+    build)
+        echo "build stub: ran"
+        echo "TOOL_RAN_IN:\$(pwd -P) ARGS:\$* EXIT:\${TOOL_EXIT:-0} SOURCED:\${SOURCED_LAYERS:-none} PREFIX:\${COLCON_PREFIX_PATH:-unset}" >> "$sb/tool.log"
+        exit "\${TOOL_EXIT:-0}"
+        ;;
+esac
 if [ -n "\${TOOL_NEW_LAYER:-}" ]; then
     for f in "\$PWD"/.repos-manifest/resolved/*/layers.txt; do echo "\$TOOL_NEW_LAYER" >> "\$f"; done
 fi
@@ -4219,6 +4238,55 @@ echo "distro stub: present, not touched"
 echo "TOOL_RAN_IN:\$(pwd -P) ARGS:\$* EXIT:\${TOOL_EXIT:-0}" >> "$sb/tool.log"
 exit "\${TOOL_EXIT:-0}"
 EOF
+    # The stub status: each repo of the last resolve, by layer, as the real
+    # status names it (path relative to the root, the unnamed layer
+    # "_unnamed"): missing or skipped (optional) when its place is not
+    # there, not-a-directory, unusable when it has no .git, else expected.
+    cat > "$sb/status_stub.py" <<'EOF'
+import json, os, re, sys
+args = sys.argv[1:]
+distro = args[args.index("--distro") + 1]
+res = os.path.join(".repos-manifest", "resolved", distro)
+if not os.path.isfile(os.path.join(res, "layers.txt")):
+    print("repos-manifest: error: distro %s: this system does not record it" % distro, file=sys.stderr)
+    sys.exit(1)
+def lines(path):
+    if not os.path.isfile(path):
+        return []
+    with open(path) as fh:
+        return [l.strip() for l in fh if l.strip() and not l.strip().startswith("#")]
+optional = set(lines(os.path.join(res, "optional.txt")))
+repos, ok = [], True
+for layer in lines(os.path.join(res, "layers.txt")):
+    path = os.path.join(res, layer + ".repos")
+    keys = []
+    if os.path.isfile(path):
+        with open(path) as fh:
+            for l in fh:
+                m = re.match(r"^  ('?)([^ '#][^']*?)\1:\s*$", l)
+                if m:
+                    keys.append(m.group(2))
+    for key in keys:
+        place = "/".join([distro] + ([] if layer == "_unnamed" else [layer]) + ["src", key])
+        opt = key in optional
+        if not os.path.lexists(place):
+            state, detail = ("skipped" if opt else "missing"), "is not there; sync clones it"
+        elif not os.path.isdir(place):
+            state, detail = "not-a-directory", "is there and is not a directory"
+        elif not os.path.exists(os.path.join(place, ".git")):
+            state, detail = "unusable", "is not a git repository of its own"
+        else:
+            state, detail = "expected", "on the manifest's version"
+        if not opt and state in ("missing", "not-a-directory", "unusable"):
+            ok = False
+        repos.append({"key": key, "path": place, "layer": layer, "optional": opt, "state": state,
+                      "detail": detail, "changes": 0, "unpushed": 0})
+doc = {"format": 1, "ok": ok, "distros": [{"distro": distro, "ok": ok, "problem": None,
+                                            "repos": repos, "not_in_manifest": []}]}
+print(json.dumps(doc, indent=2))
+sys.exit(0 if ok else 1)
+EOF
+    ln -sf "$MR_PY" "$sb/.venv/bin/python3"
     chmod +x "$sb/bin/colcon" "$sb/bin/curl" "$sb/.venv/bin/repos-manifest"
     echo "$root"
 }
@@ -4507,16 +4575,120 @@ source $root/fakefox/core/install/local_setup.bash
 source $root/fakefox/extra/install/local_setup.bash" "$out"
 }
 
+# A canned status document for fakefox in <out>: the stub's own document
+# for the root as it is, then <python> run on it (doc, d: the distro's
+# entry, r: its repos by key).
+tool_status_doc() {  # <sb> <root> <out> <python>
+    (cd "$2" && "$MR_PY" -I "$1/status_stub.py" --distro fakefox) > "$3.base" || true
+    "$MR_PY" -I -c '
+import json, sys
+doc = json.load(open(sys.argv[1]))
+d = doc["distros"][0]
+r = {x["key"]: x for x in d["repos"]}
+exec(sys.argv[3])
+with open(sys.argv[2], "w") as fh:
+    json.dump(doc, fh)' "$3.base" "$3" "$4"
+}
+
 test_tool_validate() {
-    echo "TEST: tool route: validate checks the checkouts against the last resolve and says what it did not check"
-    local sb root out rc=0
+    echo "TEST: tool route: validate reads repos-manifest status: its exit status decides, its document names what failed"
+    local sb root out rc=0 doc step
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
     root="$(make_tool_root "$sb" fakefox)"
+    doc="$sb/status.json"
+    step="cd $root && $sb/.venv/bin/repos-manifest sync --distro fakefox"
     out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
     assert_eq "validate: exit 0" "0" "$rc"
-    assert_eq "validate: the success line names the distro, the files and the limit" \
-        "✅ ros2_colcon checkout matches the tool's last resolve for distro fakefox ($root/.repos-manifest/resolved/fakefox); the manifest itself was not read again (the adapter does not call repos-manifest status yet; issue 503 makes it do so)" "$out"
+    assert_eq "validate: the success line names the distro, what read it and the counts" \
+        "✅ ros2_colcon checkout read against the manifest for distro fakefox (repos-manifest status: 4 repo(s), 4 as expected, 0 with a warning above, 0 optional and skipped; clones read as last fetched, nothing fetched)" "$out"
+    assert_eq "validate: status ran in the root for the distro, as JSON" \
+        "STATUS_RAN_IN:$root ARGS:status --distro fakefox --json" "$(cat "$sb/status.log")"
+    assert_eq "validate: no sync, no build" "false" "$([ -e "$sb/tool.log" ] && echo true || echo false)"
+    # Each state the tool reports, from canned documents.
+    tool_status_doc "$sb" "$root" "$doc" '
+r["pkg_a"]["state"] = "different"; r["pkg_a"]["detail"] = "is on branch other, not fakefox"
+r["pkg_c"]["state"] = "left-alone"; r["pkg_c"]["detail"] = "has a rebase in progress"'
+    rc=0; out="$(TOOL_STATUS_FILE="$doc" run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "different and left-alone: exit 0" "0" "$rc"
+    assert_contains "different: a warning with the tool's detail" \
+        "⚠️ distro fakefox: $root/fakefox/core/src/pkg_a different: is on branch other, not fakefox" "$out"
+    assert_contains "left-alone: a warning with the tool's detail" \
+        "⚠️ distro fakefox: $root/fakefox/extra/src/pkg_c left-alone: has a rebase in progress" "$out"
+    assert_contains "different and left-alone: counted in the pass line" "2 as expected, 2 with a warning above" "$out"
+    tool_status_doc "$sb" "$root" "$doc" 'r["pkg_u"]["changes"] = 3; r["pkg_u"]["unpushed"] = 1'
+    rc=0; out="$(TOOL_STATUS_FILE="$doc" run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "local changes and unpushed commits: exit 0" "0" "$rc"
+    assert_contains "local changes and unpushed commits: a note" \
+        "NOTE: distro fakefox: $root/fakefox/src/pkg_u has local work (3 changed file(s), 1 commit(s) not on origin); it does not fail validate" "$out"
+    tool_status_doc "$sb" "$root" "$doc" 'd["not_in_manifest"] = [{"key": "pkg_old", "path": "fakefox/core/src/pkg_old"}]'
+    rc=0; out="$(TOOL_STATUS_FILE="$doc" run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "not_in_manifest: exit 0" "0" "$rc"
+    assert_contains "not_in_manifest: a warning naming the path" \
+        "⚠️ distro fakefox: $root/fakefox/core/src/pkg_old is still on disk and no longer in the manifest" "$out"
+    tool_status_doc "$sb" "$root" "$doc" 'r["pkg_b"]["state"] = "unusable"; r["pkg_b"]["detail"] = "has no commit checked out"'
+    rc=0; out="$(TOOL_STATUS_FILE="$doc" run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "an optional repo unusable: exit 0" "0" "$rc"
+    assert_contains "an optional repo unusable: a warning" \
+        "⚠️ distro fakefox: $root/fakefox/core/src/pkg_b unusable (optional, so it does not fail validate): has no commit checked out" "$out"
+    tool_status_doc "$sb" "$root" "$doc" '
+r["pkg_a"]["state"] = "blocked-place"; r["pkg_a"]["detail"] = "fakefox/core is a link"
+doc["ok"] = d["ok"] = False'
+    rc=0; out="$(TOOL_STATUS_FILE="$doc" TOOL_EXIT=1 run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "blocked-place: exit 1" "1" "$rc"
+    assert_contains "blocked-place: named with the tool's detail" \
+        "❌ distro fakefox: $root/fakefox/core/src/pkg_a blocked-place: fakefox/core is a link" "$out"
+    assert_contains "blocked-place: the failing distro named" "Validation failed: 1 issue(s) (failing distro: fakefox)." "$out"
+    assert_not_contains "blocked-place: no pass line" "✅" "$out"
+    tool_status_doc "$sb" "$root" "$doc" '
+del d["repos"], d["not_in_manifest"]
+d["problem"] = "the manifest ../m.manifest.yaml cannot be read"
+doc["ok"] = d["ok"] = False'
+    rc=0; out="$(TOOL_STATUS_FILE="$doc" TOOL_EXIT=1 run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "a distro's problem: exit 1" "1" "$rc"
+    assert_contains "a distro's problem: said" \
+        "❌ distro fakefox cannot be read or resolved: the manifest ../m.manifest.yaml cannot be read" "$out"
+    : > "$doc"
+    rc=0; out="$(TOOL_STATUS_FILE="$doc" TOOL_EXIT=1 run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "no document: exit 1" "1" "$rc"
+    assert_contains "no document: said, with the exit status" "❌ distro fakefox: repos-manifest status gave no document (exit 1)" "$out"
+    rc=0; out="$(TOOL_STATUS_FILE="$doc" TOOL_EXIT=2 run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "exit 2: exit 1" "1" "$rc"
+    assert_contains "exit 2: named" "❌ distro fakefox: repos-manifest status exited 2" "$out"
+    echo 'not json' > "$doc"
+    rc=0; out="$(TOOL_STATUS_FILE="$doc" run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "not JSON: exit 1" "1" "$rc"
+    assert_contains "not JSON: said" "repos-manifest status printed something that is not one JSON document" "$out"
+    tool_status_doc "$sb" "$root" "$doc" 'doc["format"] = 2'
+    rc=0; out="$(TOOL_STATUS_FILE="$doc" run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "format 2: exit 1" "1" "$rc"
+    assert_contains "format 2: named" "printed a document of format 2; the adapter reads format 1" "$out"
+    tool_status_doc "$sb" "$root" "$doc" 'r["pkg_c"]["state"] = "missing"'
+    rc=0; out="$(TOOL_STATUS_FILE="$doc" TOOL_EXIT=0 run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "exit 0 with a failing repo: exit 1" "1" "$rc"
+    assert_contains "exit 0 with a failing repo: the disagreement said" "document and its exit status disagree" "$out"
+    tool_status_doc "$sb" "$root" "$doc" 'pass'
+    rc=0; out="$(TOOL_STATUS_FILE="$doc" TOOL_EXIT=1 run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "exit 1 with nothing failing: exit 1" "1" "$rc"
+    assert_contains "exit 1 with nothing failing: the disagreement said" "document and its exit status disagree (exit 1" "$out"
+    tool_status_doc "$sb" "$root" "$doc" 'r["pkg_c"]["state"] = "sideways"'
+    rc=0; out="$(TOOL_STATUS_FILE="$doc" run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "a state the adapter does not know: exit 1" "1" "$rc"
+    assert_contains "a state the adapter does not know: named" "is in a state the adapter does not know, 'sideways'" "$out"
+    # The last resolve against status's repos: out of date is a warning.
+    tool_status_doc "$sb" "$root" "$doc" '
+d["repos"] = [x for x in d["repos"] if x["key"] != "pkg_c"]
+d["repos"].append(dict(r["pkg_a"], key="pkg_new", path="fakefox/core/src/pkg_new"))'
+    rc=0; out="$(TOOL_STATUS_FILE="$doc" run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "a resolve out of date: exit 0" "0" "$rc"
+    assert_contains "a resolve out of date: a warning naming both sides and the sync" \
+        "is out of date with the manifest (in the manifest only: core/pkg_new; in the last resolve only: extra/pkg_c); the adapter's other verbs read the last resolve; run: $step" "$out"
+    # The tool's interpreter missing.
+    mv "$sb/.venv/bin/python3" "$sb/python3.aside"
+    rc=0; out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "no python3 beside the tool: exit 1" "1" "$rc"
+    assert_contains "no python3 beside the tool: how to install it" "with python3 beside it), so status cannot be read; run: make install-repos-manifest" "$out"
+    mv "$sb/python3.aside" "$sb/.venv/bin/python3"
     # A leftover of another route is noted, without failing.
     mkdir -p "$root/configs/manifest"
     echo "file:///x/bootstrap.yaml" > "$root/configs/project_bootstrap.url"
@@ -4528,11 +4700,22 @@ test_tool_validate() {
     mv "$root/fakefox/core/src/pkg_b" "$(dirname "$root")/pkg_b.aside"
     rc=0; out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
     assert_eq "a missing optional repo: still exit 0" "0" "$rc"
+    assert_contains "a missing optional repo: counted as skipped" "1 optional and skipped" "$out"
     mv "$root/fakefox/src/pkg_u" "$(dirname "$root")/pkg_u.aside"
     rc=0; out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
     assert_eq "a missing repo of the unnamed layer: exit 1" "1" "$rc"
-    assert_contains "it is named, with its place" "layer '_unnamed': repo 'pkg_u' in _unnamed.repos but not checked out at $root/fakefox/src/pkg_u" "$out"
+    assert_contains "it is named, with its place and the tool's sync" \
+        "❌ distro fakefox: $root/fakefox/src/pkg_u missing: is not there; sync clones it (run: $step)" "$out"
     mv "$(dirname "$root")/pkg_u.aside" "$root/fakefox/src/pkg_u"
+    # An emptied clone (issue 517, item 2): unusable, a failure.
+    mv "$root/fakefox/extra/src/pkg_c" "$(dirname "$root")/pkg_c.aside"
+    mkdir "$root/fakefox/extra/src/pkg_c"
+    rc=0; out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "an emptied clone: exit 1" "1" "$rc"
+    assert_contains "an emptied clone: unusable, named" \
+        "❌ distro fakefox: $root/fakefox/extra/src/pkg_c unusable: is not a git repository of its own" "$out"
+    rmdir "$root/fakefox/extra/src/pkg_c"
+    mv "$(dirname "$root")/pkg_c.aside" "$root/fakefox/extra/src/pkg_c"
     rm "$root/.repos-manifest/resolved/fakefox/extra.repos"
     rc=0; out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
     assert_eq "a layer's .repos file missing: exit 1" "1" "$rc"
@@ -4914,7 +5097,7 @@ test_tool_sync_steps_run_literally() {
     rc=0; out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
     assert_eq "not checked out: validate exit 1" "1" "$rc"
     assert_not_contains "not checked out: no adapter verb named" "--project toolsys sync" "$out"
-    step="$(tool_step_of "$(grep "not checked out" <<< "$out")")"
+    step="$(tool_step_of "$(grep " missing: " <<< "$out")")"
     rm -f "$sb/tool.log"
     (cd / && bash -c "$step") >/dev/null 2>&1
     assert_eq "not checked out: the step runs the tool's sync for fakefox2 in the root" \
@@ -4988,7 +5171,7 @@ EOF
     rm -r "$root/fakefox/extra/src/on"
     rc=0; out="$(run_tool "$sb" "$root" validate 2>&1)" || rc=$?
     assert_eq "a quoted key's clone missing: validate exit 1" "1" "$rc"
-    assert_contains "it is named unquoted" "repo 'on' in extra.repos but not checked out" "$out"
+    assert_contains "it is named unquoted" "$root/fakefox/extra/src/on missing:" "$out"
 }
 
 # A package worktree on a root with two distros: from inside <root>/<d>/
@@ -5089,6 +5272,7 @@ EOF
     mkdir -p "$sb/.venv/bin" "$root"
     printf '#!/usr/bin/env bash\nPYTHONPATH=%q exec %q -m repos_manifest.cli "$@"\n' "$MR_SRC" "$MR_PY" > "$sb/.venv/bin/repos-manifest"
     chmod +x "$sb/.venv/bin/repos-manifest"
+    ln -s "$MR_PY" "$sb/.venv/bin/python3"
     out="$(cd "$root" && "$sb/.venv/bin/repos-manifest" init ../m.manifest.yaml --distro-dirs --distro fakefox --yes 2>&1)" || rc=$?
     assert_eq "init: exit 0" "0" "$rc"
     echo "toolsys ros2_colcon $root" >> "$sb/.agent/projects.local"
@@ -5098,7 +5282,7 @@ EOF
     assert_contains "adapter sync: the tool's own report" "up to date (2)" "$out"
     rc=0; out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" "$sb/.agent/scripts/adapter" --project toolsys validate 2>&1)" || rc=$?
     assert_eq "adapter validate: exit 0" "0" "$rc"
-    assert_contains "adapter validate: against the last resolve for fakefox" "matches the tool's last resolve for distro fakefox" "$out"
+    assert_contains "adapter validate: read by the real status for fakefox" "read against the manifest for distro fakefox (repos-manifest status: 2 repo(s), 2 as expected" "$out"
     out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" "$sb/.agent/scripts/adapter" --project toolsys repo_pin pkg_a 2>/dev/null)"
     assert_eq "adapter repo_pin: the resolved version, a branch" $'fakefox\tbranch' "$out"
     rm -rf "$root/fakefox/core/src/pkg_a"

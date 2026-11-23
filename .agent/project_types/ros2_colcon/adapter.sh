@@ -1026,14 +1026,216 @@ _rc_tool_sync() {
     return "$rc"
 }
 
-# `validate` on the tool route: the checkouts against the tool's last
-# resolved files, for each distro the call covers (_rc_tool_distro_select
-# --every: the chosen one, or every one under resolved/ when none is
-# chosen; one whose layers.txt is missing or empty fails, named), and no
-# second record of what the tool records. Fails if any distro fails,
-# naming it. Says what it did not check: the manifest is not read again.
+# The reader of `repos-manifest status --json` (format 1), run by the
+# tool's own interpreter (_rc_tool_status), standard library only. Its
+# argument is the distro asked for; it prints one line per item, fields
+# separated by \x1f (a tab, a newline, a carriage return or \x1f inside a
+# value becomes a space):
+#   bad  <why>                     no document, or not one the adapter reads
+#   head <document ok 0|1> <distro ok 0|1> <the distro's problem, or empty>
+#   repo <layer> <key> <state> <optional 0|1> <path> <changed files>
+#        <unpushed commits> <detail>
+#   gone <key> <path>              a not_in_manifest entry
+_RC_STATUS_READER='
+import json, sys
+SEP = "\x1f"
+def text(v):
+    if v is None:
+        return ""
+    s = str(v)
+    for ch in ("\t", "\n", "\r", SEP):
+        s = s.replace(ch, " ")
+    return s
+def count(v):
+    return str(v) if isinstance(v, int) and not isinstance(v, bool) and v > 0 else "0"
+def out(*fields):
+    print(SEP.join(fields))
+def flag(v):
+    return "1" if v is True else "0"
+want = sys.argv[1]
+raw = sys.stdin.read()
+if not raw.strip():
+    out("bad", "gave no document")
+    sys.exit(0)
+try:
+    doc = json.loads(raw)
+except ValueError as exc:
+    out("bad", "printed something that is not one JSON document (" + text(exc) + ")")
+    sys.exit(0)
+if not isinstance(doc, dict):
+    out("bad", "printed JSON that is not one object")
+    sys.exit(0)
+fmt = doc.get("format")
+if not isinstance(fmt, int) or isinstance(fmt, bool) or fmt != 1:
+    out("bad", "printed a document of format " + text(fmt) + "; the adapter reads format 1")
+    sys.exit(0)
+distros = doc.get("distros")
+mine = [d for d in distros if isinstance(d, dict) and d.get("distro") == want] if isinstance(distros, list) else []
+if len(mine) != 1:
+    out("bad", "printed a document without one entry for distro " + text(want))
+    sys.exit(0)
+entry = mine[0]
+repos = entry.get("repos")
+gone = entry.get("not_in_manifest")
+if repos is None:
+    repos = []
+if gone is None:
+    gone = []
+if not isinstance(repos, list) or not isinstance(gone, list) or not all(isinstance(r, dict) for r in repos + gone):
+    out("bad", "printed a document whose repos or not_in_manifest for distro " + text(want) + " is not a list of objects")
+    sys.exit(0)
+out("head", flag(doc.get("ok")), flag(entry.get("ok")), text(entry.get("problem")))
+for r in repos:
+    out("repo", text(r.get("layer")), text(r.get("key")), text(r.get("state")), flag(r.get("optional")),
+        text(r.get("path")), count(r.get("changes")), count(r.get("unpushed")), text(r.get("detail")))
+for g in gone:
+    out("gone", text(g.get("key")), text(g.get("path")))
+'
+
+# One distro ($1) read against the manifest by the tool's `status --json`,
+# in the root, through _rc_nofd (no network call: status makes none), its
+# stderr passed through and its stdout kept in a variable. The document is
+# read by the tool's own interpreter, python3 beside the tool's executable
+# (the venv `make install-repos-manifest` makes), with _RC_STATUS_READER.
+# The exit status decides and the document explains (the mapping is the
+# table in docs/manifest/design.md, "The tool route"):
+#   - a repo that is not optional and is missing, not-a-directory,
+#     blocked-place, in-other-layer or unusable: a ❌ line, the tool's
+#     detail unchanged (a missing one names the tool's sync);
+#   - the same states for an optional repo, and different or left-alone for
+#     any: a ⚠️ line, no failure; skipped (optional, not there): counted;
+#   - local changes and unpushed commits: a NOTE line, no failure (status
+#     exits 0 for them);
+#   - a not_in_manifest path: a ⚠️ line;
+#   - the distro's problem (its manifest cannot be read or resolved): ❌;
+#   - exit 1 with no document, an exit status other than 0 and 1, a
+#     document not of format 1, a state the adapter does not know, and a
+#     document whose verdict and the exit status disagree: ❌, so a change
+#     in the tool's contract is seen.
+# Then the keys status names, by layer, against the last resolve's .repos
+# files: a difference is a ⚠️ (the last resolve is out of date with the
+# manifest), with the tool's sync step. Sets _RC_STATUS_ISSUES (the number
+# of ❌ lines) and, when it is 0, _RC_STATUS_PASS (the pass line).
+_rc_tool_status() {
+    local d="$1" root bin py doc lines rc=0 kind a b c e f g h i
+    local doc_ok="" dist_ok="" problem="" failing=0 unknown=0 expected=0 warned=0 skipped=0 total=0
+    local from_status="" from_resolve="" layer file only_status only_resolve resolve_ok=1
+    _RC_STATUS_ISSUES=0
+    _RC_STATUS_PASS=""
+    root="$(_rc_root)" || return 1
+    bin="$(_rc_resolver_bin)"
+    py="$(dirname "$bin")/python3"
+    if [ ! -x "$bin" ] || [ ! -x "$py" ]; then
+        echo "❌ distro $d: the manifest tool is not installed at $bin (with python3 beside it), so status cannot be read; run: make install-repos-manifest (from the workspace main checkout)" >&2
+        _RC_STATUS_ISSUES=1
+        return 0
+    fi
+    doc="$(cd "$root" && _rc_nofd "$bin" status --distro "$d" --json)" || rc=$?
+    if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
+        echo "❌ distro $d: repos-manifest status exited $rc (it exits 0 or 1; 2 is a bad option, 128+n a signal); its own message, if any, is above" >&2
+        _RC_STATUS_ISSUES=1
+        return 0
+    fi
+    if ! lines="$(printf '%s' "$doc" | _rc_nofd "$py" -I -c "$_RC_STATUS_READER" "$d")"; then
+        echo "❌ distro $d: $py could not read the document repos-manifest status printed (exit $rc)" >&2
+        _RC_STATUS_ISSUES=1
+        return 0
+    fi
+    kind="$(head -n1 <<< "$lines")"
+    if [ "${kind%%$'\x1f'*}" = bad ]; then
+        echo "❌ distro $d: repos-manifest status ${kind#bad$'\x1f'} (exit $rc); its own message, if any, is above" >&2
+        _RC_STATUS_ISSUES=1
+        return 0
+    fi
+    while IFS=$'\x1f' read -r kind a b c e f g h i; do
+        case "$kind" in
+            head)
+                doc_ok="$a"
+                dist_ok="$b"
+                problem="$c"
+                ;;
+            repo)
+                total=$((total + 1))
+                from_status="$from_status$a/$b"$'\n'
+                case "$c" in
+                    expected) expected=$((expected + 1)) ;;
+                    skipped) skipped=$((skipped + 1)) ;;
+                    different|left-alone)
+                        echo "⚠️ distro $d: $root/$f $c: $i" >&2
+                        warned=$((warned + 1))
+                        ;;
+                    missing|not-a-directory|blocked-place|in-other-layer|unusable)
+                        if [ "$e" = 1 ]; then
+                            echo "⚠️ distro $d: $root/$f $c (optional, so it does not fail validate): $i" >&2
+                            warned=$((warned + 1))
+                        elif [ "$c" = missing ]; then
+                            echo "❌ distro $d: $root/$f missing: $i (run: $(_rc_tool_sync_step "$d"))" >&2
+                            failing=$((failing + 1))
+                        else
+                            echo "❌ distro $d: $root/$f $c: $i" >&2
+                            failing=$((failing + 1))
+                        fi
+                        ;;
+                    *)
+                        echo "❌ distro $d: $root/$f is in a state the adapter does not know, '$c' (the tool's status format may have changed): $i" >&2
+                        unknown=$((unknown + 1))
+                        ;;
+                esac
+                if [ "$g" != 0 ] || [ "$h" != 0 ]; then
+                    echo "NOTE: distro $d: $root/$f has local work ($g changed file(s), $h commit(s) not on origin); it does not fail validate" >&2
+                fi
+                ;;
+            gone)
+                echo "⚠️ distro $d: $root/$b is still on disk and no longer in the manifest (recorded by an earlier sync, which does not remove it); remove it if nothing needs it" >&2
+                warned=$((warned + 1))
+                ;;
+        esac
+    done <<< "$lines"
+    if [ -n "$problem" ]; then
+        echo "❌ distro $d cannot be read or resolved: $problem" >&2
+        _RC_STATUS_ISSUES=$((_RC_STATUS_ISSUES + 1))
+    fi
+    _RC_STATUS_ISSUES=$((_RC_STATUS_ISSUES + failing + unknown))
+    # The exit status decides; the document must say the same.
+    local want=0
+    { [ "$failing" -gt 0 ] || [ -n "$problem" ]; } && want=1
+    if [ "$rc" -ne "$want" ] || [ "$doc_ok" != "$((1 - want))" ] || [ "$dist_ok" != "$((1 - want))" ]; then
+        echo "❌ distro $d: repos-manifest status's document and its exit status disagree (exit $rc; the document says ok=$doc_ok, distro ok=$dist_ok, $failing failing repo(s)${problem:+, a problem}); the adapter reads status as the tool's design states it" >&2
+        _RC_STATUS_ISSUES=$((_RC_STATUS_ISSUES + 1))
+    fi
+    # The keys status names against the last resolve's (a distro with a
+    # problem has no repos to compare).
+    if [ -z "$problem" ]; then
+        while IFS= read -r layer; do
+            file="$(_rc_repos_file "$layer")" || return 1
+            [ -f "$file" ] || { resolve_ok=0; continue; }
+            while IFS= read -r a; do
+                [ -n "$a" ] && from_resolve="$from_resolve$layer/$a"$'\n'
+            done < <(_rc_repos_entries "$file" --detail | cut -f1)
+        done < <(_rc_layers)
+        if [ "$resolve_ok" -eq 1 ]; then
+            only_status="$(comm -23 <(printf '%s' "$from_status" | LC_ALL=C sort -u) <(printf '%s' "$from_resolve" | LC_ALL=C sort -u) | tr '\n' ' ' | sed 's/ $//')"
+            only_resolve="$(comm -13 <(printf '%s' "$from_status" | LC_ALL=C sort -u) <(printf '%s' "$from_resolve" | LC_ALL=C sort -u) | tr '\n' ' ' | sed 's/ $//')"
+            if [ -n "$only_status" ] || [ -n "$only_resolve" ]; then
+                echo "⚠️ distro $d: the last resolve ($(_rc_manifest_dir)) is out of date with the manifest (${only_status:+in the manifest only: $only_status}${only_status:+${only_resolve:+; }}${only_resolve:+in the last resolve only: $only_resolve}); the adapter's other verbs read the last resolve; run: $(_rc_tool_sync_step "$d")" >&2
+            fi
+        fi
+    fi
+    [ "$_RC_STATUS_ISSUES" -eq 0 ] && \
+        _RC_STATUS_PASS="✅ ros2_colcon checkout read against the manifest for distro $d (repos-manifest status: $total repo(s), $expected as expected, $warned with a warning above, $skipped optional and skipped; clones read as last fetched, nothing fetched)"
+    return 0
+}
+
+# `validate` on the tool route, for each distro the call covers
+# (_rc_tool_distro_select --every: the chosen one, or every one under
+# resolved/ when none is chosen; one whose layers.txt is missing or empty
+# fails, named): the workspace's own records (no second record of what the
+# tool records; a leftover of another route noted), the last resolve the
+# adapter's other verbs read (_rc_check_manifest and each layer's .repos
+# file), then the checkouts read against the manifest by the tool's status
+# (_rc_tool_status). Fails if any distro fails, naming it.
 _rc_tool_validate() {
-    local name root mdir layer layer_dir repos_file entry key d n issues=0 failed="" leftover=""
+    local name root layer repos_file d n issues=0 failed="" leftover=""
     local -a keys=() covered=() passed=()
     _rc_tool_distro_select --every || return 1
     covered=("${_RC_TOOL_DISTROS[@]}")
@@ -1061,30 +1263,21 @@ _rc_tool_validate() {
             issues=$((issues + 1))
             continue
         fi
-        mdir="$(_rc_manifest_dir)"
         n=0
         while IFS= read -r layer; do
             repos_file="$(_rc_repos_file "$layer")"
-            layer_dir="$(_rc_layer_dir "$layer")"
             if [ ! -f "$repos_file" ]; then
                 echo "❌ layer '$layer': missing $repos_file (run: $(_rc_tool_sync_step "$d"))" >&2
                 n=$((n + 1))
-                continue
             fi
-            while IFS= read -r entry; do
-                [ -z "$entry" ] && continue
-                key="${entry%%$'\t'*}"
-                [ -d "$layer_dir/src/$key" ] && continue
-                _rc_is_optional_repo "$key" && continue
-                echo "❌ layer '$layer': repo '$key' in ${layer}.repos but not checked out at $layer_dir/src/$key (run: $(_rc_tool_sync_step "$d"))" >&2
-                n=$((n + 1))
-            done < <(_rc_repos_entries "$repos_file" --detail | cut -f1)
         done < <(_rc_layers)
+        _rc_tool_status "$d" || return 1
+        n=$((n + _RC_STATUS_ISSUES))
         if [ "$n" -gt 0 ]; then
             failed="${failed:+$failed, }$d"
             issues=$((issues + n))
         else
-            passed+=("✅ ros2_colcon checkout matches the tool's last resolve for distro $d ($mdir); the manifest itself was not read again (the adapter does not call repos-manifest status yet; issue 503 makes it do so)")
+            passed+=("$_RC_STATUS_PASS")
         fi
     done
     [ "${#passed[@]}" -gt 0 ] && printf '%s\n' "${passed[@]}"
