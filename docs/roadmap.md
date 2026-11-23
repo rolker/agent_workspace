@@ -108,10 +108,11 @@ In his words (2026-11-23): "I think read only is fine with occasional asking
 at my request", and "I'm not sure I want a layer between what I see and do
 now with each project agent." It has no design yet.
 
-**Across the paths.** The sit-rep reports each path on its own, with its
-lines in no fixed order, and a check tests the fact a line states where a
-fact can be checked. Until that is built, the sit-rep reads the tables above
-as one list and names the first line not yet true as the next step.
+**Across the paths.** To be built (#563): the sit-rep reports each path on
+its own, with its lines in no fixed order. Today it reads the tables above
+as one list, names the first line not yet true as the next step, and marks
+work in flight by the three paths of before this section (work any line
+names as Path 1).
 
 | Line | Check |
 |------|-------|
