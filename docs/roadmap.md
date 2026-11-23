@@ -65,7 +65,7 @@ of work beyond coding issues have no design yet.
 | Line | Check |
 |------|-------|
 | A project chooses where its records live, and a session finds them through one lookup (#393) | `gh-issue 393 closed` |
-| The records of a design discussion do not derail the issue loop on the same issue | |
+| The issue loop ignores timeline entries that belong to another kind of work, so two kinds of work can share one issue (#544) | |
 | A lighter level is tried by hand on a low-stakes project, and what it must keep is written down | |
 | Field mode works from this workspace: work goes in with its review owed, against a remote that is not GitHub (#208, #209) | `gh-issue 208 closed ; gh-issue 209 closed` |
 
