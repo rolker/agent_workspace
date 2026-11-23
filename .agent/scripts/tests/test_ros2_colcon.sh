@@ -5519,7 +5519,9 @@ EOF
     rc=0; out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" "$adapter" --project toolsys validate 2>&1)" || rc=$?
     assert_eq "validate: exit 0" "0" "$rc"
     assert_contains "validate: the pass line, from the real status" \
-        "for distro fakefox (repos-manifest status: 2 repo(s), 2 as expected, 0 with a warning above, 0 optional and skipped" "$out"
+        "for distro fakefox (repos-manifest status: 2 repo(s), 2 as expected, 0 with a warning above, 0 optional and skipped; clones read" "$out"
+    assert_not_contains "validate: no warning from the real status on a fresh init" "⚠️" "$out"
+    assert_not_contains "validate: no note from the real status on a fresh init" "NOTE:" "$out"
     # An emptied clone (issue 517, item 2): unusable, named.
     find "$root/fakefox/src/pkg_u" -mindepth 1 -delete
     rc=0; out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" "$adapter" --project toolsys validate 2>&1)" || rc=$?
@@ -5535,6 +5537,7 @@ EOF
     assert_eq "sync: exit 0" "0" "$rc"
     rc=0; out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" "$adapter" --project toolsys validate 2>&1)" || rc=$?
     assert_eq "after sync: validate exit 0" "0" "$rc"
+    assert_not_contains "after sync: no warning from the real status" "⚠️" "$out"
     # On another branch, and with a local change: warned and noted, exit 0.
     git -C "$root/fakefox/core/src/pkg_a" checkout --quiet -b other
     echo changed >> "$root/fakefox/src/pkg_u/README"
