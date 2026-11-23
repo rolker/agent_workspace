@@ -1395,3 +1395,20 @@ Scope: the fix 2ca7a73f (handler restores the caller's traps before re-sending t
 - `bash .agent/scripts/tests/test_adapter.sh`: `=== Results: 248 passed, 0 failed ===`
 - `bash .agent/scripts/validate_adapter.sh`: `✅ ros2_colcon: all 13 verbs implemented`, `✅ single_project: all 13 verbs implemented`
 - Full pre-commit pass and the other suites left to the host and CI; commits made with `SKIP=validate-script-tests`.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-23 13:21 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #562 at `d5e64448`
+**Depth**: Deep (reason: round 3 convergence check per handoff; the depth and scope were set by the host's direction: the previous review's six findings and the fix commits d913106a, 7e85348c, 1e4aec6e only)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Scope: the Local Review at b4c786d0 (1 must-fix, 5 suggestions) and the three fix commits. Cross-model: skipped (round-3 convergence check, per handoff). All six findings are closed and no fix introduced a defect. Must-fix: the adapter's rule matches build.py case by case (`missing` = listed, not on disk, not in optional.txt, build.py:157; refusal before anything runs naming each `key (layer L)` and sync, build.py:163-175; a layer skipped only when `not on_disk and not missing`, build.py:85). A key the reader cannot parse (`grp/x`, `pkg+x`) cannot slip past the check: `_rc_check_manifest` refuses it by name first (`_rc_tool_refuse_unread_keys`, adapter.sh:330). The difference the fix pass named, a missing optional.txt, is acceptable: the adapter then counts every repo as required, so a missing repo still fails (fails closed), and when nothing is missing the run is still correct; an unreadable optional.txt behaves the same. The tool's `chosen` filter has no counterpart because test runs every layer. Reader failure (7e85348c): checked in a command substitution; awk on an unreadable file exits 2 and is caught. Interrupt path (1e4aec6e): `grep -s` leaves the condition false when the file is gone; the release file is created right after `kill` with no return in between, and the stub waits at most 10 s, so a failed assertion cannot hang the run or leave the stub behind (pgrep found none after the runs). The comments match the behaviour.
+
+Ran, on `git archive` copies of HEAD with every other test call commented out: `test_tool_test_over_the_resolved_layers` with HEAD's adapter.sh gave 29 passed, 0 failed. With the pre-fix adapter.sh (b4c786d0) it gave 18 passed, 11 failed: the required-missing case (5), the optional-only skip line (1, wording only) and the unreadable case (5). The optional-missing case passes on both, as it should, since it guards against refusing too much. `test_tool_build_runs_the_tool` gave 61 passed, 0 failed on four runs. `shellcheck --severity=warning` on both files: clean. CI on d5e64448 was pending when read. CI runs `test_ros2_colcon.sh` directly on `ubuntu-latest` with no container, so as a non-root user, and the chmod 000 case runs there.
+
+### Findings
+- [ ] (suggestion, deferrable) The chmod 000 case's root skip prints `SKIPPED:` but no counter counts it, so a root run's summary line says `0 skipped` (the same uncounted pattern as the existing root skip at line 4412, already on main). CI runs as non-root. Count it, like LOCALE_SKIPPED, when the suite's skip counters are next touched — `.agent/scripts/tests/test_ros2_colcon.sh:4782`
