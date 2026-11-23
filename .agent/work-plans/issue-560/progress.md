@@ -96,7 +96,7 @@ Known and accepted, not a finding: until issue 563 lands, the sit-rep reads the 
 CI at 14:44: 9 of 10 check runs success (Lint, Validate Documentation, Validate Adapter Contract, repos-manifest tests 3.10 both runs, 3.14 one run); one repos-manifest tests (Python 3.14) run still in progress. Not waited on.
 
 ### Findings
-- [ ] No open findings.
+No open findings. (Host correction: the triage wrote this sentence as an unchecked box, which the dispatcher counted as an open finding.)
 
 ### False positives
 - none
