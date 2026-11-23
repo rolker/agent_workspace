@@ -4215,7 +4215,8 @@ EOF
 # status: prints the file TOOL_STATUS_FILE names and exits TOOL_EXIT; with
 # no TOOL_STATUS_FILE, a format 1 document made from the last resolve and
 # what is on disk (status_stub.py) and its exit status. build: records the
-# underlay's SOURCED_LAYERS, COLCON_PREFIX_PATH and GIT_DIR as well.
+# underlay's SOURCED_LAYERS, COLCON_PREFIX_PATH and GIT_DIR as well, and
+# prints TOOL_STDERR on stderr.
 case "\${1:-}" in
     status)
         echo "STATUS_RAN_IN:\$(pwd -P) ARGS:\$*" >> "$sb/status.log"
@@ -4227,6 +4228,7 @@ case "\${1:-}" in
         ;;
     build)
         echo "build stub: ran"
+        [ -n "\${TOOL_STDERR:-}" ] && echo "\$TOOL_STDERR" >&2
         echo "TOOL_RAN_IN:\$(pwd -P) ARGS:\$* EXIT:\${TOOL_EXIT:-0} SOURCED:\${SOURCED_LAYERS:-none} PREFIX:\${COLCON_PREFIX_PATH:-unset} GIT_DIR:\${GIT_DIR:-unset}" >> "$sb/tool.log"
         exit "\${TOOL_EXIT:-0}"
         ;;
@@ -4562,13 +4564,40 @@ test_tool_build_runs_the_tool() {
     assert_eq "build: the caller's arguments after the adapter's colcon flags" \
         "TOOL_RAN_IN:$root ARGS:build --distro fakefox -- $flags --packages-select pkg_a EXIT:0 SOURCED:base PREFIX:unset GIT_DIR:unset" "$(cat "$sb/tool.log")"
     assert_not_contains "a selection that worked: no note" "NOTE:" "$out"
-    rc=0; out="$(TOOL_EXIT=1 run_tool "$sb" "$root" build --packages-up-to pkg_a 2>&1)" || rc=$?
+    # The note comes only on the tool's selection refusal (its two texts in
+    # build.py), only for arguments the tool counts as selection.
+    local up_to_refusal="ERROR: --packages-up-to names packages colcon must find in each layer it builds, and a layer without them fails; this run would build 3 layers (_unnamed, core, extra); nothing was run. Name the one layer that has those packages: \`repos-manifest build <layer> -- ...\`"
+    local not_built_refusal="ERROR: a run with package selection builds only part of a layer, so it only rebuilds layers that are built, with the repos their record has; not built: extra (never built); nothing was run. Build it without package selection first: \`repos-manifest build extra\`"
+    local target_refusal="ERROR: a run with \`--cmake-target\` builds only part of a layer, so it only rebuilds layers that are built, with the repos their record has; not built: core (never built); nothing was run. Build it without \`--cmake-target\` first: \`repos-manifest build core extra\`"
+    local note_text="the adapter builds every layer, so build without selection first, or run the tool's step yourself with the distro's environment sourced: source $sb/rosroot/fakefox/setup.bash && cd $root && $sb/.venv/bin/repos-manifest build --distro fakefox <layer> -- <colcon arguments>"
+    rc=0; out="$(TOOL_EXIT=1 TOOL_STDERR="$up_to_refusal" run_tool "$sb" "$root" build --packages-up-to pkg_a 2>&1)" || rc=$?
     assert_eq "a selection the tool refuses: its exit status 1" "1" "$rc"
-    assert_contains "a selection the tool refuses: the step with the environment sourced" \
-        "the adapter builds every layer, so build without selection first, or run the tool's step yourself with the distro's environment sourced: source $sb/rosroot/fakefox/setup.bash && cd $root && $sb/.venv/bin/repos-manifest build --distro fakefox <layer> -- <colcon arguments>" "$out"
+    assert_contains "a selection the tool refuses: the tool's message passed through" "$up_to_refusal" "$out"
+    assert_contains "a selection the tool refuses: its stdout passed through" "build stub: ran" "$out"
+    assert_contains "a selection the tool refuses: the step with the environment sourced" "$note_text" "$out"
+    rc=0; out="$(TOOL_EXIT=1 TOOL_STDERR="$not_built_refusal" run_tool "$sb" "$root" build --packages-select=pkg_a 2>&1)" || rc=$?
+    assert_eq "a selection on a layer not built: exit 1" "1" "$rc"
+    assert_contains "a selection on a layer not built: the note" "$note_text" "$out"
+    rc=0; out="$(TOOL_EXIT=1 TOOL_STDERR="$target_refusal" run_tool "$sb" "$root" build --cmake-target install_x 2>&1)" || rc=$?
+    assert_eq "--cmake-target on a layer not built: exit 1" "1" "$rc"
+    assert_contains "--cmake-target on a layer not built: the note" "$note_text" "$out"
+    rc=0; out="$(TOOL_EXIT=1 TOOL_STDERR="ERROR: colcon failed in layer core; setup.bash ..." run_tool "$sb" "$root" build --packages-select pkg_a 2>&1)" || rc=$?
+    assert_eq "selection, another failure: exit 1" "1" "$rc"
+    assert_contains "selection, another failure: the tool's message passed through" "ERROR: colcon failed in layer core" "$out"
+    assert_not_contains "selection, another failure: no note" "NOTE:" "$out"
+    for arg in "--packages-skip pkg_a" "--packages-skip-regex pkg_.*" "--packages-ignore=pkg_a" "--packages-ignore-regex pkg_.*" "--packages-skip-build-finished"; do
+        rc=0
+        # shellcheck disable=SC2086
+        out="$(TOOL_EXIT=1 TOOL_STDERR="$not_built_refusal" run_tool "$sb" "$root" build $arg 2>&1)" || rc=$?
+        assert_eq "$arg, a failure: exit 1" "1" "$rc"
+        assert_not_contains "$arg is not selection to the tool: no note" "NOTE:" "$out"
+    done
     rc=0; out="$(TOOL_EXIT=1 run_tool "$sb" "$root" build 2>&1)" || rc=$?
     assert_eq "a failed build: exit 1" "1" "$rc"
     assert_not_contains "a failed build with no selection: no note" "NOTE:" "$out"
+    rc=0; out="$(TOOL_EXIT=130 run_tool "$sb" "$root" build --packages-select pkg_a 2>&1)" || rc=$?
+    assert_eq "selection, a signal's status 130 passed through" "130" "$rc"
+    assert_not_contains "selection, a signal: no note" "NOTE:" "$out"
     rc=0; out="$(TOOL_EXIT=130 run_tool "$sb" "$root" build 2>&1)" || rc=$?
     assert_eq "a signal's status 130 passed through" "130" "$rc"
     # A nested key: the tool reads it, so build runs; env and test still refuse it.
@@ -5511,6 +5540,18 @@ EOF
     assert_contains "a local change: a note" "NOTE: distro fakefox: $root/fakefox/src/pkg_u has local work (1 changed file(s), 0 commit(s) not on origin)" "$out"
     git -C "$root/fakefox/core/src/pkg_a" checkout --quiet fakefox
     git -C "$root/fakefox/src/pkg_u" checkout --quiet -- README
+    # The real tool's two selection refusals, before anything is built:
+    # each brings the adapter's note; nothing runs colcon.
+    for arg in "--packages-select pkg_a" "--packages-up-to pkg_a"; do
+        rc=0
+        # shellcheck disable=SC2086
+        out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" PATH="$sb/stubbin:$PATH" "$adapter" --project toolsys build $arg 2>&1)" || rc=$?
+        assert_eq "build $arg, nothing built: the tool's refusal, exit 1" "1" "$rc"
+        assert_contains "build $arg, nothing built: the tool's own message" "nothing was run" "$out"
+        assert_contains "build $arg, nothing built: the adapter's note" \
+            "NOTE: with package selection the manifest tool builds only layers built before" "$out"
+    done
+    assert_eq "the refused selections ran no colcon" "false" "$([ -e "$sb/colcon.log" ] && echo true || echo false)"
     # build: the real tool's build, the stub colcon in each layer.
     rc=0; out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" PATH="$sb/stubbin:$PATH" "$adapter" --project toolsys build 2>&1)" || rc=$?
     assert_eq "build: exit 0" "0" "$rc"

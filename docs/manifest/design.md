@@ -179,7 +179,10 @@ The root need not be a git repository. The registry line holds its name, type an
   The caller's arguments reach every layer, so package selection works through the adapter
   only as far as the tool allows it on every layer: the tool refuses `--packages-select` and
   the like for a layer not built yet, and `--packages-up-to` (and the other selections colcon
-  must find in each layer) when the run builds two or more layers. When such a run fails, the
+  must find in each layer) when the run builds two or more layers. When the tool refuses a run
+  so (the adapter recognizes those two refusals on the tool's stderr, which it keeps only when
+  the arguments hold an option the tool counts as selection: not `--packages-skip`,
+  `--packages-ignore`, their `-regex` forms or `--packages-skip-build-finished`), the
   adapter says to build without selection first, or to run the tool's step with the distro's
   environment sourced (`source /opt/ros/<distro>/setup.bash && cd <root> && repos-manifest
   build --distro <distro> <layer> -- ...`), since the step the tool itself names sources

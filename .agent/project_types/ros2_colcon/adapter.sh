@@ -2071,11 +2071,15 @@ adapter_setup() {
 # and the worktree verbs still refuse it. The tool refuses package
 # selection (--packages-select and the like) for a layer not built yet,
 # and --packages-up-to (and the other selections colcon resolves in each
-# layer) when the run builds two or more layers; when such a run fails,
-# the adapter says how to run the tool's own step with the environment
+# layer) when the run builds two or more layers; when the tool refuses a
+# run so (exit 1 and one of those two refusals on its stderr, which is
+# kept for that only when the arguments hold a --packages option the tool
+# counts as selection, not --packages-skip, --packages-ignore, their
+# -regex forms or --packages-skip-build-finished, or --cmake-target), the
+# adapter says how to run the tool's own step with the environment
 # sourced, since the step the tool names sources nothing.
 _rc_tool_build() {
-    local root bin underlay rc=0 arg selecting=0
+    local root bin underlay rc=0 arg selecting=0 refused=0 errlog
     root="$(_rc_root)" || return 1
     _rc_tool_distro_select || return 1
     _rc_tool_read_layers || return 1
@@ -2088,12 +2092,28 @@ _rc_tool_build() {
     unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
     _rc_source_setup "$underlay" || return 1
     echo "Running: $bin build --distro $_RC_TOOL_DISTRO -- --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON $* (in $root, $underlay sourced)"
-    (cd "$root" && _rc_nofd "$bin" build --distro "$_RC_TOOL_DISTRO" -- --symlink-install \
-        --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@") || rc=$?
     for arg in "$@"; do
-        case "$arg" in --packages*|--cmake-target*) selecting=1 ;; esac
+        case "${arg%%=*}" in
+            --packages-skip|--packages-skip-regex|--packages-ignore|--packages-ignore-regex|--packages-skip-build-finished) ;;
+            --packages*|--cmake-target) selecting=1 ;;
+        esac
     done
-    if [ "$rc" -ne 0 ] && [ "$selecting" -eq 1 ]; then
+    if [ "$selecting" -eq 0 ]; then
+        (cd "$root" && _rc_nofd "$bin" build --distro "$_RC_TOOL_DISTRO" -- --symlink-install \
+            --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@") || rc=$?
+        return "$rc"
+    fi
+    # With selection, the tool's stderr is passed through and kept, to tell
+    # its selection refusal from any other failure.
+    errlog="$(mktemp)" || return 1
+    { (cd "$root" && _rc_nofd "$bin" build --distro "$_RC_TOOL_DISTRO" -- --symlink-install \
+        --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@") 2>&1 1>&7 7>&- | tee "$errlog" >&2; } 7>&1 || rc=$?
+    if [ "$rc" -eq 1 ] && grep -qF -e "builds only part of a layer, so it only rebuilds layers that are built" \
+            -e "names packages colcon must find in each layer it builds" "$errlog"; then
+        refused=1
+    fi
+    rm -f "$errlog"
+    if [ "$refused" -eq 1 ]; then
         printf 'NOTE: with package selection the manifest tool builds only layers built before, and --packages-up-to only one layer at a time; the adapter builds every layer, so build without selection first, or run the tool'"'"'s step yourself with the distro'"'"'s environment sourced: source %q && cd %q && %q build --distro %q <layer> -- <colcon arguments>\n' \
             "$underlay" "$root" "$bin" "$_RC_TOOL_DISTRO" >&2
     fi
