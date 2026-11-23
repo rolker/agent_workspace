@@ -1067,3 +1067,64 @@ Read: parts 1A and 1B merged (pull requests 513 and 514); the issue is open for 
 **Plan**: `.agent/work-plans/issue-503/plan.md` at `a1be602a`
 
 Revision: part 4 detailed as the next pull request (Part of #503): validate reads repos-manifest status (--json and exit status), build calls repos-manifest build with the distro underlay sourced first, test limited to the resolved repos, sync and setup need only text fixes; one pull request; parts 2 and 3 kept as later parts.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-23 11:09 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #503 — ros2_colcon adapter: call the manifest tool's commands, and register a project from a manifest
+**Plan**: `.agent/work-plans/issue-503/plan.md` at `a1be602a`
+**Branch**: `feature/issue-503`
+
+Reviewed only "Part 4 (revised 2026-11-23)". Checked by running the installed tool (`/home/roland/agent_workspace/.venv/bin/repos-manifest`, from main) against a system directory of my own: `init --distro-dirs --distro rolling` of a manifest with three local `file://` repos (one in the unnamed layer, two in `core`, one of them optional), each a plain CMake package; real `colcon` and `/opt/ros/rolling`.
+
+What the runs showed:
+- `status --distro rolling --json`: all expected, exit 0. A repo on another branch: `different`, exit 0. A tracked file changed: `expected` with `changes: 1`, exit 0. A repo moved away: `missing`, exit 1. An emptied directory and a clone with `.git` removed: `unusable` ("is not a git repository of its own"), exit 1 (issue 517 item 2 is closed on this route, as the plan says). The optional repo missing: `skipped`, exit 0; emptied: `unusable` with `optional: true`, exit 0. `--distro nosuch`: no document, exit 1, stderr "this system does not record it". Run outside any system directory: no document, exit 1. From inside `rolling/core` with no `--distro`: that distro, exit 0. Manifest made unreadable, and the distro removed from it: a document with the distro's `problem` set, no `repos` key, `ok: false`, exit 1. A repo taken out of the manifest: `not_in_manifest` lists it, exit 0. A bad option: exit 2. Field names, states, `path` (relative to the system directory, e.g. `rolling/core/src/pkg_a`), `layer` (`_unnamed`) and `format: 1` match `status.py` and the plan's table.
+- A `config.yaml` like `make_tool_root`'s (no `distros`): `status` refuses ("`layout` is distro-dirs and there is no `distros`"), so the plan is right that the real-tool test must start from a real `init`.
+- `build --distro rolling -- --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` with the underlay sourced: exit 0, both layers built, `rolling/setup.bash` written, `install/` in `rolling/` and `rolling/core/` (where `adapter env` looks). The tool appends `--base-paths src/<key>...` (repos on disk, the optional one included) after the forwarded arguments, and colcon parsed it correctly after `--cmake-args`. A stub `colcon` first on `PATH` is the one used (closes the plan's "could not verify"). Built with no ROS environment too (plain CMake). With this system's `setup.bash` already sourced: two warnings, exit 0. `-- --base-paths src`: refused, exit 1.
+- Package selection: `-- ... --packages-select pkg_a` before any build is refused, exit 1 ("a run with package selection builds only part of a layer ... Build them without package selection first: `repos-manifest build _unnamed core`"); after a build it is accepted ("rebuilt with selection"). `-- ... --packages-up-to pkg_a` on two layers is refused, exit 1 ("Name the one layer that has those packages: `repos-manifest build <layer> -- ...`").
+- `colcon list --base-paths` with no values: exit 0, no packages, no message.
+- The installed venv has `python`, `python3` (links to `/usr/bin/python3`); the Makefile creates it with `python3 -m venv` and itself calls `$(VENV_BIN)/python3`. CI's "Validate Adapter Contract" job has Python 3.10, `pip install -e tools/repos-manifest` and `vcs2l`, and no `colcon`: the planned real-tool test fits only because it puts a stub `colcon` first on `PATH`.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One PR, three verbs on one route, shared helper and stub; the two other routes branch off before any changed code (`adapter_build`/`adapter_test`/`_rc_colcon` already branch on `_rc_route`). |
+| Issue alignment | Good | Covers the issue's `build` (distro environment sourced first), `test` (colcon per layer over the resolved repos) and `validate` (from `status`). Serves (plan-wide line, applies to part 4): "Easy to use and Modular (`README.md#workspace-goals`); `docs/design.md#registry-and-adapters`, `docs/manifest/design.md#a-project-instance-is-a-system-directory`" — both anchors exist. |
+| File targeting | Needs work | `docs/design.md` is missing from step 6 (finding 1). |
+| Consequences | Needs work | Findings 1, 2, 4. |
+| Principle alignment | Good | Reuses the tool rather than rebuilding checks; tests named per row; the design doc's target table (`docs/manifest/design.md` line 301) is what the mapping implements. |
+| ADR compliance | Good | 0011 (no new verb), 0017 (design docs in the same PR, once finding 1 is added), 0022 (reads the tool's output and the resolved files only; the one-line `cli.py` help fix stays within the tool's own text). |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Consequences / Keep one current design]** (medium) `docs/design.md#registry-and-adapters` (lines 476-478) says the tool route's "`build` and `test` are the colcon loop over its layers, and `validate` checks the last resolve". Part 4 makes that false, and the issue's acceptance names `docs/design.md`. Add it to step 6.
+2. **[Consequences]** (low-medium) Package selection through `adapter build` changes behaviour: `--packages-select` before the first build, and `--packages-up-to` (and the other options colcon must resolve per layer) on more than one layer, are now refused by the tool. Its next step is a bare `repos-manifest build <layers>` that does not source the underlay. With decision 2 (no layer argument), `--packages-up-to` cannot go through the adapter at all. Today's loop failed on these too, less clearly. Name this in the plan or the header text and in a stub test of passthrough. One sentence is enough: build by hand with the underlay sourced.
+3. **[File targeting / tests]** (low) Step 4: when a layer has none of its resolved keys on disk, `--base-paths` gets an empty list. colcon then finds nothing and exits 0 without a word. The tool's `build` skips such a layer and says so. Say that `test` skips the layer with a line, and test it.
+4. **[Consequences]** (low) Dropping `_rc_check_manifest` from `build` lets a nested key (`grp/repo`) build. `env` and `test` still run `_rc_require_manifest` and refuse it, so after a good build `adapter env` refuses too. The plan names only validate, repos and worktrees. Add `env` and `test`, or say it is accepted.
+5. **[Approach]** (low) Step 1: the adapter has no "call's own temporary directory" (no `mktemp -d`/trap for a call outside the manifest-route resolve). Capture stdout in a variable (`doc="$(cd … && _rc_nofd … --json)" || rc=$?`), which needs no file and no cleanup, or say where the file is made and removed.
+6. **[Approach]** (low) Step 1/decision 6: use `$(dirname <bin>)/python3`, the name the Makefile itself uses, rather than `python`. Both exist in a `python3 -m venv` venv, but `python3` is the one the workspace already relies on. The sandbox link must then be `.venv/bin/python3`, in `make_tool_root` and in the real-tool test's own `.venv/bin/repos-manifest` wrapper (that test writes its own wrapper, not `make_tool_root`'s).
+7. **[Approach]** (low) Step 3: run the tool's `build` through `_rc_nofd` as `_rc_tool_sync` and the planned status helper do. That keeps the git-locating variables (set when the adapter runs from a git hook) and fd 8/9 out of the tool's git and colcon.
+8. **[Tests]** (low) The plan's stub `build` records "`SOURCED_UNDERLAY` the underlay's stub `setup.bash` sets", but `make_underlay` sets `SOURCED_LAYERS="base"`. Either use that or change `make_underlay`, and keep the existing tests that assert `SOURCED:base`.
+9. **[Approach]** (low) Local changes and unpushed commits (`changes`, `unpushed`) do not change the exit status, and the plan's table does not say whether validate mentions them. Say "not reported" (as today) or add one warning form, and pin whichever you choose in a test.
+10. **[Roadmap]** (low) The planned checks `file-contains … status --distro` / `build --distro` would also be met by a comment. Acceptable, but put the literal text only in the code line, or check a string only the code holds.
+
+On the questions asked:
+- Dropping the per-repo directory loop from validate loses nothing: `status` reports `missing`/`skipped` for the same places and more. Nothing else calls validate except `registration_verify.sh` (with `--from <main checkout>`, so `--every`) and the sitrep `script adapter --project <name> validate` check, which has a 60 s timeout. `status` runs git per repo, so on a large instance it is slower. I did not measure that on a real instance. `worktree_create.sh`, `merge_pr.sh`, `env`, `repos` and `repo_pin` do not call validate. Dropping `_rc_check_manifest` from build affects only finding 4. Behaviour change to expect: validate now fails when the manifest cannot be read or a repo was added to the manifest and not synced. That is the target in `docs/manifest/design.md` line 301.
+- The `source` manifest route and the bootstrap route are untouched by the steps as written. Every changed function already branches on `_rc_route` first.
+- None of the seven decisions needs to go to the owner. Each is a mechanism choice inside the design `docs/manifest/design.md` already states (line 301's target for validate, the tool's `build` taking the colcon arguments). Decision 4 (an out-of-date resolve is a warning) and decision 2 (no layer argument, consequence in finding 2) are the ones worth naming in the PR for his veto. The roadmap line split is wording, not direction.
+
+### Summary
+
+The plan's reading of the tool is right: every state, field, exit status and the `build` argument form it relies on behaved as described when run. It is ready for implementation once finding 1 (`docs/design.md`) is added to the documents step. The other findings are small and can be settled during implementation.
+
+### Recommended Actions
+
+- [ ] Add `docs/design.md#registry-and-adapters` (lines 476-478) to step 6.
+- [ ] State the package-selection consequences of moving `build` to the tool (finding 2) in the header or design text, and cover passthrough in a stub test.
+- [ ] Skip, with a line, a layer in `test` whose resolved repos are none on disk (finding 3).
+- [ ] Settle findings 4-9 in the implementation: nested-key text, capture without a temp file, `python3`, `_rc_nofd` for build, the underlay stub's variable, local changes in validate.
