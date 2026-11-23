@@ -385,8 +385,11 @@ class _Checker:
         `brackets` where the brackets of its host are: no '%' (git decodes it in a url with
         '://', so a '%2d' would be a '-'), and none starts with '-', where ssh would read it as
         an option. With `host_required` (an https, http or ssh url, or the [user@]host:path
-        form; not a file url, whose host is normally empty), the host is not empty: curl would
-        read the first part of the path as the host, and ssh would get no host."""
+        form; not a file url, whose host is normally empty), the host is not empty. With a url
+        such as 'https:///x.git', git takes the first part of the path as the host and
+        contacts it; the other https and http forms with an empty host git refuses itself.
+        The rule refuses them all, so that no url with an empty host reaches git. An ssh
+        address with an empty host would give ssh no host."""
         if "%" in text:
             raise self.error(
                 where, f"{quoted_url(url)}: a '%' in the user, host or port is refused"
