@@ -100,3 +100,47 @@ How the host settled the six actions, for plan-task to take as given (owner may 
 **Plan**: `.agent/work-plans/issue-452/plan.md` at `1fcece8b`
 
 Step 9 stops waiting unless the loop itself requested Copilot once pre-merge; a Codex/Gemini cold read is the fallback; merge hold only on a running check-run; audit, onboarding, reports and design text follow in one PR (split loop and merge first if large).
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-23 16:58 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #452 — Copilot review becomes optional: one request per pull request, with a cold cross-model read as the fallback
+**Plan**: `.agent/work-plans/issue-452/plan.md` at `1fcece8b`
+**Branch**: `feature/issue-452`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | About ten files, one idea; the split (loop and merge first) follows the checkpoint. |
+| Issue alignment | Needs work | Covers all nine restated items. Serves line, as checked: "Goal 'Quality of the work' with the principle 'A safeguard has to earn its cost': `docs/design.md#review-loop-and-timeline`". The goal and the anchor exist (README.md:33, design.md:742). "A safeguard has to earn its cost" is a bullet under the goal (README.md:37), not a principle in docs/principles.md; the wording is loose but the goal is right. The acceptance "the fallback leaves a timeline entry" rests on a wrong fact (finding 1). |
+| File targeting | Needs work | `fetch_pr_reviews.sh` and `orchestrator/SKILL.md` contain no Copilot text (grep), so the planned edits there are new text, not fixes; `skill_workflows.md:32` does name "Copilot review" in the hygiene list and must change (the plan only says "check"); `test_merge_pr_skill.sh` does not pin step 9 (grep). |
+| Consequences | Good | design.md 287/864, host_standing_rules.md:36, audit/onboard lines, and the issue 428 overlap are all covered. `project_integration_audit.sh` mentions only `.github/copilot-instructions.md` (line 673), not the ruleset, so nothing to change there. |
+| Principle alignment | Needs work | "Test what breaks": the planned merge-gate tests already exist (finding 3); the step 9 change is skill text, which the plan should say has no failing test, not imply stubbed-`gh` coverage. "Verify before claiming": the quota behaviour is honestly marked unverified. |
+| ADR compliance | Needs work | ADR-0013 is triggered and its entry vocabulary is closed; the plan says the helper writes the fallback's entry, which it does not (finding 1). ADR-0017 is met (design.md in the same change). ADR-0010 not triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[ADR compliance / Issue alignment]** Step 3 says "the helper's own timeline entry is the record". `cross_model_review.sh` writes no progress.md entry: its header (lines 4-11) says it writes prompt and findings files that are gitignored and "not part of the audit trail (durable findings live in progress.md)"; no `review_progress`/`progress_append` call exists in it. So the issue's acceptance ("the fallback leaves an entry on the timeline") has no writer in the plan as written. Resolve before implementing: either run the fallback through `review-code --pr <M>` restricted to one cross-model agent (it writes `## Local Review`, an existing ADR-0013 type that `triage-reviews` and run-issue already route on), or name who writes which existing entry type. A new entry type would need an ADR-0013 change and is not in scope. Also state how the "cold" read is kept cold: `review-code` embeds earlier context, `cross_model_review.sh` alone excludes `.agent/work-plans/**`.
+2. **[Issue alignment]** "Once per PR" is recorded only "on the host's PR state" and the hand-back line, which do not survive a session restart (run-issue resumes from progress.md). Say how a resumed host knows a request was already made: for example from `gh pr view --json reviewRequests`/latestReviews, or a Copilot review or check-run in `fetch_pr_reviews.sh` output, or from the fallback's entry. Without it a resume can request twice or skip the fallback.
+3. **[Principle alignment: Test what breaks]** Step 4/5's merge-gate cases are already pinned in `test_merge_pr_gate.sh`: failed Copilot run with green CI merges (ci-19), Copilot-only run counts as no checks (ci-22, ci-23), running Copilot with green CI holds (ci-25, plus the no-CI hold at line 2170), and `--allow-pending-review` overrides. `merge_pr.sh` (lines 146, 1741-1830) already implements the checkpoint's merge-hold decision. Step 4 is therefore comments and design text only; state that it was verified and drop the "extend absent/running/failed" tests rather than duplicate them. Name the tests that are actually new (e.g. a `triage-reviews` case with no Copilot review at all), and say the step 9 and fallback changes are skill text with no failing test.
+4. **[Issue alignment]** Step 2 does not say what follows when the requested Copilot review (or the fallback) produces findings that are fixed: no second request and no second fallback (once per PR), and the fix goes through the existing PR-mode Local Review (row 22a/22b) and triage, after which step 9 must not wait again. One sentence closes the loop.
+5. **[File targeting]** Drop or justify edits to `fetch_pr_reviews.sh` (no Copilot text) and keep the orchestrator change to its line 271 if the wording changes at all ("only the reviewers that were asked"); update `skill_workflows.md:32` ("Copilot review" in the hygiene list) as a definite consequence, not a "check".
+
+Checkpoint decisions: none look wrong. The merge-hold decision matches the code as it stands (finding 3), and the issue 428 non-overlap is consistent with step 9's current text.
+
+### Summary
+
+The plan is the right shape and takes the checkpoint's six decisions correctly, but its fallback rests on a helper that writes no timeline entry, and its "once per PR" state does not survive a restart. Fix those two in the plan and trim the test list to what is new; then it is ready.
+
+### Recommended Actions
+
+- [ ] Replace step 3's "helper's own timeline entry" with a real writer and an existing ADR-0013 entry type (e.g. `review-code --pr` with one cross-model agent writing `## Local Review`), and say how the read stays cold.
+- [ ] State how "requested once" and "fallback run once" are detected durably on resume (GitHub state or a timeline entry).
+- [ ] Record that `merge_pr.sh` and `test_merge_pr_gate.sh` (ci-19, ci-22, ci-23, ci-25, line 2170) already implement and pin the merge-hold decision; limit step 4 to comments and design text and list only genuinely new tests.
+- [ ] Add the after-findings sequence to step 2 (no re-request, existing re-review path, no new wait).
+- [ ] Make `skill_workflows.md:32` a definite edit; drop `fetch_pr_reviews.sh` unless a concrete line is named.
