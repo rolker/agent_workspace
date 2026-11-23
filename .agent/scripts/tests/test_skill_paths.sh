@@ -599,7 +599,9 @@ if [[ -f "$AUD" ]]; then
     has "$AUD" "audit-project: independent review is met without the automatic Copilot rule, which is never re-enabled" \
         'a review by someone other than the author'"'"'s own session' \
         'its absence is no finding' 'Never turn the automatic Copilot rule back on' \
-        'gh pr edit <N> --add-reviewer "@copilot"'
+        'gh pr edit <N> --add-reviewer "@copilot"' \
+        '**Informational**: no check here can fail' \
+        'in place (informational): pull requests merge through the review loop'"'"'s cold read'
     if grep -qF 'Copilot auto-review' "$AUD"; then
         fail "audit-project still has the Copilot auto-review item (issue 452)"
     else
