@@ -78,3 +78,25 @@ Checks: test_skill_paths.sh 198 passed 0 failed; test_sitrep_checks.sh 252 passe
 **Decision**: publish
 
 Push the branch and open the pull request. The merge is the owner's.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-23 14:45 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #564 at `f3fe8604`
+**Sources**: 2 (Local Review (Pre-Push) R1 @ `1bbf7bc6` and R2 @ `e1d515f5` via `review_progress.sh sources`, CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Hosted review (Copilot): did not arrive. No `copilot-pull-request-reviewer` check-run and no review on the head from the pull request's opening (14:29:34) to 14:44:50, the about-900 s bound of run-issue's hosted-review wait; the pull request has no review requests and no conversation comments. A review that lands later is caught by the re-fetch before the merge checkpoint.
+Local timeline: `sources` at head `f3fe8604` returned no open local findings and no dropped entries. Round 1 (pre-push, `1bbf7bc6`) had 3 must-fix and 5 suggestions, all ticked in the Implementation entry (`8b4dc95f`); round 2 (pre-push, `e1d515f5`, approved) found nothing. The commits since `e1d515f5` touch only this issue's progress.md (bookkeeping). Which outside models ran in round 1 is not recorded in progress.md; the host reports Gemini, Codex and a Claude adversarial reviewer ran there.
+Known and accepted, not a finding: until issue 563 lands, the sit-rep reads the new section's line tables as one list and marks work any line names as Path 1; the roadmap and the design.md Direction row say so. The owner: "To keep things simple, it's ok if something breaks with the sit-rep skill if one lands before the other".
+CI at 14:44: 9 of 10 check runs success (Lint, Validate Documentation, Validate Adapter Contract, repos-manifest tests 3.10 both runs, 3.14 one run); one repos-manifest tests (Python 3.14) run still in progress. Not waited on.
+
+### Findings
+- [ ] No open findings.
+
+### False positives
+- none
