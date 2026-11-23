@@ -1151,9 +1151,17 @@ in this order.
    `gh pr view <M> --json reviewRequests` (a request whose login names
    Copilot):
 
-   - **A Copilot review that reviewed** is on the pull request: Copilot
-     was available. Nothing more is requested; a review not yet read goes
-     to `triage-reviews` by step 9's re-fetch rule.
+   - **A Copilot review that reviewed** is on the pull request, on any
+     commit of it: Copilot was available. Nothing more is requested; a
+     review not yet read goes to `triage-reviews` by step 9's re-fetch
+     rule. Not only one on the head counts, and that is deliberate: the
+     loop's own request is answered on the head of its pass, and its fix
+     round then moves the head, so a head-only rule would request again
+     (or run a cold read) on every return to this point. The same rule
+     accepts a review someone asked for by hand on an earlier commit as
+     the pull request's one request, though it read an earlier diff:
+     quota is scarce, and the fix rounds since were reviewed by
+     `review-code`'s PR-mode re-reviews.
    - **A could-not-review notice**; **a concluded
      `copilot-pull-request-reviewer` check-run with no Copilot review**
      (step 9's wait ends on any conclusion, so a check-run can finish
