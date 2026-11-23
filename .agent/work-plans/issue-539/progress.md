@@ -225,3 +225,51 @@ The owner's answer in the dialog, to "How should part 2 be revised?": "Revise, w
 **Plan**: `.agent/work-plans/issue-539/plan.md` at `1e47af35`
 
 Revision of part 2 (part 1 is delivered as pull request 540). CI installs `vcs2l==1.1.7` in the adapter-contract job; a missing vcs fails only where `ROS2_COLCON_TESTS_REQUIRE_VCS` is set (that step), so the Lint job, which has no vcs, still skips; the Results line counts the skip; a required isolated-PATH test covers skip versus fail. Mechanism choices are listed for the owner's veto; the part 2 pull request says Closes #539.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-23 10:03 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #539 — test_ros2_colcon.sh expects the manifest tool's old sync report; CI skips that case and reports 0 skipped
+**Plan**: `.agent/work-plans/issue-539/plan.md` at `1e47af35`
+**Branch**: `feature/issue-539`
+
+Review of the revised part 2 (part 1 is delivered as pull request 540). Both must-fix findings of the 2026-11-20 review are answered, and the revision follows the owner's checkpoint of 2026-11-23 (whole part 2 revised, skip count kept, so the pull request closes #539). Two points for the implementer (findings 1 and 2), neither a reason to send the plan back.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One workflow job (one install step, one env line), the suite's real-tool function, its summary line and one new test. |
+| Issue alignment | Good | Covers items 2 and 3 of the issue and the earlier review's findings: F1 by `ROS2_COLCON_TESTS_REQUIRE_VCS` on the adapter-contract step only; F2 by `vcs2l==1.1.7`; suggestion 3 made required (step 5); suggestion 4 in Prior Art. Serves: "Quality of the work, and "A safeguard has to earn its cost": `docs/design.md#merge-gate`" (README.md line 33/37, design.md line 844: both exist). |
+| File targeting | Good | `.github/workflows/validate.yml` and `.agent/scripts/tests/test_ros2_colcon.sh`. The Lint job is now handled by not setting the variable there. |
+| Consequences | Good | Lint (CI set, no vcs) keeps the counted skip; no parser of the `skipped` number (re-grepped). One CI interaction in the new test is not spelled out (finding 1). |
+| Principle alignment | Good | Test what breaks: required skip-vs-fail test with a mutation check (6b). Prior art named. Ask First for the workflow change is addressed. |
+| ADR compliance | Good | ADR-0011 not triggered; no other ADR triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Checks run
+
+- Fresh venv (Python 3.14.4): `pip install vcs2l==1.1.7` gave vcs2l 1.1.7 and PyYAML 6.0.4, no setuptools; `vcs --version` printed `vcs 1.1.7`, exit 0. `Requires-Python: >=3.6`, so CI's 3.10 is covered. `pip index versions vcs2l`: newest is 1.1.7. `tools/repos-manifest/pyproject.toml` `[test]` holds `vcs2l>=1.1.7`.
+- Full suite with vcs2l's `vcs` first on PATH (system vcs is vcstool 0.3.0): `bash .agent/scripts/tests/test_ros2_colcon.sh` → `1375 passed, 0 failed, 0 skipped`, exit 0, 1m39s; the `TEST: tool route with the real tool and vcs` case ran and passed (no `SKIPPED` line in the log). So CI's planned `vcs` works with the real tool, not only `--version`.
+- Isolated-PATH feasibility: extracted `test_tool_real_init_and_sync` and ran it under `set -euo pipefail` in a subshell with `PATH` set to an empty directory: it printed the `TEST:` and `SKIPPED: vcs is not on PATH` lines and `TOOL_SKIPPED=1 FAIL=0`, exit 0. `command -v` and `echo` are builtins; the function needs no external tool before it returns, so the "isolated bin" can be empty.
+- `validate.yml`: the Lint job runs `make lint` (= `pre-commit run --all-files`); the `validate-script-tests` hook runs every suite through `run_script_tests.sh`, with `CI` set and no vcs. The adapter-contract job installs `repos-manifest` without extras and runs this suite as its last step, no vcs. `grep skipped` over `run_script_tests.sh`, `test.sh`, `Makefile`, `.pre-commit-config.yaml`, `.github/workflows/` finds only prose.
+
+### Findings
+
+1. **[Consequences / should-fix in implementation]** Step 5 case (a) "variable unset" must unset it explicitly (`unset ROS2_COLCON_TESTS_REQUIRE_VCS` or `env -u`) inside the subshell, and case (b) set it there. The new test runs inside the very adapter-contract step that step 2 sets `ROS2_COLCON_TESTS_REQUIRE_VCS=1` on, so a subshell that only overrides `PATH` inherits the variable: case (a) would get `FAIL=1` on CI while passing locally and in Lint.
+2. **[Approach / note]** Step 3 says what to print and count when required but not that the function then returns; it must `return 0` after the FAIL as the skip branch does, or it goes on into the real-tool steps without `vcs`.
+3. **[Prior art / note]** The `==1.1.7` pin in the workflow and the `>=1.1.7` floor in the `[test]` extra are two places to keep in step; the plan's own argument against a second install in Lint applies to this pin too. Acceptable as listed for veto; a comment on the step naming the extra would keep them findable.
+4. **[Note]** Step 5's "isolated bin directory holding only the tools the function needs" can be an empty directory (checked above); no symlinks are needed, unlike `test_setup_requires_vcs`.
+
+### Summary
+
+The revision answers both must-fix findings with the mechanisms the earlier review suggested and lists them for veto; `vcs2l==1.1.7` was checked to install, run and pass the real-tool case. Ready for implementation, with the explicit unset in the new test's case (a) and the `return` after the FAIL carried into the code.
+
+### Recommended Actions
+
+- [ ] In the new test, unset `ROS2_COLCON_TESTS_REQUIRE_VCS` in case (a)'s subshell and set it in case (b)'s, so the test passes inside the adapter-contract step that sets it.
+- [ ] In `test_tool_real_init_and_sync`, return after the required-vcs FAIL.
+- [ ] Optionally note on the workflow step that the pin follows the `[test]` extra's floor.
