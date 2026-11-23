@@ -1822,7 +1822,12 @@ distro selects one: across every distro the system is set up for, `init`, `sync`
 `show` in a system, the commands that read `config.yaml`, say so and name the two repos and
 their distros, and `sync` changes nothing of a distro that has either. `resolve` reads no
 `config.yaml` and does not check it. One repo listed twice with one URL, or selected by several
-distros, is fine. A name that could not follow a prefix (one that is not letters, digits, `.`, `_` and
+distros, is fine. The published URLs are compared as written, after one trailing `/` and one
+trailing `.git` are taken off, as `sync` compares URLs: one repo spelled two ways, over ssh in
+one distro and over https in another, is refused as two repos, and two local paths that differ
+only by a `.git` ending, `/srv/tools` and `/srv/tools.git`, count as one repo though they may be
+two. Telling repos apart by what they hold rather than by how their URLs are spelled is planned
+with `fallback: true`. A name that could not follow a prefix (one that is not letters, digits, `.`, `_` and
 `-` starting with a letter or a digit) is refused the same way.
 
 The name is read from the URL's path only, separated from the scheme, user, host and port by
