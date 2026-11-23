@@ -217,3 +217,11 @@ The owner's answer in the dialog, to "Merge pull request 540?": "Merge (Recommen
 **Decision**: revise
 
 The owner's answer in the dialog, to "How should part 2 be revised?": "Revise, whole part 2 (Recommended)". The dialog showed: part 1 merged as pull request 540; part 2 of the plan is not delivered and cannot be implemented as written, by the Plan Review of 2026-11-20 (needs-work). F1, must-fix: failing on a missing vcs whenever CI is set would break the Lint job; fix by an explicit require-variable set only on the adapter-contract step, as REPOS_MANIFEST_REQUIRE_COLCON is, or by installing vcs in the Lint job too. F2, must-fix: pip install vcstool==0.3.0 does not pin what the plan says and crashed in a fresh venv; use the pinned vcs2l. F3, scope: the skip count stays in part 2 (it had been proposed earlier the same day to hold it for issue 550; the owner chose to keep it, so this pull request closes the issue). Part 2 changes a CI workflow (Ask First); this answer covers planning it and the merge decision covers the change.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-23 10:01 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-539/plan.md` at `1e47af35`
+
+Revision of part 2 (part 1 is delivered as pull request 540). CI installs `vcs2l==1.1.7` in the adapter-contract job; a missing vcs fails only where `ROS2_COLCON_TESTS_REQUIRE_VCS` is set (that step), so the Lint job, which has no vcs, still skips; the Results line counts the skip; a required isolated-PATH test covers skip versus fail. Mechanism choices are listed for the owner's veto; the part 2 pull request says Closes #539.
