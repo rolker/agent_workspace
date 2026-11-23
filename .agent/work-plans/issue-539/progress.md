@@ -352,3 +352,13 @@ Plan verification step 6, read from run 45204503982:
 - [ ] No issues found.
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 10:43 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+The owner's answer in the dialog, to "Merge pull request #561 now?": "Merge (Recommended)". The dialog showed: the Integrated Review at e6599013 (no findings, CI all-pass, no reviews or comments); that the findings checkpoint was raised only because the entry's unticked placeholder "No issues found." counts as an open box (issue 362), with no actual finding; the CI run's results (adapter-contract: vcs2l 1.1.7 on Python 3.10, the real-tool case run with no skip line, 1379 passed, 0 failed, 0 skipped, time unchanged at 141 s on main and 141 s and 168 s here); F1, a stated limit and not a finding: the Lint job's hosted log shows only "Passed" for the suite hook, so its "1 skipped" line was seen only in a local run, while the new test inside that hook asserts the skip is counted; and that the merge changes .github/workflows/validate.yml (Ask First) and closes the issue. The host's fetch just before asking: no reviews, no comments, mergeable, all checks passed.
