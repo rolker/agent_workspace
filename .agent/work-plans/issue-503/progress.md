@@ -1144,3 +1144,30 @@ Read: the Plan Review at 0a72bbfc for plan a1be602a, verdict ready. The reviewer
 - A resolve that is out of date with the manifest is a validate warning, not a failure — undoing it: one branch in validate and its test.
 - validate on the tool route fails when the manifest cannot be read or when a non-optional repo added to the manifest is not synced yet, as docs/manifest/design.md states as the target — undoing it: map those status results to warnings.
 - Repos on another version, with local changes or with unpushed commits stay a pass for validate (the tool exits 0 for them, by the owner's "Only unusable repos"); they are shown as a note — undoing it: change the tool's exit rule, which is the tool's design.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 11:28 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-503 at `b6c96b94`
+
+Part 4 only (parts 2 and 3 not built). Commits:
+- 891b7b70 validate on the tool route reads `repos-manifest status --distro <d> --json` (output kept in a variable, read by python3 beside the tool with a stdlib reader; exit status decides, document names what failed; F9 local changes / unpushed commits are a NOTE, no failure; out-of-date resolve is a warning; an emptied clone fails as unusable, issue 517 item 2 on this route). Own checks kept: second records, leftover note, _rc_check_manifest, .repos present.
+- cccbbeee build on the tool route runs `repos-manifest build --distro <d> -- --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON <args>` in the root through _rc_nofd, underlay sourced first, no layer argument; a failed run with package selection gets a NOTE giving the tool's step with the underlay sourced (F2); a nested key builds, env/test still refuse it (F4).
+- 80143e35 test gives colcon the resolved repos on disk as --base-paths (read before the underlay is sourced); a layer with none on disk is skipped with a line (F3).
+- f100f63b new real-tool test test_tool_real_status_and_build (real init, stub colcon on PATH; same vcs skip/require rule).
+- c73a4add stale text: adapter header and sync comment; `repos-manifest sync` help no longer says repos there are "not touched yet".
+- d5223e7d documents: docs/manifest/design.md (build, test, validate with the status-to-validate table, nested key, package selection), docs/design.md#registry-and-adapters plus change-log row (F1), tools/repos-manifest/docs/design.md, roadmap Direction line split; its check is `file-contains` on the two call lines (`_rc_nofd "$bin" status --distro`, `_rc_nofd "$bin" build --distro`), held by no comment, and sitrep_checks.sh reports it true; "fetch and generated directories removed" left unchecked (F10).
+- b6c96b94 test_register_project.sh and test_register_session_root.sh: their hand-made tool roots get a config.yaml of the tool's shape and real clones of local repos, and python3 beside the workspace's tool wrapper, since the gate's validate now runs the real status (between 891b7b70 and this commit those two suites fail).
+
+Suites run (each on its own, from the worktree):
+- test_ros2_colcon.sh: "=== Results: 1457 passed, 0 failed, 0 skipped ===" (vcs present, so both real-tool tests ran; the bootstrap- and manifest-route tests are unchanged and pass, which is how those routes were confirmed untouched; their code paths branch on _rc_route before any changed line)
+- test_adapter.sh: "=== Results: 248 passed, 0 failed ==="
+- validate_adapter.sh: exit 0, "ros2_colcon: all 13 verbs implemented"
+- test_register_project.sh: "test_register_project: 222 passed, 0 failed"
+- test_register_session_root.sh: "test_register_session_root: 72 passed, 0 failed"
+- test_worktree_create.sh: "PASS: 109 FAIL: 0"; test_project_registry.sh: "425 passed, 0 failed"; test_project_file.sh: "701 passed, 0 failed"; test_design_anchors.sh: "82 passed, 0 failed"
+- tools/repos-manifest tests/test_cli.py: "25 passed" (with the venv, and again with PYTHONPATH set to this worktree's src)
+The full pre-commit pass and the remaining suites are left to the host.
+
+Not verified: the real tool against a real ROS instance or real colcon (CI has no colcon; the test uses a stub colcon); how long status takes on a large instance (sitrep's validate check has a 60 s timeout). Gap: none against Part 4 and F1-F10 as handed off.
