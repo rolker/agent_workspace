@@ -87,7 +87,8 @@ def check_prefix(prefix: object, named: str) -> str:
     """A prefix as `config.yaml` or `--fetch-from` gives it (`named` says which), or a
     `ManifestError` that says what is wrong without showing a user name or password. A prefix
     holds no control or invisible character and no `?` or `#` (a repo's name after it would be
-    in a query or a fragment, not the path). It ends in `/`, or in `:` in the `[user@]host:`
+    in a query or a fragment, not the path). It ends in `/`, with a repo's name after it in the
+    url's path (`https://` alone would make the name the host), or in `:` in the `[user@]host:`
     form only, with nothing after the host: the url rules (``manifest.url_path``) read the
     whole of `x` after it as the path (`https://host:` would read the repo's name as a port,
     `/srv/mirror:` is a path on the local disk, `git@host:field:` and `user:pass@host:` have a
@@ -104,8 +105,12 @@ def check_prefix(prefix: object, named: str) -> str:
         )
     with_name = f"{named} {quoted_url(prefix)}, with a repo name after it"
     if prefix.endswith("/"):
-        check_url(prefix + "x", "", with_name)
-        return prefix
+        if url_path(prefix + "x", "", with_name).endswith("/x"):
+            return prefix
+        raise ManifestError(
+            f"{named} {quoted_url(prefix)} has no host, so a repo's name after it would be"
+            " read as the host, not the path"
+        )
     scp_like = "://" not in prefix
     if prefix.endswith(":") and scp_like:
         if url_path(prefix + "x", "", with_name) == "x":

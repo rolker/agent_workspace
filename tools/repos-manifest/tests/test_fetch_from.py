@@ -62,6 +62,9 @@ def test_the_url_is_the_prefix_the_name_and_dot_git():
         "ssh://git@gitcloud/field/",
         "ssh://git@gitcloud:2222/field/",
         "https://git.example.org/field/",
+        "https://host/owner/",
+        "ssh://git@host/field/",
+        "ssh://git@host:2222/field/",
         "file:///srv/mirror/",
         "/srv/mirror/",
     ],
@@ -100,6 +103,10 @@ def test_a_prefix_a_manifest_url_could_start_with_is_taken(prefix):
         # The url rules read `user` as the host, and `pass@host:` as the path.
         ("user:pass@host:", "ends in ':' but is not in the [user@]host: form"),
         ("./mirror:", "is refused; a url uses"),
+        # A scheme with no host: the repo's name would be read as the host.
+        ("https://", "has no host, so a repo's name after it would be read as the host"),
+        ("http://", "has no host, so a repo's name after it would be read as the host"),
+        ("file://", "has no host, so a repo's name after it would be read as the host"),
         # A repo's name must end up in the path, never in a query or a fragment.
         ("https://h/f/?a=/", "holds a '?' or a '#'"),
         ("https://h/f#/", "holds a '?' or a '#'"),

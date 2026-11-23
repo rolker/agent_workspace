@@ -1838,7 +1838,9 @@ and file URLs and local paths git reads `?` and `#` as part of the path, and so 
 The prefix ends in `/`, or in `:` in the `[user@]host:` form only, with nothing after the host
 (`git@git.example.org:`; an `https://host:` would read the repo's name as a port, and in
 `/srv/mirror:`, `git@host:field:` and `user:pass@host:` the URL rule reads a path before the
-`:`, so the repo's name would not be the whole path). It holds no `?` or `#`, so a repo's name
+`:`, so the repo's name would not be the whole path). A prefix ending in `/` puts the repo's
+name in the URL's path: `https://`, `http://` and `file://` alone have no host, so the name
+would be read as the host, and are refused. It holds no `?` or `#`, so a repo's name
 is always in the path, never in a query or a fragment. With a repo's name after it, it is a
 URL a manifest may name (the rule under "Reading a manifest before using it" in the
 specification: https, http, ssh, file, the `[user@]host:path` form or an absolute path), and it
