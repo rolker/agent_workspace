@@ -1288,3 +1288,16 @@ Scope: the round 2 entry's five findings and the fix commits 0427cccc, 607e941e,
 ### Findings
 - [ ] (suggestion) the signal handler resets the signal to default and re-raises, so a caller's earlier INT/TERM/HUP trap is restored only on a normal return and never runs on an interrupt; restore the saved traps (`eval "$traps"`) in the handler before `kill -$sig $$`, and add the untested signal path to test_tool_build_runs_the_tool (a stub tool that sleeps, TERM to the dispatcher, the temporary file gone, exit 143) — `.agent/project_types/ros2_colcon/adapter.sh:2146`
 - [ ] (suggestion) on CI the locale part may always be a counted skip, so the LC_ALL=C regression guard would never run there; a `sudo locale-gen en_US.UTF-8` step in validate.yml would settle it, but that is a CI change (Ask First), so it is the owner's call; until then read the CI log for the SKIPPED banner — `.agent/scripts/tests/test_ros2_colcon.sh:4880`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 12:31 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 approved with no must-fix; the host's full pass passed on this head)
+**After**: publish
+**Decision**: publish
+
+Read the Local Review (Pre-Push) at 75e7d1dd (round 3, a convergence check, approved, ship recommended, 0 must-fix, 2 suggestions left open for triage and the owner's merge decision: the build's signal handler does not run a caller's own handler and has no test; a locale-gen step in the CI workflow would make the locale part run on CI for certain, a CI change that is the owner's to approve). The full pass (pre-commit run --files over the branch's eleven files, no SKIP, branch even with origin/main) passed: every hook Passed or Skipped for no files, including the adapter contract check, the design-anchor check, the .agent/scripts/tests/ suite, shellcheck, black and flake8; the tree was clean after it.
+
+### Decisions made (owner may veto)
+- Published with the two round 3 suggestions open instead of a fourth fix round: no current caller sets a signal handler, and the other is a CI change only the owner approves; both are in the pull request's text and go through triage to the merge decision — undoing it: a fix pass on the open pull request before the merge.
