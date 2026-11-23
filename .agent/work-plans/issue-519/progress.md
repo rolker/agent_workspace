@@ -505,3 +505,13 @@ Read: the Integrated Review at b9dadc87 for pull request 565: CI all-pass on 35f
 - The PR body's `## Decision summary`, "Open, from round 3" paragraph, is stale: it calls the empty-host prefix open, which commit `85da8cc` closed (the url rule now refuses `https:///`, `https://@/`, `http://:80/`), and its ground "the built url fails loudly when fetched" was shown wrong in the Integrated Review at `35f93f9` (`https:///` makes git contact a host named after the repo). Its test counts (1118 tests, three rounds) also predate the fix round (full suite 2307 passed at `5e18053`). To update before the merge decision; not a code finding.
 - No GitHub reviews, conversation comments or inline comments on the PR; no hosted-reviewer check run. CI on `5e18053`: 10 check runs, all success (Lint, Validate Documentation, Validate Adapter Contract, repos-manifest tests on Python 3.10 and 3.14, each twice).
 - `sources` dropped the Local Review (Pre-Push) at `048d186` as stale; its one open finding was ruled on by the Integrated Review at `35f93f9` and fixed in `85da8cc`.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 15:51 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: address
+
+The owner's answer in the dialog, to "Merge pull request #565 now, with F1 left for part 2?": "Fix F1 first". The dialog showed: the Integrated Review at 6173c91e (CI all-pass on 5e180530, the tool's whole suite at 2307 passed on Python 3.10 and 3.14; no GitHub reviews or comments; no must-fix; one suggestion that triage had marked deferred to part 2); his earlier words "ok, fix it first then merge" for the empty-host fix, which is in. F1, the suggestion: the reason written for the new rule, in tools/repos-manifest/docs/spec.md (about line 480) and in the authority docstring in tools/repos-manifest/src/repos_manifest/manifest.py (about line 387), says git reads the first part of the path as the host and contacts it, for all three refused example forms; that is true of https:///x.git only, and git rejects https://@/x.git and http://:80/x.git at once ("URL rejected: No host part in the URL"). The rule and its list of refused forms are correct. The box for F1 was ticked "(deferred: ...)" by triage before the owner's answer; his answer overrides that deferral, and the fix pass's handoff names the finding since the timeline no longer lists it as open.
