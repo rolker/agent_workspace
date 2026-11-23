@@ -143,6 +143,29 @@ pushes). Both need `git` 2.23 or later, and `vcs` from vcs2l or vcstool, on `PAT
 [docs/design.md](docs/design.md#sync) gives the rules and
 [docs/design.md](docs/design.md#what-is-built) says how far they go.
 
+A field machine can fetch every repo from one place, such as a private server, from the one
+published manifest: `fetch_from` in `.repos-manifest/config.yaml` names a url prefix, and each
+repo is fetched from the prefix, its name (the last part of its published url, without `.git`)
+and `.git`, whatever owner the published url names. `init --fetch-from git@git.example.org:field/`
+sets it for a new system; a system set up before gets it by an edit of `config.yaml`, made in the
+same edit that points `manifest:` at the published manifest when it named a copy kept by hand,
+and followed by `status`, which says what the next `sync` would repoint, before `sync`. `sync`
+then repoints each clone's `origin` by its url rule: a clean clone is repointed, one with commits
+the place lacks keeps its `origin` and is left as it is with the two ways on (push them there,
+or set `origin` by hand), and a place that cannot be fetched fails the repo with `origin` as it
+was. A repo missing at the place is an error: `fallback: true`, which would fetch from the
+published url instead, and the `upstream` remote are not built yet, and `fallback: true` is
+refused. Two repos of one name from different owners cannot both be fetched this way and are
+refused. `show` and `status` print the urls the prefix builds, with any user name and password
+masked. [docs/design.md](docs/design.md#where-repos-are-fetched-from) gives the rules, and what
+happens when one server is spelled two ways.
+
+A machine that fetches over https and pushes over ssh does not need `fetch_from`: git's own
+`git config --global url."git@github.com:".pushInsteadOf "https://github.com/"` sends pushes over
+ssh and keeps fetches on the manifest's https urls, and `url.<base>.insteadOf` rewrites both for an
+owner whose repos are private.
+[docs/design.md](docs/design.md#fetching-over-https-and-pushing-over-ssh) shows both.
+
 `status` shows, for each distro, what the system directory holds against what the manifest
 says: for each repo one state (expected, different, left alone, unusable, missing, skipped, or
 not at its place), with its uncommitted changes, its commits not on `origin`, how far it is
