@@ -121,6 +121,15 @@ CLAIMS = [
     (r"sync does not move it", {"left alone", "up to date"}, r""),
     (r"sync does not follow it", {"left alone"}, r"; not followed"),
     (r"sync tries to repoint origin to it", None, r"origin repointed from"),
+    # `status` cannot ask the place whether it has the commits made here, so it names both of
+    # what `sync` may do: repoint, or leave the repo with its refusal to repoint.
+    (
+        r"if it has them, sync repoints origin to it, and if not, sync leaves the repo as it is"
+        r" until they are pushed there",
+        {"left alone", "updated", "up to date"},
+        r"origin repointed from|url changed to \S+ but \d+ local commits? \(branch main\)"
+        r" (is|are) not on it",
+    ),
     (r"sync leaves origin as it is", None, r"left as set"),
     (r"sync clones it", {"cloned"}, r""),
     (r"sync does not update a repo through a link", {"left alone"}, r"through a link"),

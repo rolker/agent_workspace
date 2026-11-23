@@ -1273,8 +1273,9 @@ def standing(
     another work tree or a local branch of it with commits not on origin. Reads only.
 
     `push_to` is the url `fetch_from` builds when `sync` would repoint origin to it: commits
-    only here are then pushed there, as `sync`'s refusal to repoint says
-    (`push_to_place`), not to origin, the published repo."""
+    not on origin are then pushed there, as `sync`'s refusal to repoint says
+    (`push_to_place`), not to origin, the published repo. Offline `status` cannot know whether
+    the place has them already, so the text says what `sync` does in either case."""
     wanted = repo.version if repo.version is not None else f"origin's default branch {found.name}"
     if found.kind == BRANCH and branch == found.name:
         if head == found.target:
@@ -1303,9 +1304,10 @@ def standing(
                 )
             elif push_to is not None:
                 text += (
-                    f"; origin's {found.name} has nothing this clone lacks, so the commits are"
-                    " only here; origin is repointed to the place fetch_from names only once"
-                    " they are there; to push them there (sync never pushes): "
+                    f"; origin's {found.name} has nothing this clone lacks; status does not ask"
+                    " the place fetch_from names whether it has the commits: if it has them,"
+                    " sync repoints origin to it, and if not, sync leaves the repo as it is"
+                    " until they are pushed there; to push them there (sync never pushes): "
                     + push_to_place(git.place, push_to, branch)
                     + built_url_note(push_to, repo.key)
                 )

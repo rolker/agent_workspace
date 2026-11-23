@@ -221,6 +221,13 @@ def fetch_from_commits_only_here(case):
     fetch_from_set(case)
 
 
+def fetch_from_commits_already_at_the_place(case):
+    """Commits made here and pushed to the place, not to the published repo."""
+    commit_file(case.clone, "mine", "mine\n", "mine")
+    place = fetch_from_set(case)
+    git("push", "-q", str(place), "refs/heads/main:refs/heads/main", cwd=case.clone)
+
+
 def fetch_from_origin_already_the_place(case):
     place = fetch_from_set(case)
     git("remote", "set-url", "origin", str(place), cwd=case.clone)
@@ -452,6 +459,12 @@ CASES = {
         fetch_from_commits_only_here,
         "expected",
         "sync tries to repoint origin to it",
+    ),
+    "fetch_from set, commits already at the place": (
+        fetch_from_commits_already_at_the_place,
+        "expected",
+        "status does not ask the place fetch_from names whether it has the commits: if it has"
+        " them, sync repoints origin to it",
     ),
     "fetch_from set, origin already the place": (
         fetch_from_origin_already_the_place,
