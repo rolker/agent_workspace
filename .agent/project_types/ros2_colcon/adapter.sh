@@ -1095,6 +1095,11 @@ if len(mine) != 1:
 entry = mine[0]
 repos = entry.get("repos")
 gone = entry.get("not_in_manifest")
+if entry.get("problem") in (None, "") and (repos is None or gone is None):
+    missing = [n for n, v in (("repos", repos), ("not_in_manifest", gone)) if v is None]
+    out("bad", "printed a malformed document: the entry for distro " + text(want) + " has no problem and no "
+        + " or ".join(missing) + " list")
+    sys.exit(0)
 if repos is None:
     repos = []
 if gone is None:
@@ -1127,7 +1132,9 @@ for g in gone:
 #   - a not_in_manifest path: a ⚠️ line;
 #   - the distro's problem (its manifest cannot be read or resolved): ❌;
 #   - exit 1 with no document, an exit status other than 0 and 1, a
-#     document not of format 1, a state the adapter does not know, and a
+#     document not of format 1, a distro entry with no problem and a
+#     missing or null repos or not_in_manifest (malformed, not zero repos),
+#     a state the adapter does not know, and a
 #     document whose verdict and the exit status disagree: ❌, so a change
 #     in the tool's contract is seen.
 # Then the keys status names, by layer, against the last resolve's .repos

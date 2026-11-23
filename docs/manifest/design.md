@@ -218,7 +218,7 @@ The root need not be a git repository. The registry line holds its name, type an
   | local changes or unpushed commits | a `NOTE` line; no failure, as `status` exits 0 for them |
   | a `not_in_manifest` path | a ⚠️ line; no failure |
   | the distro's manifest cannot be read or resolved (its `problem`) | a ❌ line; a failure |
-  | no document, an exit status other than 0 and 1, a format other than 1, a state the adapter does not know, or a document whose verdict and the exit status disagree | a ❌ line naming it; a failure, so a change in the tool's contract is seen |
+  | no document, an exit status other than 0 and 1, a format other than 1, a distro entry with no `problem` and no `repos` or `not_in_manifest` list, a state the adapter does not know, or a document whose verdict and the exit status disagree | a ❌ line naming it; a failure, so a change in the tool's contract is seen |
 
   The repos `status` names, by layer, are compared with the keys of the last resolve: a
   difference (a manifest change the tool's `sync` has not resolved yet) is a warning naming

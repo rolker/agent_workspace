@@ -4824,6 +4824,22 @@ doc["ok"] = d["ok"] = False'
     rc=0; out="$(TOOL_STATUS_FILE="$doc" run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
     assert_eq "format 2: exit 1" "1" "$rc"
     assert_contains "format 2: named" "printed a document of format 2; the adapter reads format 1" "$out"
+    # No problem, but a list missing or null: malformed, not zero repos.
+    tool_status_doc "$sb" "$root" "$doc" 'del d["repos"]'
+    rc=0; out="$(TOOL_STATUS_FILE="$doc" run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "no problem, repos missing: exit 1" "1" "$rc"
+    assert_contains "no problem, repos missing: malformed, said" \
+        "❌ distro fakefox: repos-manifest status printed a malformed document: the entry for distro fakefox has no problem and no repos list" "$out"
+    assert_not_contains "no problem, repos missing: not passed as zero repos" "✅" "$out"
+    tool_status_doc "$sb" "$root" "$doc" 'd["not_in_manifest"] = None'
+    rc=0; out="$(TOOL_STATUS_FILE="$doc" run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "no problem, not_in_manifest null: exit 1" "1" "$rc"
+    assert_contains "no problem, not_in_manifest null: malformed, said" \
+        "has no problem and no not_in_manifest list" "$out"
+    tool_status_doc "$sb" "$root" "$doc" 'd["repos"] = None; d["problem"] = ""'
+    rc=0; out="$(TOOL_STATUS_FILE="$doc" run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "an empty problem, repos null: exit 1" "1" "$rc"
+    assert_contains "an empty problem, repos null: malformed, said" "has no problem and no repos list" "$out"
     tool_status_doc "$sb" "$root" "$doc" 'r["pkg_c"]["state"] = "missing"'
     rc=0; out="$(TOOL_STATUS_FILE="$doc" TOOL_EXIT=0 run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
     assert_eq "exit 0 with a failing repo: exit 1" "1" "$rc"
