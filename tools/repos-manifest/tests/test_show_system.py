@@ -56,8 +56,8 @@ def test_show_uses_what_the_system_records_from_a_directory_below_it(tmp_path, c
     # The recorded path is relative to the system directory, not to src/: it is printed as an
     # absolute path, which opens from here.
     assert out.startswith(
-        f"manifest  {os.path.realpath(system / 'm.yaml')}\n"
-        "role      robot    groups on: hw, sim    distro: jazzy\n"
+        f"manifest    {os.path.realpath(system / 'm.yaml')}\n"
+        "role        robot    groups on: hw, sim    distro: jazzy\n"
     )
     # The recorded group `sim` is on, so `s` is shown.
     assert "  a   main                   https://example.org/a.git\n" in out
@@ -150,7 +150,7 @@ def test_show_in_a_system_prints_every_manifest_as_an_absolute_path(tmp_path, ca
     lines = capsys.readouterr().out.splitlines()
     leaf = os.path.realpath(system / "m.yaml")
     base = os.path.realpath(tmp_path / "published" / "base.yaml")
-    assert lines[:2] == [f"manifest  {leaf}", f"base      {base}"]
+    assert lines[:2] == [f"manifest    {leaf}", f"base        {base}"]
     at = lines.index("  n   (its default branch)   https://example.org/n.git")
     assert lines[at + 1].strip() == f"from {leaf}"
     assert all(os.path.isfile(path) for path in (leaf, base))
@@ -170,7 +170,9 @@ def test_show_opens_the_recorded_path_as_sync_does_and_prints_it_canonical(
     _record(system, "sub/../m.yaml")
     monkeypatch.chdir(system)
     assert main(["show"]) == 0
-    assert capsys.readouterr().out.startswith(f"manifest  {os.path.realpath(system / 'm.yaml')}\n")
+    assert capsys.readouterr().out.startswith(
+        f"manifest    {os.path.realpath(system / 'm.yaml')}\n"
+    )
 
 
 def test_a_recorded_path_that_resolves_only_once_canonicalised_is_refused_as_sync_refuses_it(

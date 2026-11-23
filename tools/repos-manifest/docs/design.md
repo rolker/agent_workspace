@@ -488,9 +488,9 @@ a person to read, before any of the system's repos is cloned:
 ```
 $ repos-manifest show project11.manifest.yaml --role robot --with echoboat-hardware --distro jazzy
 
-manifest  project11.manifest.yaml
-base      https://github.com/example/system.git  jazzy  system.manifest.yaml
-role      robot    groups on: echoboat-hardware    distro: jazzy
+manifest    project11.manifest.yaml
+base        https://github.com/example/system.git  jazzy  system.manifest.yaml
+role        robot    groups on: echoboat-hardware    distro: jazzy
 
 underlay
   geographic_info       ros2    https://github.com/ros-geographic-info/geographic_info.git

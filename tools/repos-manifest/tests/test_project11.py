@@ -111,7 +111,7 @@ def _show(capsys, role, distro):
 def test_show_prints_each_role_and_the_roles_differ(distro, capsys):
     shown = {role: _show(capsys, role, distro) for role in ("robot", "operator", "developer")}
     for role, out in shown.items():
-        assert f"role      {role}    groups on: " in out
+        assert f"role        {role}    groups on: " in out
         assert out.endswith("\n")
     assert len(set(shown.values())) == 3
     # As many repos as `validate` counts (test_validate_checks_every_role_and_distro).

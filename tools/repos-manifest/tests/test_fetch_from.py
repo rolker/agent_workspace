@@ -426,6 +426,10 @@ def test_show_prints_the_url_fetched_from_and_the_prefix(vcs, tmp_path, capsys):
     assert "fetch from  git@gitcloud:field/\n" in out
     assert "git@gitcloud:field/a.git" in out
     assert str(remote) not in out
+    # The head's values start in one column, the `fetch from` line's too.
+    head_lines = out.split("\n\n", 1)[0].splitlines()
+    assert [line.split()[0] for line in head_lines] == ["manifest", "fetch", "role"]
+    assert all(line[11] == " " and line[12] != " " for line in head_lines)
 
 
 def test_show_and_status_mask_a_password_in_the_prefix(vcs, tmp_path, capsys):
