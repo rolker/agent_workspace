@@ -687,3 +687,25 @@ Tests: 342 passed (test_status, test_status_agrees_with_sync, test_update_safety
 **Decision**: publish
 
 Read the Local Review (Pre-Push) at 4ab1fe43 (round 4, approved, ship recommended, no findings). The full pass (`pre-commit run --files` over the branch's files, no SKIP, branch even with origin/main, 2m50s) passed: every hook Passed or Skipped for no files, including the adapter contract check, the `.agent/scripts/tests/` suite, shellcheck, black and flake8; the tree was clean after it.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-23 09:24 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #546 at `93abb9cb`
+**Sources**: 2 (Local Review (Pre-Push) @ `4e91a564` (covers `93abb9cb` via bookkeeping: the only change since is progress.md), CI rollup @ `93abb9cb`)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+GitHub: no reviews, no inline comments, no conversation comments on the PR as of this triage. `review_progress.sh sources` returned no open local findings and no dropped entries: the round-1 to round-3 pre-push findings are all ticked with their fixing commits, and round 4 at `4e91a564` approved with none. CI on `93abb9cb`: 10 check runs, all success (Lint (pre-commit), Validate Documentation, Validate Adapter Contract, repos-manifest tests on Python 3.10 and 3.14, each from two triggers).
+
+Main drift: the branch is 173 commits behind origin/main and `git merge-tree` merges it cleanly. `git diff feature/issue-502...origin/main` touches 18 files, none of them under `tools/repos-manifest`, `.agent/project_types`, `.agent/scripts/tests/test_ros2_colcon.sh`, `docs/manifest`, `.github` or `.pre-commit-config.yaml`. Main's changes are the research, brainstorm and design-discussion skills, `test_skill_paths.sh`, other issues' work plans, and two rows of `docs/design.md` (skill count, Decisions row) that this PR does not touch or depend on. No change on main makes the clean text merge wrong in substance for this PR's files.
+
+PR body has its `## Decision summary` (level 2).
+
+### Findings
+- [x] No open findings from any source.
+
+### False positives
+- None.
