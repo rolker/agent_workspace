@@ -532,3 +532,18 @@ The owner's answer in the dialog, to "Merge pull request #565 now, with F1 left 
 ### Checks
 - `cd tools/repos-manifest && PYTHONPATH=src .venv/bin/python -m pytest tests/test_documents.py tests/test_manifest_reading.py -q`: 306 passed in 0.14s.
 - Commit hooks ran with SKIP=validate-script-tests (dispatched pass); the full pre-commit pass is left to the host.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-23 15:53 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #565 at `aef7e3c6`
+**Depth**: Light (reason: set by the host's direction — round-3-style convergence check on the owner's finding F1 and its fix commit c2b82910 only; no cross-model reviewers, no adversarial sub-review of the rest of the diff, which was approved at 5e180530 with CI green)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Checked: `git show --stat c2b82910` touches only `tools/repos-manifest/docs/spec.md` (one passage) and the `_Checker.authority` docstring in `manifest.py` (docstring text only; no code, no test). With git 2.53.0, `git ls-remote https:///x.git` tries to resolve `x.git` as the host ("Could not resolve host: x.git"); `https://@/x.git` and `http://:80/x.git` fail with "URL rejected: No host part in the URL", contacting nothing. The new sentences match that. The docstring's account of `host_required` (https, http, ssh and the [user@]host:path form; not file urls, `scheme != "file://"`) and of ssh matches the code at manifest.py:338, :347 and :421. Cross-model: skipped (convergence check, per handoff).
+
+### Findings
+- [ ] (suggestion) Two test comments still give the old too-broad reason for all three empty-host forms ("curl would read the first part of the path as the host"); true only of the `https:///…` cases — `tools/repos-manifest/tests/test_manifest_reading.py:488`, `tools/repos-manifest/tests/test_fetch_from.py:111`
