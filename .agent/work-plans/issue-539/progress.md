@@ -319,3 +319,13 @@ Part 2 (02d07168 suite, df37b3b4 workflow) checked against the plan and the 2026
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 10:22 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+The owner's answer in the dialog, to "Push the branch and open the pull request, which will say Closes #539?": "Publish (Recommended)". The dialog showed: the Local Review (Pre-Push) at c4c2a46d (round 1, approved, no findings; outside reviewers used, their points dropped); the two changed files, with .github/workflows/validate.yml named as a CI workflow change (Ask First); the suite as each job will run it (adapter-contract 1379 passed, 0 failed, 0 skipped; Lint 1370 passed, 0 failed, 1 skipped). The host's full pass (pre-commit run --files over the branch's four files, no SKIP, branch even with origin/main after a merge of main) passed: every hook Passed or Skipped for no files, the .agent/scripts/tests/ suite, shellcheck and yamllint included; the tree was clean after it. Not yet checked, as the dialog said: the hosted CI log and the job times.
