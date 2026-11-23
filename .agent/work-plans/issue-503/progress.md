@@ -1270,3 +1270,21 @@ Scope: part 4 only. The six round 1 findings and the python3 message are fixed a
 - `bash .agent/scripts/tests/test_project_registry.sh`: `=== Results: 425 passed, 0 failed ===`
 - `bash .agent/scripts/tests/test_worktree_create.sh`: `PASS: 109`, `FAIL: 0`
 - Commits made with `SKIP=validate-script-tests`; every other hook ran (shellcheck passed). The full pre-commit pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-23 12:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-503 at `5bb1a596`
+**Base**: origin/main
+**Depth**: Deep (reason: round 3 convergence check per handoff; whole-diff tier Deep as rounds 1 and 2)
+**Must-fix**: 0 | **Suggestions**: 2
+**Round**: 3 | **Ship**: recommended — no must-fix findings; the two suggestions can be applied or tracked
+
+Scope: the round 2 entry's five findings and the fix commits 0427cccc, 607e941e, a68832a7, bd3e4cdf, 18c33dbf only. Cross-model: skipped (round-3 convergence check, per handoff). All five round 2 findings are closed. Ran: test_ros2_colcon.sh at HEAD, "=== Results: 1530 passed, 0 failed, 0 skipped ===" (1 min 52 s). In a throwaway detached worktree (removed) with adapter.sh put back to 3217c81f and the HEAD tests: "1513 passed, 17 failed", the failures being exactly the new note-text, pipefail, /dev/full, malformed-document and venv-step assertions, so each adapter fix has a test that fails without it (the stderr-closed test passes on both, as the fix pass said). With the locale grep made unmatchable: "SKIPPED (locale part)", the "=== SKIPPED: the locale part ..." banner and "1527 passed, 0 failed, 1 skipped". pre-commit shellcheck on adapter.sh and test_ros2_colcon.sh: passed. The trap pattern, copied verbatim into a harness under bash 5.3.9: on a normal return the caller's INT/TERM traps are restored and none of the function's are left (with no caller traps, `trap -p` is empty after); `trap -p` inside `$(...)` does see the caller's traps; HUP ignored at entry (nohup) stays ignored; TERM to the shell mid-build waits for the build, removes the file and exits 143, but a caller's own TERM trap does not run (the handler resets to default before re-raising), see the first suggestion. The only caller today, .agent/scripts/adapter, sets no traps, so nothing is lost in practice, and the function runs in that script's own shell (not a subshell), so `kill $$` targets the right process. The PIPESTATUS read (`&& rc=${PIPESTATUS[0]} || rc=${PIPESTATUS[0]}`) is right on both branches and under set -e. CI locale: a counted, visible skip is acceptable for this part (issue 539's rule is that a skip is counted, which it now is); whether ubuntu-latest has en_US.UTF-8 was not checked, see the second suggestion.
+
+### Findings
+- [ ] (suggestion) the signal handler resets the signal to default and re-raises, so a caller's earlier INT/TERM/HUP trap is restored only on a normal return and never runs on an interrupt; restore the saved traps (`eval "$traps"`) in the handler before `kill -$sig $$`, and add the untested signal path to test_tool_build_runs_the_tool (a stub tool that sleeps, TERM to the dispatcher, the temporary file gone, exit 143) — `.agent/project_types/ros2_colcon/adapter.sh:2146`
+- [ ] (suggestion) on CI the locale part may always be a counted skip, so the LC_ALL=C regression guard would never run there; a `sudo locale-gen en_US.UTF-8` step in validate.yml would settle it, but that is a CI change (Ask First), so it is the owner's call; until then read the CI log for the SKIPPED banner — `.agent/scripts/tests/test_ros2_colcon.sh:4880`
