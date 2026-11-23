@@ -601,7 +601,8 @@ if [[ -f "$AUD" ]]; then
         'its absence is no finding' 'Never turn the automatic Copilot rule back on' \
         'gh pr edit <N> --add-reviewer "@copilot"' \
         '**Informational**: no check here can fail' \
-        'in place (informational): pull requests merge through the review loop'"'"'s cold read'
+        'in place (informational): pull requests merge through the review loop'"'"'s cold read' \
+        'component labels and independent review as `not checked: github=unknown'
     if grep -qF 'Copilot auto-review' "$AUD"; then
         fail "audit-project still has the Copilot auto-review item (issue 452)"
     else

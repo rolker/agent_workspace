@@ -272,9 +272,11 @@ how the project works: report the item, and in step 10 ask rather than
 recommend it.
 
 With `github=unknown`, the GitHub checks have no repository to read: ask
-which repository on github.com it is, or report branch protection and
-component labels as `not checked: github=unknown (<the fact's
-evidence>)`.
+which repository on github.com it is, or report branch protection,
+component labels and independent review as `not checked: github=unknown
+(<the fact's evidence>)`. Independent review is among them although it
+makes no GitHub call: the loop's cold read reads a GitHub pull request,
+so with no known repository its "in place" would be unfounded.
 
 The GitHub checks only read. The default branch and the rules on it:
 
