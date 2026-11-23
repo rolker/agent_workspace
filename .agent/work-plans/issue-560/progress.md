@@ -29,3 +29,24 @@ Every check cell follows the grammar (gh-issue, owner/repo#N, ' ; ' joins, empty
 - [x] (suggestion) "Across the paths" opens in the present tense as if the sit-rep reported each path now, and the roadmap never says its marks still follow the three old paths (only design.md does); lead with the not-built state — `docs/roadmap.md:107`
 - [x] (suggestion) The design-discussion line has no check, although design-discussion SKILL.md:288,334 already keeps its records out of progress.md; give it a check or say what remains (#544), otherwise an unchecked line reads as work to do — `docs/roadmap.md:64`
 - [x] (suggestion) "five paths, each with the lines that must be true on it": Path 5 has no lines and the 15th line sits under "Across the paths" — `docs/design.md:105`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 14:22 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-560 at `8b4dc95f`
+**Addressed**: Local Review (Pre-Push) at `1bbf7bc6` (2026-11-23 14:16 -05:00)
+**Commits**: a2fe45b7, f304d0ab, 9ca37d57, 986e49f3, ecce34c0, b4b8b8af, 8b4dc95f
+
+### Actions
+- [x] (must-fix) Format block restored from origin/main word for word (diffed: identical), the branch's Line-table bullet kept after it — `docs/roadmap.md` (a2fe45b7)
+- [x] (must-fix) test_skill_paths.sh reads Path 1 to Path 5 in order, each as the sit-rep's step 3 parses it, allows a `| Line | Check |` table after a path's paragraph, and still fails on any other table among the paths or a table row inside a paragraph (each case tried on a changed copy); header says five Paths — `.agent/scripts/tests/test_skill_paths.sh:7,895` (f304d0ab)
+- [x] (must-fix) Direction row says the sit-rep checks first whether a Direction line names the work (any path's line gives Path 1), Path 3 for the safeguard goal, Path 2 for other goal work, Paths 4 and 5 never marked, until #563; change-log row for #560 reworded, line count 1217 unchanged — `docs/design.md:105,1163` (9ca37d57)
+- [x] (suggestion) Design later row for the home level (Path 5) split from the orchestrator design session (#398): the first has an empty check, the second keeps `gh-issue rolker/unh_marine_autonomy#396 closed`; design.md says a part still to be designed has an empty revisit check — `docs/roadmap.md`, `docs/design.md:105` (986e49f3)
+- [x] (suggestion) Path 2's lighter level and Path 5 now in the owner's words (2026-11-23) as the host gave them; the principle is quoted verbatim from docs/principles.md:10 ("Limits on what agents do on their own start strict, and only the user relaxes them") — `docs/roadmap.md` (ecce34c0)
+- [x] (suggestion) Across the paths leads with "To be built (#563)" and says the marks still follow the three earlier paths — `docs/roadmap.md` (b4b8b8af)
+- [x] (suggestion) The design-discussion line now says what remains: the issue loop ignores timeline entries of another kind of work (#544), check left empty — `docs/roadmap.md` (8b4dc95f)
+- [x] (suggestion) Direction row: Paths 1 to 4 have line tables, Path 5 none yet, one line under Across the paths — `docs/design.md:105` (9ca37d57)
+
+Checks: sitrep_checks.sh --root/--roadmap on the worktree exit 0: 15 line, 10 deferral, 2 part, 37 subline, 10 subdeferral rows, 0 format rows. check_design_anchors.sh exit 0. update_roadmap.sh --issue N --dry-run for 544, 563, 398 finds no entries. Suites: test_skill_paths.sh 198 passed, 0 failed; test_sitrep_checks.sh 252 passed, 0 failed. Every commit used SKIP=validate-script-tests; the full pre-commit pass is left to the host.
