@@ -4699,6 +4699,27 @@ r["pkg_c"]["state"] = "left-alone"; r["pkg_c"]["detail"] = "has a rebase in prog
     assert_contains "left-alone: a warning with the tool's detail" \
         "⚠️ distro fakefox: $root/fakefox/extra/src/pkg_c left-alone: has a rebase in progress" "$out"
     assert_contains "different and left-alone: counted in the pass line" "2 as expected, 2 with a warning above" "$out"
+    # Git output that is not UTF-8: the tool writes the byte as a lone
+    # surrogate (JSON \udcXX). The reader prints it as \xXX, any other lone
+    # surrogate as \uXXXX; no traceback, no line lost.
+    tool_status_doc "$sb" "$root" "$doc" '
+r["pkg_a"]["state"] = "different"; r["pkg_a"]["detail"] = "is on branch caf\udce9, not \ud800fakefox"'
+    rc=0; out="$(TOOL_STATUS_FILE="$doc" run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "a lone surrogate: exit 0" "0" "$rc"
+    assert_not_contains "a lone surrogate: no traceback" "Traceback" "$out"
+    assert_contains "a lone surrogate: the byte as \\xXX, another surrogate as \\uXXXX" \
+        "⚠️ distro fakefox: $root/fakefox/core/src/pkg_a different: is on branch caf\\xe9, not \\ud800fakefox" "$out"
+    assert_contains "a lone surrogate: every repo still counted" "4 repo(s), 3 as expected, 1 with a warning above" "$out"
+    # The reader itself failing: the message gives its exit status, and status's.
+    mv "$sb/.venv/bin/python3" "$sb/python3.aside"
+    printf '#!/usr/bin/env bash\ncat >/dev/null\nexit 3\n' > "$sb/.venv/bin/python3"
+    chmod +x "$sb/.venv/bin/python3"
+    rc=0; out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+    assert_eq "the reader failing: exit 1" "1" "$rc"
+    assert_contains "the reader failing: its exit status and status's named" \
+        "❌ distro fakefox: $sb/.venv/bin/python3 could not read the document repos-manifest status printed ($sb/.venv/bin/python3 exited 3; repos-manifest status exited 0)" "$out"
+    rm "$sb/.venv/bin/python3"
+    mv "$sb/python3.aside" "$sb/.venv/bin/python3"
     tool_status_doc "$sb" "$root" "$doc" 'r["pkg_u"]["changes"] = 3; r["pkg_u"]["unpushed"] = 1'
     rc=0; out="$(TOOL_STATUS_FILE="$doc" run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
     assert_eq "local changes and unpushed commits: exit 0" "0" "$rc"

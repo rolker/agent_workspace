@@ -1038,7 +1038,9 @@ _rc_tool_sync() {
 # tool's own interpreter (_rc_tool_status), standard library only. Its
 # argument is the distro asked for; it prints one line per item, fields
 # separated by \x1f (a tab, a newline, a carriage return or \x1f inside a
-# value becomes a space):
+# value becomes a space; a byte that is not UTF-8, which the tool writes as
+# a lone surrogate, becomes \xXX as the tool's own show prints it, and any
+# other lone surrogate \uXXXX, so no line is lost to an encoding error):
 #   bad  <why>                     no document, or not one the adapter reads
 #   head <document ok 0|1> <distro ok 0|1> <the distro's problem, or empty>
 #   repo <layer> <key> <state> <optional 0|1> <path> <changed files>
@@ -1047,10 +1049,18 @@ _rc_tool_sync() {
 _RC_STATUS_READER='
 import json, sys
 SEP = "\x1f"
+sys.stdout.reconfigure(errors="backslashreplace")
+def unpaired(ch):
+    c = ord(ch)
+    if 0xDC80 <= c <= 0xDCFF:
+        return "\\x%02x" % (c - 0xDC00)
+    if 0xD800 <= c <= 0xDFFF:
+        return "\\u%04x" % c
+    return ch
 def text(v):
     if v is None:
         return ""
-    s = str(v)
+    s = "".join(unpaired(ch) for ch in str(v))
     for ch in ("\t", "\n", "\r", SEP):
         s = s.replace(ch, " ")
     return s
@@ -1125,7 +1135,7 @@ for g in gone:
 # manifest), with the tool's sync step. Sets _RC_STATUS_ISSUES (the number
 # of ❌ lines) and, when it is 0, _RC_STATUS_PASS (the pass line).
 _rc_tool_status() {
-    local d="$1" root bin py doc lines rc=0 kind a b c e f g h i
+    local d="$1" root bin py doc lines rc=0 prc=0 kind a b c e f g h i
     local doc_ok="" dist_ok="" problem="" failing=0 unknown=0 expected=0 warned=0 skipped=0 total=0
     local from_status="" from_resolve="" layer file only_status only_resolve resolve_ok=1
     _RC_STATUS_ISSUES=0
@@ -1144,8 +1154,9 @@ _rc_tool_status() {
         _RC_STATUS_ISSUES=1
         return 0
     fi
-    if ! lines="$(printf '%s' "$doc" | _rc_nofd "$py" -I -c "$_RC_STATUS_READER" "$d")"; then
-        echo "❌ distro $d: $py could not read the document repos-manifest status printed (exit $rc)" >&2
+    lines="$(printf '%s' "$doc" | _rc_nofd "$py" -I -c "$_RC_STATUS_READER" "$d")" || prc=$?
+    if [ "$prc" -ne 0 ]; then
+        echo "❌ distro $d: $py could not read the document repos-manifest status printed ($py exited $prc; repos-manifest status exited $rc); a message from either, if any, is above" >&2
         _RC_STATUS_ISSUES=1
         return 0
     fi
