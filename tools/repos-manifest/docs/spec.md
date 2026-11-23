@@ -477,6 +477,10 @@ command that writes there.
   - An address `git` hands to ssh has a host that is not empty (`[]:repo` is refused), an
     `ssh://` url has a path after the host, and the path of the `[user@]host:path` form does
     not start with `-`. `git` cannot use an address without them.
+  - In an `https` or `http` url the host is not empty (`https:///x.git`, `https://@/x.git`
+    and `http://:80/x.git` are refused): with an empty host, `git` reads the first part of
+    the path as the host and contacts it. A `file` url's host may be empty, as in
+    `file:///srv/x.git`.
   - In an `https`, `http` or `file` url, the user, the host and the port hold no `%`, so a
     `%2d` cannot stand for a `-` there; a `%`, a `[` or a `]` in the path is accepted.
   - A `url` uses a transport that only fetches: `https`, `http`, `ssh`, `file`, the

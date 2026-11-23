@@ -66,6 +66,7 @@ def test_the_url_is_the_prefix_the_name_and_dot_git():
         "ssh://git@host/field/",
         "ssh://git@host:2222/field/",
         "file:///srv/mirror/",
+        "file://localhost/srv/mirror/",
         "/srv/mirror/",
     ],
 )
@@ -107,6 +108,12 @@ def test_a_prefix_a_manifest_url_could_start_with_is_taken(prefix):
         ("https://", "has no host, so a repo's name after it would be read as the host"),
         ("http://", "has no host, so a repo's name after it would be read as the host"),
         ("file://", "has no host, so a repo's name after it would be read as the host"),
+        # A scheme with an empty host and a path: curl would read the first part of the path,
+        # or the repo's name, as the host.
+        ("https:///", "the host is empty"),
+        ("https://@/", "the host is empty"),
+        ("http://:80/", "the host is empty"),
+        ("https:///field/", "the host is empty"),
         # A repo's name must end up in the path, never in a query or a fragment.
         ("https://h/f/?a=/", "holds a '?' or a '#'"),
         ("https://h/f#/", "holds a '?' or a '#'"),
@@ -124,6 +131,13 @@ def test_a_prefix_that_is_not_a_url_prefix_is_refused(prefix, why):
         check_prefix(prefix, "--fetch-from")
     assert why in str(raised.value)
     assert str(raised.value).startswith("--fetch-from")
+
+
+def test_a_prefix_with_an_empty_host_is_refused_without_its_password():
+    with pytest.raises(ManifestError) as raised:
+        check_prefix("https://user:s3cret@/field/", "--fetch-from")
+    assert "the host is empty" in str(raised.value)
+    assert "s3cret" not in str(raised.value) and "user" not in str(raised.value)
 
 
 def test_a_refused_prefix_is_not_shown_with_its_password():

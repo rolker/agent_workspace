@@ -1850,11 +1850,13 @@ The prefix ends in `/`, or in `:` in the `[user@]host:` form only, with nothing 
 `/srv/mirror:`, `git@host:field:` and `user:pass@host:` the URL rule reads a path before the
 `:`, so the repo's name would not be the whole path). A prefix ending in `/` puts the repo's
 name in the URL's path: `https://`, `http://` and `file://` alone have no host, so the name
-would be read as the host, and are refused. It holds no `?` or `#`, so a repo's name
-is always in the path, never in a query or a fragment. With a repo's name after it, it is a
-URL a manifest may name (the rule under "Reading a manifest before using it" in the
-specification: https, http, ssh, file, the `[user@]host:path` form or an absolute path), and it
-holds no control or invisible character; every URL built from it is checked the same way.
+would be read as the host, and are refused; so are `https:///`, `https://@/` and
+`http://:80/`, since the URL rule refuses an https or http URL whose host is empty. It holds
+no `?` or `#`, so a repo's name is always in the path, never in a query or a fragment. With a
+repo's name after it, it is a URL a manifest may name (the rule under "Reading a manifest
+before using it" in the specification: https, http, ssh, file, the `[user@]host:path` form or
+an absolute path), and it holds no control or invisible character; every URL built from it is
+checked the same way.
 A prefix that breaks a rule is an error that names `config.yaml`, or `--fetch-from`. A user
 name and password in the prefix are masked in every message and in `status --json`, and
 written in full where URLs are kept, as for a manifest URL that holds them: the resolved files,

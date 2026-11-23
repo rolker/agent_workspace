@@ -329,8 +329,13 @@ class _Checker:
                 # '[' or ']' after it is the path's business.
                 slash = rest.find("/")
             authority = rest if slash < 0 else rest[:slash]
+            # A file url's host is normally empty; any other's is a host git contacts.
             self.authority(
-                url, authority, _bracketed_host(authority), where, ssh=scheme == "ssh://"
+                url,
+                authority,
+                _bracketed_host(authority),
+                where,
+                host_required=scheme != "file://",
             )
             return "" if slash < 0 else rest[slash:]
         if "://" not in url and _colon_before_slash(url):
@@ -339,7 +344,7 @@ class _Checker:
             sep = url.find(":", brackets[1] + 1 if brackets else 0)
             if sep <= 0 or sep == len(url) - 1:
                 raise self.error(where, f"{quoted_url(url)} is refused; {_URL_RULE}")
-            self.authority(url, url[:sep], brackets, where, ssh=True)
+            self.authority(url, url[:sep], brackets, where, host_required=True)
             if url[sep + 1] == "-":
                 # git refuses such a path ("strange pathname") rather than hand it to ssh.
                 raise self.error(where, f"{quoted_url(url)}: the path starts with '-'")
@@ -374,12 +379,14 @@ class _Checker:
         brackets: Optional[Tuple[int, int]],
         where: str,
         *,
-        ssh: bool,
+        host_required: bool,
     ) -> None:
         """Check the user, host and port in `text`, the part of a url before the path, with
         `brackets` where the brackets of its host are: no '%' (git decodes it in a url with
         '://', so a '%2d' would be a '-'), and none starts with '-', where ssh would read it as
-        an option. In an address handed to ssh (`ssh`), the host is not empty."""
+        an option. With `host_required` (an https, http or ssh url, or the [user@]host:path
+        form; not a file url, whose host is normally empty), the host is not empty: curl would
+        read the first part of the path as the host, and ssh would get no host."""
         if "%" in text:
             raise self.error(
                 where, f"{quoted_url(url)}: a '%' in the user, host or port is refused"
@@ -408,7 +415,7 @@ class _Checker:
             user, _, host_port = text.rpartition("@")
             host, _, port = host_port.partition(":")
             parts = [("user", user), ("host", host), ("port", port)]
-        if ssh and not host:
+        if host_required and not host:
             raise self.error(where, f"{quoted_url(url)}: the host is empty")
         for part, value in parts:
             if value.startswith("-"):

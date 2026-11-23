@@ -394,6 +394,8 @@ def test_a_version_with_heads_or_tags_and_no_dash_after_is_read(version):
         "ssh://git@host:2222/owner/repo.git",
         "host:path",
         "[::1]:repo",
+        # A file url's host is normally empty, or localhost.
+        "file://localhost/srv/git/a.git",
     ],
 )
 def test_the_transports_that_only_fetch_are_accepted(url):
@@ -483,6 +485,13 @@ def test_the_transports_that_only_fetch_are_accepted(url):
         ("u@[]:r", "the host is empty"),
         ("[u@]:r", "the host is empty"),
         ("u@:r", "the host is empty"),
+        # An http(s) url with an empty host: curl would read the first part of the path as
+        # the host.
+        ("https:///x.git", "the host is empty"),
+        ("https://@/x.git", "the host is empty"),
+        ("http://:80/x.git", "the host is empty"),
+        ("https:///localhost/x.git", "the host is empty"),
+        ("https://[]/x.git", "the host is empty"),
         ("h:-x", "the path starts with '-'"),
         ("u:-x@h:p", "the path starts with '-'"),
         ("git@example.org:-oProxyCommand=x", "the path starts with '-'"),
