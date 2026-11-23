@@ -568,3 +568,13 @@ Checked: `git show --stat c2b82910` touches only `tools/repos-manifest/docs/spec
 - The PR body's `## Decision summary` is out of date in two ways. (1) Its paragraph "Open, deferred to part 2: the reason given for the new rule, in `docs/spec.md` and in one docstring, ..." is no longer true: commit `c2b82910` reworded both on the owner's answer "Fix F1 first", and once the two test comments above are fixed nothing of F1 stays open; replace it with a line saying F1 was fixed before the merge. (2) The body holds a leftover second copy of the older summary: after the closing line, from a stray "Part of #519`." (body line 44) to the end, it repeats the earlier text, including the stale "Open, from round 3, for the merge decision: an http(s) prefix with an empty host (`https:///`) passes the prefix check ..." paragraph that commit `85da8cc` closed. Remove that duplicate. The "Reviews in all" line should also count the convergence check at `aef7e3c`.
 - No GitHub reviews, conversation comments or inline comments on the PR; no hosted-reviewer check run. CI on `aef7e3c` when read (15:54): 10 check runs, 2 pass (Validate Documentation, twice), 8 pending (Lint, Validate Adapter Contract, repos-manifest tests on Python 3.10 and 3.14, each twice). The previous head `5e18053` was all-pass. Local head is one record commit (`2b2ccaa`, progress only) ahead of the PR head.
 - `sources` dropped the Local Review (Pre-Push) at `048d186` and the Local Review at `5e18053` as stale; both were ruled on in earlier Integrated Reviews (`048d186`'s finding fixed in `85da8cc`; `5e18053`'s F1 fixed in `c2b82910`, its test-comment remainder is the open finding above).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 15:55 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the open finding is the unfinished part of F1, which the owner chose on 2026-11-23 to have fixed before the merge: "Fix F1 first"; sending it for the fix is the host's answer)
+**After**: findings
+**Decision**: address
+
+Read: the Integrated Review at 8c33f8e0 for pull request 565: no GitHub reviews or comments, CI pending on aef7e3c6 (all-pass on the head before it), one valid finding with its box open: two test comments still give the old, too-broad reason for the empty-host rule (tools/repos-manifest/tests/test_manifest_reading.py:488-489 and tools/repos-manifest/tests/test_fetch_from.py:111-112); the fix rewords the two comments to match the spec's new sentence, with no assertion or test case changed. The owner was told the same turn and offered merging now instead. The entry's notes for the host (a duplicated block and out-of-date paragraphs in the pull request's text) are corrected by the host before the merge.
