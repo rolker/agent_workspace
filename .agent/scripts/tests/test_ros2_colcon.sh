@@ -1137,6 +1137,31 @@ test_setup_requires_vcs() {
     assert_contains "names the missing tool" "'vcs' (vcstool) not found" "$out"
 }
 
+# The real-tool test with no vcs on PATH: a loud skip, counted, when
+# ROS2_COLCON_TESTS_REQUIRE_VCS is unset; a failure when it is set. Each
+# case runs in a subshell with an empty PATH (the function returns before
+# it needs any external tool) and sets or unsets the variable there, as this
+# suite itself runs in CI with the variable set. The subshell prints its
+# counters, so the suite's own PASS, FAIL and TOOL_SKIPPED stay untouched.
+test_real_tool_case_without_vcs() {
+    echo "TEST: the real-tool test without vcs skips, or fails where vcs is required"
+    local emptybin out
+    emptybin="$(mktemp -d -p "$SANDBOX")"
+    out="$(unset ROS2_COLCON_TESTS_REQUIRE_VCS; PATH="$emptybin"; TOOL_SKIPPED=0; FAIL=0
+        test_tool_real_init_and_sync
+        echo "counters: TOOL_SKIPPED=$TOOL_SKIPPED FAIL=$FAIL")"
+    assert_contains "variable unset: skips, saying so" "SKIPPED: vcs is not on PATH" "$out"
+    assert_contains "variable unset: the skip is counted, no failure" \
+        "counters: TOOL_SKIPPED=1 FAIL=0" "$out"
+    out="$(export ROS2_COLCON_TESTS_REQUIRE_VCS=1; PATH="$emptybin"; TOOL_SKIPPED=0; FAIL=0
+        test_tool_real_init_and_sync
+        echo "counters: TOOL_SKIPPED=$TOOL_SKIPPED FAIL=$FAIL")"
+    assert_contains "variable set: fails, naming vcs" \
+        "FAIL: vcs is not on PATH, though ROS2_COLCON_TESTS_REQUIRE_VCS" "$out"
+    assert_contains "variable set: counted as a failure, not a skip" \
+        "counters: TOOL_SKIPPED=0 FAIL=1" "$out"
+}
+
 # ---- setup: manifest bootstrap (#237) ----
 
 # A local "remote" manifest repo (git, branch fakefox) whose config dir holds
@@ -5017,11 +5042,19 @@ test_bootstrap_no_url_names_the_tool() {
 
 # The real tool (this checkout's source) and vcs: init a system from local
 # repositories, then setup, sync, validate and repo_pin through the
-# adapter. Skipped, saying so, when either is missing.
+# adapter. Skipped, saying so, when either is missing. A missing vcs is a
+# failure, not a skip, when ROS2_COLCON_TESTS_REQUIRE_VCS is set and
+# non-empty: the "Run ros2_colcon adapter tests" step of CI's Validate
+# Adapter Contract job sets it, as that job installs vcs.
 test_tool_real_init_and_sync() {
     echo "TEST: tool route with the real tool and vcs: init by hand, then the adapter's sync, validate and repo_pin"
     local vcs_bin sb outer root out rc=0 name
     vcs_bin="$(command -v vcs 2>/dev/null || true)"
+    if [ -z "$vcs_bin" ] && [ -n "${ROS2_COLCON_TESTS_REQUIRE_VCS:-}" ]; then
+        echo "  FAIL: vcs is not on PATH, though ROS2_COLCON_TESTS_REQUIRE_VCS says it is meant to be present"
+        FAIL=$((FAIL + 1))
+        return 0
+    fi
     if [ -z "$vcs_bin" ]; then
         echo "  SKIPPED: vcs is not on PATH; the real tool's sync needs it"
         TOOL_SKIPPED=$((TOOL_SKIPPED + 1))
@@ -5109,6 +5142,7 @@ test_setup_imports_each_layer
 test_setup_optional_layer_failure_tolerated
 test_setup_required_layer_failure_aborts
 test_setup_requires_vcs
+test_real_tool_case_without_vcs
 test_setup_bootstraps_manifest_pattern_b
 test_setup_bootstraps_pattern_a_from_url_file
 test_setup_bootstrap_env_url_wins
@@ -5223,5 +5257,5 @@ echo ""
 if [ "$MR_SKIPPED" -gt 0 ]; then
     echo "=== SKIPPED: $MR_SKIPPED manifest-route test(s): PyYAML not importable with $MR_SRC ==="
 fi
-echo "=== Results: ${PASS} passed, ${FAIL} failed, ${MR_SKIPPED} skipped ==="
+echo "=== Results: ${PASS} passed, ${FAIL} failed, $((MR_SKIPPED + TOOL_SKIPPED)) skipped ==="
 [[ $FAIL -eq 0 ]]

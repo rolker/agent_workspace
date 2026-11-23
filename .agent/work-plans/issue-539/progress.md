@@ -207,3 +207,158 @@ None.
 **Decision**: merge
 
 The owner's answer in the dialog, to "Merge pull request 540?": "Merge (Recommended)". The dialog showed: the one changed line; the suite at 1375 passed, 0 failed, 0 skipped with the real-tool case run; the host's full pass before the push; the approved pre-push review and the Integrated Review at 66966fb8 with no open findings; CI all-pass, with the note that CI still skips the changed case until part 2; no hosted review in 900 s, Gemini and Codex skipped at Light depth. The host fetched the pull request again before asking: no reviews, no comments, no failed check. Part 1 of two: the issue stays open for part 2.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 09:59 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+The owner's answer in the dialog, to "How should part 2 be revised?": "Revise, whole part 2 (Recommended)". The dialog showed: part 1 merged as pull request 540; part 2 of the plan is not delivered and cannot be implemented as written, by the Plan Review of 2026-11-20 (needs-work). F1, must-fix: failing on a missing vcs whenever CI is set would break the Lint job; fix by an explicit require-variable set only on the adapter-contract step, as REPOS_MANIFEST_REQUIRE_COLCON is, or by installing vcs in the Lint job too. F2, must-fix: pip install vcstool==0.3.0 does not pin what the plan says and crashed in a fresh venv; use the pinned vcs2l. F3, scope: the skip count stays in part 2 (it had been proposed earlier the same day to hold it for issue 550; the owner chose to keep it, so this pull request closes the issue). Part 2 changes a CI workflow (Ask First); this answer covers planning it and the merge decision covers the change.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-23 10:01 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-539/plan.md` at `1e47af35`
+
+Revision of part 2 (part 1 is delivered as pull request 540). CI installs `vcs2l==1.1.7` in the adapter-contract job; a missing vcs fails only where `ROS2_COLCON_TESTS_REQUIRE_VCS` is set (that step), so the Lint job, which has no vcs, still skips; the Results line counts the skip; a required isolated-PATH test covers skip versus fail. Mechanism choices are listed for the owner's veto; the part 2 pull request says Closes #539.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-23 10:03 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #539 — test_ros2_colcon.sh expects the manifest tool's old sync report; CI skips that case and reports 0 skipped
+**Plan**: `.agent/work-plans/issue-539/plan.md` at `1e47af35`
+**Branch**: `feature/issue-539`
+
+Review of the revised part 2 (part 1 is delivered as pull request 540). Both must-fix findings of the 2026-11-20 review are answered, and the revision follows the owner's checkpoint of 2026-11-23 (whole part 2 revised, skip count kept, so the pull request closes #539). Two points for the implementer (findings 1 and 2), neither a reason to send the plan back.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One workflow job (one install step, one env line), the suite's real-tool function, its summary line and one new test. |
+| Issue alignment | Good | Covers items 2 and 3 of the issue and the earlier review's findings: F1 by `ROS2_COLCON_TESTS_REQUIRE_VCS` on the adapter-contract step only; F2 by `vcs2l==1.1.7`; suggestion 3 made required (step 5); suggestion 4 in Prior Art. Serves: "Quality of the work, and "A safeguard has to earn its cost": `docs/design.md#merge-gate`" (README.md line 33/37, design.md line 844: both exist). |
+| File targeting | Good | `.github/workflows/validate.yml` and `.agent/scripts/tests/test_ros2_colcon.sh`. The Lint job is now handled by not setting the variable there. |
+| Consequences | Good | Lint (CI set, no vcs) keeps the counted skip; no parser of the `skipped` number (re-grepped). One CI interaction in the new test is not spelled out (finding 1). |
+| Principle alignment | Good | Test what breaks: required skip-vs-fail test with a mutation check (6b). Prior art named. Ask First for the workflow change is addressed. |
+| ADR compliance | Good | ADR-0011 not triggered; no other ADR triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Checks run
+
+- Fresh venv (Python 3.14.4): `pip install vcs2l==1.1.7` gave vcs2l 1.1.7 and PyYAML 6.0.4, no setuptools; `vcs --version` printed `vcs 1.1.7`, exit 0. `Requires-Python: >=3.6`, so CI's 3.10 is covered. `pip index versions vcs2l`: newest is 1.1.7. `tools/repos-manifest/pyproject.toml` `[test]` holds `vcs2l>=1.1.7`.
+- Full suite with vcs2l's `vcs` first on PATH (system vcs is vcstool 0.3.0): `bash .agent/scripts/tests/test_ros2_colcon.sh` → `1375 passed, 0 failed, 0 skipped`, exit 0, 1m39s; the `TEST: tool route with the real tool and vcs` case ran and passed (no `SKIPPED` line in the log). So CI's planned `vcs` works with the real tool, not only `--version`.
+- Isolated-PATH feasibility: extracted `test_tool_real_init_and_sync` and ran it under `set -euo pipefail` in a subshell with `PATH` set to an empty directory: it printed the `TEST:` and `SKIPPED: vcs is not on PATH` lines and `TOOL_SKIPPED=1 FAIL=0`, exit 0. `command -v` and `echo` are builtins; the function needs no external tool before it returns, so the "isolated bin" can be empty.
+- `validate.yml`: the Lint job runs `make lint` (= `pre-commit run --all-files`); the `validate-script-tests` hook runs every suite through `run_script_tests.sh`, with `CI` set and no vcs. The adapter-contract job installs `repos-manifest` without extras and runs this suite as its last step, no vcs. `grep skipped` over `run_script_tests.sh`, `test.sh`, `Makefile`, `.pre-commit-config.yaml`, `.github/workflows/` finds only prose.
+
+### Findings
+
+1. **[Consequences / should-fix in implementation]** Step 5 case (a) "variable unset" must unset it explicitly (`unset ROS2_COLCON_TESTS_REQUIRE_VCS` or `env -u`) inside the subshell, and case (b) set it there. The new test runs inside the very adapter-contract step that step 2 sets `ROS2_COLCON_TESTS_REQUIRE_VCS=1` on, so a subshell that only overrides `PATH` inherits the variable: case (a) would get `FAIL=1` on CI while passing locally and in Lint.
+2. **[Approach / note]** Step 3 says what to print and count when required but not that the function then returns; it must `return 0` after the FAIL as the skip branch does, or it goes on into the real-tool steps without `vcs`.
+3. **[Prior art / note]** The `==1.1.7` pin in the workflow and the `>=1.1.7` floor in the `[test]` extra are two places to keep in step; the plan's own argument against a second install in Lint applies to this pin too. Acceptable as listed for veto; a comment on the step naming the extra would keep them findable.
+4. **[Note]** Step 5's "isolated bin directory holding only the tools the function needs" can be an empty directory (checked above); no symlinks are needed, unlike `test_setup_requires_vcs`.
+
+### Summary
+
+The revision answers both must-fix findings with the mechanisms the earlier review suggested and lists them for veto; `vcs2l==1.1.7` was checked to install, run and pass the real-tool case. Ready for implementation, with the explicit unset in the new test's case (a) and the `return` after the FAIL carried into the code.
+
+### Recommended Actions
+
+- [ ] In the new test, unset `ROS2_COLCON_TESTS_REQUIRE_VCS` in case (a)'s subshell and set it in case (b)'s, so the test passes inside the adapter-contract step that sets it.
+- [ ] In `test_tool_real_init_and_sync`, return after the required-vcs FAIL.
+- [ ] Optionally note on the workflow step that the pin follows the `[test]` extra's floor.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 10:05 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+The owner's answer in the dialog, to "Implement part 2 as planned, with F1 to F3 passed to the implementer?": "Proceed (Recommended)". The dialog showed the Plan Review at 7db5a37c (verdict ready) and part 2 as planned, including that it changes .github/workflows/validate.yml (Ask First). F1, should-fix during implementation: in the new test, the variable-unset case must unset ROS2_COLCON_TESTS_REQUIRE_VCS explicitly inside its subshell and the other case must set it there, because the test runs inside the CI step that sets the variable. F2, note: the real-tool test must return after the required-vcs FAIL, as the skip branch does. F3, note: the workflow pin ==1.1.7 and the test extra's floor >=1.1.7 are two places to keep in step; a comment on the workflow step pointing to the extra. F4, the mechanism choice not to install vcs in the Lint job (the case still skips there, shown as 1 skipped): offered for veto and not vetoed. This proceed covers part 2 only; part 1 is delivered (pull request 540).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 10:12 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-539 at `df37b3b4`
+
+Part 2 of the plan (part 1's line untouched).
+
+- `02d07168` test_ros2_colcon.sh: `test_tool_real_init_and_sync` fails (FAIL+1, returns, no real-tool steps; F2) when vcs is missing and `ROS2_COLCON_TESTS_REQUIRE_VCS` is set and non-empty; otherwise the loud skip stays. Comment above the function names the variable and the job. Results line counts `MR_SKIPPED + TOOL_SKIPPED`. New `test_real_tool_case_without_vcs` (registered after `test_setup_requires_vcs`, not behind `mr_test`): two subshells with an empty bin dir as PATH, one unsetting and one exporting the variable explicitly (F1), checking the output and the printed counters (`TOOL_SKIPPED=1 FAIL=0` / `TOOL_SKIPPED=0 FAIL=1`).
+- `df37b3b4` validate.yml, Validate Adapter Contract: new step `pip install vcs2l==1.1.7` then `vcs --version`, with a comment that the pin is kept in step with the `[test]` extra's floor (F3); `env: ROS2_COLCON_TESTS_REQUIRE_VCS: '1'` on "Run ros2_colcon adapter tests". Lint job unchanged (the case still skips there, now counted).
+
+Verification (local, vcs = /usr/bin/vcs, vcstool 0.3.0):
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: `=== Results: 1379 passed, 0 failed, 0 skipped ===`, real-tool case ran, no SKIPPED line.
+- Same with `ROS2_COLCON_TESTS_REQUIRE_VCS=1` in the environment (as CI): `=== Results: 1379 passed, 0 failed, 0 skipped ===`; the variable-unset case still passes (F1 confirmed).
+- Mutation (require branch changed to `&& false`, reverted, tree clean after): `=== Results: 1377 passed, 2 failed, 0 skipped ===`, both "variable set" assertions failed.
+- `bash .agent/scripts/tests/test_script_tests_hook_scope.sh` (names test_ros2_colcon.sh): `test_script_tests_hook_scope: 347 passed, 0 failed`.
+- Docs checked: no `.md` outside work plans names the suite's summary line, the variable or the adapter-contract job's steps (grep of test_ros2_colcon, REQUIRE_VCS, vcs2l, Validate Adapter Contract); `script_reference.md` and `build_and_test.md` need no change.
+- Full pre-commit pass left to the host. Host still to do: CI log check (real-tool case with no SKIPPED line in adapter-contract; Lint green with `1 skipped`) and the job-time measurement before/after.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-23 10:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-539 at `e3c3d806`
+**Base**: origin/main
+**Depth**: Standard (reason: override trigger, .github/workflows/validate.yml)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 1 | **Ship**: recommended — no must-fix findings
+
+Part 2 (02d07168 suite, df37b3b4 workflow) checked against the plan and the 2026-11-23 Plan Review and Checkpoint: F1 (explicit unset/export in the new test's subshells), F2 (return after the required-vcs FAIL) and F3 (pin comment naming the [test] extra) are in the code; the Lint job is left without vcs as decided. Ran: shellcheck --severity=warning and yamllint (clean); the suite with ROS2_COLCON_TESTS_REQUIRE_VCS=1 CI=1 and vcs on PATH: 1379 passed, 0 failed, 0 skipped, exit 0; the suite as Lint runs it (CI=1, PATH rebuilt without vcs): 1370 passed, 0 failed, 1 skipped, exit 0, with the SKIPPED line and banner. Claude adversarial subagent: no must-fix, its run 1379/0/0 with the variable set. Cross-model: gemini and codex both completed (EXIT=0); their points were dropped by the silence filter: subshell abort under set -e (cannot happen: -e is off inside $() and each subshell ends with echo), no TOOL_SKIPPED banner (false: line 5252 prints one), CI silent skip through mr_test (CI already fails in mr_pick_python when no resolver python), =0 counted as set (documented "set and non-empty", same as the plan), separate pip install and pin drift (the owner accepted the commented pin, F3), local-only mr_test skip with the variable set (local run, counted as skipped). Not checked: the hosted CI run and job times (verify step 6c/6d, host's after push).
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 10:22 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+The owner's answer in the dialog, to "Push the branch and open the pull request, which will say Closes #539?": "Publish (Recommended)". The dialog showed: the Local Review (Pre-Push) at c4c2a46d (round 1, approved, no findings; outside reviewers used, their points dropped); the two changed files, with .github/workflows/validate.yml named as a CI workflow change (Ask First); the suite as each job will run it (adapter-contract 1379 passed, 0 failed, 0 skipped; Lint 1370 passed, 0 failed, 1 skipped). The host's full pass (pre-commit run --files over the branch's four files, no SKIP, branch even with origin/main after a merge of main) passed: every hook Passed or Skipped for no files, the .agent/scripts/tests/ suite, shellcheck and yamllint included; the tree was clean after it. Not yet checked, as the dialog said: the hosted CI log and the job times.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-23 10:39 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #561 at `590b0b3`
+**Sources**: 2 (Local Review (Pre-Push) @ `e3c3d806`, no open findings, followed by a code merge so not covering; CI rollup @ `590b0b3`)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+No GitHub reviews, inline comments or conversation comments on the pull request, and no hosted-reviewer check-run (fetch_pr_reviews.sh: 0 reviews, 0 conversation comments). `review_progress.sh sources` at this head: no open local findings, no dropped entries, no candidates. CI: all 10 check runs succeeded on 590b0b33 (runs 45204503982 and 45204448007; Lint, Validate Adapter Contract, Validate Documentation, repos-manifest tests on Python 3.10 and 3.14, each twice).
+
+Plan verification step 6, read from run 45204503982:
+- 6c, adapter-contract (job 137796449293): `Successfully installed vcs2l-1.1.7`, `vcs 1.1.7` (Python 3.10.22), the line `TEST: tool route with the real tool and vcs: ...` in "Run ros2_colcon adapter tests", no `SKIPPED` line, `=== Results: 1379 passed, 0 failed, 0 skipped ===`. Confirmed.
+- 6c, Lint (job 137796449607): green; the hook "Run .agent/scripts/tests/ suite" printed Passed. Its log carries no suite output, since pre-commit prints only the hook status for a passing hook, so the `1 skipped` summary cannot be read from the hosted log. Classified as an acceptable limit, not a finding: the substance of 6c for Lint is "the skip is counted, not failed". "Not failed" is shown by the green hook. "Counted" is asserted inside that same suite run by the new `test_real_tool_case_without_vcs`, which checks `TOOL_SKIPPED=1 FAIL=0` with no vcs and the variable unset, and the hook could not pass if it failed. The literal summary line was seen locally only (pre-push review: 1370 passed, 0 failed, 1 skipped, vcs off PATH). The pull request body already lists it as not verified from the hosted log.
+- 6d, job times of Validate Adapter Contract (as the host read them): 141 s on main's last run (45201153597), 141 s and 168 s on this pull request's two runs; no measurable cost.
+
+### Findings
+- [ ] No issues found.
+
+### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 10:43 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+The owner's answer in the dialog, to "Merge pull request #561 now?": "Merge (Recommended)". The dialog showed: the Integrated Review at e6599013 (no findings, CI all-pass, no reviews or comments); that the findings checkpoint was raised only because the entry's unticked placeholder "No issues found." counts as an open box (issue 362), with no actual finding; the CI run's results (adapter-contract: vcs2l 1.1.7 on Python 3.10, the real-tool case run with no skip line, 1379 passed, 0 failed, 0 skipped, time unchanged at 141 s on main and 141 s and 168 s here); F1, a stated limit and not a finding: the Lint job's hosted log shows only "Passed" for the suite hook, so its "1 skipped" line was seen only in a local run, while the new test inside that hook asserts the skip is counted; and that the merge changes .github/workflows/validate.yml (Ask First) and closes the issue. The host's fetch just before asking: no reviews, no comments, mergeable, all checks passed.

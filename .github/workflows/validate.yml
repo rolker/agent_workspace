@@ -40,6 +40,14 @@ jobs:
         run: pip install -e tools/repos-manifest
       - run: repos-manifest --help
 
+      # vcs for the real-tool test of test_ros2_colcon.sh, which the step below
+      # requires through ROS2_COLCON_TESTS_REQUIRE_VCS. The pin is kept in step
+      # with the vcs2l floor in tools/repos-manifest/pyproject.toml's [test] extra.
+      - name: Install vcs (vcs2l, for the ros2_colcon real-tool test)
+        run: |
+          pip install vcs2l==1.1.7
+          vcs --version
+
       - name: Validate project-type adapters (ADR-0011)
         run: bash .agent/scripts/validate_adapter.sh
 
@@ -49,7 +57,10 @@ jobs:
       - name: Run project registry tests
         run: bash .agent/scripts/tests/test_project_registry.sh
 
+      # With ROS2_COLCON_TESTS_REQUIRE_VCS=1 a missing vcs fails the real-tool test, not skips.
       - name: Run ros2_colcon adapter tests
+        env:
+          ROS2_COLCON_TESTS_REQUIRE_VCS: '1'
         run: bash .agent/scripts/tests/test_ros2_colcon.sh
 
   validate-repos-manifest:
