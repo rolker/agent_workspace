@@ -92,3 +92,11 @@ How the host settled the six actions, for plan-task to take as given (owner may 
 - One pull request unless the plan finds it too large; if split, loop and merge behaviour first.
 - `gh pr edit --add-reviewer "@copilot"` behaviour under exhausted quota: plan records it as unverified and the implementation treats any non-review outcome as "not available"; it is not tested against a real pull request.
 - Issue 428's remaining part (item 4, the repository-slug helper) does not touch run-issue step 9; no overlap to wait for.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-23 16:57 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-452/plan.md` at `1fcece8b`
+
+Step 9 stops waiting unless the loop itself requested Copilot once pre-merge; a Codex/Gemini cold read is the fallback; merge hold only on a running check-run; audit, onboarding, reports and design text follow in one PR (split loop and merge first if large).
