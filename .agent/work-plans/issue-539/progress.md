@@ -329,3 +329,26 @@ Part 2 (02d07168 suite, df37b3b4 workflow) checked against the plan and the 2026
 **Decision**: publish
 
 The owner's answer in the dialog, to "Push the branch and open the pull request, which will say Closes #539?": "Publish (Recommended)". The dialog showed: the Local Review (Pre-Push) at c4c2a46d (round 1, approved, no findings; outside reviewers used, their points dropped); the two changed files, with .github/workflows/validate.yml named as a CI workflow change (Ask First); the suite as each job will run it (adapter-contract 1379 passed, 0 failed, 0 skipped; Lint 1370 passed, 0 failed, 1 skipped). The host's full pass (pre-commit run --files over the branch's four files, no SKIP, branch even with origin/main after a merge of main) passed: every hook Passed or Skipped for no files, the .agent/scripts/tests/ suite, shellcheck and yamllint included; the tree was clean after it. Not yet checked, as the dialog said: the hosted CI log and the job times.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-23 10:39 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #561 at `590b0b3`
+**Sources**: 2 (Local Review (Pre-Push) @ `e3c3d806`, no open findings, followed by a code merge so not covering; CI rollup @ `590b0b3`)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+No GitHub reviews, inline comments or conversation comments on the pull request, and no hosted-reviewer check-run (fetch_pr_reviews.sh: 0 reviews, 0 conversation comments). `review_progress.sh sources` at this head: no open local findings, no dropped entries, no candidates. CI: all 10 check runs succeeded on 590b0b33 (runs 45204503982 and 45204448007; Lint, Validate Adapter Contract, Validate Documentation, repos-manifest tests on Python 3.10 and 3.14, each twice).
+
+Plan verification step 6, read from run 45204503982:
+- 6c, adapter-contract (job 137796449293): `Successfully installed vcs2l-1.1.7`, `vcs 1.1.7` (Python 3.10.22), the line `TEST: tool route with the real tool and vcs: ...` in "Run ros2_colcon adapter tests", no `SKIPPED` line, `=== Results: 1379 passed, 0 failed, 0 skipped ===`. Confirmed.
+- 6c, Lint (job 137796449607): green; the hook "Run .agent/scripts/tests/ suite" printed Passed. Its log carries no suite output, since pre-commit prints only the hook status for a passing hook, so the `1 skipped` summary cannot be read from the hosted log. Classified as an acceptable limit, not a finding: the substance of 6c for Lint is "the skip is counted, not failed". "Not failed" is shown by the green hook. "Counted" is asserted inside that same suite run by the new `test_real_tool_case_without_vcs`, which checks `TOOL_SKIPPED=1 FAIL=0` with no vcs and the variable unset, and the hook could not pass if it failed. The literal summary line was seen locally only (pre-push review: 1370 passed, 0 failed, 1 skipped, vcs off PATH). The pull request body already lists it as not verified from the hosted log.
+- 6d, job times of Validate Adapter Contract (as the host read them): 141 s on main's last run (45201153597), 141 s and 168 s on this pull request's two runs; no measurable cost.
+
+### Findings
+- [ ] No issues found.
+
+### False positives
