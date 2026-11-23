@@ -403,4 +403,4 @@ Four commits on plan.md at `e55a68e9`, with the third Plan Review's findings app
 - [x] (suggestion) `cold-read` does not match the entry's PR number, so a PR closed and replaced without a `merge` checkpoint inherits the old PR's cold read (Codex) — `.agent/scripts/review_progress.sh:815`
 - [x] (suggestion) In cold-read mode review-code's PR-mode step 1a still fetches `comments,reviews` into the lead's context; give cold-read mode a metadata query without them (Codex) — `.claude/skills/review-code/SKILL.md:116, 219`
 - [x] (suggestion) "A review not yet read", below" points to a section above (line 1035) — `.claude/skills/run-issue/SKILL.md:1100`
-- [ ] (suggestion) The Plan Review fixture writes `Depth:` without bold, so it never tests the `base_type` guard on a parsed `**Depth**` field; use `**Depth**: cold read, cross-model only` — `.agent/scripts/tests/test_review_code_convergence.sh:306`
+- [x] (suggestion) The Plan Review fixture writes `Depth:` without bold, so it never tests the `base_type` guard on a parsed `**Depth**` field; use `**Depth**: cold read, cross-model only` — `.agent/scripts/tests/test_review_code_convergence.sh:306`

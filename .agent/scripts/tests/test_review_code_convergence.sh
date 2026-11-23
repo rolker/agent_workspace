@@ -303,7 +303,7 @@ out=$(cr "$FIX/cold1.md")
 # them several times).
 { HDR
   printf '## Checkpoint\n**Status**: complete\n**When**: 2026-09-17 12:00 -04:00\n**By**: t (m)\n**Decided-by**: owner\n**After**: plan\n**Decision**: proceed\n\nThe fallback records **Depth** "cold read, cross-model only".\n\n'
-  printf '## Plan Review\n**Status**: complete\n**When**: 2026-09-17 12:05 -04:00\n**By**: t (m)\n**Verdict**: approved\n\nDepth: cold read, cross-model only\n\n'
+  printf '## Plan Review\n**Status**: complete\n**When**: 2026-09-17 12:05 -04:00\n**By**: t (m)\n**Verdict**: approved\n**Depth**: cold read, cross-model only\n\n'
   cold_entry '## Local Review' complete 'standard (reason: 120 lines)' | sed 's/No issues found. LGTM./mentions cold read, cross-model only — `x:1`/'; } > "$FIX/cold-text.md"
 out=$(cr "$FIX/cold-text.md")
 [[ "$out" == "cold_read=no" ]] && pass "cold-read: the words in a Checkpoint, a Plan Review and a finding line do not count -> no" || fail "cold-read: whole-file text (out=$out)"
