@@ -1412,3 +1412,25 @@ Ran, on `git archive` copies of HEAD with every other test call commented out: `
 
 ### Findings
 - [ ] (suggestion, deferrable) The chmod 000 case's root skip prints `SKIPPED:` but no counter counts it, so a root run's summary line says `0 skipped` (the same uncounted pattern as the existing root skip at line 4412, already on main). CI runs as non-root. Count it, like LOCALE_SKIPPED, when the suite's skip counters are next touched — `.agent/scripts/tests/test_ros2_colcon.sh:4782`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-23 13:35 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #562 at `d5e6444`
+**Sources**: 2 (Local Review @ `d5e6444` (exact), CI rollup: 10 check runs)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+Repeat triage: read only the entries after the Integrated Review at `1db4680`. No GitHub reviews, inline comments, conversation comments or hosted-reviewer check run on the pull request (fetch_pr_reviews.sh: 0 reviews, 0 comments). Every finding between the two triages is closed: the Integrated Review's one suggestion (interrupt path, fixed in 2ca7a73), then the Local Review at `d9cc234b` (1 must-fix, 5 suggestions, all fixed in d913106a, 7e85348c, 1e4aec6e, each checked by the convergence Local Review at `d5e6444`). That last review's depth was set by the host: a round-3 convergence check of the six findings and three fix commits, with no cross-model or outside reviewers; recorded as it stands. The sources helper lists the pre-push review at `5bb1a59` as stale (adapter.sh changed since); its two findings were ruled on in the previous Integrated Review.
+
+CI on `d5e6444`: all 10 check runs passed. The Validate Adapter Contract log for this head has `=== Results: 1551 passed, 0 failed, 0 skipped ===` for test_ros2_colcon.sh and no SKIPPED line at all, so the new chmod 000 case ran its assertions on CI.
+
+Note for the host, not a code finding: the pull request body's `## Decision summary` was written at publish and does not describe the two fix passes since (the interrupt handler restoring the caller's traps; the tool-route `adapter test` refusing a required repo missing from disk and failing on an unreadable `.repos` file; `grep -s`, the comments, the release-file test). Update it before the merge decision.
+
+### Findings
+- [ ] (suggestion, deferred, Local Review @ `d5e6444`) A root run prints `SKIPPED:` for the chmod 000 case but no counter counts it, so the summary says `0 skipped`. It cannot occur on CI: the job runs the suite directly on ubuntu-latest, no container, as the runner's non-root user, and this head's log shows no SKIPPED line. It can occur in a root shell or a root dev container, where the skip line is still printed but the Results line undercounts. The gap is suite-wide, not this pull request's: main already has eight uncounted skip sites (lines 3114, 3156, 3179, 3540, 3647, 3847, 3895 for missing SHA-256 git, timeout, timeout --foreground, flock, /proc; 4412 for the root skip), so counting only the new one would leave the summary wrong in the same way for the rest. Fix, about 20 lines, in a later part of #503 or its own issue: one counter (e.g. ENV_SKIPPED) incremented at all nine sites, added to the Results sum with a "=== SKIPPED: N environment-dependent case(s) ===" line like the existing three, and a counter test like the one at line 1150 — `.agent/scripts/tests/test_ros2_colcon.sh:4782`
+
+### False positives
