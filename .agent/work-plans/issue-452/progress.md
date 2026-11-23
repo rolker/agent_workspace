@@ -328,3 +328,28 @@ Four commits on plan.md at `e55a68e9`, with the third Plan Review's findings app
 - **Merge hold unchanged** (verified, already pinned by `test_merge_pr_gate.sh`): only a running review check-run holds; absent, failed or quota notice never holds. Header comment only.
 - **Audit and onboarding**: "Copilot auto-review" becomes "Independent review", in place whenever the project uses PRs, no finding without the automatic rule, never re-enabled; hand request documented.
 - **Unverified**: the request's behaviour under exhausted quota; any non-review outcome counts as "not available".
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-23 18:18 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-452 at `6ed21d63`
+**Base**: main
+**Depth**: Deep (reason: 18 files, +837/-69; skill and governance files)
+**Must-fix**: 3 | **Suggestions**: 8
+**Round**: 1 | **Ship**: continue — round 1: 3 must-fix; first round always re-reviews after fixes
+
+### Findings
+- [ ] (must-fix) Step 9a item 1 builds the `cold-read --progress` path as `<worktree>/.agent/work-plans/...`; for a package issue the timeline is in the owning checkout, so a missing file gives a silent `cold_read=no` and a second cold read on every merge pass. Use the `D=$(dispatch_phase.sh where ...)` / `PF` pattern of lines 267/383/665 — `.claude/skills/run-issue/SKILL.md:1091`
+- [ ] (must-fix) Step 9a item 2 has no branch for a concluded `copilot-pull-request-reviewer` check-run with no Copilot review (step 9 lets the wait end on any conclusion; bullet 2 requires "no concluded check-run"). Classify it as "not available" (Gemini + Codex, cross-confirmed) — `.claude/skills/run-issue/SKILL.md:1108-1112`
+- [ ] (must-fix) Step 9a runs only on `action=checkpoint:merge`; a `findings` checkpoint answered `merge` (row 21) merges with no Copilot request and no cold read, missing the acceptance line "the cold read's entry is on the timeline". Run 9a before a `findings` checkpoint that offers `merge`, or state the skip to the owner — `.claude/skills/run-issue/SKILL.md:1080-1083`
+- [ ] (suggestion) A failed cold read (`**Status**: failed`) goes to `phase-failed`; a `retry` re-dispatches a plain step-4 review-code without the cold-read words (a full review, no marker, then a second cold read). Say a retry keeps the cold-read task line and switches to Gemini when Codex failed — `.claude/skills/run-issue/SKILL.md:1134`
+- [ ] (suggestion) "Review still running after 1800 s" and a resumed run with a running check-run are "not available", but `merge_pr.sh` still holds on that running check-run and refuses (review-pending) unless the owner passes `--allow-pending-review`; name that outcome in 9a — `.claude/skills/run-issue/SKILL.md:986-990`
+- [ ] (suggestion) Outside-reviewer line says Copilot "not requested yet" before the pre-merge point, contradicting the same paragraph and `host_standing_rules.md:36` ("Copilot is not named until it is requested") — `.claude/skills/run-issue/SKILL.md:1167`
+- [ ] (suggestion) The could-not-review paragraph still says "dispatch `triage-reviews`" while 9a treats the notice as "not available" and goes to the cold read; say which comes first during 9a's wait — `.claude/skills/run-issue/SKILL.md:954`
+- [ ] (suggestion) 9a runs before step 9's unread-review re-fetch, so an unread review with findings can lead to the one request/cold read being spent on a pre-fix diff; run the unread-review check first — `.claude/skills/run-issue/SKILL.md:1084`
+- [ ] (suggestion) 9a item 2 bullet 1 counts any Copilot review in the PR's history (e.g. one requested by hand on an early commit) as "available, nothing more requested"; say whether it must be on the head or accept it explicitly — `.claude/skills/run-issue/SKILL.md:1108`
+- [ ] (suggestion) The "Independent review" hygiene item is "in place" whenever the project uses PRs, with no check at all, so it can never report anything; consider dropping it (the issue allowed that) or checking something real — `.claude/skills/audit-project/SKILL.md:244`
+- [ ] (suggestion) Stale text: "we have Copilot review working via default behavior" — `.agent/knowledge/inspiration_ros2_agent_workspace_digest.md:877`
