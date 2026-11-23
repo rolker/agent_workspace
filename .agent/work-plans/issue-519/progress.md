@@ -324,3 +324,33 @@ Verified safe by running (this worktree's src, local bare repos): fetch_from add
 ### Checks
 - `cd tools/repos-manifest && PYTHONPATH=src .venv/bin/python -m pytest` test_fetch_from.py test_fetch_from_sync.py test_status_agrees_with_sync.py test_update.py test_update_safety.py test_untrusted_input.py test_masking.py test_url_messages.py test_status.py test_sync.py test_system.py test_documents.py test_manifest_reading.py test_sync_distros.py test_show_system.py test_init.py test_init_refusals.py: `1537 passed in 357.65s` (repos_manifest imported from this worktree's src).
 - Commit hooks ran on each commit with SKIP=validate-script-tests; the full pre-commit pass and the whole tool suite are left to the host and CI. No `.agent/scripts/` change.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-23 14:10 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-519 at `8ea2db94`
+**Base**: origin/main
+**Depth**: Deep (reason: untrusted input reaching git, credentials in urls, and sync's repoint of origin on existing clones; round 2 classified on the whole diff)
+**Must-fix**: 3 | **Suggestions**: 5
+**Round**: 2 | **Ship**: continue — round 2: 3 must-fix is high; all three are mechanical
+
+Round 1's seven findings: each fix is right and each fix's test fails when its fix is reverted (mutations run in a scratch copy: name colon/no-path cases, `?`/`#` prefix refusal, the "selects neither" distro test, status's push advice, `refname:lstrip=2` with a tag `main`). The `lstrip=2` list has no other consumer. The two new must-fix below are the same class as round 1's must-fix 1 and 2: a repo name that lands outside the url's path.
+
+Narrowed same-name refusal (must-fix 3 of round 1): right as built. Run with three distros (one and two select different `tools`, three selects neither): sync exits 1, distros one and two are "reported above; nothing of it was changed" (their clones byte-identical by `snapshot_repo`, including the unrelated repo `c` in distro one), distro three is repointed; `status` and `status --json` name the reason per distro and exit 1. A distro that no longer resolves is left out of the check and reported on its own; the other distros sync as before (run). `resolve_for` resolves every distro on each call, in memory from the manifest read once: D squared resolves, no extra I/O.
+
+Mutation checks (scratch copy): unpushed-commit refusal off -> 4 tests fail; a failed probe fetch turned into "left alone" -> 5 fail; a new clone falling back to the published url when the place is missing -> 4 fail; head-comment prefix unmasked -> 1 fails; `quoted_url(prefix)` -> `repr` -> 2 fail. Removing `remember_url(prefix)` or the `published` registration survives because the same text is registered elsewhere (`check_url`, the manifest reader): equivalent, not a gap.
+
+Tests (worktree src, `repos_manifest.__file__` checked): test_fetch_from, test_fetch_from_sync, test_status_agrees_with_sync, test_masking, test_system, test_update, test_sync_distros, test_show_system: 630 passed. pre-commit on the changed tool files: clean. Merge of main: `sync` help and design.md's `validate` sentence read correctly; no contradiction found. Cross-model: gemini and codex completed; gemini 1-2 and codex 3 confirmed by running and merged into the must-fix below; codex 4 (a credential in the prefix written to a 0644 config.yaml) not taken: the design writes credentials in full where urls are kept, as for manifest urls, and says to use a key or credential helper.
+
+### Findings
+- [ ] (must-fix) `repo_name` takes the name from a query or fragment of an http(s) url: `https://host/o/real.git?x=/other`, `https://host/o/repo#a/b` and `https://example.org?target=/tools.git` (no path at all) give `other`, `b`, `tools`, a wrong repo fetched silently; cut or refuse `?`/`#` in an http(s) path (ssh, scp-like and file paths keep them literally, as git does) — `tools/repos-manifest/src/repos_manifest/fetch_from.py:54`
+- [ ] (must-fix) `check_prefix` accepts the scheme-only prefixes `https://`, `http://` and `file://`: the repo's name becomes the host (`https://tools.git`); on the `/` branch require the name to be in the path (`url_path(prefix + "x")` ends in `/x`), as the `:` branch already does, and test it — `tools/repos-manifest/src/repos_manifest/fetch_from.py:98`
+- [ ] (must-fix) README says "`show` and `status` print the urls the prefix builds": `status` text and `status --json` never print the built url (JSON `url` is the published one, `fetched_from` is origin); narrow the sentence or add the url — `tools/repos-manifest/README.md:159`
+- [ ] (suggestion) With fetch_from set and local commits already pushed to the place but not to the published origin, `status` says the commits are "only here" and gives a push, while `sync` repoints at once; word it as "not on origin; if they are not at the place, sync keeps origin until they are pushed there" — `tools/repos-manifest/src/repos_manifest/update.py:1304`
+- [ ] (suggestion) The printed push chain puts `<commit>:refs/heads/<a branch>` inside `&&` (pasted whole, the shell reads `<commit>` as a redirection), and several detached work trees with different missing commits get one placeholder; print each detached tip's commit as its own step — `tools/repos-manifest/src/repos_manifest/update.py:1723`
+- [ ] (suggestion) `same_url` as identity is text-only: `/srv/tools` and `/srv/tools.git` (two local repos) pass the same-name check as one repo, and a prefix that makes the built url `same_url` to a different local repo skips the repoint; one repo spelled ssh in one distro and https in another is refused as two. Say so in design.md beside "one server spelled two ways" — `tools/repos-manifest/src/repos_manifest/fetch_from.py:197`
+- [ ] (suggestion) `show`'s head line `fetch from  ` is padded to 12 columns while `manifest  `/`base      ` are 10, so the values do not line up — `tools/repos-manifest/src/repos_manifest/show.py:63`
+- [ ] (suggestion) A distro refused by fetch_from reads in `status` as "nothing of it has been changed", sync's words, though status never changes anything; say "not read: ..." there — `tools/repos-manifest/src/repos_manifest/sync.py:772`
