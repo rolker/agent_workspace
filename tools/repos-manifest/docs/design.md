@@ -1000,8 +1000,11 @@ one repository; so local paths `/srv/robot` and `/srv/robot.git` are read as one
   and that remote's refs are never removed. The old url is not kept as another
   remote; the report prints it. With `fetch_from`, a repo left as it is for its commits gets the
   two ways on in the same line: push them to the place first (the `git push` command for each
-  branch that holds them, or for a detached `HEAD` its commit to a branch), then sync again; or
-  point `origin` at the place by hand (the `set-url` command). A probe fetch that fails, with
+  branch that holds them, which names it in full, `refs/heads/<b>:refs/heads/<b>`, so a tag of
+  the same name cannot make it ambiguous, or for a detached `HEAD` its commit to a branch), then
+  sync again; or point `origin` at the place by hand (the `set-url` command). Where the place's
+  url is shown masked, the line says the whole url is the one `fetch_from` builds for the repo,
+  as the `set-url` command does. A probe fetch that fails, with
   or without `fetch_from`, says "the url to fetch from changed to `U`, and fetching from it
   failed (origin stays `W`)".
 - Anything else is an `origin` a person set (ssh for pushing, a fork): it is left as set, the

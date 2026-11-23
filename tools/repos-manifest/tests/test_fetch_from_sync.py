@@ -9,7 +9,11 @@ url rule: a clean clone is repointed, a clone with commits the server lacks keep
 is left alone with the two ways on, an unreachable place keeps origin and fails the repo."""
 
 import json
+import shlex
 import shutil
+import subprocess
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -25,6 +29,8 @@ from helpers import (
     state_of,
     write_manifest,
 )
+from repos_manifest.selection import Selected
+from repos_manifest.update import _repoint_steps, built_url_note, push_to_place
 
 
 def _origin(clone):
@@ -183,7 +189,7 @@ def test_commits_not_at_the_place_keep_origin_and_name_the_ways_on(existing, cap
     found = _status(system, capsys)
     assert found["state"] == "expected" and "sync tries to repoint origin" in found["detail"]
     # status names the step sync names: a push to the place, not to origin.
-    push = f"git -C {clone} push {field}/a.git main"
+    push = f"git -C {clone} push {field}/a.git refs/heads/main:refs/heads/main"
     assert f"to push them there (sync never pushes): {push}" in found["detail"]
     assert "push origin" not in found["detail"]
     before = snapshot_repo(clone)
@@ -216,6 +222,41 @@ def test_a_detached_work_tree_with_commits_not_at_the_place_keeps_origin(existin
     assert "1 local commit (the detached HEAD of" in out
     assert f"origin stays {remote}" in out
     assert f"push {field}/a.git <commit>:refs/heads/<a branch>" in out
+
+
+def test_the_printed_push_names_the_branch_where_a_tag_has_its_name(existing, capsys):
+    """A tag `main` here would make `git push <url> main` ambiguous; the command sync prints
+    pushes the branch, and the next sync repoints."""
+    system, _, _, field, clone = existing
+    _set_fetch_from(system, f"{field}/")
+    git("tag", "main", "HEAD", cwd=clone)
+    commit_file(clone, "mine", "mine\n", "mine")
+    out = _sync(system, capsys)
+    (line,) = [each for each in out.splitlines() if "push them there first" in each]
+    command = line.split("push them there first (", 1)[1].split("), and sync again", 1)[0]
+    assert command == f"git -C {clone} push {field}/a.git refs/heads/main:refs/heads/main"
+    subprocess.run(shlex.split(command), check=True, capture_output=True)
+    assert git("rev-parse", "refs/heads/main", cwd=field / "a.git") == head(clone)
+    assert "origin repointed from" in _sync(system, capsys)
+
+
+def test_a_masked_url_in_the_push_says_where_the_whole_url_is():
+    url = "https://field-user:s3cret@git.example.org/field/a.git"
+    for_branch = push_to_place(Path("/s/src/a"), url, "main")
+    assert for_branch == (
+        "git -C /s/src/a push 'https://***@git.example.org/field/a.git'"
+        " refs/heads/main:refs/heads/main"
+    )
+    assert push_to_place(Path("/s/src/a"), url, None).endswith(" <commit>:refs/heads/<a branch>")
+    note = built_url_note(url, "a")
+    assert note == " (with the url of a as fetch_from builds it in place of the one shown)"
+    assert built_url_note("git@gitcloud:field/a.git", "a") == ""
+    selected = Selected("a", "git", url, "main", False, "m.yaml", published="https://h/o/a.git")
+    git_here = SimpleNamespace(place=Path("/s/src/a"))
+    steps = _repoint_steps(git_here, selected, ["branch main", "the detached HEAD of /s/w"])
+    assert steps.count(note) == 1
+    assert "s3cret" not in steps and "field-user" not in steps
+    assert "refs/heads/main:refs/heads/main && git -C /s/src/a push" in steps
 
 
 def test_an_origin_already_at_the_place_is_left_and_recorded(existing, capsys):
