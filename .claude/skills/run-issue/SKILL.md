@@ -915,35 +915,49 @@ already names `origin/<base>` as the branch to diff against.
 ### 9. Waiting for reviews
 
 After publish, and after every PR-mode `## Local Review` (a re-review of a
-fix, row 22a/22b), wait for the **review sources** to be in before
-dispatching `triage-reviews`:
+fix, row 22a/22b), fetch the **review sources** and dispatch
+`triage-reviews` on the ones that exist:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 $WS_ROOT/.agent/scripts/fetch_pr_reviews.sh --pr <M>
 ```
 
-The wait condition is the reviews, not CI. Wait until the
-`copilot-pull-request-reviewer` check-run has completed (or is confirmed
-absent from the check list entirely) and any requested human reviews are
-in — otherwise `triage-reviews` runs before Copilot's review exists and
-triages a source that lands minutes later. **CI may still be running**:
-that is the wall-clock saving, since a triage of the review sources does
-not depend on the CI verdict. When Copilot cannot review (its quota is
-exhausted, or it hit an error) it still posts a **review** by its own
-account (`copilot-pull-request-reviewer[bot]`) saying it was unable to
-review this pull request, and its check-run completes with it (seen on
-pull request 400: conclusion `failure`, within seconds of the review). So
-the wait ends as for any review; nothing has to recognise the notice for
+**No Copilot review is waited for unless the loop itself requested
+one.** Automatic Copilot review is off on every repository ("I've
+disabled automatic copilot reviews on all repos on github due to not
+having enough quota for more than a few days a month", owner,
+2026-11-23; issue 452), so after a push no Copilot review is on its way,
+and an absent `copilot-pull-request-reviewer` check-run is the ordinary
+case, not a review still to come. With no request of the loop's own
+outstanding, there is nothing to wait for: dispatch `triage-reviews` at
+once with the sources that exist (the local review, any human review
+already in, the CI rollup). A human review the owner asked for is the
+owner's to wait for; the host does not hold triage on it. **CI may still
+be running**: a triage of the review sources does not depend on the CI
+verdict.
+
+The one wait is the one after the loop's own request: one Copilot
+request per pull request, made at the pre-merge point (step 9a), and
+waited for once, in the pass that made it, never again on a later round
+(a request that stays listed on the pull request unanswered is no reason
+to wait). The rules below apply to that wait only.
+
+When Copilot cannot review (its quota is exhausted, or it hit an error)
+it still posts a **review** by its own account
+(`copilot-pull-request-reviewer[bot]`) saying it was unable to review
+this pull request, and its check-run completes with it (seen on pull
+request 400: conclusion `failure`, within seconds of the review). So the
+wait ends as for any review; nothing has to recognise the notice for
 that. Read it like any review: it holds no findings only because its own
 words say it could not review. Say so on the hand-back's
 outside-reviewer line and dispatch `triage-reviews`, which reads it too
-(issue 428, item 5).
+(issue 428, item 5); for step 9a it is "not available".
 
 **What ends the wait, and what is read, are two different things** (issue
 428, item 5). `fetch_pr_reviews.sh` returns every review in the pull
 request's history, and its `ci_checks` are those of the current head.
-This round's wait ends when either is true:
+The wait after the request ends when either is true:
 
 - the `copilot-pull-request-reviewer` check-run in `ci_checks` has a
   `conclusion` (any: `success`, `failure` or other), even when no review
@@ -952,21 +966,19 @@ This round's wait ends when either is true:
   arrived.
 
 An earlier round's review, a could-not-review one included, is about an
-older commit and does not end this round's wait. Being read is wider:
+older commit and does not end this wait. Being read is wider:
 `triage-reviews` reads every review the pull request holds, whatever its
 `commit_id`, and the re-fetch before every merge checkpoint (below)
 sends any review it has not read to it first.
 
-**The wait is bounded while no review check-run has appeared** (issue
-428, item 5). Poll `fetch_pr_reviews.sh` after publish (or after the
-PR-mode review):
+**The wait is bounded** (issue 428, item 5). Poll `fetch_pr_reviews.sh`
+after the request:
 
 - **No `copilot-pull-request-reviewer` check-run in `ci_checks`**: wait at
   most about 900 s. If none has appeared and no review on the head has
-  arrived by then, record "review never arrived" on the hand-back's
-  outside-reviewer line and dispatch `triage-reviews` with the sources
-  that exist. A review that never starts is an absence, and only time
-  bounds an absence.
+  arrived by then, Copilot is "not available" (step 9a): record "review
+  never arrived" on the hand-back's outside-reviewer line. A review that
+  never starts is an absence, and only time bounds an absence.
 - **The check-run is there with no `conclusion` yet** (running): the
   review has started, so the 900 s does not apply; wait for it to
   complete. What bounds this wait is the merge script's own hold, which
@@ -974,10 +986,9 @@ PR-mode review):
   and has not finished up to `MERGE_PR_CI_TIMEOUT_SECONDS` (default
   1800 s), then refuses with the review-pending error. A check-run still
   running after about 1800 s of the host's wait is recorded as "review
-  still running after 1800 s" on the outside-reviewer line, and
-  `triage-reviews` is dispatched with the sources that exist. A
-  check-run that never appears holds nothing in `merge_pr.sh`, which is
-  why the first case needs the host's own bound.
+  still running after 1800 s" on the outside-reviewer line and counts as
+  "not available". A check-run that never appears holds nothing in
+  `merge_pr.sh`, which is why the first case needs the host's own bound.
 
 Either exit can leave a review that lands after triage, and a later push
 of bookkeeping commits can leave one on an earlier commit of this round;
@@ -992,6 +1003,8 @@ minutes and all but two within 9; the two outliers took 17 and 30
 minutes (commit time precedes push time, so all of these are upper
 bounds). The outliers are why the bound stops once a check-run is
 running: a slow review is still a review on its way, not an absence.
+Those times were measured under the automatic rule; a requested review
+is assumed to take as long, not measured.
 
 When CI has not settled, say so in the dispatch: the `## Integrated
 Review` records `**CI**: pending` (a value in `triage-reviews`' own `**CI**`
