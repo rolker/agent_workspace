@@ -376,3 +376,30 @@ Tests (worktree src, `repos_manifest.__file__` checked): test_fetch_from, test_f
 
 ### Checks
 Ran with this worktree's source (`repos_manifest.__file__` under the worktree): `PYTHONPATH=src pytest tests/test_fetch_from.py tests/test_fetch_from_sync.py tests/test_status_agrees_with_sync.py tests/test_update.py tests/test_update_safety.py tests/test_untrusted_input.py tests/test_masking.py tests/test_status.py tests/test_show_system.py tests/test_sync_distros.py tests/test_documents.py tests/test_show.py tests/test_cli.py tests/test_init.py tests/test_project11.py -q` — `1118 passed in 321.61s`. Commits made with `SKIP=validate-script-tests`; every other hook ran. The full pre-commit pass and the whole tool suite are left to the host and CI.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-23 14:35 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-519 at `048d186c`
+**Base**: origin/main
+**Depth**: Deep (reason: round 3 convergence check per handoff; whole diff stays Deep: untrusted input reaching git, credentials in urls, sync's repoint of origin)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Scope: round 2's eight findings and the fix commits f80f5647, 77b7fbe6, 78b851eb, 0d034d7a, cd95dbe1, 02f2c8fd, 4c5deb8c, 43fef93e. Cross-model: skipped (round-3 convergence check, per handoff).
+
+All eight round 2 findings are closed, and each code fix's test fails with its fix reverted (mutations in a scratch copy): `?`/`#` refusal off -> 5 fail; scheme-only prefix check off -> 3 fail; status's old "only here" sentence -> 2 fail; old `<commit>:refs/heads/<a branch>` push ref -> 2 fail; old show label widths -> 1 fails; status calling `resolve_all` with sync's words -> 1 fails. Probes with the worktree source (`repos_manifest.__file__` checked): the three round 2 urls and one with a password are refused with a masked message; `ssh://git@host/o/x?y/tools.git` gives `tools`, `file:///srv/a?b/c.git` gives `c`; `https://`, `http://`, `file://` are refused and every documented prefix still passes; upper-case schemes were already refused by the manifest url rule.
+
+cd95dbe1: both callers are right. `status` calls `push_to_place` only on the branch path (branch is never None there); `_repoint` passes the branches and a (description, commit) per detached work tree, falling back to `("HEAD", "HEAD")` when no ref is named. The detached command, with NEW_BRANCH replaced, is run by the test through `shlex` and pushes the tip; the branch command is run likewise; a password url stays `https://***@...` with `built_url_note` once. Worktrees share the clone's objects, so a commit from another work tree pushes from `git -C <clone>`.
+
+02f2c8fd: nothing outside the tool reads `show`'s or `init`'s head lines. The adapter reads only `status --json`; the scripts, tests and skills that name repos-manifest call `init`/`sync`/`status` or mention `show` for a person to read (docs/manifest/design.md step 3); the only sample, design.md:491, was updated. Widening was the right close: `fetch from` is 10 characters, so with the old 10-column labels it could only fit by renaming it to a word of 8 or fewer, which would read worse; pre-release, the output change costs nothing.
+
+Not this branch's: `status` still prints `sync`'s words for a distro whose manifest does not resolve ("nothing of it has been moved or removed") and two other Reported messages in `resolve_all`; those are on origin/main as they are.
+
+Tests (worktree src): test_fetch_from, test_fetch_from_sync, test_status_agrees_with_sync, test_update, test_update_safety, test_untrusted_input, test_masking, test_status, test_show_system, test_sync_distros, test_documents, test_show, test_cli, test_init, test_project11: 1118 passed (serial, one job). pre-commit on the files the fix commits changed (SKIP=validate-script-tests): clean.
+
+### Findings
+- [ ] (suggestion) An http(s) prefix with an empty host (`https:///`, `https://@/`, `http://:80/`) still passes `check_prefix`, though the new message says a prefix with no host is refused; the built url fails loudly at fetch (no wrong repo), and the root is `manifest.url_path` accepting an empty https host where ssh's is checked; can be deferred to part 2 — `tools/repos-manifest/src/repos_manifest/fetch_from.py:108`
