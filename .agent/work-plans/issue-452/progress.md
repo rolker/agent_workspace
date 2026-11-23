@@ -475,3 +475,21 @@ test_script_tests_hook_scope: 347 passed, 1 failed
 ```
 
 The same suite passes on main (347 passed, 0 failed), so the branch's changes to `test_review_code_convergence.sh` caused it. Every other hook and the other 48 suites passed.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 18:55 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent af605468d1e45efa8, resume 2 of 3)
+
+**Branch**: feature/issue-452 at `2554186c`
+**Addressed**: host full pass at `04fda740` (Checkpoint 2026-11-23 18:53 -05:00)
+**Commits**: 2554186c
+
+### Actions
+- [x] (host full-pass failure) `test_script_tests_hook_scope.sh`: `test_review_code_convergence.sh` derives a real repo root (`$SCRIPT_DIR/../../../.claude/skills/review-code/SKILL.md`, the branch's review-code text pin) with no ROOT_READERS entry. Added `[test_review_code_convergence.sh]=".claude/skills"` with a comment naming that read; everything else the suite reads is its own mktemp sandbox. The new entry's (b) check passes: the derived map has a file under `.claude/skills` — `.agent/scripts/tests/test_script_tests_hook_scope.sh` ROOT_READERS (2554186c)
+
+### Checks
+- `bash .agent/scripts/tests/test_script_tests_hook_scope.sh`: `test_script_tests_hook_scope: 351 passed, 0 failed` (was 347 passed, 1 failed)
+- `bash .agent/scripts/tests/test_review_code_convergence.sh`: `test_review_code_convergence: 54 passed, 0 failed`
+- No script under `.agent/scripts/` changed; only that suite file. Commit used `SKIP=validate-script-tests`; the full pre-commit pass is left to the host.
