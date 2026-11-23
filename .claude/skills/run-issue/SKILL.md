@@ -990,6 +990,15 @@ after the request:
   "not available". A check-run that never appears holds nothing in
   `merge_pr.sh`, which is why the first case needs the host's own bound.
 
+  "Not available" sends 9a on to the cold read, but it does not lift the
+  merge script's hold: while that check-run still runs, `merge_pr.sh`
+  holds on it and then refuses with the review-pending error, even after
+  a clean cold read. Only `--allow-pending-review` merges past it (an
+  earlier checkpoint decision kept the hold), and only the owner grants
+  that flag: the host puts it to him at the merge checkpoint, with the
+  check-run's state on the outside-reviewer line, and never passes it on
+  its own.
+
 Either exit can leave a review that lands after triage, and a later push
 of bookkeeping commits can leave one on an earlier commit of this round;
 the re-fetch before every merge checkpoint (below) catches both.
@@ -1147,7 +1156,9 @@ in this order.
      Copilot review** (a run resumed during the wait, or an earlier
      pass's wait that ran out): Copilot is "not available". Go to 3 with
      no new wait; a request listed on GitHub and never answered is not
-     waited for again.
+     waited for again. A check-run still running keeps `merge_pr.sh`'s
+     hold whatever the cold read finds; step 9's wait rules say how the
+     owner is asked for `--allow-pending-review`.
    - **No Copilot request, review or check-run**: request it, once:
 
      ```bash
