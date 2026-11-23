@@ -187,3 +187,52 @@ Revise for all five Plan Review findings and the Q3 suggestion. Host decisions (
 **Plan**: `.agent/work-plans/issue-551/plan.md` at `7ab07af2`
 
 Revised for the five plan-review findings: design fallback is docs/design.md only (citations of a key-named design file recognised), sitrep skill reads a design= line, merge-gate bookkeeping includes the roadmap key's path, helper reports set/fallback/none and goals has no fallback, Serves goal is "Light touch on projects". OQ-1 worded as three of seven roles; heading behaviour per reader defined. PR 1 still avoids the onboard-project and audit-project skills.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-23 18:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #551 — Where a project keeps its goals, design and roadmap: asked at onboarding, stored once, followed by every reader
+**Plan**: `.agent/work-plans/issue-551/plan.md` at `7ab07af2`
+**Branch**: `feature/issue-551`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Two PRs as the issue review and checkpoint set; PR 1 avoids #452's two skill files (the sit-rep skill it adds is not one of them). |
+| Issue alignment | Good | Serves: "Goal "Light touch on projects" (`README.md#workspace-goals`, heading checked), under `docs/design.md#documentation-layers` and `docs/design.md#registry-and-adapters`." `### Light touch on projects` exists at README.md:80; both design anchors resolve (design.md:87, :395). Unset keys keep today's behaviour (only the host-decided `docs/ROADMAP.md` addition to the sit-rep); onboarding question, stored setting, readers and design-discussion "ask when unset" are all covered across the two PRs. |
+| File targeting | Good | Sit-rep skill, `_bookkeeping.sh`/`merge_pr.sh` and `project_integration_audit.sh:941` now listed; line references checked (`sitrep_root.sh:322-326`, `:354-357`; `check_design_anchors.sh:174`; `_bookkeeping.sh:22`, `:190`; `merge_pr.sh:1663`). |
+| Consequences | Good | Table covers keys/help/reference, sit-rep headers and skill, update_roadmap, merge-gate bookkeeping, integration-audit ignore check, design and roadmap Format text. |
+| Principle alignment | Good | Design text in PR 1 (Keep one current design); unset/none/decide later (A project is never forced); one helper, no outside kinds (Only what's needed); tests per reader and per refused value. |
+| ADR compliance | Good | ADR-0017 (design + change log in PR 1), ADR-0022 (pointer table untouched, part-design recognition unchanged), ADR-0016 (outside paths and symlink escapes refused at read), ADR-0013. OQ-1 now worded as three of seven roles (design.md:1047). |
+| ROS conventions | N/A | Workspace plan. |
+
+### Earlier findings (Plan Review at `ea96d2d3`)
+
+1. ARCHITECTURE.md fallback — resolved: `design` fallback is `docs/design.md` only; step 5 recognises `<design key path>#<section>` as root citations and stops treating that path as a part design; tests for a non-`design.md` key, a non-`docs/` `design.md` key, `#heading`, `none`.
+2. Sit-rep skill — resolved: step 6a, `design=` line from `sitrep_root.sh` (step 3) read by Audit/Documentation.
+3. Merge-gate bookkeeping — resolved: step 6b, one function feeding both call sites, tests in `test_merge_pr_gate.sh`.
+4. Source field — resolved: `set`/`fallback`/`none` with exit codes; `goals` has no fallback.
+5. Serves goal — resolved: "Light touch on projects", heading verified.
+Suggestions 6-9 adopted (OQ-1 wording, `--root` name lookup, per-reader `#heading` behaviour with `roadmap` heading refused at `set`, integration-audit check in PR 2).
+
+### Findings
+
+None blocking. Suggestions (do not by themselves need another plan round):
+
+1. **[File targeting]** — Step 6b: `_review_bookkeeping_between` gets only `<wt>` (and runs through a CLI bridge for non-bash callers), and the key's path is relative to the project root while `_only_bookkeeping_between` matches paths relative to the worktree's repository. `registry_resolve_session_dir` does map a project worktree to its project, so the lookup works; say in the code that the key's path is added only when the worktree's repository is the project root's own (single-repository project or the root repo), not a package repository of a multi-repo project, and cover the unregistered/workspace case (adds nothing) in the test.
+2. **[Consequences]** — `check_design_anchors.sh` (step 5) needs the project name for `--root` the same way step 4 states for `update_roadmap.sh` (`project_document_name_for_root`); state it, and test the workspace root (unregistered) still reads `docs/design.md`.
+3. **[Principle alignment]** — Documentation layers is already about 75 lines (change-log row 2026-11-18); the plan notes the budget. Keep the key grammar and helper exit codes in the `_project_registry.sh` header and script_reference, and only the decision in the design section.
+
+### Summary
+
+All five earlier findings are resolved in plan.md and the checkpoint's host decisions are reflected faithfully; none of them looks wrong. The plan is ready for implementation; the three suggestions are implementation notes.
+
+### Recommended Actions
+
+- [ ] (Suggestion) Bound the step 6b bookkeeping addition to worktrees of the project root's own repository; test unregistered root adds nothing.
+- [ ] (Suggestion) State and test how `check_design_anchors.sh --root` finds the project name.
+- [ ] (Suggestion) Keep design-section additions to the decision; mechanics in script headers.
