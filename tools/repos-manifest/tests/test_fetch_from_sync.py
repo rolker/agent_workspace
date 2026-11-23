@@ -307,6 +307,8 @@ def test_a_place_that_cannot_be_fetched_keeps_origin_and_fails(
         (place / "a.git").mkdir(parents=True)
     _set_fetch_from(system, f"{place}/")
     before = snapshot_repo(clone)
+    recorded = state_of(system)["a"]
+    assert recorded["url"] == str(remote)
     out = _sync(system, capsys, 0 if optional else 1)
     assert snapshot_repo(clone) == before
     assert _origin(clone) == str(remote)
@@ -318,6 +320,15 @@ def test_a_place_that_cannot_be_fetched_keeps_origin_and_fails(
         assert "optional, skipped (1): src/a" in out
     else:
         assert "failed (1): src/a" in out and "run `repos-manifest sync` to finish" in out
+    # The record keeps the url origin still has, so the clone is not taken for one set by
+    # hand: once the place exists, the next sync repoints it.
+    assert state_of(system)["a"] == recorded
+    shutil.rmtree(place / "a.git", ignore_errors=True)
+    _copy(remote, place)
+    out = _sync(system, capsys)
+    assert f"origin repointed from {remote} to {place}/a.git" in out
+    assert _origin(clone) == f"{place}/a.git"
+    assert state_of(system)["a"]["url"] == f"{place}/a.git"
 
 
 def test_a_remote_of_the_probes_name_keeps_origin(existing, capsys):
