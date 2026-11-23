@@ -162,7 +162,8 @@ as one list and names the first line not yet true as the next step.
 | Follow-up: the orchestrator skill's first updates from the dogfooding log (#431) | `gh-issue 431 open` |
 | Instruction-file trim (#338), the backlog sweep | `gh-issue 430 closed` |
 | The fork cutover (#260 to #262) | `gh-issue rolker/unh_marine_autonomy#396 closed` |
-| Design later: the home level (Path 5), with the orchestrator design session (#398) | `gh-issue rolker/unh_marine_autonomy#396 closed` |
+| Design later: the home level (Path 5) | |
+| The orchestrator design session (#398) | `gh-issue rolker/unh_marine_autonomy#396 closed` |
 | Design later: kinds of work beyond coding issues (Path 2) | |
 | Design later: knowledge as a part of its own, in three tiers (Path 4) | |
 
