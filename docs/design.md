@@ -284,7 +284,10 @@ supersedes ADR-0016 decision 5: a session may register the folder it was started
   `registration_verify.sh` and `project_setting.sh` are promoted to the user tier for it.
 - Onboarding ends by offering `/agent-workspace:audit-project` (#332 D4), which also runs any time in a
   session at the project root and holds the hygiene checklist: pre-commit, CI, branch protection,
-  Copilot review, component labels, git-bug bridge and license headers. The items a fact makes moot are
+  independent review, component labels, git-bug bridge and license headers. Independent review is a
+  review by someone other than the author's own session: the review loop's cold read meets it, and
+  Copilot is one way, asked for by hand with `gh pr edit <N> --add-reviewer "@copilot"`; the
+  checklist never turns the automatic rule back on and finds nothing on a repository without it. The items a fact makes moot are
   reported skipped with the reason, never dropped; the facts are read by `project_integration_audit.sh
   --facts` (`github`, `issues`, `prs`, `windows`, `multi_component`, from the remote, `gh` and `uname`),
   which onboarding also reads to know whether the project uses issues. It is report-only and runs the
@@ -803,6 +806,21 @@ sessions walk the same order by hand, one `SKILL.md` at a time
   handoff, and the host pastes it into a new Agent call, in this process only. The sub-agent fetches its
   own inputs with `gh` and never pushes (ADR-0014; `dispatch_phase.sh` exit contract). Reviewers outside
   Claude run in parallel and synchronously through `cross_model_review.sh` (ADR-0015).
+- **Independent review: Gemini and Codex before the push, one cold read after it** (issue 452).
+  `review-code` step 5e has the reviewers outside Claude read the branch before publishing. Automatic
+  Copilot review is off on every repository (owner, 2026-11-23: the quota lasts a few days a month), so
+  after a push nothing is waited for unless the loop asked: `run-issue` step 9 dispatches
+  `triage-reviews` at once on the sources that exist. At the `merge` checkpoint, step 9a asks Copilot
+  once per pull request (`gh pr edit <M> --add-reviewer "@copilot"`) and waits once, about 900 s, or up
+  to the merge script's 1800 s while its check-run runs. When Copilot is not available (the request
+  fails, it posts a could-not-review notice, no answer comes in the bound, or a run resumes to find a
+  request unanswered), one PR-mode `review-code` reads the final diff with one cross-model reviewer
+  (Codex, else Gemini) and no earlier findings, and records "cold read, cross-model only" on its
+  `**Depth**` line. "Asked once" is read from GitHub's state for the pull request and from that entry
+  since the pull request's start (`review_progress.sh cold-read`, `pr_start.py`); nothing else is
+  stored. The cold read's `## Local Review` routes as any PR-mode review: approved to `triage-reviews`,
+  otherwise `address-findings`, the re-review, then triage. What the request does under exhausted quota
+  is not verified; every outcome that is not a review counts as not available.
 - **The host checks the exit, not the sub-agent's word.** `dispatch_phase.sh --check-exit` compares the
   count of entries of the phase's type before and after, and returns `OK`, `PARTIAL`, `FAILED` or
   `MISSING`; anything but `OK` goes to the `phase-failed` checkpoint: retry or stop, or take over, which
@@ -861,8 +879,9 @@ Status: `decided`
   `.agent/work-plans/issue-N/` files and the roadmap. `_bookkeeping.sh` holds that one rule; the merge
   gate, the CI target and `review_progress.sh sources` all use it.
 - The script then waits for CI on the reviewed head, not on whatever the head has moved to. A review
-  check-run that is still running (Copilot's) holds the merge unless `--allow-pending-review` is passed;
-  its conclusion is never read as CI. A review state that could not be read holds it too: the script
+  check-run that is still running (Copilot's; with the automatic rule off, one the loop or a person
+  requested) holds the merge unless `--allow-pending-review` is passed; an absent or concluded one
+  (a failure or quota notice included) holds nothing, and its conclusion is never read as CI. A review state that could not be read holds it too: the script
   refuses at the CI grace deadline rather than merge past a review it never saw.
 - The gate enforces by default on workspace pull requests: a gap refuses with exit 1 and no entry.
   Project and package pull requests are report-only: the gap is printed and recorded as a
@@ -1161,6 +1180,9 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-21 | Documentation layers | The Decisions row adds the anchor issue's comments as the home of a design discussion's reasons (`/design-discussion` posts each as a signed comment): an entry in the issue's `progress.md` would derail a later `/run-issue` on that issue, which reads its next phase from those entries (owner decision 2026-11-21; workflow kinds sharing that machinery go to #544) | #370 | 1214 |
 | 2026-11-23 | Registry and adapters | The tool route's `build` runs the manifest tool's `build` with the distro's environment sourced first, `test` gives colcon the resolved repos on disk, and `validate` reads the tool's `status --json` (issue 503 part 4); the sentence that said `build` and `test` are the colcon loop and `validate` checks the last resolve is replaced. Registry and adapters grows by 1 line; the mapping from `status` to `validate` lives in `docs/manifest/design.md` | #503 | 1216 |
 | 2026-11-23 | Documentation layers | The Direction row and the gaps paragraph follow the roadmap's new Direction section: five paths, Paths 1 to 4 with a line table each and one line across the paths, the acceptance case as the test of Path 1, parts with no design yet as deferral rows. Until #563 the sit-rep reads the tables as one list and marks work by the three earlier paths, checking first whether a line names it, so work any path's line names is marked Path 1 and Paths 4 and 5 are never marked (owner's design review, 2026-11-23) | #560 | 1217 |
+| 2026-11-23 | Review loop and timeline | Independent review bullet: Gemini and Codex before the push, one cold read after (Copilot asked once at the `merge` checkpoint and waited for once, else one cross-model `review-code` read recorded on its `**Depth**` line); no wait for a review the loop did not request, since automatic Copilot review is off everywhere | #452 | 1239 |
+| 2026-11-23 | Merge gate | The running review check-run that holds a merge is one the loop or a person requested; an absent or concluded one holds nothing | #452 | 1239 |
+| 2026-11-23 | Sessions and roots | The hygiene checklist's Copilot review item becomes independent review (a review by someone other than the author's own session; Copilot one way, asked by hand); no finding without the automatic rule | #452 | 1239 |
 
 ## Glossary
 
