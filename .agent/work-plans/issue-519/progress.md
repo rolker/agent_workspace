@@ -418,3 +418,19 @@ Read the Local Review (Pre-Push) at 94e29b13 (round 3, a convergence check, appr
 - Published with the round 3 suggestion open instead of a third fix round — undoing it: a fix pass on the open pull request before the merge.
 - When two distros of one system select different published repos of one name, only the distros that select one of them are refused; round 2 ran it and found the refused distros untouched and the reason reported with exit 1 — undoing it: a one-line change to refuse the whole system.
 - show's labels are all widened to line up with the new fetch-from line, which changes show's output for every system; nothing outside the tool reads those lines — undoing it: shorten the new label instead.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-23 14:53 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #565 at `35f93f9`
+**Sources**: 2 (Local Review (Pre-Push) round 3 @ `048d186` (covers `35f93f9` via bookkeeping), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+### Findings
+- [ ] (should-fix, Local Review (Pre-Push) @ `048d186`) An http(s) url with an empty host (`https:///`, `https://@/`, `http://:80/`) passes the url rule, so `check_prefix` accepts such a prefix although its message says a prefix with no host is refused. It is not only a loud failure: checked with `git ls-remote`, curl reads the first path part as the host when the host is empty (`https:///x.git` -> "Could not resolve host: x.git"; `https:///localhost/x.git` -> connects to localhost:443), so a `https:///` prefix makes git contact a host named after each repo (`<name>.git`, or `<name>.git.<search-domain>` through the resolver), the very case the refusal exists for; `https://@/` and `http://:80/` do fail at once ("No host part in the URL"). Fix in the general rule, not `check_prefix` alone: in `manifest._Checker.authority` refuse an empty host for `https://` and `http://` as well as ssh (pass the scheme so `file://`, whose empty host is normal, stays allowed); `check_prefix` then refuses all three through its existing `url_path` call (it raises the url rule's error before the `endswith("/x")` test, so check its message names the empty host). Add rows for the three forms next to the ssh ones in `tests/test_manifest_reading.py` (~line 477) and a `check_prefix` test; say "the host is not empty" for http(s) where the design's url rule is written. No manifest in the repo uses such a url. — `tools/repos-manifest/src/repos_manifest/manifest.py`, `tools/repos-manifest/src/repos_manifest/fetch_from.py:108`
+
+### False positives
