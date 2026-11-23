@@ -1334,3 +1334,21 @@ CI cost: the job took 141 s and 174 s on main's two runs today and 216 s and 231
 **Decision**: address
 
 Read: the Integrated Review at 4a465e73 for pull request 562: CI all-pass, no GitHub reviews or comments, one valid finding and one false positive. The valid finding (suggestion), .agent/project_types/ros2_colcon/adapter.sh:2146: when a build that selects packages is interrupted, nothing tests that the temporary stderr file is removed and the run ends with the signal's status, and the handler resets the signal instead of restoring a caller's own handlers; no caller on this branch sets one. The fix: in the handler, restore the saved traps before re-sending the signal, and a test with a stub tool that sleeps, TERM sent, the temporary file gone and exit 143. The false positive: the locale-gen step for the CI workflow; this pull request's CI run showed the locale part running (1530 passed, 0 failed, 0 skipped), so no CI change is needed.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 12:55 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #562 at `2ca7a73`
+**Addressed**: Integrated Review at `1db4680` (2026-11-23 12:48 -05:00)
+**Commits**: 2ca7a73
+
+### Actions
+- [x] Interrupt of the build with selection: the handler now removes the temporary stderr file, resets INT/TERM/HUP, restores the caller's saved traps (`eval` of the `trap -p` taken at entry, embedded with `%q`) and then re-sends the signal, so a caller's own handler runs; a signal ignored at entry stays ignored and no trap is left after a normal return (checked with a standalone bash harness using the same handler string; the normal-return path is unchanged). Test in `test_tool_build_runs_the_tool`: the stub tool, given TOOL_SLEEP, records what is in TMPDIR and sleeps 1 s; TERM goes to the dispatcher (exec'd background job) after a bounded wait (at most 5 s) for the stub to start; then the temporary file existed during the build, is gone after, and the exit is 143; with a TERM handler added at the top of the sandbox's dispatcher, that handler runs and the status is its 7. On the old code the plain TERM case passes (143, file removed); the caller-handler case fails (status 143, handler not run): 1535 passed, 2 failed — `.agent/project_types/ros2_colcon/adapter.sh:2146`
+
+### Checks
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: `=== Results: 1537 passed, 0 failed, 0 skipped ===`
+- `bash .agent/scripts/tests/test_adapter.sh`: `=== Results: 248 passed, 0 failed ===`
+- `bash .agent/scripts/validate_adapter.sh`: `✅ ros2_colcon: all 13 verbs implemented`, `✅ single_project: all 13 verbs implemented` (exit 0)
+- Full pre-commit pass left to the host; CI checks the push.
