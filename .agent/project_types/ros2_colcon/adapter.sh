@@ -2157,7 +2157,7 @@ _rc_tool_build() {
     trap - INT TERM HUP
     eval "$traps"
     if [ "$refused" -eq 1 ]; then
-        printf 'NOTE: with package selection the manifest tool builds only layers built before, and --packages-up-to only one layer at a time; the adapter builds every layer, so build without selection first, or run the tool'"'"'s step yourself with the distro'"'"'s environment sourced: source %q && cd %q && %q build --distro %q <layer> -- <colcon arguments>\n' \
+        printf 'NOTE: with package selection the manifest tool builds only layers built before, and --packages-up-to only one layer at a time; the adapter builds every layer, so build without selection first, or run the tool'"'"'s step yourself with the distro'"'"'s environment sourced, from a shell with no other workspace'"'"'s prefix paths: unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX && source %q && cd %q && %q build --distro %q <layer> -- <colcon arguments>\n' \
             "$underlay" "$root" "$bin" "$_RC_TOOL_DISTRO" >&2
     fi
     return "$rc"

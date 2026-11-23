@@ -184,9 +184,11 @@ The root need not be a git repository. The registry line holds its name, type an
   the arguments hold an option the tool counts as selection: not `--packages-skip`,
   `--packages-ignore`, their `-regex` forms or `--packages-skip-build-finished`), the
   adapter says to build without selection first, or to run the tool's step with the distro's
-  environment sourced (`source /opt/ros/<distro>/setup.bash && cd <root> && repos-manifest
-  build --distro <distro> <layer> -- ...`), since the step the tool itself names sources
-  nothing. The adapter does not check the resolved keys before a build (the tool reads the
+  environment sourced, the prefix paths the adapter's own build clears cleared first
+  (`unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX &&
+  source /opt/ros/<distro>/setup.bash && cd <root> && repos-manifest build --distro <distro>
+  <layer> -- ...`), since the step the tool itself names sources nothing and a shell with
+  another workspace sourced would build against it. The adapter does not check the resolved keys before a build (the tool reads the
   resolved files itself), so a key with a directory in it builds; `env`, `test` and the other
   verbs below still refuse it.
 - **`test`** stays the adapter's colcon loop over the resolved layers (the tool has no test
