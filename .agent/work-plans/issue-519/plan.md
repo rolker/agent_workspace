@@ -1,0 +1,138 @@
+# Plan: repos-manifest: fetch_from fetches every repo from another place, such as the same repos over ssh
+
+## Issue
+
+https://github.com/rolker/agent_workspace/issues/519
+
+## Context
+
+`fetch_from` is designed (`tools/repos-manifest/docs/design.md#where-repos-are-fetched-from`) and not built: `read_config` in `system.py` refuses the key ("is not read by this version"; `tests/test_system.py` pins that), `show` prints manifest urls only. The first real use is a system cloned over https that must push over ssh (issue text: 2026-11-19, no credential helper for https).
+
+Two pull requests, as the Checkpoint of 2026-11-23 decided. Part 1 is `Part of #519`; part 2 `Closes #519` only if nothing is left (see part 2).
+
+**The one rule everything hangs on.** `sync`'s url rule (`update_repo`, `_repoint`) already does what is wanted when `update_repo` is given the effective url as `repo.url`: an https clone has origin `W` = recorded `R` = manifest url `U`; the wanted url `E` differs; `W == R`, so `_repoint` fetches `E` into probe refs, refuses when a local branch or any work-tree `HEAD` has commits `E` lacks, then `remote set-url origin E`. So part 1 does not add a second repoint: it makes `Selected.url` the effective url and keeps the manifest's in a new field.
+
+## Approach: part 1 (detailed)
+
+1. **`src/repos_manifest/fetch_from.py` (new)** — `FetchFrom(prefix: str, fallback: bool = False)`; `repo_name(url)` (strip one trailing `/`, one `.git`, take what follows the last `/` or `:`); `effective_url(prefix, name)` = prefix + name + `.git`; `apply(resolved, fetch_from) -> Resolved`: a copy whose `Selected.url` is `E` and whose new field `Selected.published` (`selection.py`, default None) is the manifest's url. A repo whose `E` is `same_url` as its `U` keeps `published = U` too (so wording is stable). Refuses, with a `ManifestError` that names `config.yaml`'s `fetch_from` and the two repo keys, two selected repos whose names are equal (case-folded) and whose published urls are not `same_url`: without it, with fallback off, two repos from different owners would both be cloned from one place and the second would be a wrong repo, silently. Same name and same url (one repo listed in two layers) is fine.
+2. **Validation (untrusted input).** The prefix is machine-local, but it becomes a git argument, so it goes through the manifest url rules, not a copy of them: in `manifest.py` add a public `check_url(url, where, source)` that runs `_Checker(source).url(...)` (the rules in `_Checker.url`/`ssh_address`/`authority` stay where they are). `read_config` checks `fetch_from.prefix` is a non-empty string with no control or invisible character (`first_unsafe_in_text`/`_refuse_unsafe_chars` from `yamlload.py`, as manifest text is), ends in `/` or `:` (else the name would be glued onto a path segment; the error says so), and passes `check_url(prefix + "x")`; `apply` runs `check_url` on every built `E` and checks the name against `[A-Za-z0-9][A-Za-z0-9._-]*`, not `.`/`..` (so a manifest url ending `/..` or `:-x` cannot produce an option). That refuses: a value starting `-`; `ext::`, `fd::` and any `<transport>::<address>`; any scheme outside https, http, ssh, file; `%` in user, host or port; a user, host or port starting `-`; an empty ssh host; a control or invisible character. It does not refuse `file://` or an absolute path, because the manifest's own rule allows both and the tests need them (no new transport is opened that a manifest url could not already name). Errors quote through `quoted_url` and the prefix is `remember_url`ed before any message.
+3. **`system.py`** — `Config.fetch_from: Optional[FetchFrom] = None`; `config_text` writes `fetch_from: {prefix, fallback: false}`; `read_config`: optional key, `_check_keys(("prefix",), ("fallback",))`, types (`prefix` string, `fallback` boolean). `fallback: true` is refused with "`fetch_from.fallback` is true; this version fetches from the place named or fails (fallback is not built yet)": a config must never say something the tool then does not do. The refusal names the file as every `read_config` error does. Update the `fetch_from: x` row in `tests/test_system.py`.
+4. **One place that resolves for a system** — `sync.resolve_for(manifest, config, distro)` = `selection.resolve` then `fetch_from.apply`; used by `init._init`, `sync.resolve_all` and `cli._show_in_system`, so `status` (which calls `resolve_all`) cannot differ from `sync`. In `resolve_all` the `apply` error is its own `Reported` ("`fetch_from` in config.yaml: ..."), not "the manifest does not resolve". Because `Selected.url` is `E`, the resolved files `emit` writes hold `E`, so `one_repo_text` and `vcs import` clone from `E` with no change, and `RepoRecord.url` is written as `E` by `sync.py:509`, `update.py:908,915`.
+5. **`init`** — `--fetch-from PREFIX` (`cli.py`, `run_init`, `Config`): validated before anything is created (a bad prefix is an error with nothing set up, like a manifest that does not resolve); `init`'s summary shows the urls it will clone from (they are `E`). No `--fetch-fallback` in part 1 (part 2).
+6. **`show`** — with a system, `show` prints `E` in the url column (design: "the URL it will be fetched from") and, in the head, one line `fetch from  <prefix>` only when set (masked), so a person can tell why the urls differ from the manifest's. `show <manifest>` with no system has no config and is unchanged.
+7. **`update.py`** — (a) `_repoint(git, origin, url, why)`: the two messages that say "the manifest's url changed to" become "the url to fetch from changed to" (one assertion in `tests/test_update.py:865`); when it refuses for local commits and `repo.published` is set, the message adds both next steps: push them over the new place first (`git -C <place> push <E> <branch>`), or set origin by hand (`set_url_command`). (b) the repoint condition also holds when `record.url is None` and `origin` is `same_url` as `repo.published` (a record made before records held urls; today that falls into "set by hand"). (c) the `by_hand` line, when `repo.published` is set, says "origin is X, fetch_from names E (the manifest says U); left as set" with the same `set_url_command`. Everything else (rules 1 to 12, `turn.put` recording `repo.url`) is unchanged.
+8. **`status.py`** — `_repoints` gets the same `record.url is None` extension (it mirrors `update.py`; keep the two in step by the test below); `_remote_note` says "fetch_from now names E" where it says "the manifest now says" and "fetch_from names E (the manifest says U)" where it says "the manifest says", when `repo.published` is set; the sentences about what `sync` does keep their words (`sync tries to repoint origin to it`, `sync leaves origin as it is`, `sync leaves it, and the repo, ...`), which `CLAIMS` in `test_status_agrees_with_sync.py` already checks. A clone whose origin is `E` is `expected` with no note. The JSON `url` stays the published url (design, `freeze`: "each url is the published one") via `published or url`; `fetched_from` stays the clone's origin, so it is what it says.
+9. **Tests** (local git only: two bare copies of the same repos, `tmp/placeA/<name>.git` is "the published place" and `tmp/placeB/<name>.git` is "the other place"; prefix is the absolute path of `placeB` plus `/`; no network, no ssh). New `tests/test_fetch_from.py` (unit and config) and `tests/test_fetch_from_sync.py` (sync on existing and new systems); new cases in `tests/status_cases.py` (a builder `fetch_from_set(case)` that copies the remote to `placeB/a.git` and edits `config.yaml`), registered in `CASES` and covered by the existing parametrised `test_status_agrees_with_sync.py`. Cases named in "Test cases" below.
+10. **Docs, same PR** — see "Files to Change".
+
+### An existing system directory (the real first use)
+
+How it gets the key: a person edits `.repos-manifest/config.yaml` and adds
+
+```yaml
+fetch_from:
+  prefix: git@github.com:rolker/
+  fallback: false
+```
+
+The design already says `fetch_from` is "edited" after `init` and that `sync` then "changes the clone's remotes to match", and the tool's error text already sends a person to repair `config.yaml` by hand. No command is added (see decisions). Every command validates the file on its next run and names it on an error. Then `status` (offline) reads each https clone as `expected` with "fetched from <https url>, the url recorded; fetch_from now names <ssh url>, and sync tries to repoint origin to it: ...". `sync` then, per clone (unit `_repoint` runs before the tracked-changes rule, as for a manifest url change):
+
+| Clone | What `sync` does |
+|---|---|
+| Clean, origin is the manifest's url (= recorded) | Fetches `E` into probe refs; every local branch and work-tree `HEAD` is on it; `remote set-url origin E`; records `E` at once; prints "origin repointed from U to E"; then the usual rules (fetch from `E`, fast-forward). Working files and local branches untouched. |
+| Uncommitted changes, nothing unpushed | Origin is repointed (the url rule comes first and touches no file), then the repo is left as it is for its changes, as today. |
+| Commits not on `E` (the common case: committed locally, could not push over https) | Origin stays; repo left as it is, outcome "left alone", exit status unchanged; the line names the commits, the branch or detached work tree, and the two next steps (push to `E`, or set origin by hand). No work lost or changed. A later `sync` repoints once they are pushed. |
+| Origin already set by hand to `E` | `U` and `E` differ but `W == E`: nothing to do, no "set by hand" line, `status` says `expected`; the record gets `E` at the next write. |
+| Origin set by hand to a third url (a fork) | Left as set, repo updated from it, one line per run: "origin is X, fetch_from names E (the manifest says U); left as set (to use it: <set-url command>)". |
+| `E` cannot be reached, the key is locked, or the repo is not there | The probe fetch exits non-zero: origin stays the old url, the repo is `failed` (exit 1) with git's text and the words "fetching from it failed (origin stays U)"; "run sync again" is advised (`fetch=True`); an optional repo is `skipped`. A locked key at a terminal prompts through ssh as every fetch does; with no terminal it fails with git's message. Nothing silently falls back: fallback is off. |
+| Record with no url (made by an older version), origin is `U` | Treated as the recorded url (step 7b): repointed as in the first row. |
+
+New clones (a repo not yet there, or a system made with `init --fetch-from`) are cloned from `E`; a repo missing at `E` fails with `vcs import`'s text and nothing is left at its place (existing behaviour).
+
+When `fetch_from` is later changed (prefix A to prefix B): `W == R == E_A`, wanted `E_B`: the same repoint rules. When it is removed: wanted is `U`, `W == R == E`: repointed back to `U` by the same rules, with the same refusal for commits `U` lacks, so a fork that was only on the other place is never silently abandoned. State needs no new key: `RepoRecord.url` is "the url `sync` put on origin", and the published url is recomputed from the manifest on every run.
+
+### Test cases
+
+`tests/test_fetch_from.py`: `repo_name` for https, scp-like, `ssh://`, local path, trailing `/` and `.git`; effective url; prefix refusals (empty, no trailing `/` or `:`, leading `-`, `ext::x`, `git://`, `ftp://`, `%2d` host, newline, bidirectional character) each with the value not echoed unmasked; a name that is `..` or starts `-`; two repos with the same name and different owners refused, the same url in two layers allowed; config round trip, `fallback: true` refused naming the file; `fetch_from` as a list or with an unknown key refused; `init --fetch-from` refused before anything is created (nothing on disk); `show` prints `E` and the `fetch from` line, masking a user name and password in the prefix (`test_masking` style).
+
+`tests/test_fetch_from_sync.py`: init with `--fetch-from` clones from B, `origin` is B's url, record url is B, the resolved file holds B, the manifest unchanged; a repo missing at B fails and leaves nothing; and for an existing system (made first without fetch_from, then `config.yaml` edited, then `sync`): clean clone repointed; uncommitted changes (repointed, left for changes); commits not on B (origin stays, commits and work tree unchanged by `snapshot_repo`, text names the push command); detached work tree with commits not on B; origin already B; origin a third place; B is a path that does not exist (stands for refused host or locked key) and B is an existing directory that is not a repo: origin stays, failed, exit 1, optional repo skipped; probe remote name taken (existing message kept); record with no url; prefix changed A to B; `fetch_from` removed (repointed back, and refused when B-only commits exist); two distros (`--distro-dirs`) each repointed; the second `sync` after a repoint is quiet and "up to date" (idempotent); `status` before: `expected`, no "set by hand"; `status` after: no note, `fetched_from` is B.
+
+`tests/status_cases.py` new cases for the agreement test: "fetch_from set, origin is the manifest's url" (claim "sync tries to repoint origin to it", outcome updated/up to date, "origin repointed from"), "fetch_from set, commits only here" (state expected, outcome left alone: add to `DIFFER`), "fetch_from set, origin already the place" (no note), "fetch_from set, origin set by hand elsewhere" ("sync leaves origin as it is"), "fetch_from set, probe remote taken". `test_status.py`: the "set by hand" assertion at line 224 still passes unchanged (no fetch_from in that case).
+
+Which files an implementer runs (each one in the order of the work): `test_fetch_from.py`, `test_fetch_from_sync.py`, `test_system.py`, `test_init.py`, `test_init_refusals.py`, `test_show_system.py`, `test_status.py`, `test_status_agrees_with_sync.py`, `test_update.py`, `test_update_safety.py`, `test_sync.py`, `test_untrusted_input.py`, `test_url_messages.py`, `test_masking.py`, `test_cli.py` (use `-n`/job counts only if xdist is already configured; I did not check). The full tool suite (about 11 minutes) is left to CI, as the owner's memory note for dispatched drives says; the files above are the ones the change can reach.
+
+## Approach: part 2 (outlined; pull request says `Closes #519` only if the waits below are cleared, else `Part of #519`)
+
+- `fallback: true` read and written; `init --fetch-fallback`.
+- The probe for a repo not yet cloned and for a repo whose place would change: `git ls-remote <E> <version>` with a time limit (waits on #510 for the shared limit; until then a probe-local `GIT_TERMINAL_PROMPT` and `timeout`). Falls back to the published url only when git says the repo is not there (`ls-remote` of a branch or tag that exists answers empty with exit 0 for a version that is missing, and a missing repository exits 128 with a "not found" or "does not appear to be a git repository" message, run with `LC_ALL=C`) or the version is missing. A refused host, a missing or locked key, a host-key failure, a name that does not resolve, a timeout, an unknown message: an error naming the host and what git said, no fallback; a test per class with local stand-ins where git can produce them (missing path, missing version, unreadable directory) and a faked `GIT_SSH_COMMAND` script that prints the message for the ssh classes. The text matching is the fragile part: only the known "not there" messages mean missing, so anything unknown stops.
+- `upstream` remote when `E` is not the published url: added or kept by `sync`, never touched when a person set it; the same-repo-by-another-transport rule: normalise both to host (lower case, user and port dropped) and path (leading `/` and `.git` dropped; `git@h:p`, `ssh://git@h/p`, `https://h/p` all give `h`, `p`); equal means no `upstream`; rule written in `design.md`. Interaction with `_repoint`: a fork that appears moves origin by the same rules, with the same refusal.
+- `resolve` refusing two repos with the same name: `resolve` takes no config today; the part-1 check in `apply` already covers every command that knows the config. For part 2 decide whether `resolve`/`validate` read an optional `--fetch-from` prefix to give the same refusal; I recommend not (nothing in the design makes `resolve` machine-aware), and say so in design.md.
+- Waits: the repo that holds the manifest and a parent manifest named as a file in a git repo need #498 part 2b (manifest readable from git) and step 1 of `sync` (the manifest's own clone, "not built yet"); the probe's time limits use #510. Those two rules cannot be built in part 2, so part 2 says `Part of #519` and a follow-up issue is opened for them unless the owner prefers to leave #519 open.
+
+## Files to Change (part 1)
+
+| File | Change |
+|---|---|
+| `tools/repos-manifest/src/repos_manifest/fetch_from.py` | new: `FetchFrom`, `repo_name`, `effective_url`, `apply`, same-name refusal |
+| `.../manifest.py` | public `check_url` over the existing `_Checker.url` |
+| `.../selection.py` | `Selected.published` |
+| `.../system.py` | `Config.fetch_from`, `config_text`, `read_config` |
+| `.../sync.py`, `.../init.py`, `.../cli.py`, `.../show.py` | `resolve_for`; `--fetch-from`; head line in `show` |
+| `.../update.py`, `.../status.py` | repoint wording and extra condition; `status` notes and JSON `url` |
+| `tools/repos-manifest/tests/test_fetch_from.py`, `test_fetch_from_sync.py` (new); `status_cases.py`, `test_status_agrees_with_sync.py`, `test_system.py`, `test_update.py`, `test_init.py`, `test_show_system.py` | cases above |
+| `tools/repos-manifest/docs/design.md` | "Where repos are fetched from": what is built (no fallback, no `upstream`), existing-directory path, change and removal, the same-name refusal where it lives, validation; `config.yaml` table row (read, `fallback: true` not read); "What is built" (`show`'s sentence "since fetching from another place is not built" and the "Not built yet" list: fetching from another place now "with `fallback: true`, `upstream`"); the url rule's `R` described as "the url sync put on origin"; "status" notes; "Open questions" row on how often to ask stays (part 2) |
+| `tools/repos-manifest/README.md` | `init --fetch-from`, what `sync` does with an existing clone, `fallback: true` not yet |
+| `tools/repos-manifest/docs/roadmap.md` | row "A machine can fetch every repo from another place ..." stays unchecked in part 1; split it into "... from a private server, or the same repos over ssh (`fetch_from` with fallback off)" with check `file-exists src/repos_manifest/fetch_from.py`, and the forks half unchecked until part 2 |
+| `tools/repos-manifest/docs/spec.md` | nothing expected (grep found no `fetch_from` there); re-grep before finishing |
+| `docs/manifest/design.md`, `docs/manifest/roadmap.md` | grep found no sentence saying `fetch_from` is unbuilt; line 399 and the roadmap row "Registration passes ... fetch settings to `init`" are about #503 part 4 and stay. Re-grep; no change expected |
+
+**Adapter** (`.agent/project_types/ros2_colcon/adapter.sh`): read for `origin`/url use. `adapter_scope_for_pr` (line 2565) parses `owner/repo` from `remote get-url origin`, and its scp-like and `scheme://` patterns give the same result for `git@github.com:o/r.git` as for `https://github.com/o/r`; `repo_pin` (about 2396) runs `ls-remote origin` and works with either; registration passes nothing about fetch settings yet (503 part 4); `_rc_repos_entries` reads only name and version from the resolved `.repos` files, so `E` in them is not read; the bootstrap-route comparison at line 661 is the old route. Part 1 needs no adapter change. A fork (part 2) changes the owner in `scope_for_pr`'s answer; part 2 must look at that (the pull request base lookup by `scope_for_pr` would name the fork); not verified: other scripts under `.agent/scripts/` that read origin (`merge_pr.sh`, `worktree_create.sh`).
+
+## Prior Art
+
+Read: `update_repo`, `_repoint`, `standing`, `_remote_note` (reused whole); `_Checker.url` (reused for validation, not copied); git's own `pushurl` and `url.<base>.pushInsteadOf`, which the design names for one machine pushing over ssh and fetching over https: rejected as the answer here because it needs a per-clone git setting on every clone, which the tool cannot keep in step, and because `fetch_from` also serves the field-machine case. vcstool/vcs2l refuse a changed url (design, "sync"), so the repoint stays in the tool's own code.
+
+## Serves
+
+Workspace goal "Flexibility" (a published manifest fetched from other places without editing it); `tools/repos-manifest/docs/design.md#where-repos-are-fetched-from` and the tool's goal "The published manifest can point at the released repos while a machine fetches them from somewhere else" (`tools/repos-manifest/README.md#goals`).
+
+## Design Picture
+
+The tool's own design changes, in the same pull request: `tools/repos-manifest/docs/design.md` sections "Where repos are fetched from", "config.yaml", "sync" (the url rule's recorded url), "status", "show" and "What is built". The root design (`docs/design.md`, `docs/manifest/design.md`) is not changed: what crosses the tool's boundary (a registered root, `init`'s arguments) does not change in part 1 (ADR-0022).
+
+## Principles Self-Check
+
+| Principle | Consideration |
+|---|---|
+| No silent failures | `fallback: true` is refused rather than ignored; an unreachable place fails the repo and keeps origin; two same-named repos are refused. |
+| Only what is needed | No fallback, probe, `upstream` or new command in part 1. |
+| Tests with the change | Cases above, including unpushed commits, unreachable place, removal. |
+| One current design | Design, README, roadmap updated in the same pull request. |
+| Reuse, no second copy | `_repoint`, the url rule, `_Checker.url`, `resolve_all` shared by `sync`, `status`, `init`, `show`. |
+
+## ADR Compliance
+
+| ADR | Triggered | How addressed |
+|---|---|---|
+| 0022 | Yes | Work is inside the tool's part; its design changes, the root's does not. |
+| 0017 | Yes | Design sections listed above, same pull request. |
+| 0013 | Yes | `## Plan Authored` entry. |
+
+## Consequences
+
+| If we change... | Also update... | Included? |
+|---|---|---|
+| `Selected` gets a field | every constructor of `Selected` (`selection.py:157`, tests) | Yes |
+| `fetch_from` becomes a read key | `test_system.py` refusal row; design table "Not read in this part" | Yes |
+| repoint wording | `tests/test_update.py:865` | Yes |
+| `status` notes | `CLAIMS` patterns only if a sentence naming `sync` changes (none planned) | Yes |
+| `freeze` (not built) | must write `published`, not `url` | Noted in design |
+| adapter | nothing in part 1 | No change |
+
+## Open Questions
+
+Mechanism decisions (open to the owner's veto) are in the hand-back. No question is the owner's: the design places `fetch_from` in the system directory's `config.yaml` ("`fetch_from` in `config.yaml` covers both") and lists the per-user file as a deferral.
+
+## Estimated Scope
+
+Part 1: one pull request, about 15 files, roughly 250 lines of source (a 150-line module plus small edits) and 500 lines of tests, 150 lines of documents. Part 2: one more pull request, about the same size.
