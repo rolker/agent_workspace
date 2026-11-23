@@ -621,3 +621,25 @@ Checked: `git show --stat a83b7a40` touches only comment lines in `tools/repos-m
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-23 16:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #565 at `acc16502`
+**Sources**: 2 (Local Review @ `acc16502` (convergence check, depth set by the host; no outside reviewers, cross-model skipped), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+### Findings
+- [x] No open findings from any source.
+
+### False positives
+
+### Notes for the host
+- Read since the Integrated Review at `aef7e3c`: the fix commit `a83b7a40` (comment lines in two test files only) closing that entry's one finding, and the Local Review at `acc16502`, approved with 0 must-fix and 0 suggestions. That Local Review's only box is the unticked placeholder "No issues found. LGTM."; `review_progress.sh sources` returns no local findings at this head, and this entry supersedes it.
+- No GitHub reviews, conversation comments or inline comments on the PR. CI on `acc16502`: 10 check runs, all success (workflow runs 45264536046 and 45264547642); the repos-manifest suite passed 2307 tests on Python 3.10 and 3.14 in both, as it did at `5e18053`.
+- `sources` dropped the Local Review (Pre-Push) at `048d186` and the Local Reviews at `5e18053` and `aef7e3c` as stale; each was ruled on in an earlier Integrated Review and its finding fixed (`85da8cc`, `c2b82910`, `a83b7a40`).
+- The PR body, as rewritten by the host, was checked against the branch: one `## Decision summary` at level 2, no duplicated block, a "Since publishing" paragraph covering the url-rule fix (`85da8cc`) and the wording fixes (`c2b82910`, `a83b7a40`), "Nothing is open." The claims checked hold: the two commits since the url-rule fix touch only `docs/spec.md`, the `manifest.py` docstring and two test comments; 2307 tests on 3.10 and 3.14; three local reviews since publishing (`5e18053`, `aef7e3c`, `acc16502`). Nothing in it found untrue.
