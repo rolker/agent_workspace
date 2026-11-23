@@ -457,3 +457,21 @@ Cross-model: skipped (round-3 convergence check, per handoff). Scope: the round-
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 18:53 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (the full pass failed; the owner's 2026-11-13 rule sends a failure back as findings)
+**After**: publish
+**Decision**: address
+
+The host's full pre-commit pass over the branch (`pre-commit run --files $(git diff --name-only origin/main...HEAD)`, no SKIP) failed in the script-tests hook:
+
+```
+run_script_tests: 1 of 49 suites failed in 619s: test_script_tests_hook_scope.sh
+  FAIL: 'test_review_code_convergence.sh' derives a real repo root (matched the root-derivation scan) but has no ROOT_READERS entry -- add one naming the out-of-tree prefixes it reads, or an empty entry if it only reads its own sandbox
+test_script_tests_hook_scope: 347 passed, 1 failed
+```
+
+The same suite passes on main (347 passed, 0 failed), so the branch's changes to `test_review_code_convergence.sh` caused it. Every other hook and the other 48 suites passed.
