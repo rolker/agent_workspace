@@ -244,3 +244,39 @@ Implement the plan at 2a3c82bc with these instructions, which answer N1 to N6 of
 - Re-read docs/roadmap.md and the Direction row of docs/design.md as they are on main (or on feature/issue-560 if pull request 564 has not merged) before editing them.
 
 The owner's words: "the roadmap was done with an expected sequence, and any deviation from that sequence might trip up the tracking of actual progress."; "To keep things simple, it's ok if something breaks with the sit-rep skill if one lands before the other".
+
+## Implementation
+**Status**: partial
+**When**: 2026-11-23 14:56 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-563 at 66f0a01d
+
+Stopped at 14:55 for the owner's 15:00 shutdown. Nothing pushed.
+
+### Done (commits in order)
+- db7d84c8 sitrep_checks: path rows, no path group, Across group, summary suffix (paths P<n> t/n), per-path --next-steps-from, header (the Across sentence on one comment line); suite section 16, plus rewritten step 1 and step 4 assertions.
+- d0e61f15 sitrep_root: named_path field, header; test_sitrep_root named_path cases.
+- 66f0a01d SKILL.md steps 1, 3 (marks per the checkpoint's M4 texts; closing-question block keeps reading prose and adds an across line, N2), 5 (per path, item and check from step 1's printed rows, N1; pull requests from step 3's pasted list, N6), 8 (one line per group, no single Next:, "No work on this machine for:", N3; "nothing on this machine"); description; tests in sections 13 and 14 rewritten.
+
+### Suites
+- test_sitrep_checks.sh: "test_sitrep_checks: 281 passed, 0 failed"
+- test_sitrep_root.sh: "test_sitrep_root: 69 passed, 0 failed"
+- test_skill_paths.sh: "test_skill_paths: 197 passed, 1 failed": the failing case is "Path 3 marker: .claude/skills/sitrep/SKILL.md no longer carries 'A safeguard has to earn its cost'". It guards the old Path 3 rule this change removes on purpose; it must be removed or rewritten (first item below).
+- Full pass left to the host.
+
+### Live run
+Frozen five-path text (feature/issue-560 at f3fe8604, now merged as 9a8c1eaf): P1 1/4, P2 0/4, P3 0/3, P4 0/3, P5 none (no design yet), Across 0/1; summary "lines 1/15 deferrals 3/10 paths P1 1/4 P2 0/4 P3 0/3 P4 0/3 P5 none across 0/1". Suite section 16 keeps an anonymised frozen copy (text main will change, including this issue's Across edit), not main's live file.
+
+### Remains, in plan order
+1. test_skill_paths.sh: drop or rewrite the "Path 3 marker" case for the sit-rep skill, then rerun that suite.
+2. Coordinator update: pull request 564 merged (9a8c1eaf). git fetch origin, merge origin/main into feature/issue-563 (merge commit), then:
+   - docs/roadmap.md Format bullet: after "A path's lines sit in a ... table of their own under the path's paragraph." add "A table belongs to the nearest path or Across paragraph above it."
+   - docs/roadmap.md Across paragraph in present tense: "**Across the paths.** The sit-rep reports each path on its own, with its lines in no fixed order, and marks work in flight by the path whose line names it." Its line's check: file-contains .agent/scripts/sitrep_checks.sh a path row governs the line rows up to the next path row
+   - docs/design.md Direction row: replace "reads the paths' line tables as one list and names the first line not yet true as the next step (reporting each path on its own is not built, #563)" with per-path reporting (each path's name, count and unmet lines in no fixed order; Across a group; a path with no table is "no design yet"; a root with no Path paragraph is one group), and the "Until the sit-rep reports each path on its own (#563) ... Paths 4 and 5 are never marked" sentence with the marks of plan item 12; Measures row: the per-path counts the run record gains; a history row.
+3. .agent/knowledge/script_reference.md lines 55-56: named_path, the path row, per-path next steps, the summary suffix.
+4. Live run on main's docs/roadmap.md after the merge, recorded in the pull request.
+
+### Deviations
+- Path rows are inserted in one pass after the scan (group_rows), not patched back by index; same output.
+- Step 3 decides "written as paths" from step 1's rows when given (a path row present), else from the prose; the plan did not say.
+- Mark for a pull request with no worktree: path name read from step 1's printed rows (N1).
