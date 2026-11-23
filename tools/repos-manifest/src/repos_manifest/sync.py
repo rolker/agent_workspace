@@ -22,7 +22,8 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import yaml
 
-from . import selection, update
+from . import fetch_from, selection, update
+from .manifest import Manifest
 from .masking import mask_urls
 from .output import make_writable, output_files, process_has_ended, signals_held, write_output
 from .selection import Resolved, Selected
@@ -709,6 +710,22 @@ def recorded_manifest(system: Path) -> str:
     )
 
 
+def fetch_from_named(system: Path) -> str:
+    """Where a system's `fetch_from` is, for messages."""
+    return f"`fetch_from` in {system / SYSTEM_DIR / CONFIG_FILE}"
+
+
+def resolve_for(manifest: Manifest, config: Config, distro: Optional[str], named: str) -> Resolved:
+    """What a system resolves to for `distro`: the manifest resolved with the system's role
+    and groups, then, when `config.yaml` has `fetch_from`, each repo given the url built from
+    its prefix (`fetch_from.apply`; `named` says where the setting is). The one place `init`,
+    `sync`, `status` and `show` resolve a system, so they never differ in the urls they use."""
+    resolved = selection.resolve(manifest, config.role, distro, config.groups)
+    if config.fetch_from is None:
+        return resolved
+    return fetch_from.apply(resolved, config.fetch_from, named)
+
+
 def resolve_all(
     system: Path, config: Config, distros: Sequence[Optional[str]]
 ) -> List[Union[Planned, Reported]]:
@@ -738,7 +755,10 @@ def resolve_all(
     for distro in distros:
         named = f"distro {distro}" if distro is not None else "the system"
         try:
-            resolved = selection.resolve(manifest, config.role, distro, config.groups)
+            resolved = resolve_for(manifest, config, distro, fetch_from_named(system))
+        except fetch_from.FetchFromError as exc:
+            plan.append(Reported(distro, f"{named}: nothing of it has been changed: {exc}"))
+            continue
         except ManifestError as exc:
             plan.append(
                 Reported(
