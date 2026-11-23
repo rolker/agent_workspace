@@ -1193,3 +1193,32 @@ Scope: part 4 only. Ran: test_ros2_colcon.sh (1457 passed, 0 failed, 0 skipped);
 - [x] (suggestion) the package-selection NOTE fires for `--packages-skip*`/`--packages-ignore*` (which the tool does not count as selection) and on any failure, not only the tool's selection refusal — `.agent/project_types/ros2_colcon/adapter.sh:2081`
 - [x] (suggestion) the pass line's counts do not add up: a not_in_manifest path is counted in "with a warning" against a total of manifest repos ("39 repo(s), 39 as expected, 1 with a warning above"), and the out-of-date warning is not counted — `.agent/project_types/ros2_colcon/adapter.sh:1198`
 - [x] (suggestion) test_tool_real_status_and_build's clean validate does not assert the absence of ⚠️ lines, so a false out-of-date warning from the real tool would pass — `.agent/scripts/tests/test_ros2_colcon.sh:5428`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 11:51 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-503 at `ca13f870`
+**Addressed**: Local Review (Pre-Push) at `4ce8c85d` (2026-11-23 11:38 -05:00)
+**Commits**: 84cc4c42, 149af071, dfb6777b, ba8f9b0c, df95be9f, 12c593ef, ca13f870
+
+### Actions
+- [x] (must-fix) comm in the caller's locale: both comm calls run with LC_ALL=C; test_tool_validate runs validate under en_US.UTF-8 with the unnamed layer's repo only in the last resolve, GNU comm first on PATH (the system comm when it is GNU, as on CI; here comm is uutils, so the test links /usr/bin/gnucomm as comm in the sandbox; with neither GNU comm nor en_US.UTF-8 it prints a SKIPPED line for that part). Without the fix it fails here (2 asserts: wrong difference, "not in sorted order") — 84cc4c42, `.agent/project_types/ros2_colcon/adapter.sh:1238`
+- [x] (must-fix) `adapter test` with a missing `<layer>.repos`: fails before colcon runs, naming the file and the tool's sync step; test_tool_test_over_the_resolved_layers (6 asserts fail without the fix); docs/manifest/design.md test bullet — 149af071, `.agent/project_types/ros2_colcon/adapter.sh:2160`
+- [x] (suggestion) lone surrogate in the status reader: a byte that is not UTF-8 printed as \xXX (as the tool's show), another lone surrogate as \uXXXX, stdout backslashreplace as backstop; the reader's failure names its own exit status and status's; test_tool_validate (5 asserts fail without the fix) — dfb6777b, `.agent/project_types/ros2_colcon/adapter.sh:1047`
+- [x] (suggestion) package-selection NOTE: arguments read as build.py's package_selection reads them (not --packages-skip/-ignore and their -regex forms, not --packages-skip-build-finished; --cmake-target counts); only then the tool's stderr is passed through tee and kept, and the note comes only on exit 1 with one of build.py's two refusal texts; stub cases in test_tool_build_runs_the_tool (7 fail without the fix), and test_tool_real_status_and_build triggers both real refusals; design doc updated — ba8f9b0c, `.agent/project_types/ros2_colcon/adapter.sh:2080`
+- [x] (suggestion) pass line counts: counts are of the manifest's repos and add up; a not_in_manifest path and the out-of-date warning named apart after them; two exact pass-line asserts in test_tool_validate (fail without the fix); design doc updated — df95be9f, `.agent/project_types/ros2_colcon/adapter.sh:1246`
+- [x] (suggestion) real-tool clean validate: asserts no ⚠️ and no NOTE on the fresh init, no ⚠️ after sync, and the pass line through its counts; checked to fail with a false out-of-date warning injected into the adapter — 12c593ef, `.agent/scripts/tests/test_ros2_colcon.sh:5536`
+- [x] (review note) python3 beside the tool missing or a dangling link: named as the venv's Python (missing / a link to nothing with its target / not executable) with the step that makes the venv again (`make install-repos-manifest` alone does not, its stamps hold); a missing tool keeps the install step; tested — ca13f870
+
+Suites run (each on its own, from the worktree):
+- test_ros2_colcon.sh: "=== Results: 1512 passed, 0 failed, 0 skipped ===" (vcs present; the locale part ran with gnucomm)
+- test_adapter.sh: "=== Results: 248 passed, 0 failed ==="
+- validate_adapter.sh: exit 0, "✅ ros2_colcon: all 13 verbs implemented"
+- test_register_project.sh: "test_register_project: 222 passed, 0 failed"
+- test_register_session_root.sh: "test_register_session_root: 72 passed, 0 failed"
+- test_project_file.sh: "701 passed, 0 failed"; test_project_registry.sh: "425 passed, 0 failed"; test_worktree_create.sh: "PASS: 109 FAIL: 0"; test_design_anchors.sh: "82 passed, 0 failed"
+The full pre-commit pass and the remaining suites are left to the host. The source manifest route and the bootstrap route were not touched.
+
+Not verified: the venv-remake step was not run (it would remove the main checkout's .venv); it was checked against the Makefile's setup-dev.done and repos-manifest.done rules only.
