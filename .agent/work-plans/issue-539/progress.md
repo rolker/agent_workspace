@@ -207,3 +207,13 @@ None.
 **Decision**: merge
 
 The owner's answer in the dialog, to "Merge pull request 540?": "Merge (Recommended)". The dialog showed: the one changed line; the suite at 1375 passed, 0 failed, 0 skipped with the real-tool case run; the host's full pass before the push; the approved pre-push review and the Integrated Review at 66966fb8 with no open findings; CI all-pass, with the note that CI still skips the changed case until part 2; no hosted review in 900 s, Gemini and Codex skipped at Light depth. The host fetched the pull request again before asking: no reviews, no comments, no failed check. Part 1 of two: the issue stays open for part 2.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 09:59 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: plan
+**Decision**: revise
+
+The owner's answer in the dialog, to "How should part 2 be revised?": "Revise, whole part 2 (Recommended)". The dialog showed: part 1 merged as pull request 540; part 2 of the plan is not delivered and cannot be implemented as written, by the Plan Review of 2026-11-20 (needs-work). F1, must-fix: failing on a missing vcs whenever CI is set would break the Lint job; fix by an explicit require-variable set only on the adapter-contract step, as REPOS_MANIFEST_REQUIRE_COLCON is, or by installing vcs in the Lint job too. F2, must-fix: pip install vcstool==0.3.0 does not pin what the plan says and crashed in a fresh venv; use the pinned vcs2l. F3, scope: the skip count stays in part 2 (it had been proposed earlier the same day to hold it for issue 550; the owner chose to keep it, so this pull request closes the issue). Part 2 changes a CI workflow (Ask First); this answer covers planning it and the merge decision covers the change.
