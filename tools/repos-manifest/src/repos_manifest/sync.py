@@ -22,7 +22,8 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import yaml
 
-from . import selection, update
+from . import fetch_from, selection, update
+from .manifest import Manifest
 from .masking import mask_urls
 from .output import make_writable, output_files, process_has_ended, signals_held, write_output
 from .selection import Resolved, Selected
@@ -709,13 +710,43 @@ def recorded_manifest(system: Path) -> str:
     )
 
 
+def fetch_from_named(system: Path) -> str:
+    """Where a system's `fetch_from` is, for messages."""
+    return f"`fetch_from` in {system / SYSTEM_DIR / CONFIG_FILE}"
+
+
+def resolve_for(manifest: Manifest, config: Config, distro: Optional[str], named: str) -> Resolved:
+    """What a system resolves to for `distro`: the manifest resolved with the system's role
+    and groups, then, when `config.yaml` has `fetch_from`, each repo given the url built from
+    its prefix (`fetch_from.apply`; `named` says where the setting is). The one place `init`,
+    `sync`, `status` and `show` resolve a system, so they never differ in the urls they use.
+    With `fetch_from`, every other distro the system is set up for is resolved too, so that two
+    repos of one name are refused across the whole system, not only within `distro`; a distro
+    that does not resolve is left out of that check (it is reported where it is resolved)."""
+    resolved = selection.resolve(manifest, config.role, distro, config.groups)
+    if config.fetch_from is None:
+        return resolved
+    system = []
+    for other in config.distro_keys:
+        if other == distro:
+            system.append(resolved)
+            continue
+        try:
+            system.append(selection.resolve(manifest, config.role, other, config.groups))
+        except ManifestError:
+            continue
+    return fetch_from.apply(resolved, config.fetch_from, named, system)
+
+
 def resolve_all(
-    system: Path, config: Config, distros: Sequence[Optional[str]]
+    system: Path, config: Config, distros: Sequence[Optional[str]], changes: bool = True
 ) -> List[Union[Planned, Reported]]:
     """Phase one: read the manifest, then resolve each distro and build its resolved files, in
     memory. A manifest that cannot be read ends the run with nothing changed; a distro that
     does not resolve, or whose files cannot be written out, is reported, and nothing of it is
-    changed, while the others go on."""
+    changed, while the others go on. `changes` is false for `status`, which changes nothing:
+    a distro `fetch_from` refuses is then reported as refused, without `sync`'s words about
+    what it left unchanged."""
     try:
         manifest = read_manifest(config.manifest, system)
     except ManifestError as exc:
@@ -738,7 +769,15 @@ def resolve_all(
     for distro in distros:
         named = f"distro {distro}" if distro is not None else "the system"
         try:
-            resolved = selection.resolve(manifest, config.role, distro, config.groups)
+            resolved = resolve_for(manifest, config, distro, fetch_from_named(system))
+        except fetch_from.FetchFromError as exc:
+            said = (
+                "nothing of it has been changed"
+                if changes
+                else "fetch_from refuses it, so status checks none of its repos"
+            )
+            plan.append(Reported(distro, f"{named}: {said}: {exc}"))
+            continue
         except ManifestError as exc:
             plan.append(
                 Reported(

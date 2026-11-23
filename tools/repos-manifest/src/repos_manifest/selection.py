@@ -22,14 +22,17 @@ from .yamlload import ManifestError
 
 @dataclass
 class Selected:
-    """One repo as a machine gets it."""
+    """One repo as a machine gets it. `url` is the url it is fetched from: the manifest's, or,
+    with `fetch_from` in the system's `config.yaml`, the one built from its prefix, and then
+    `published` holds the manifest's (``fetch_from.apply``)."""
 
     key: str
     type: str
     url: str
     version: Optional[str]
     optional: bool
-    source: str = ""  # the manifest that gave the url in effect (`Repo.source`)
+    source: str = ""  # the manifest that gave the published url (`Repo.source`)
+    published: Optional[str] = None  # the manifest's url, when `fetch_from` built `url`
 
 
 # Why a repo is left out (`LeftOut.reason`).
@@ -68,6 +71,7 @@ class Resolved:
     bases: List[str] = field(default_factory=list)  # the manifests it builds on, reading order
     groups_on: List[str] = field(default_factory=list)  # the role's groups and the extra ones
     left_out: List[LeftOut] = field(default_factory=list)  # in manifest order
+    fetch_from: Optional[str] = None  # the prefix the urls were built from, when one was
 
     @property
     def optional(self) -> List[str]:

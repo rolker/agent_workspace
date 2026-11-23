@@ -20,6 +20,7 @@ from . import output, selection
 from .build import run_build
 from .emit import LAYOUT_FLAT, LAYOUT_MANIFEST_DIR, LAYOUTS, emit_manifest
 from .extends import resolve_chain
+from .fetch_from import FetchFromError
 from .init import run_init
 from .merge import merge_chain
 from .masking import mask_urls
@@ -28,7 +29,7 @@ from .selectors import select_repos
 from .show import render, shown_path
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
 from .status import run_status
-from .sync import recorded_manifest, run_sync
+from .sync import fetch_from_named, recorded_manifest, resolve_for, run_sync
 from .system import (
     SYSTEM_DIR,
     Refusal,
@@ -211,7 +212,9 @@ def _show_in_system(args: argparse.Namespace, cwd: Path) -> selection.Resolved:
     # where show is run.
     try:
         manifest = read_manifest(config.manifest, system)
-        resolved = selection.resolve(manifest, config.role, distro, config.groups)
+        resolved = resolve_for(manifest, config, distro, fetch_from_named(system))
+    except FetchFromError:
+        raise
     except ManifestError as exc:
         raise ManifestError(f"{exc} {recorded_manifest(system)}") from None
     canonical = os.path.realpath(system / config.manifest)
@@ -245,6 +248,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         args.distro or [],
         args.distro_dirs,
         args.yes,
+        args.fetch_from,
     )
 
 
@@ -356,6 +360,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     init_p.add_argument(
         "--distro-dirs", action="store_true", help="Give each distro a directory of its own"
+    )
+    init_p.add_argument(
+        "--fetch-from",
+        action=_Once,
+        metavar="PREFIX",
+        help=(
+            "Fetch every repo from another place: the url PREFIX, the repo's name and .git"
+            " (such as git@git.example.org:field/); a repo missing there is an error"
+        ),
     )
     init_p.add_argument("--yes", action="store_true", help="Set up without asking")
     init_p.set_defaults(func=cmd_init, parser=init_p)

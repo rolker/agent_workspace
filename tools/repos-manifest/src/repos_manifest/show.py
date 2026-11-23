@@ -54,12 +54,15 @@ def _name(value: Optional[str]) -> str:
 
 
 def render_head(resolved: Resolved, distro: bool = False) -> str:
-    """The `manifest` line, a `base` line for each manifest it builds on (reading order), and
-    the role line with the groups on; with `distro`, the role line also names the distro."""
-    lines = [f"manifest  {shown_path(resolved.source)}"]
-    lines += [f"base      {shown_path(parent)}" for parent in resolved.bases]
+    """The `manifest` line, a `base` line for each manifest it builds on (reading order), a
+    `fetch from` line when the urls are built from a `fetch_from` prefix, and the role line with
+    the groups on; with `distro`, the role line also names the distro."""
+    lines = [f"manifest    {shown_path(resolved.source)}"]
+    lines += [f"base        {shown_path(parent)}" for parent in resolved.bases]
+    if resolved.fetch_from is not None:
+        lines.append(f"fetch from  {shown_path(resolved.fetch_from)}")
     groups = ", ".join(resolved.groups_on) if resolved.groups_on else NONE
-    role = f"role      {_name(resolved.role)}    groups on: {groups}"
+    role = f"role        {_name(resolved.role)}    groups on: {groups}"
     if distro:
         role += f"    distro: {_name(resolved.distro)}"
     lines.append(role)
@@ -84,8 +87,9 @@ def _version(version: Optional[str]) -> str:
 
 
 def render_body(resolved: Resolved) -> str:
-    """Each layer with its repos (key, version, url, `optional`, and the manifest that gave the
-    url printed when that is not the first in the chain), then the repos left out and why."""
+    """Each layer with its repos (key, version, the url it is fetched from, `optional`, and the
+    manifest that gave the repo's published url when that is not the first in the chain), then
+    the repos left out and why."""
     repos = [repo for layer in resolved.layers for repo in layer.repos]
     keys = [repo.key for repo in repos] + [left.key for left in resolved.left_out]
     key_width = max((len(key) for key in keys), default=0)

@@ -862,7 +862,7 @@ def test_a_url_changed_and_the_new_one_cannot_be_fetched(system, capsys):
     before = snapshot_repo(clone)
     out = _sync(sys_dir, capsys, 1)
     assert snapshot_repo(clone) == before
-    assert "the manifest's url changed to" in out and f"(origin stays {remote})" in out
+    assert "the url to fetch from changed to" in out and f"(origin stays {remote})" in out
 
 
 def test_an_origin_set_by_a_person_is_left_as_set_and_followed(system, capsys):

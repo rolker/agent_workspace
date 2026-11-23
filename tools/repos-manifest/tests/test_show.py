@@ -87,9 +87,9 @@ def test_show_prints_the_sketch_of_the_design(chain):
     # A repo the leaf only re-versions came from the base and is not marked; one the leaf brings
     # is marked with the leaf's name, under its url.
     expected = f"""\
-manifest  project11.manifest.yaml
-base      {chain}
-role      robot    groups on: echoboat-hardware    distro: jazzy
+manifest    project11.manifest.yaml
+base        {chain}
+role        robot    groups on: echoboat-hardware    distro: jazzy
 
 underlay
   geographic_info       ros2-fixed   https://github.com/ros-geographic-info/geographic_info.git
@@ -134,13 +134,13 @@ def test_a_repo_with_no_version_prints_its_default_branch_and_a_distro_brings_it
         "  ben_bringup           group ben-hardware is off\n"
         "  echoboat_bringup      group echoboat-hardware is off"
     )
-    assert "role      developer    groups on: simulation    distro: rolling\n" in out
+    assert "role        developer    groups on: simulation    distro: rolling\n" in out
 
 
 def test_the_head_without_the_distro_and_the_body_make_the_whole(chain):
     resolved = _resolved()
     head = render_head(resolved)
-    assert head.splitlines()[-1] == "role      robot    groups on: echoboat-hardware"
+    assert head.splitlines()[-1] == "role        robot    groups on: echoboat-hardware"
     assert render(resolved) == (render_head(resolved, distro=True) + "\n\n" + render_body(resolved))
 
 
@@ -163,8 +163,8 @@ def test_a_manifest_with_no_roles_or_distros_prints_none_and_the_unnamed_layer()
         """
     )
     assert render(resolve(m)) == (
-        "manifest  plain.yaml\n"
-        "role      (none)    groups on: (none)    distro: (none)\n"
+        "manifest    plain.yaml\n"
+        "role        (none)    groups on: (none)    distro: (none)\n"
         "\n"
         "(unnamed layer)\n"
         "  a      main   https://example.org/a.git\n"
@@ -209,7 +209,7 @@ def test_a_url_with_a_password_prints_masked():
     "path,shown",
     [
         ("plain/m.yaml", "plain/m.yaml"),
-        ("a\nmanifest  b.yaml", "a\\x0amanifest  b.yaml"),
+        ("a\nmanifest    b.yaml", "a\\x0amanifest    b.yaml"),
         ("tab\there", "tab\\x09here"),
         ("m\u202eyaml.txt", "m\\u202eyaml.txt"),
         # Above U+FFFF the escape has eight digits: U+E0001 then "1" is not U+E000 then "11".
@@ -229,7 +229,7 @@ def test_a_path_is_printed_on_one_line_with_control_characters_escaped(path, sho
 def test_show_escapes_a_control_character_in_a_bases_path(tmp_path, capsys, monkeypatch):
     # The base sits in a directory whose name has a newline and a direction override; the
     # manifest names it by a plain relative link. The base and from lines print it on one line.
-    odd = tmp_path / "pub\nmanifest  fake\u202e"
+    odd = tmp_path / "pub\nmanifest    fake\u202e"
     odd.mkdir()
     (odd / "system.manifest.yaml").write_text(SYSTEM)
     (tmp_path / "pub").symlink_to(odd)
@@ -240,8 +240,8 @@ def test_show_escapes_a_control_character_in_a_bases_path(tmp_path, capsys, monk
     monkeypatch.chdir(tmp_path)
     assert main(["show", "leaf.yaml", "--role", "developer", "--distro", "jazzy"]) == 0
     out = capsys.readouterr().out
-    shown = f"{os.path.realpath(tmp_path)}/pub\\x0amanifest  fake\\u202e/system.manifest.yaml"
-    assert out.splitlines()[1] == f"base      {shown}"
-    assert "\u202e" not in out and "\nmanifest  fake" not in out
-    assert out.splitlines()[0] == "manifest  leaf.yaml"
+    shown = f"{os.path.realpath(tmp_path)}/pub\\x0amanifest    fake\\u202e/system.manifest.yaml"
+    assert out.splitlines()[1] == f"base        {shown}"
+    assert "\u202e" not in out and "\nmanifest    fake" not in out
+    assert out.splitlines()[0] == "manifest    leaf.yaml"
     assert "from leaf.yaml" in out

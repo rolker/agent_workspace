@@ -203,6 +203,48 @@ def commit_on_a_deleted_branch(case):
     git("branch", "-q", "-D", "gone", cwd=case.remote)
 
 
+def fetch_from_set(case):
+    """`fetch_from` added to `config.yaml` by hand; the place, `field/a.git`, is a copy of the
+    remote under another path prefix. Origin is still the manifest's url, the one recorded."""
+    field = case.tmp / "field"
+    field.mkdir()
+    git("clone", "-q", "--bare", str(case.remote), str(field / "a.git"))
+    config = case.system / ".repos-manifest/config.yaml"
+    data = yaml.safe_load(config.read_text())
+    data["fetch_from"] = {"prefix": f"{field}/"}
+    config.write_text(yaml.safe_dump(data, sort_keys=False))
+    return field / "a.git"
+
+
+def fetch_from_commits_only_here(case):
+    commit_file(case.clone, "mine", "mine\n", "mine")
+    fetch_from_set(case)
+
+
+def fetch_from_commits_already_at_the_place(case):
+    """Commits made here and pushed to the place, not to the published repo."""
+    commit_file(case.clone, "mine", "mine\n", "mine")
+    place = fetch_from_set(case)
+    git("push", "-q", str(place), "refs/heads/main:refs/heads/main", cwd=case.clone)
+
+
+def fetch_from_origin_already_the_place(case):
+    place = fetch_from_set(case)
+    git("remote", "set-url", "origin", str(place), cwd=case.clone)
+
+
+def fetch_from_origin_set_by_hand(case):
+    fetch_from_set(case)
+    elsewhere = case.tmp / "elsewhere" / "a.git"
+    git("clone", "-q", "--bare", str(case.remote), str(elsewhere))
+    git("remote", "set-url", "origin", str(elsewhere), cwd=case.clone)
+
+
+def fetch_from_probe_taken(case):
+    fetch_from_set(case)
+    git("remote", "add", "repos-manifest-probe", str(case.remote), cwd=case.clone)
+
+
 # --- different ------------------------------------------------------------------------------
 
 
@@ -407,6 +449,37 @@ CASES = {
         filtered_touched_behind,
         "expected",
         "sync tries to fast-forward it",
+    ),
+    "fetch_from set, origin is the manifest's url": (
+        fetch_from_set,
+        "expected",
+        "fetch_from now names",
+    ),
+    "fetch_from set, commits only here": (
+        fetch_from_commits_only_here,
+        "expected",
+        "sync tries to repoint origin to it",
+    ),
+    "fetch_from set, commits already at the place": (
+        fetch_from_commits_already_at_the_place,
+        "expected",
+        "status does not ask the place fetch_from names whether it has the commits: if it has"
+        " them, sync repoints origin to it",
+    ),
+    "fetch_from set, origin already the place": (
+        fetch_from_origin_already_the_place,
+        "expected",
+        "on main",
+    ),
+    "fetch_from set, origin set by hand elsewhere": (
+        fetch_from_origin_set_by_hand,
+        "expected",
+        "set by hand; fetch_from names",
+    ),
+    "fetch_from set, probe remote taken": (
+        fetch_from_probe_taken,
+        "expected",
+        "a remote named repos-manifest-probe is set here",
     ),
     "a branch origin deleted": (deleted_branch, "expected", "on dev"),
     "a commit on a branch origin deleted": (commit_on_a_deleted_branch, "expected", "pinned at"),
