@@ -438,6 +438,7 @@ STATUS_MAY_CALL = {
         "standing",
         "probe_taken",
         "same_url",
+        "was_recorded",
         "quoted",
         "counted",
     },

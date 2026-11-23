@@ -183,14 +183,28 @@ def counted(number: int, word: str) -> str:
     return f"{number} {word}" if number == 1 else f"{number} {word}s"
 
 
-def set_url_command(place: Path, url: str, key: str) -> str:
+def set_url_command(place: Path, url: str, key: str, built: bool = False) -> str:
     """The command that sets `origin` to `url`. When the url holds credentials, they are not
-    printed: the command says where the whole url is."""
+    printed: the command says where the whole url is (the manifest's url, or, when `built`, the
+    one `fetch_from`'s prefix builds)."""
     shown = mask_url(url)
     command = f"git -C {quoted(place)} remote set-url origin {quoted(shown)}"
     if shown != url:
-        command += f", with the url of {key} as the manifest gives it in place of the one shown"
+        given = "as fetch_from builds it" if built else "as the manifest gives it"
+        command += f", with the url of {key} {given} in place of the one shown"
     return command
+
+
+def was_recorded(origin: str, repo: Selected, record: Optional[RepoRecord]) -> bool:
+    """Whether `origin` is the url `sync` recorded for the repo, so a new url it wants may
+    move it (the url rule). A record made before records held urls counts as holding the
+    published url when `fetch_from` is set (`repo.published`): a clone whose origin is still
+    the manifest's url is then repointed to the place, not read as one a person set."""
+    if record is None:
+        return False
+    if record.url is not None:
+        return same_url(origin, record.url)
+    return repo.published is not None and same_url(origin, repo.published)
 
 
 def same_url(one: str, other: str) -> bool:
@@ -908,8 +922,8 @@ class _Turn:
         return RepoRecord(self.layer, self.repo.version, commit, self.repo.url, moving)
 
     def left(self, detail: str) -> Done:
-        """Left as it is. The record is unchanged, except that the manifest's url is recorded
-        when it is not yet."""
+        """Left as it is. The record is unchanged, except that the url `sync` wants (the
+        manifest's, or the one `fetch_from` builds) is recorded when it is not yet."""
         record = self.record
         if record is not None and record.url != self.repo.url:
             self.put(replace(record, url=self.repo.url))
@@ -1034,7 +1048,7 @@ def update_repo(
     if blocked is not None:
         return Done(LEFT, blocked.text)
     assert origin is not None
-    for known in (origin, repo.url, record.url if record is not None else None):
+    for known in (origin, repo.url, repo.published, record.url if record is not None else None):
         remember_url(known)
     taken = probe_taken(git)
     if not taken:
@@ -1044,9 +1058,11 @@ def update_repo(
     by_hand = None
     if same_url(origin, url):
         pass
-    elif record is not None and record.url is not None and same_url(origin, record.url):
-        # The manifest changed the url since the repo was recorded: repoint, unless a local
-        # branch, or the HEAD of a work tree, has commits the new url does not have.
+    elif was_recorded(origin, repo, record):
+        # The url sync wants changed since the repo was recorded (the manifest's, or the place
+        # `fetch_from` names): repoint, unless a local branch, or the HEAD of a work tree, has
+        # commits the new url does not have.
+        assert record is not None
         if taken:
             return Done(
                 LEFT,
@@ -1054,7 +1070,7 @@ def update_repo(
                 f" sync keeps for checking a new url; origin stays {mask_url(origin)} (to let"
                 f" sync check it: git -C {quoted(place)} remote rename {PROBE} <another name>)",
             )
-        done = _repoint(git, origin, url)
+        done = _repoint(git, origin, repo)
         if done is not None:
             return done
         # Recorded at once, so a fetch or version lookup that fails next does not leave the
@@ -1062,6 +1078,13 @@ def update_repo(
         record = replace(record, url=url)
         write(record)
         notes.append(f"origin repointed from {mask_url(origin)} to {mask_url(url)}")
+    elif repo.published is not None:
+        by_hand = (
+            f"origin is {mask_url(origin)}, fetch_from names {mask_url(url)} (the manifest says"
+            f" {mask_url(repo.published)}); left as set (to use it:"
+            f" {set_url_command(place, url, repo.key, built=True)})"
+        )
+        notes.append(by_hand)
     else:
         by_hand = (
             f"origin is {mask_url(origin)}, the manifest says {mask_url(url)}; left as set"
@@ -1601,9 +1624,11 @@ def _arrived(git: Git, target: str, want: Optional[str]) -> bool:
     return tracked_changes(git) == 0
 
 
-def _repoint(git: Git, origin: str, url: str) -> Optional[Done]:
-    """Point `origin` at `url` when every local branch, and `HEAD`, is on it; else leave it.
-    Returns None when repointed. The probe's refs are removed however it ends."""
+def _repoint(git: Git, origin: str, repo: Selected) -> Optional[Done]:
+    """Point `origin` at the url `sync` wants for `repo` (`repo.url`) when every local branch,
+    and `HEAD`, is on it; else leave it. Returns None when repointed. The probe's refs are
+    removed however it ends."""
+    url = repo.url
     try:
         status, printed, error = git.run(
             "-c",
@@ -1621,7 +1646,7 @@ def _repoint(git: Git, origin: str, url: str) -> Optional[Done]:
         if status != 0:
             return Done(
                 FAILED,
-                f"the manifest's url changed to {mask_url(url)}, and fetching from it failed"
+                f"the url to fetch from changed to {mask_url(url)}, and fetching from it failed"
                 f" (origin stays {mask_url(origin)}): `git fetch` exited {status}:"
                 f"\n{(printed + error).rstrip()}",
                 fetch=True,
@@ -1655,10 +1680,12 @@ def _repoint(git: Git, origin: str, url: str) -> Optional[Done]:
                     if count(git, tree.head, "--not", f"--remotes={PROBE}"):
                         names.append(f"the detached HEAD of {tree.path}")
             which = f" ({', '.join(names)})" if names else " (on HEAD)"
+            steps = _repoint_steps(git, repo, names)
             return Done(
                 LEFT,
                 f"url changed to {mask_url(url)} but {counted(local, 'local commit')}{which}"
-                f" {'is' if local == 1 else 'are'} not on it; origin stays {mask_url(origin)}",
+                f" {'is' if local == 1 else 'are'} not on it; origin stays {mask_url(origin)}"
+                f"{steps}",
             )
         status, _, error = git.run("remote", "set-url", "origin", url, change=True, shown=True)
         if status != 0:
@@ -1666,6 +1693,25 @@ def _repoint(git: Git, origin: str, url: str) -> Optional[Done]:
         return None
     finally:
         delete_probe_refs(git)
+
+
+def _repoint_steps(git: Git, repo: Selected, names: Sequence[str]) -> str:
+    """With `fetch_from` set, the two ways on for a repo whose commits are not at the place:
+    push them there first, or point origin at it by hand. Empty without `fetch_from`, where the
+    manifest's new url is the published repo, which a person does not push to for `sync`."""
+    if repo.published is None:
+        return ""
+    place = quoted(git.place)
+    shown = quoted(mask_url(repo.url))
+    branches = [name[len("branch ") :] for name in names if name.startswith("branch ")]
+    pushes = [f"git -C {place} push {shown} {quoted(b)}" for b in branches]
+    if len(branches) < len(names) or not names:  # a detached HEAD: its commit, to a branch
+        pushes.append(f"git -C {place} push {shown} <commit>:refs/heads/<a branch>")
+    push = " && ".join(pushes)
+    return (
+        f". To fetch from {shown}: push them there first ({push}), and sync again; or point"
+        f" origin at it by hand ({set_url_command(git.place, repo.url, repo.key, built=True)})"
+    )
 
 
 def _ref_conflicts(git: Git) -> List[Tuple[str, str]]:

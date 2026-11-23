@@ -179,6 +179,7 @@ def distro_status(system: Path, config: Config, planned, env: Dict[str, str]) ->
     for layer in resolved.layers:
         for repo in layer.repos:
             remember_url(repo.url)
+            remember_url(repo.published)
     for record in state.repos.values():
         remember_url(record.url)
     for layer in resolved.layers:
@@ -191,7 +192,9 @@ def distro_status(system: Path, config: Config, planned, env: Dict[str, str]) ->
                 layer=layer.name,
                 optional=repo.optional,
                 version=repo.version,
-                url=mask_url(repo.url),
+                # The manifest's url; with `fetch_from`, the url fetched from is only in the
+                # text, and `fetched_from` is origin's.
+                url=mask_url(repo.published or repo.url),
             )
             _place(system, config, distro, repo, layer.name, parts, state.repos, env, found)
             found.detail = mask_urls(found.detail)
@@ -358,37 +361,36 @@ def _version(git, place, repo, record, head, origin, found):
 
 
 def _repoints(origin: str, repo: Selected, record: Optional[RepoRecord]) -> bool:
-    """Whether `origin` is the url recorded and the manifest now names another: the case where
-    `sync` tries to repoint it."""
-    return (
-        not update.same_url(origin, repo.url)
-        and record is not None
-        and record.url is not None
-        and update.same_url(origin, record.url)
-    )
+    """Whether `origin` is the url recorded (`update.was_recorded`) and `sync` now wants
+    another: the case where `sync` tries to repoint it."""
+    return not update.same_url(origin, repo.url) and update.was_recorded(origin, repo, record)
 
 
 def _remote_note(origin: str, repo: Selected, record: Optional[RepoRecord], taken: bool) -> str:
-    """When `origin` is not the manifest's url: what `sync` does about it. `taken` when a remote
-    of the probe's name is set here (`update.probe_taken`, read only for a url to repoint)."""
+    """When `origin` is not the url `sync` wants: what `sync` does about it. `taken` when a
+    remote of the probe's name is set here (`update.probe_taken`, read only for a url to
+    repoint). With `fetch_from`, the url wanted is the one built from its prefix, and the text
+    names the manifest's too."""
     if update.same_url(origin, repo.url):
         return ""
     shown, wanted = mask_url(origin), mask_url(repo.url)
+    if repo.published is not None:
+        says = f"fetch_from names {wanted} (the manifest says {mask_url(repo.published)})"
+        now_says = f"fetch_from now names {wanted}"
+    else:
+        says, now_says = f"the manifest says {wanted}", f"the manifest now says {wanted}"
     if not _repoints(origin, repo, record):
-        return (
-            f"; fetched from {shown}, set by hand; the manifest says {wanted}, and sync leaves"
-            " origin as it is"
-        )
+        return f"; fetched from {shown}, set by hand; {says}, and sync leaves origin as it is"
     if taken:
         return (
-            f"; fetched from {shown}, the url recorded; the manifest now says {wanted}, and a"
-            f" remote named {update.PROBE} is set here, a name sync keeps for checking a new"
-            " url, so sync leaves origin, and the repo, as they are"
+            f"; fetched from {shown}, the url recorded; {now_says}, and a remote named"
+            f" {update.PROBE} is set here, a name sync keeps for checking a new url, so sync"
+            " leaves origin, and the repo, as they are"
         )
     return (
-        f"; fetched from {shown}, the url recorded; the manifest now says {wanted}, and sync"
-        " tries to repoint origin to it: it fetches from the new url first, and leaves origin,"
-        " and the repo, as they are when that fails or a local commit is not on the new url"
+        f"; fetched from {shown}, the url recorded; {now_says}, and sync tries to repoint"
+        " origin to it: it fetches from the new url first, and leaves origin, and the repo, as"
+        " they are when that fails or a local commit is not on the new url"
     )
 
 
