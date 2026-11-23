@@ -1171,3 +1171,25 @@ Suites run (each on its own, from the worktree):
 The full pre-commit pass and the remaining suites are left to the host.
 
 Not verified: the real tool against a real ROS instance or real colcon (CI has no colcon; the test uses a stub colcon); how long status takes on a large instance (sitrep's validate check has a 60 s timeout). Gap: none against Part 4 and F1-F10 as handed off.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-23 11:38 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-503 at `4ce8c85d`
+**Base**: origin/main
+**Depth**: Deep (reason: 11 files, +1173/-134, the ros2_colcon adapter's build/test/validate and registration's gate)
+**Must-fix**: 2 | **Suggestions**: 4
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+Scope: part 4 only. Ran: test_ros2_colcon.sh (1457 passed, 0 failed, 0 skipped); the same with a PATH holding no vcs and no colcon (1432 passed, 2 counted skips) and with ROS2_COLCON_TESTS_REQUIRE_VCS=1 there (2 failed, as meant); test_register_project.sh 222/0; test_register_session_root.sh 72/0; test_adapter.sh 248/0; validate_adapter.sh (all 13 verbs); tools/repos-manifest tests/test_cli.py 25 passed; pre-commit shellcheck on the changed shell files: passed; sitrep_checks.sh reads the split roadmap line as true, and both strings occur only on the code lines (1141, 2078). A throwaway tool-route instance of 40 repos (local file:// remotes, real `repos-manifest init`, real colcon, /opt/ros/rolling): validate 0.6 s; adapter build (real tool build, real colcon) exit 0, rolling/setup.bash written; adapter test tested only each layer's own repos; env names both layers. Error paths run: python3 beside the tool missing or dangling, tool missing, tool killed by a signal (143), non-JSON, format 2, manifest unreadable (problem), a repo dropped from the manifest (not_in_manifest warning plus the out-of-date warning, exit 0): each named and exit 1 (or 0 for the last). A config.yaml with no `distros` (a root put together by hand before this part) now fails validate and so registration with the tool's own "`layout` is distro-dirs and there is no `distros`; repair the file" and "status gave no document"; a root made by `repos-manifest init` has `distros` and passes. Cross-model: gemini and codex completed; codex's clean-filter finding is dropped (filters are the user's own git config, as `git status` runs them) and its "validate does not read .repos as build does" is dropped (build's own error names sync).
+
+### Findings
+- [ ] (must-fix) `comm -23`/`comm -13` run in the caller's locale on `LC_ALL=C`-sorted lists: with GNU coreutils (CI's Ubuntu) under en_US.UTF-8, `_unnamed/...` vs `core/...` gives "file 1 is not in sorted order" on stderr and a wrong difference (status {core/z} vs resolve {_unnamed/b, core/z} reports core/z on both sides; reproduced with gnucomm); prefix both with `LC_ALL=C` and add a stub case with `_unnamed` and a named layer under a UTF-8 locale (this machine's `comm` is uutils, which hides it) — `.agent/project_types/ros2_colcon/adapter.sh:1225`
+- [ ] (must-fix) `adapter test` on the tool route treats a missing `<layer>.repos` as "none of the repos ... is on disk": with core.repos moved away on the 40-repo instance, it printed "Skipping layer core" and "All layer tests passed.", exit 0 (build refuses the same state); fail naming the file and the tool's sync, and test it — `.agent/project_types/ros2_colcon/adapter.sh:2145`
+- [ ] (suggestion) the status reader crashes (UnicodeEncodeError, traceback, every repo's line lost) on a lone surrogate the tool writes for non-UTF-8 git output; reconfigure stdout with errors="backslashreplace" or clean surrogates in text(), and the failure message's "(exit $rc)" names status's exit, not the reader's — `.agent/project_types/ros2_colcon/adapter.sh:1059`
+- [ ] (suggestion) the package-selection NOTE fires for `--packages-skip*`/`--packages-ignore*` (which the tool does not count as selection) and on any failure, not only the tool's selection refusal — `.agent/project_types/ros2_colcon/adapter.sh:2081`
+- [ ] (suggestion) the pass line's counts do not add up: a not_in_manifest path is counted in "with a warning" against a total of manifest repos ("39 repo(s), 39 as expected, 1 with a warning above"), and the out-of-date warning is not counted — `.agent/project_types/ros2_colcon/adapter.sh:1198`
+- [ ] (suggestion) test_tool_real_status_and_build's clean validate does not assert the absence of ⚠️ lines, so a false out-of-date warning from the real tool would pass — `.agent/scripts/tests/test_ros2_colcon.sh:5428`
