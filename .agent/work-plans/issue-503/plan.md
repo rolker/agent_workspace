@@ -417,6 +417,213 @@ in this PR.
 - The `AGENTS.md` sentence (Files to Change): yes or no.
 - The port's working pattern (Acceptance): confirm one issue per repository, bottom-up.
 
+## Part 4 (revised 2026-11-23): the adapter calls the tool's `status` and `build`
+
+Parts 1A and 1B are merged (pull requests 513 and 514). This part is the next pull request;
+its body says `Part of #503`, because parts 2 and 3 remain. Everything below is the tool route
+only: the `source` manifest route and the bootstrap route are not touched (their tests, in
+`test_ros2_colcon.sh`, must pass unchanged), and the adapter's own fetch code is not removed
+here (it serves those two routes; the Direction line for its removal stays false).
+
+What is there now (read on this branch): `_rc_tool_sync` (adapter.sh:1004) already runs
+`repos-manifest sync [--distro <d>]` in the root for both `setup` and `sync`, passing output and
+exit status through, so those two verbs need no new code. `_rc_tool_validate` (:1035) compares
+`<layer dir>/src/<key>` directories with `resolved/<d>/<layer>.repos` and its success line says
+"the adapter does not call repos-manifest status yet". `adapter_build` (:1851) and
+`adapter_test` (:1883) run the colcon loop over `layers.txt` with `--base-paths src` on the tool
+route too. The tool side, verified in `tools/repos-manifest/src/repos_manifest/status.py`,
+`build.py`, `cli.py` and its `docs/design.md` ("build", "status"):
+
+- `status [--distro d]... [--json]` reads only, makes no network call, resolves the manifest in
+  memory from where `config.yaml` points (so it also reads the manifest itself, which the old
+  validate did not), exits 1 when a repo that is not optional is `missing`, `not-a-directory`,
+  `blocked-place`, `in-other-layer` or `unusable`, or a distro `problem` is set, or the system
+  directory cannot be found or read (then no document); `format` is 1.
+- `build [--distro d] [--keep-going] [<layer> ...] [-- <colcon args>]` runs the layers in order
+  in `<root>/<d>` (unnamed) and `<root>/<d>/<layer>`, gives colcon the repos on disk as
+  `--base-paths`, refuses `--base-paths`, `--paths`, `--install-base`, `--build-base` after `--`,
+  keeps a record `.repos-manifest/built-<d>.yaml`, writes `<root>/<d>/setup.bash`, builds in the
+  environment it is run in, and exits 1 on any failure.
+
+### Steps
+
+1. **A status helper** (`adapter.sh`, tool-route section). `_rc_tool_status <distro>`: runs
+   `(cd <root> && _rc_nofd <bin> status --distro <d> --json)` with stdout to a temporary file
+   under the call's own temporary directory and stderr passed through, keeps the exit status, and
+   parses the document with the tool's own interpreter (`$(dirname <bin>)/python`, the venv the
+   tool is installed in; refused with the `make install-repos-manifest` hint when it is not
+   executable). The parser is a short inline Python program (standard library only, `-I`) that
+   prints one tab-separated line per item: a header (`ok`, `problem`), then per repo
+   `layer key state optional path detail`, then each `not_in_manifest` path. Tabs and newlines in
+   detail are replaced by a space in the parser. No `jq` is needed. A document with `format`
+   other than 1, or that is not one JSON object, is a failure that says so.
+2. **validate on the tool route** (`_rc_tool_validate`), per covered distro. It keeps: the
+   distro rule (`_rc_tool_distro_select --every`), the second-record failures (registry
+   `role=`/`distro=`, settings `source`, `source_ref`, `source_path`, `bootstrap_url`) and the
+   leftover-`configs/` note, because those are the workspace's own records, not the tool's;
+   `_rc_check_manifest` (layers.txt non-empty, layer-name charset, unreadable key lines), because
+   `env`, `repos`, `repo_pin` and the worktree verbs read the resolved files and must be able to
+   read them; and, per layer, the `.repos` file being there. It drops the per-repo
+   `[ -d <layer dir>/src/<key> ]` loop: `status` answers that, and more. Then it calls
+   `_rc_tool_status` and maps (next section). One more check of its own: the set of
+   `(layer, key)` pairs `status` names against the keys in `resolved/<d>/*.repos`; a difference
+   means the last resolve is out of date (a manifest change `sync` has not resolved), reported
+   as a warning with the tool's `sync` step, not a failure (decision 4).
+3. **build on the tool route** (`adapter_build`): `_rc_tool_distro_select` (the distro rule; a
+   refusal as today), `_rc_underlay`, `unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH
+   CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX`, `_rc_source_setup <underlay>` (the distro's
+   environment sourced first, in the adapter's shell, as the issue says and as
+   `docs/manifest/design.md` "What stays in the workspace" says), then
+   `cd <root> && <bin> build --distro <d> -- --symlink-install --cmake-args
+   -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@"`, output and exit status passed through, nothing
+   printed by the adapter after it (the tool's report is the report). The adapter's own colcon
+   flags are the same as today and move after `--`; the caller's extra arguments follow them as
+   today, so they reach every layer. `_rc_check_manifest` is not run for build (the tool reads
+   the resolved files itself), so a nested key (`grp/repo`) no longer stops a build; it still
+   stops `validate`, `repos` and worktrees until a later part reads such keys. The adapter's
+   per-layer sourcing and "Skipping layer" loop is not used on this route. Building one layer
+   is the tool's own `cd <root> && <bin> build <layer>`; the adapter takes no layer argument
+   (decision 2).
+4. **test on the tool route**: stays the adapter's colcon loop (the tool has no `test`). One
+   change so it agrees with `build`: the layer's `--base-paths` is the list of
+   `src/<key>` directories of the keys in `resolved/<d>/<layer>.repos` that are on disk (what
+   the tool gives colcon), not all of `src`, so a clone still on disk that the role or groups
+   no longer keep is not tested. `_rc_colcon` takes the paths from `_rc_repos_entries`
+   (decision 3). `env` is unchanged: it still sources each built layer's `install/local_setup.bash`,
+   which the tool's colcon writes in the same directories.
+5. **sync and setup**: no new code. Fix what became wrong: the comment at adapter.sh:1924 ("it
+   pulls and fetches nothing") and the header's "moves no clone" paragraph (lines 85 to 98:
+   the adapter moves none, the tool updates clean clones, and `build` now writes
+   `<root>/<d>/setup.bash`); `docs/manifest/design.md` lines 168 to 177 and 207 to 213 ("rebuilt
+   by hand until the tool builds", "interim until the tool's own build", "`setup.bash` is its
+   stub"); the test for "never pulls" wording, if any, in `test_tool_setup_and_sync_run_the_tool`.
+   One stale line is the tool's, not the adapter's: `cli.py:367` says sync leaves repos that are
+   there "not touched yet", false since #535; corrected in this pull request, one line, with
+   the tool's own suite untouched (decision 5).
+6. **Documents** (same pull request): `docs/manifest/design.md`: "The tool route" verbs
+   (`build`, `validate`, `sync`) and the lines that say the adapter does not call `status` (185,
+   314, 340), the "What is built" and "not built yet" lines; the design-picture target table
+   stays. `docs/manifest/roadmap.md` (below). `tools/repos-manifest/docs/design.md` line 1702
+   ("The workspace's `validate` does not run `status` yet") now true: reworded. The adapter
+   header comment. Knowledge files: `.agent/knowledge/build_and_test.md` names the adapter's
+   verbs for a `ros2_colcon` project (line 16): checked, edited only if it describes `build`
+   as a colcon loop. `script_reference.md` lists scripts, not adapter verbs: no change expected.
+
+### Status to validate
+
+Per distro, from the JSON and the exit status (the exit status decides; the document explains):
+
+| Status says | validate says |
+|---|---|
+| exit 0, every repo `expected` | one pass line per distro: `✅ ros2_colcon distro <d>: <N> repos at their place, read against the manifest by repos-manifest status (E expected, S skipped optional)` |
+| `different`, `left-alone` (a link, a rebase, an index.lock, a sparse checkout, several origin urls) | a warning on stderr per repo, `⚠️ distro <d>: <path> <state>: <detail>`; the exit status stays 0, as the tool's design says |
+| `skipped` (optional, not there) | counted in the pass line, not listed |
+| `not_in_manifest` entries | a warning per path: recorded by sync, still on disk, no longer in the manifest |
+| exit 1, a repo that is not optional `missing` | `❌ distro <d>: <path> missing: <detail> (run: <sync step>)`; counts one issue |
+| exit 1, `not-a-directory`, `blocked-place`, `in-other-layer`, `unusable` (not a git clone, no commit, no origin url, version not in the refs of the last fetch, `git status` fails) | `❌ distro <d>: <path> <state>: <detail>`, the tool's text unchanged |
+| the same states for an optional repo | the warning form; no failure |
+| a distro's `problem` (manifest unreadable or unresolvable) | `❌ distro <d> cannot be read or resolved: <problem>` |
+| exit 1 and no document (no system directory, a `--distro` not recorded) | the tool's stderr passed through, then `❌ repos-manifest status gave no document (exit 1)` |
+| exit 2 (bad option), exit 128+n, output that is not format 1 | `❌` naming the exit status or format, tool stderr passed through |
+| exit 0 but the document has a failing non-optional repo or `ok: false`, or exit 1 and the document has none | `❌ status's document and its exit status disagree`; a failure, so a change in the tool's contract is seen |
+
+Validate exits 1 when any distro fails (own checks included), naming each failing distro as now;
+0 otherwise. It no longer says it did not read the manifest: `status` reads it from where
+`config.yaml` points, so the success line says what was checked and that clones are read as last
+fetched, with no fetch.
+
+Issue 517 (heads/ and tags/ versions read as unknown; an emptied clone passes validate):
+item 2 is closed for the tool route only: an emptied directory, or one with its `.git` removed,
+is `unusable` ("is not a git repository of its own", verified in `update.blocked_early`), so
+validate fails, named, and a test pins it. The manifest and bootstrap routes' validate keeps the
+weakness. Item 1 is left: `_rc_pin_kind` (the adapter's own `repo_pin` lookup) is not touched
+by this part; the tool itself understands `heads/` and `tags/` (`update.py`), so the way to close
+it for the tool route is `repo_pin` asking the tool, a later part.
+
+### Tests (no network)
+
+Suites: `.agent/scripts/tests/test_ros2_colcon.sh` (the stub tool, and one real-tool test that
+runs in CI's "Validate Adapter Contract" job, where `vcs2l` is installed and
+`ROS2_COLCON_TESTS_REQUIRE_VCS=1`); `.agent/scripts/tests/test_adapter.sh` and
+`validate_adapter.sh` run unchanged as regression; the tool's own suite is not run for this
+part unless step 5's `cli.py` line is changed (then its help-text test, if one asserts the old
+words).
+- Stub tool (`make_tool_root`'s `repos-manifest` stub): add `status` (prints the file named by
+  `TOOL_STATUS_FILE`, exits `TOOL_EXIT`) and `build` (records cwd, arguments, the environment
+  variable `SOURCED_UNDERLAY` the underlay's stub `setup.bash` sets, and exits `TOOL_EXIT`);
+  the sandbox gets `.venv/bin/python` linking to the suite's `$MR_PY`. New and rewritten tests:
+  `test_tool_validate` (rewritten: canned documents for each row of the table above, including
+  the optional-repo warning forms, the disagreement case, the no-document case, `format: 2`,
+  one distro of two failing and named, the second-record failures and leftover note kept);
+  `test_tool_build_runs_the_tool` (rewrites the build half of
+  `test_tool_build_and_test_over_the_resolved_layers`: arguments `build --distro fakefox --
+  --symlink-install --cmake-args ...`, the underlay sourced before the call, exit status passed
+  through, the distro rule refusal from the root with two distros, no `_rc_check_manifest`
+  refusal for a nested key); the test half keeps its colcon-loop assertions and gains the
+  `--base-paths src/<key>` list with a repo dropped from the `.repos` file but left on disk.
+- Real tool (new `test_tool_real_status_and_build`, after `test_tool_real_init_and_sync`,
+  same vcs skip/require rule): `init` and `sync` from local `file://` remotes as that test
+  does, then `adapter validate` (exit 0, pass line), a clone emptied (`rm -rf` its contents,
+  keep the directory) fails validate naming the repo as `unusable` (issue 517 item 2), a clone
+  removed passes again after the adapter's `sync` clones it, a clone put on another branch warns
+  and exits 0; `adapter build` with a stub `colcon` first on `PATH` that writes
+  `install/setup.bash` and `install/local_setup.bash`, then `<root>/<d>/setup.bash` exists and
+  `adapter env` still names each layer. The hand-written `config.yaml` of `make_tool_root`
+  is not enough for the real `status` (`read_config` needs `distros` for a `distro-dirs`
+  layout), which is why this test starts from a real `init`.
+- Manifest and bootstrap routes: no new test; their existing tests are the check that nothing
+  moved (the suite's pass count for them is quoted in the pull request).
+
+### Direction lines (`docs/manifest/roadmap.md`)
+
+- "The adapter's `setup`, `sync`, `build` and `validate` call the tool, and its own manifest
+  fetch and generated directories are removed": this part makes the first half true for the tool
+  route, not the second. Split it into two lines: "The adapter's `setup`, `sync`, `build` and
+  `validate` call the tool's `sync`, `build` and `status` on the tool route (#503 parts 1 and 4)"
+  with the check `file-contains .agent/project_types/ros2_colcon/adapter.sh status --distro` ;
+  `file-contains .agent/project_types/ros2_colcon/adapter.sh build --distro`; and "The adapter's
+  own manifest fetch and generated directories are removed" with no check (no
+  `file-not-contains` kind exists; a check would have to be one added to `update_roadmap.sh`,
+  out of scope).
+- "A worktree of a package repo builds against an instance in the tool's layout": made true by
+  part 1B; its check is empty and stays so (needs a real instance).
+- "The tool has the commands the adapter calls": `add-distro` is still missing; no change.
+
+### Decisions made (open to the owner's veto)
+
+1. `status` is called once per covered distro with `--distro <d>`, and the exit status decides
+   pass or fail, with the JSON used to name what failed. Undo: one call for all distros.
+2. The adapter's `build` takes no layer argument and passes its extra arguments to colcon (after
+   `--`, as today); one layer is built with the tool by hand. Undo: a leading `--layer <name>`.
+3. The tool route's `test` limits colcon to the repos the resolved files list, as the tool's
+   `build` does. Undo: keep `--base-paths src` (a clone kept on disk after a group is
+   switched off is then tested).
+4. A resolve out of date against `status`'s repo set is a validate warning, not a failure.
+5. The one-line stale help text of `repos-manifest sync` is fixed in this pull request.
+6. The JSON is read with the tool's own Python, not `jq` or the system `python3`.
+7. validate keeps `_rc_check_manifest` and the `.repos`-file-present check, because the
+   adapter's other verbs read those files.
+
+### Owner questions
+
+None that change what the work is for. (If the owner wants validate to fail on `different`,
+that changes the tool's contract, `different` exits 0 by design, and is a design question for
+the tool's own design, not this part.)
+
+### Size
+
+One pull request. About +110/-60 in `adapter.sh` (helper and parser ~80, build ~25, validate
+rewrite net ~0, test paths ~20, comments), +1/-1 in `cli.py`, +330/-90 in `test_ros2_colcon.sh`,
++50/-20 in the documents. No split: the verbs share one helper and one stub.
+
+### Could not verify (at planning time)
+
+That the real `status` and `build` run against the suite's fixtures as the plan expects (no code
+was run; the order in which the tool finds `colcon`, "on `PATH` and beside the Python", decides
+whether the stub `colcon` is the one used); that `.venv/bin/python` exists in every machine's
+installed venv (it does for an editable install by `pip` into a venv, which `make
+install-repos-manifest` is by its description, not re-read here); the sizes.
+
 ## Later parts
 
 - **Part 2:** registration passes the manifest's location, role, first distro and groups to
@@ -427,8 +634,10 @@ in this PR.
   and `pr_base_for` run from the caller's cwd, `worktree_env` after `cd "$ROOT_DIR"`, so with
   two distros a session in `<root>/<d2>/` would get d2, then a refusal (finding 6): pass
   `--from` or the recorded distro. `add-distro`; registering a root with several distros.
-- **Part 4:** `build` → `repos-manifest build`, `validate` → `status`, `sync` relies on the
-  tool updating clones, each as it lands.
+- **Part 4:** planned in full below ("Part 4"), the next pull request: `build` →
+  `repos-manifest build`, `validate` → `repos-manifest status`, `sync` relies on the tool
+  updating clones. Written 2026-11-23, after the tool's `build` (#518), `sync` updating clones
+  (#535) and `status` (#546) merged.
 
 ## Dependencies, order, size
 

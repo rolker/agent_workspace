@@ -1046,3 +1046,401 @@ PR mode, round 3 triage, final before the owner's merge decision. Hosted reviews
 **Decision**: merge
 
 The owner chose "Merge (Recommended)" in a dialog for pull request 514 (part 1B: the adapter's route for a root the manifest tool set up, and its registration), which named the AGENTS.md sentence, the dated note under ADR-0021 and the rule that a folder of the user's own directly under the root is treated as a distro. The issue stays open: later parts are a session started inside a distro's directory, /run-issue from the root of a project with several distros, and the switch to the tool's build, status and show when they exist. Noted for a later part: the test block labelled "a set-aside directory gone once globbed" does not stage a real disappearance.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 11:00 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan changed since its last review and its later parts are four lines each, so proceed is not open to the host; run-issue step 13)
+**After**: plan
+**Decision**: revise
+
+Read: parts 1A and 1B merged (pull requests 513 and 514); the issue is open for the plan's "Later parts" 2, 3 and 4; plan.md is at a53288dc against the last Plan Review's 3f2dae10. The owner started this drive on 2026-11-23 ("work on those as orchestrator") after the host proposed "the adapter's validate reading status (the rest of #503)". The revision details part 4 next: the adapter's build calls repos-manifest build, validate reads repos-manifest status, and sync relies on the tool updating clones. All three tool commands are on main now (build: pull request 518; sync updating clones: 535; status: 546, merged 2026-11-23). Parts 2 and 3 stay as later parts.
+
+### Decisions made (owner may veto)
+- Part 4 is planned before parts 2 and 3: it depends on nothing in them, the tool commands it calls are all merged, and it closes the hole where validate passes a clone that is on the wrong version or emptied — undoing it: replan in the plan's original order; nothing is built yet.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-23 11:04 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-503/plan.md` at `a1be602a`
+
+Revision: part 4 detailed as the next pull request (Part of #503): validate reads repos-manifest status (--json and exit status), build calls repos-manifest build with the distro underlay sourced first, test limited to the resolved repos, sync and setup need only text fixes; one pull request; parts 2 and 3 kept as later parts.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-23 11:09 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #503 — ros2_colcon adapter: call the manifest tool's commands, and register a project from a manifest
+**Plan**: `.agent/work-plans/issue-503/plan.md` at `a1be602a`
+**Branch**: `feature/issue-503`
+
+Reviewed only "Part 4 (revised 2026-11-23)". Checked by running the installed tool (`/home/roland/agent_workspace/.venv/bin/repos-manifest`, from main) against a system directory of my own: `init --distro-dirs --distro rolling` of a manifest with three local `file://` repos (one in the unnamed layer, two in `core`, one of them optional), each a plain CMake package; real `colcon` and `/opt/ros/rolling`.
+
+What the runs showed:
+- `status --distro rolling --json`: all expected, exit 0. A repo on another branch: `different`, exit 0. A tracked file changed: `expected` with `changes: 1`, exit 0. A repo moved away: `missing`, exit 1. An emptied directory and a clone with `.git` removed: `unusable` ("is not a git repository of its own"), exit 1 (issue 517 item 2 is closed on this route, as the plan says). The optional repo missing: `skipped`, exit 0; emptied: `unusable` with `optional: true`, exit 0. `--distro nosuch`: no document, exit 1, stderr "this system does not record it". Run outside any system directory: no document, exit 1. From inside `rolling/core` with no `--distro`: that distro, exit 0. Manifest made unreadable, and the distro removed from it: a document with the distro's `problem` set, no `repos` key, `ok: false`, exit 1. A repo taken out of the manifest: `not_in_manifest` lists it, exit 0. A bad option: exit 2. Field names, states, `path` (relative to the system directory, e.g. `rolling/core/src/pkg_a`), `layer` (`_unnamed`) and `format: 1` match `status.py` and the plan's table.
+- A `config.yaml` like `make_tool_root`'s (no `distros`): `status` refuses ("`layout` is distro-dirs and there is no `distros`"), so the plan is right that the real-tool test must start from a real `init`.
+- `build --distro rolling -- --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON` with the underlay sourced: exit 0, both layers built, `rolling/setup.bash` written, `install/` in `rolling/` and `rolling/core/` (where `adapter env` looks). The tool appends `--base-paths src/<key>...` (repos on disk, the optional one included) after the forwarded arguments, and colcon parsed it correctly after `--cmake-args`. A stub `colcon` first on `PATH` is the one used (closes the plan's "could not verify"). Built with no ROS environment too (plain CMake). With this system's `setup.bash` already sourced: two warnings, exit 0. `-- --base-paths src`: refused, exit 1.
+- Package selection: `-- ... --packages-select pkg_a` before any build is refused, exit 1 ("a run with package selection builds only part of a layer ... Build them without package selection first: `repos-manifest build _unnamed core`"); after a build it is accepted ("rebuilt with selection"). `-- ... --packages-up-to pkg_a` on two layers is refused, exit 1 ("Name the one layer that has those packages: `repos-manifest build <layer> -- ...`").
+- `colcon list --base-paths` with no values: exit 0, no packages, no message.
+- The installed venv has `python`, `python3` (links to `/usr/bin/python3`); the Makefile creates it with `python3 -m venv` and itself calls `$(VENV_BIN)/python3`. CI's "Validate Adapter Contract" job has Python 3.10, `pip install -e tools/repos-manifest` and `vcs2l`, and no `colcon`: the planned real-tool test fits only because it puts a stub `colcon` first on `PATH`.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One PR, three verbs on one route, shared helper and stub; the two other routes branch off before any changed code (`adapter_build`/`adapter_test`/`_rc_colcon` already branch on `_rc_route`). |
+| Issue alignment | Good | Covers the issue's `build` (distro environment sourced first), `test` (colcon per layer over the resolved repos) and `validate` (from `status`). Serves (plan-wide line, applies to part 4): "Easy to use and Modular (`README.md#workspace-goals`); `docs/design.md#registry-and-adapters`, `docs/manifest/design.md#a-project-instance-is-a-system-directory`" — both anchors exist. |
+| File targeting | Needs work | `docs/design.md` is missing from step 6 (finding 1). |
+| Consequences | Needs work | Findings 1, 2, 4. |
+| Principle alignment | Good | Reuses the tool rather than rebuilding checks; tests named per row; the design doc's target table (`docs/manifest/design.md` line 301) is what the mapping implements. |
+| ADR compliance | Good | 0011 (no new verb), 0017 (design docs in the same PR, once finding 1 is added), 0022 (reads the tool's output and the resolved files only; the one-line `cli.py` help fix stays within the tool's own text). |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Consequences / Keep one current design]** (medium) `docs/design.md#registry-and-adapters` (lines 476-478) says the tool route's "`build` and `test` are the colcon loop over its layers, and `validate` checks the last resolve". Part 4 makes that false, and the issue's acceptance names `docs/design.md`. Add it to step 6.
+2. **[Consequences]** (low-medium) Package selection through `adapter build` changes behaviour: `--packages-select` before the first build, and `--packages-up-to` (and the other options colcon must resolve per layer) on more than one layer, are now refused by the tool. Its next step is a bare `repos-manifest build <layers>` that does not source the underlay. With decision 2 (no layer argument), `--packages-up-to` cannot go through the adapter at all. Today's loop failed on these too, less clearly. Name this in the plan or the header text and in a stub test of passthrough. One sentence is enough: build by hand with the underlay sourced.
+3. **[File targeting / tests]** (low) Step 4: when a layer has none of its resolved keys on disk, `--base-paths` gets an empty list. colcon then finds nothing and exits 0 without a word. The tool's `build` skips such a layer and says so. Say that `test` skips the layer with a line, and test it.
+4. **[Consequences]** (low) Dropping `_rc_check_manifest` from `build` lets a nested key (`grp/repo`) build. `env` and `test` still run `_rc_require_manifest` and refuse it, so after a good build `adapter env` refuses too. The plan names only validate, repos and worktrees. Add `env` and `test`, or say it is accepted.
+5. **[Approach]** (low) Step 1: the adapter has no "call's own temporary directory" (no `mktemp -d`/trap for a call outside the manifest-route resolve). Capture stdout in a variable (`doc="$(cd … && _rc_nofd … --json)" || rc=$?`), which needs no file and no cleanup, or say where the file is made and removed.
+6. **[Approach]** (low) Step 1/decision 6: use `$(dirname <bin>)/python3`, the name the Makefile itself uses, rather than `python`. Both exist in a `python3 -m venv` venv, but `python3` is the one the workspace already relies on. The sandbox link must then be `.venv/bin/python3`, in `make_tool_root` and in the real-tool test's own `.venv/bin/repos-manifest` wrapper (that test writes its own wrapper, not `make_tool_root`'s).
+7. **[Approach]** (low) Step 3: run the tool's `build` through `_rc_nofd` as `_rc_tool_sync` and the planned status helper do. That keeps the git-locating variables (set when the adapter runs from a git hook) and fd 8/9 out of the tool's git and colcon.
+8. **[Tests]** (low) The plan's stub `build` records "`SOURCED_UNDERLAY` the underlay's stub `setup.bash` sets", but `make_underlay` sets `SOURCED_LAYERS="base"`. Either use that or change `make_underlay`, and keep the existing tests that assert `SOURCED:base`.
+9. **[Approach]** (low) Local changes and unpushed commits (`changes`, `unpushed`) do not change the exit status, and the plan's table does not say whether validate mentions them. Say "not reported" (as today) or add one warning form, and pin whichever you choose in a test.
+10. **[Roadmap]** (low) The planned checks `file-contains … status --distro` / `build --distro` would also be met by a comment. Acceptable, but put the literal text only in the code line, or check a string only the code holds.
+
+On the questions asked:
+- Dropping the per-repo directory loop from validate loses nothing: `status` reports `missing`/`skipped` for the same places and more. Nothing else calls validate except `registration_verify.sh` (with `--from <main checkout>`, so `--every`) and the sitrep `script adapter --project <name> validate` check, which has a 60 s timeout. `status` runs git per repo, so on a large instance it is slower. I did not measure that on a real instance. `worktree_create.sh`, `merge_pr.sh`, `env`, `repos` and `repo_pin` do not call validate. Dropping `_rc_check_manifest` from build affects only finding 4. Behaviour change to expect: validate now fails when the manifest cannot be read or a repo was added to the manifest and not synced. That is the target in `docs/manifest/design.md` line 301.
+- The `source` manifest route and the bootstrap route are untouched by the steps as written. Every changed function already branches on `_rc_route` first.
+- None of the seven decisions needs to go to the owner. Each is a mechanism choice inside the design `docs/manifest/design.md` already states (line 301's target for validate, the tool's `build` taking the colcon arguments). Decision 4 (an out-of-date resolve is a warning) and decision 2 (no layer argument, consequence in finding 2) are the ones worth naming in the PR for his veto. The roadmap line split is wording, not direction.
+
+### Summary
+
+The plan's reading of the tool is right: every state, field, exit status and the `build` argument form it relies on behaved as described when run. It is ready for implementation once finding 1 (`docs/design.md`) is added to the documents step. The other findings are small and can be settled during implementation.
+
+### Recommended Actions
+
+- [ ] Add `docs/design.md#registry-and-adapters` (lines 476-478) to step 6.
+- [ ] State the package-selection consequences of moving `build` to the tool (finding 2) in the header or design text, and cover passthrough in a stub test.
+- [ ] Skip, with a line, a layer in `test` whose resolved repos are none on disk (finding 3).
+- [ ] Settle findings 4-9 in the implementation: nested-key text, capture without a temp file, `python3`, `_rc_nofd` for build, the underlay stub's variable, local changes in validate.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 11:10 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the Plan Review's verdict is ready; its ten findings are one missing document and wording or mechanism details, none changing what the work is for, and all go into the implement handoff)
+**After**: plan
+**Decision**: proceed
+
+Read: the Plan Review at 0a72bbfc for plan a1be602a, verdict ready. The reviewer ran the installed tool on a throwaway system directory with real colcon: every status state, field name and exit status the plan relies on, and the build argument form, behaved as the plan says. This proceed covers part 4 only; parts 2 and 3 stay later parts and the pull request says Part of #503. Carried into the implement handoff, to be done in this part: finding 1 (docs/design.md#registry-and-adapters, lines 476-478, is updated too); 2 (the documents and the build refusal text say what package selection through adapter build does now); 3 (test skips a layer with none of its resolved repos on disk, with a message line); 4 (say that env and test still refuse a nested key); 5 (capture the status output in a variable); 6 (the interpreter is python3 beside the tool); 7 (the build call goes through _rc_nofd); 8 (the stub's variable is SOURCED_LAYERS); 9 (the mapping says local changes and unpushed commits are not reported by validate, or reports them as a note); 10 (the roadmap checks name text a comment cannot satisfy).
+
+### Decisions made (owner may veto)
+- The adapter's build takes no layer argument; one layer is built with the tool directly (repos-manifest build <layer>) — undoing it: add a pass-through argument to the adapter's build verb, a small change.
+- A resolve that is out of date with the manifest is a validate warning, not a failure — undoing it: one branch in validate and its test.
+- validate on the tool route fails when the manifest cannot be read or when a non-optional repo added to the manifest is not synced yet, as docs/manifest/design.md states as the target — undoing it: map those status results to warnings.
+- Repos on another version, with local changes or with unpushed commits stay a pass for validate (the tool exits 0 for them, by the owner's "Only unusable repos"); they are shown as a note — undoing it: change the tool's exit rule, which is the tool's design.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 11:28 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-503 at `b6c96b94`
+
+Part 4 only (parts 2 and 3 not built). Commits:
+- 891b7b70 validate on the tool route reads `repos-manifest status --distro <d> --json` (output kept in a variable, read by python3 beside the tool with a stdlib reader; exit status decides, document names what failed; F9 local changes / unpushed commits are a NOTE, no failure; out-of-date resolve is a warning; an emptied clone fails as unusable, issue 517 item 2 on this route). Own checks kept: second records, leftover note, _rc_check_manifest, .repos present.
+- cccbbeee build on the tool route runs `repos-manifest build --distro <d> -- --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON <args>` in the root through _rc_nofd, underlay sourced first, no layer argument; a failed run with package selection gets a NOTE giving the tool's step with the underlay sourced (F2); a nested key builds, env/test still refuse it (F4).
+- 80143e35 test gives colcon the resolved repos on disk as --base-paths (read before the underlay is sourced); a layer with none on disk is skipped with a line (F3).
+- f100f63b new real-tool test test_tool_real_status_and_build (real init, stub colcon on PATH; same vcs skip/require rule).
+- c73a4add stale text: adapter header and sync comment; `repos-manifest sync` help no longer says repos there are "not touched yet".
+- d5223e7d documents: docs/manifest/design.md (build, test, validate with the status-to-validate table, nested key, package selection), docs/design.md#registry-and-adapters plus change-log row (F1), tools/repos-manifest/docs/design.md, roadmap Direction line split; its check is `file-contains` on the two call lines (`_rc_nofd "$bin" status --distro`, `_rc_nofd "$bin" build --distro`), held by no comment, and sitrep_checks.sh reports it true; "fetch and generated directories removed" left unchecked (F10).
+- b6c96b94 test_register_project.sh and test_register_session_root.sh: their hand-made tool roots get a config.yaml of the tool's shape and real clones of local repos, and python3 beside the workspace's tool wrapper, since the gate's validate now runs the real status (between 891b7b70 and this commit those two suites fail).
+
+Suites run (each on its own, from the worktree):
+- test_ros2_colcon.sh: "=== Results: 1457 passed, 0 failed, 0 skipped ===" (vcs present, so both real-tool tests ran; the bootstrap- and manifest-route tests are unchanged and pass, which is how those routes were confirmed untouched; their code paths branch on _rc_route before any changed line)
+- test_adapter.sh: "=== Results: 248 passed, 0 failed ==="
+- validate_adapter.sh: exit 0, "ros2_colcon: all 13 verbs implemented"
+- test_register_project.sh: "test_register_project: 222 passed, 0 failed"
+- test_register_session_root.sh: "test_register_session_root: 72 passed, 0 failed"
+- test_worktree_create.sh: "PASS: 109 FAIL: 0"; test_project_registry.sh: "425 passed, 0 failed"; test_project_file.sh: "701 passed, 0 failed"; test_design_anchors.sh: "82 passed, 0 failed"
+- tools/repos-manifest tests/test_cli.py: "25 passed" (with the venv, and again with PYTHONPATH set to this worktree's src)
+The full pre-commit pass and the remaining suites are left to the host.
+
+Not verified: the real tool against a real ROS instance or real colcon (CI has no colcon; the test uses a stub colcon); how long status takes on a large instance (sitrep's validate check has a 60 s timeout). Gap: none against Part 4 and F1-F10 as handed off.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-23 11:38 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-503 at `4ce8c85d`
+**Base**: origin/main
+**Depth**: Deep (reason: 11 files, +1173/-134, the ros2_colcon adapter's build/test/validate and registration's gate)
+**Must-fix**: 2 | **Suggestions**: 4
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes
+
+Scope: part 4 only. Ran: test_ros2_colcon.sh (1457 passed, 0 failed, 0 skipped); the same with a PATH holding no vcs and no colcon (1432 passed, 2 counted skips) and with ROS2_COLCON_TESTS_REQUIRE_VCS=1 there (2 failed, as meant); test_register_project.sh 222/0; test_register_session_root.sh 72/0; test_adapter.sh 248/0; validate_adapter.sh (all 13 verbs); tools/repos-manifest tests/test_cli.py 25 passed; pre-commit shellcheck on the changed shell files: passed; sitrep_checks.sh reads the split roadmap line as true, and both strings occur only on the code lines (1141, 2078). A throwaway tool-route instance of 40 repos (local file:// remotes, real `repos-manifest init`, real colcon, /opt/ros/rolling): validate 0.6 s; adapter build (real tool build, real colcon) exit 0, rolling/setup.bash written; adapter test tested only each layer's own repos; env names both layers. Error paths run: python3 beside the tool missing or dangling, tool missing, tool killed by a signal (143), non-JSON, format 2, manifest unreadable (problem), a repo dropped from the manifest (not_in_manifest warning plus the out-of-date warning, exit 0): each named and exit 1 (or 0 for the last). A config.yaml with no `distros` (a root put together by hand before this part) now fails validate and so registration with the tool's own "`layout` is distro-dirs and there is no `distros`; repair the file" and "status gave no document"; a root made by `repos-manifest init` has `distros` and passes. Cross-model: gemini and codex completed; codex's clean-filter finding is dropped (filters are the user's own git config, as `git status` runs them) and its "validate does not read .repos as build does" is dropped (build's own error names sync).
+
+### Findings
+- [x] (must-fix) `comm -23`/`comm -13` run in the caller's locale on `LC_ALL=C`-sorted lists: with GNU coreutils (CI's Ubuntu) under en_US.UTF-8, `_unnamed/...` vs `core/...` gives "file 1 is not in sorted order" on stderr and a wrong difference (status {core/z} vs resolve {_unnamed/b, core/z} reports core/z on both sides; reproduced with gnucomm); prefix both with `LC_ALL=C` and add a stub case with `_unnamed` and a named layer under a UTF-8 locale (this machine's `comm` is uutils, which hides it) — `.agent/project_types/ros2_colcon/adapter.sh:1225`
+- [x] (must-fix) `adapter test` on the tool route treats a missing `<layer>.repos` as "none of the repos ... is on disk": with core.repos moved away on the 40-repo instance, it printed "Skipping layer core" and "All layer tests passed.", exit 0 (build refuses the same state); fail naming the file and the tool's sync, and test it — `.agent/project_types/ros2_colcon/adapter.sh:2145`
+- [x] (suggestion) the status reader crashes (UnicodeEncodeError, traceback, every repo's line lost) on a lone surrogate the tool writes for non-UTF-8 git output; reconfigure stdout with errors="backslashreplace" or clean surrogates in text(), and the failure message's "(exit $rc)" names status's exit, not the reader's — `.agent/project_types/ros2_colcon/adapter.sh:1059`
+- [x] (suggestion) the package-selection NOTE fires for `--packages-skip*`/`--packages-ignore*` (which the tool does not count as selection) and on any failure, not only the tool's selection refusal — `.agent/project_types/ros2_colcon/adapter.sh:2081`
+- [x] (suggestion) the pass line's counts do not add up: a not_in_manifest path is counted in "with a warning" against a total of manifest repos ("39 repo(s), 39 as expected, 1 with a warning above"), and the out-of-date warning is not counted — `.agent/project_types/ros2_colcon/adapter.sh:1198`
+- [x] (suggestion) test_tool_real_status_and_build's clean validate does not assert the absence of ⚠️ lines, so a false out-of-date warning from the real tool would pass — `.agent/scripts/tests/test_ros2_colcon.sh:5428`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 11:51 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-503 at `ca13f870`
+**Addressed**: Local Review (Pre-Push) at `4ce8c85d` (2026-11-23 11:38 -05:00)
+**Commits**: 84cc4c42, 149af071, dfb6777b, ba8f9b0c, df95be9f, 12c593ef, ca13f870
+
+### Actions
+- [x] (must-fix) comm in the caller's locale: both comm calls run with LC_ALL=C; test_tool_validate runs validate under en_US.UTF-8 with the unnamed layer's repo only in the last resolve, GNU comm first on PATH (the system comm when it is GNU, as on CI; here comm is uutils, so the test links /usr/bin/gnucomm as comm in the sandbox; with neither GNU comm nor en_US.UTF-8 it prints a SKIPPED line for that part). Without the fix it fails here (2 asserts: wrong difference, "not in sorted order") — 84cc4c42, `.agent/project_types/ros2_colcon/adapter.sh:1238`
+- [x] (must-fix) `adapter test` with a missing `<layer>.repos`: fails before colcon runs, naming the file and the tool's sync step; test_tool_test_over_the_resolved_layers (6 asserts fail without the fix); docs/manifest/design.md test bullet — 149af071, `.agent/project_types/ros2_colcon/adapter.sh:2160`
+- [x] (suggestion) lone surrogate in the status reader: a byte that is not UTF-8 printed as \xXX (as the tool's show), another lone surrogate as \uXXXX, stdout backslashreplace as backstop; the reader's failure names its own exit status and status's; test_tool_validate (5 asserts fail without the fix) — dfb6777b, `.agent/project_types/ros2_colcon/adapter.sh:1047`
+- [x] (suggestion) package-selection NOTE: arguments read as build.py's package_selection reads them (not --packages-skip/-ignore and their -regex forms, not --packages-skip-build-finished; --cmake-target counts); only then the tool's stderr is passed through tee and kept, and the note comes only on exit 1 with one of build.py's two refusal texts; stub cases in test_tool_build_runs_the_tool (7 fail without the fix), and test_tool_real_status_and_build triggers both real refusals; design doc updated — ba8f9b0c, `.agent/project_types/ros2_colcon/adapter.sh:2080`
+- [x] (suggestion) pass line counts: counts are of the manifest's repos and add up; a not_in_manifest path and the out-of-date warning named apart after them; two exact pass-line asserts in test_tool_validate (fail without the fix); design doc updated — df95be9f, `.agent/project_types/ros2_colcon/adapter.sh:1246`
+- [x] (suggestion) real-tool clean validate: asserts no ⚠️ and no NOTE on the fresh init, no ⚠️ after sync, and the pass line through its counts; checked to fail with a false out-of-date warning injected into the adapter — 12c593ef, `.agent/scripts/tests/test_ros2_colcon.sh:5536`
+- [x] (review note) python3 beside the tool missing or a dangling link: named as the venv's Python (missing / a link to nothing with its target / not executable) with the step that makes the venv again (`make install-repos-manifest` alone does not, its stamps hold); a missing tool keeps the install step; tested — ca13f870
+
+Suites run (each on its own, from the worktree):
+- test_ros2_colcon.sh: "=== Results: 1512 passed, 0 failed, 0 skipped ===" (vcs present; the locale part ran with gnucomm)
+- test_adapter.sh: "=== Results: 248 passed, 0 failed ==="
+- validate_adapter.sh: exit 0, "✅ ros2_colcon: all 13 verbs implemented"
+- test_register_project.sh: "test_register_project: 222 passed, 0 failed"
+- test_register_session_root.sh: "test_register_session_root: 72 passed, 0 failed"
+- test_project_file.sh: "701 passed, 0 failed"; test_project_registry.sh: "425 passed, 0 failed"; test_worktree_create.sh: "PASS: 109 FAIL: 0"; test_design_anchors.sh: "82 passed, 0 failed"
+The full pre-commit pass and the remaining suites are left to the host. The source manifest route and the bootstrap route were not touched.
+
+Not verified: the venv-remake step was not run (it would remove the main checkout's .venv); it was checked against the Makefile's setup-dev.done and repos-manifest.done rules only.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-23 11:58 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-503 at `c0233251`
+**Base**: origin/main
+**Depth**: Deep (reason: whole-diff classification as round 1: 11 files, about +1414/-133, the ros2_colcon adapter's build/test/validate and registration's gate; fix-round rule, not lowered)
+**Must-fix**: 1 | **Suggestions**: 4
+**Round**: 2 | **Ship**: recommended — round 2: 1 mechanical must-fix (prev 2), not rising; fix and ship rather than another full round
+
+Scope: part 4 only. The six round 1 findings and the python3 message are fixed as described; each fix was read against its test. Ran: test_ros2_colcon.sh at HEAD, "=== Results: 1512 passed, 0 failed, 0 skipped ===" (1 min 48 s); test_adapter.sh 248/0; validate_adapter.sh (all 13 verbs); test_register_project.sh 222/0; test_register_session_root.sh 72/0; pre-commit shellcheck on the four changed shell files: passed. In a throwaway detached worktree (removed), with only test_tool_validate enabled: the LC_ALL=C prefixes removed gives 2 failures (the wrong difference and "not in sorted order", with gnucomm), restored gives 66/0; with `locale` on PATH listing only C, C.utf8 and POSIX, the locale part prints "SKIPPED (locale part)" and the results line says "63 passed, 0 failed, 0 skipped". The tee construct, run alone: without pipefail rc is tee's (0 for a failing tool); with pipefail (the shim's `set -euo pipefail`) the tool's status comes through, 130 included, and the stub tests check this through the shim; stderr to /dev/full turns a tool exit 0 into rc 1; stderr closed gives rc 1 and the tool is killed by SIGPIPE at its first stderr write (before this change it ran to the end, rc 0). The rebuild step was read against the Makefile, not run: removing .venv and the two stamps makes install-repos-manifest rebuild setup-dev.done (python3 -m venv, requirements, pre-commit install) then reinstall the tool, so it is correct. The source manifest route and the bootstrap route: the only change in shared code is _rc_colcon, which now always runs `colcon "$@"` as those routes did; their tests pass unchanged. Cross-model: gemini and codex completed; codex's caller `--base-paths` override dropped (the caller's explicit choice), its "removed missing repo passes validate" dropped (the out-of-date warning names the sync); gemini's IFS, set -e, flag() and double "disagree" line findings dropped (speculative, or the outcome is already a failure). Claude adversarial: no must-fix, the PIPESTATUS suggestion below.
+
+### Findings
+- [x] (must-fix) the locale part of test_tool_validate skips without being counted: where en_US.UTF-8 (or GNU comm) is missing it prints SKIPPED and the results line still says 0 skipped, the uncounted skip issue 539 removed; whether CI's ubuntu-latest has en_US.UTF-8 was not checked by the fix pass or here. Count it in the summary's skipped number (and remove the gnucomm link in the skip branch too) — `.agent/scripts/tests/test_ros2_colcon.sh:4838`
+- [x] (suggestion) the selection build's status is the pipeline's: it depends on the caller's pipefail, a tee failure (TMPDIR full, stderr on /dev/full) turns a tool exit 0 into 1, and with stderr closed the tool is killed by SIGPIPE where it used to run to the end; take ${PIPESTATUS[0]} and keep the pipe drained if tee cannot write; the mktemp file also has no trap on interrupt — `.agent/project_types/ros2_colcon/adapter.sh:2126`
+- [x] (suggestion) the venv rebuild step is correct against the Makefile, but it is the only adapter message that prints an `rm -rf` (the others say "remove it"), and it removes the .venv every worktree's pre-commit hook runs from; give it a Makefile target (it would also be testable) or name what to remove in words — `.agent/project_types/ros2_colcon/adapter.sh:1162`
+- [x] (suggestion) the status reader takes a missing or null repos / not_in_manifest as an empty list even on an entry with no problem, so a malformed ok document passes as zero repos; require both lists when there is no problem — `.agent/project_types/ros2_colcon/adapter.sh:1098`
+- [x] (suggestion) the selection NOTE's manual step sources the underlay but does not clear COLCON_PREFIX_PATH, AMENT_PREFIX_PATH and CMAKE_PREFIX_PATH as the adapter's own build does, so run from a shell with another workspace sourced it builds against that — `.agent/project_types/ros2_colcon/adapter.sh:2133`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 12:18 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-503 at `18c33dbf`
+**Addressed**: Local Review (Pre-Push) at `c0233251` (2026-11-23 11:58 -05:00)
+**Commits**: 0427cccc, 607e941e, a68832a7, bd3e4cdf, 18c33dbf
+
+### Actions
+- [x] (must-fix) the locale part of test_tool_validate now counts its skip: a LOCALE_SKIPPED counter, its own SKIPPED banner, added to the results line's skipped number; the gnucomm link is removed whichever branch ran (0427cccc) — `.agent/scripts/tests/test_ros2_colcon.sh:4838`. Checked by forcing the skip (locale pattern made unmatchable for one run): `SKIPPED (locale part)` printed and `=== Results: 1509 passed, 0 failed, 1 skipped ===`. With the adapter's `LC_ALL=C` taken off its two `comm` calls, the part fails: `FAIL: under en_US.utf8 with gnucomm: the unnamed layer's repo alone, in the last resolve only` and `FAIL: ... comm did not see unsorted input` (`1510 passed, 2 failed`). Locale on CI: `LC_ALL=C.utf8 gnucomm` on the test's lists gives the right difference with no "not in sorted order" (C.UTF-8 collates `_unnamed` before `core`, as C does), so C.UTF-8 cannot reproduce the misordering and en_US.UTF-8 stays. The runner image installs the `locales` package (runner-images toolsets), but nothing in its build scripts was found to generate en_US.UTF-8, so on CI this part may be a counted skip.
+- [x] (suggestion) the selection build's status is the tool's own, `${PIPESTATUS[0]}`, whatever the caller's pipefail; the reader falls back to the file alone when stderr cannot be written and drains what is left; no temporary file to be had runs the build as without selection; the file is removed on INT, TERM and HUP too, the earlier traps restored (607e941e) — `.agent/project_types/ros2_colcon/adapter.sh:2126`. Tests in test_tool_build_runs_the_tool: without pipefail (the sandbox dispatcher's copy) the tool's status 3 and a refusal's exit 1 with the note pass through; stderr closed, a successful build exits 0 and the tool runs to the end; stderr on /dev/full exits 0 with no temporary file left. Against the old code the pipefail and /dev/full tests fail (4 failed); the stderr-closed test passes on old and new alike, since inside the dispatcher fd 2 is reused by the first file opened.
+- [x] (suggestion) the venv rebuild message says in words what to remove (the .venv directory and the two stamp files) and the make target to run after; no rm command printed; no Makefile target added (a68832a7) — `.agent/project_types/ros2_colcon/adapter.sh:1162`. Test: the step text in test_tool_validate, and no `rm -rf` in the output.
+- [x] (suggestion) a status entry with no problem and a missing or null repos or not_in_manifest is a failure saying the document is malformed, naming the missing list; the docs/manifest/design.md table names it (bd3e4cdf) — `.agent/project_types/ros2_colcon/adapter.sh:1098`. Tests in test_tool_validate: repos deleted, not_in_manifest null, and an empty problem with repos null, each exit 1 with the malformed line.
+- [x] (suggestion) the selection NOTE's manual step unsets COLCON_PREFIX_PATH, AMENT_PREFIX_PATH, CMAKE_PREFIX_PATH and AMENT_CURRENT_PREFIX before sourcing the underlay, as the adapter's build does; the note_text test and docs/manifest/design.md quote it (18c33dbf) — `.agent/project_types/ros2_colcon/adapter.sh:2133`.
+
+### Checks
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: `=== Results: 1530 passed, 0 failed, 0 skipped ===` (at 18c33dbf)
+- `bash .agent/scripts/tests/test_adapter.sh`: `=== Results: 248 passed, 0 failed ===`
+- `bash .agent/scripts/validate_adapter.sh`: `✅ ros2_colcon: all 13 verbs implemented`, `✅ single_project: all 13 verbs implemented`
+- `bash .agent/scripts/tests/test_register_project.sh`: `test_register_project: 222 passed, 0 failed`
+- `bash .agent/scripts/tests/test_register_session_root.sh`: `test_register_session_root: 72 passed, 0 failed`
+- `bash .agent/scripts/tests/test_project_file.sh`: `=== Results: 701 passed, 0 failed ===`
+- `bash .agent/scripts/tests/test_project_registry.sh`: `=== Results: 425 passed, 0 failed ===`
+- `bash .agent/scripts/tests/test_worktree_create.sh`: `PASS: 109`, `FAIL: 0`
+- Commits made with `SKIP=validate-script-tests`; every other hook ran (shellcheck passed). The full pre-commit pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-23 12:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-503 at `5bb1a596`
+**Base**: origin/main
+**Depth**: Deep (reason: round 3 convergence check per handoff; whole-diff tier Deep as rounds 1 and 2)
+**Must-fix**: 0 | **Suggestions**: 2
+**Round**: 3 | **Ship**: recommended — no must-fix findings; the two suggestions can be applied or tracked
+
+Scope: the round 2 entry's five findings and the fix commits 0427cccc, 607e941e, a68832a7, bd3e4cdf, 18c33dbf only. Cross-model: skipped (round-3 convergence check, per handoff). All five round 2 findings are closed. Ran: test_ros2_colcon.sh at HEAD, "=== Results: 1530 passed, 0 failed, 0 skipped ===" (1 min 52 s). In a throwaway detached worktree (removed) with adapter.sh put back to 3217c81f and the HEAD tests: "1513 passed, 17 failed", the failures being exactly the new note-text, pipefail, /dev/full, malformed-document and venv-step assertions, so each adapter fix has a test that fails without it (the stderr-closed test passes on both, as the fix pass said). With the locale grep made unmatchable: "SKIPPED (locale part)", the "=== SKIPPED: the locale part ..." banner and "1527 passed, 0 failed, 1 skipped". pre-commit shellcheck on adapter.sh and test_ros2_colcon.sh: passed. The trap pattern, copied verbatim into a harness under bash 5.3.9: on a normal return the caller's INT/TERM traps are restored and none of the function's are left (with no caller traps, `trap -p` is empty after); `trap -p` inside `$(...)` does see the caller's traps; HUP ignored at entry (nohup) stays ignored; TERM to the shell mid-build waits for the build, removes the file and exits 143, but a caller's own TERM trap does not run (the handler resets to default before re-raising), see the first suggestion. The only caller today, .agent/scripts/adapter, sets no traps, so nothing is lost in practice, and the function runs in that script's own shell (not a subshell), so `kill $$` targets the right process. The PIPESTATUS read (`&& rc=${PIPESTATUS[0]} || rc=${PIPESTATUS[0]}`) is right on both branches and under set -e. CI locale: a counted, visible skip is acceptable for this part (issue 539's rule is that a skip is counted, which it now is); whether ubuntu-latest has en_US.UTF-8 was not checked, see the second suggestion.
+
+### Findings
+- [ ] (suggestion) the signal handler resets the signal to default and re-raises, so a caller's earlier INT/TERM/HUP trap is restored only on a normal return and never runs on an interrupt; restore the saved traps (`eval "$traps"`) in the handler before `kill -$sig $$`, and add the untested signal path to test_tool_build_runs_the_tool (a stub tool that sleeps, TERM to the dispatcher, the temporary file gone, exit 143) — `.agent/project_types/ros2_colcon/adapter.sh:2146`
+- [ ] (suggestion) on CI the locale part may always be a counted skip, so the LC_ALL=C regression guard would never run there; a `sudo locale-gen en_US.UTF-8` step in validate.yml would settle it, but that is a CI change (Ask First), so it is the owner's call; until then read the CI log for the SKIPPED banner — `.agent/scripts/tests/test_ros2_colcon.sh:4880`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 12:31 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 approved with no must-fix; the host's full pass passed on this head)
+**After**: publish
+**Decision**: publish
+
+Read the Local Review (Pre-Push) at 75e7d1dd (round 3, a convergence check, approved, ship recommended, 0 must-fix, 2 suggestions left open for triage and the owner's merge decision: the build's signal handler does not run a caller's own handler and has no test; a locale-gen step in the CI workflow would make the locale part run on CI for certain, a CI change that is the owner's to approve). The full pass (pre-commit run --files over the branch's eleven files, no SKIP, branch even with origin/main) passed: every hook Passed or Skipped for no files, including the adapter contract check, the design-anchor check, the .agent/scripts/tests/ suite, shellcheck, black and flake8; the tree was clean after it.
+
+### Decisions made (owner may veto)
+- Published with the two round 3 suggestions open instead of a fourth fix round: no current caller sets a signal handler, and the other is a CI change only the owner approves; both are in the pull request's text and go through triage to the merge decision — undoing it: a fix pass on the open pull request before the merge.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-23 12:48 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #562 at `1db4680`
+**Sources**: 2 (Local Review (Pre-Push) @ `5bb1a59` (covers `1db4680` via bookkeeping), CI rollup: 10 check runs)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+No GitHub reviews, inline comments, conversation comments or hosted-reviewer check run on the pull request. The two open suggestions of the pre-push review are the only findings to rule on.
+
+CI facts read from the Validate Adapter Contract job's log (run 45228617141): Python 3.10.22; both real-tool tests ran (`tool route with the real tool and vcs: init by hand ...` and `... validate reads the real status, build runs the real build`); no SKIPPED line; `=== Results: 1530 passed, 0 failed, 0 skipped ===`. So the locale part of the suite ran on CI and the status reader works on Python 3.10: the two points the pull request body lists as not verified are settled.
+
+CI cost: the job took 141 s and 174 s on main's two runs today and 216 s and 231 s on this pull request's two runs. The ros2_colcon test step alone went from 94 s (main, 1366 checks) to 173 s (this head, 1530 checks, a second real-tool test): the suite's growth costs about 80 s in that job.
+
+### Findings
+- [x] (suggestion, Local Review (Pre-Push) @ `5bb1a59`) the interrupt path of the build with selection is untested: nothing checks that INT, TERM or HUP during the tool's build removes the temporary stderr file and ends with the signal's status (143 for TERM). Its second half, that the handler resets the signal to default and re-raises so a caller's own INT/TERM/HUP trap is skipped on an interrupt, cannot occur with any caller on this branch: the only route in is `.agent/scripts/adapter` (and `build.sh`, which execs it), which sets no trap before calling `adapter_build`; the traps in `_project_registry.sh` live in `project_file_set`'s own subshell. Fix, about 20 lines: in the handler, `eval "$traps"` (the saved caller traps) before `kill -$sig $$` instead of `trap - $sig` (one line), and a case in `test_tool_build_runs_the_tool` with a stub tool that sleeps, TERM sent to the dispatcher, then the temporary file gone and exit 143 — `.agent/project_types/ros2_colcon/adapter.sh:2146`
+
+### False positives
+- (Local Review (Pre-Push) @ `5bb1a59`) on CI the locale part may always be a counted skip, so add a `sudo locale-gen en_US.UTF-8` step to validate.yml — the failure mode did not occur: the CI image has en_US.UTF-8 and GNU comm, and this head's Validate Adapter Contract log shows both real-tool tests running, no SKIPPED line and `1530 passed, 0 failed, 0 skipped`. Should a future image drop the locale, the skip is counted and printed in that Results line, not silent, so the CI change (Ask First) is not needed — `.agent/scripts/tests/test_ros2_colcon.sh:4880`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 12:49 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (one open suggestion with a fix of about 20 lines; merging with a finding open is the owner's answer only, and sending it for the fix is the host's)
+**After**: findings
+**Decision**: address
+
+Read: the Integrated Review at 4a465e73 for pull request 562: CI all-pass, no GitHub reviews or comments, one valid finding and one false positive. The valid finding (suggestion), .agent/project_types/ros2_colcon/adapter.sh:2146: when a build that selects packages is interrupted, nothing tests that the temporary stderr file is removed and the run ends with the signal's status, and the handler resets the signal instead of restoring a caller's own handlers; no caller on this branch sets one. The fix: in the handler, restore the saved traps before re-sending the signal, and a test with a stub tool that sleeps, TERM sent, the temporary file gone and exit 143. The false positive: the locale-gen step for the CI workflow; this pull request's CI run showed the locale part running (1530 passed, 0 failed, 0 skipped), so no CI change is needed.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 12:55 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #562 at `2ca7a73`
+**Addressed**: Integrated Review at `1db4680` (2026-11-23 12:48 -05:00)
+**Commits**: 2ca7a73
+
+### Actions
+- [x] Interrupt of the build with selection: the handler now removes the temporary stderr file, resets INT/TERM/HUP, restores the caller's saved traps (`eval` of the `trap -p` taken at entry, embedded with `%q`) and then re-sends the signal, so a caller's own handler runs; a signal ignored at entry stays ignored and no trap is left after a normal return (checked with a standalone bash harness using the same handler string; the normal-return path is unchanged). Test in `test_tool_build_runs_the_tool`: the stub tool, given TOOL_SLEEP, records what is in TMPDIR and sleeps 1 s; TERM goes to the dispatcher (exec'd background job) after a bounded wait (at most 5 s) for the stub to start; then the temporary file existed during the build, is gone after, and the exit is 143; with a TERM handler added at the top of the sandbox's dispatcher, that handler runs and the status is its 7. On the old code the plain TERM case passes (143, file removed); the caller-handler case fails (status 143, handler not run): 1535 passed, 2 failed — `.agent/project_types/ros2_colcon/adapter.sh:2146`
+
+### Checks
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: `=== Results: 1537 passed, 0 failed, 0 skipped ===`
+- `bash .agent/scripts/tests/test_adapter.sh`: `=== Results: 248 passed, 0 failed ===`
+- `bash .agent/scripts/validate_adapter.sh`: `✅ ros2_colcon: all 13 verbs implemented`, `✅ single_project: all 13 verbs implemented` (exit 0)
+- Full pre-commit pass left to the host; CI checks the push.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-23 13:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #562 at `d9cc234b`
+**Depth**: Deep (reason: whole-diff classification per the fix-round rule, 11 files +1664/-134 including adapter.sh; the fix round itself is 2ca7a73f)
+**Must-fix**: 1 | **Suggestions**: 5
+
+Scope: the fix 2ca7a73f (handler restores the caller's traps before re-sending the signal; TERM test with a sleeping stub), with cross-model reviewers on the whole PR diff. The fix is correct: the `%q`-quoted saved traps survive `eval` inside the trap string (checked with multi-line traps, quotes, a path with a space), the normal-return path is unchanged, and `$$` is the dispatcher's own shell (`adapter_build` runs there, `.agent/scripts/adapter:422`). Ran: `test_tool_build_runs_the_tool` alone on `git archive` copies of HEAD: with the fix 61 passed, 0 failed (5.4 s); with the pre-fix adapter.sh 59 passed, 2 failed ("its status, 7", "it ran"), so the new test catches the bug. With a 1.5 s pause injected before the test's `kill`, 3 assertions fail (rc 0): a loud failure, never a false pass. shellcheck --severity=warning on both files: clean. Cross-model: Gemini and Codex both completed (EXIT=0). CI on d9cc234b was pending when read. The must-fix comes from Codex on the whole diff, not from the fix round; it was verified against `tools/repos-manifest/src/repos_manifest/build.py:85,157-175`.
+
+### Findings
+- [x] (must-fix) `adapter test` on the tool route silently leaves out a required repo that is missing from disk: it tests only the listed repos it finds on disk, and skips a layer with none of them, so the run can succeed. The tool's build, which the code comment and docs/manifest/design.md say test matches, refuses a non-optional missing repo (`missing_repos`, build.py:163). It skips a layer only when every repo it lists is optional (build.py:85). Read `optional.txt` and refuse missing required repos before colcon runs, naming them and the sync step; add a test; correct the design.md bullet (Codex) — `.agent/project_types/ros2_colcon/adapter.sh:2232`
+- [x] (suggestion) If the caller's handler returns instead of exiting, or the caller ignores the signal, the build carries on after the handler has removed the temporary file. When the tool's status is 1, `grep` then prints "No such file or directory", and the refusal note is lost (reproduced in a probe). Use `grep -sqF` or `[ -e "$errlog" ] &&` (adversarial, Gemini, own probe) — `.agent/project_types/ros2_colcon/adapter.sh:2154`
+- [x] (suggestion) A caller's `trap '' <sig>` is replaced by the adapter's handler for the length of the build. The tool therefore starts with the default action for that signal (confirmed: the child exits 130 on INT), so a process-group Ctrl-C kills the tool even though the caller ignored INT. The comment says the ignoring is "put back", which is true only after a signal arrives. No caller on this branch ignores these signals. Skip trapping a signal whose saved entry is `trap -- '' SIG<x>`, or reword the comment (adversarial, Gemini) — `.agent/project_types/ros2_colcon/adapter.sh:2147`
+- [x] (suggestion) The test's timing margin is the stub's 1 s sleep. If more than about 1 s passes between `tool.started` appearing and the `kill` (a stalled CI runner), the build ends first, the run exits 0 and the test fails spuriously (reproduced with an injected 1.5 s pause). Have the stub wait on a release file the test creates after `kill`, or sleep longer — `.agent/scripts/tests/test_ros2_colcon.sh:4325`
+- [x] (suggestion) A TERM sent to the adapter alone does not stop the tool. Bash runs the trap only after the foreground pipeline ends, so the build runs to completion and only then is the file removed and the signal re-sent. A process-group signal (Ctrl-C, `timeout`) reaches both. The test sends TERM to the dispatcher only, so it does not show the tool being stopped. Say this in the comment, or forward the signal to the build (Codex) — `.agent/project_types/ros2_colcon/adapter.sh:2149`
+- [x] (suggestion) In `adapter test`, the `.repos` reader runs in a process substitution, so its failure is not seen. A file that passes `-f` but cannot be read yields no keys, and the layer is "skipped" with status 0, while the reader's own error goes to stderr. Check the reader's status before treating an empty list as no repos on disk (Codex) — `.agent/project_types/ros2_colcon/adapter.sh:2235`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 13:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #562 at `1e4aec6e`
+**Addressed**: Local Review at `d9cc234b` (2026-11-23 13:07 -05:00)
+**Commits**: d913106a, 7e85348c, 1e4aec6e
+
+### Actions
+- [x] (must-fix) Tool-route `adapter test` follows the tool's build rule (build.py `missing_repos` / `Layer.empty`): a listed repo not on disk and not named in the resolved `optional.txt` fails before colcon runs, naming each repo and the tool's sync; a missing optional repo is left out; a layer is skipped with its line only when none of its repos is on disk and all are optional. Optional repos are learned through the existing `_rc_is_optional_repo` (reads the resolved `optional.txt`; no new parser, not the status document). Tests: required repo missing (exit 1, named, colcon not run), optional repo missing (left out, all layers tested), optional-only layer with none on disk (skipped with the line). Code comment and docs/manifest/design.md bullet corrected; docs/design.md does not repeat the claim — d913106a — `.agent/project_types/ros2_colcon/adapter.sh:2232`
+- [x] (suggestion) `.repos` reader failure in `adapter test` is a failure: output taken in a command substitution, status checked, error names the file; test with a chmod 000 `core.repos` (skipped as root); comment and design bullet say so — 7e85348c — `.agent/project_types/ros2_colcon/adapter.sh:2235`
+- [x] (suggestion) `grep -sqF` on the temporary file, so a returning caller handler leaves no "No such file or directory" — 1e4aec6e — `.agent/project_types/ros2_colcon/adapter.sh:2154`
+- [x] (suggestion) Handler comment now says the adapter's handler replaces the caller's (an ignored signal included) while the build runs, and they are put back on return or on a signal; no change to trapping — 1e4aec6e — `.agent/project_types/ros2_colcon/adapter.sh:2147`
+- [x] (suggestion) Interrupt test: stub waits on a release file (TOOL_HOLD, bounded at 10 s) that the test creates after `kill`, replacing the 1 s sleep — 1e4aec6e — `.agent/scripts/tests/test_ros2_colcon.sh:4325`
+- [x] (suggestion) Comment says a TERM to the adapter alone does not stop the tool, which finishes first, while Ctrl-C and `timeout` signal the whole process group; no forwarding added — 1e4aec6e — `.agent/project_types/ros2_colcon/adapter.sh:2149`
+
+### Checks
+- `bash .agent/scripts/tests/test_ros2_colcon.sh` (after the last change): `=== Results: 1551 passed, 0 failed, 0 skipped ===`
+- `bash .agent/scripts/tests/test_adapter.sh`: `=== Results: 248 passed, 0 failed ===`
+- `bash .agent/scripts/validate_adapter.sh`: `✅ ros2_colcon: all 13 verbs implemented`, `✅ single_project: all 13 verbs implemented`
+- Full pre-commit pass and the other suites left to the host and CI; commits made with `SKIP=validate-script-tests`.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-23 13:21 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #562 at `d5e64448`
+**Depth**: Deep (reason: round 3 convergence check per handoff; the depth and scope were set by the host's direction: the previous review's six findings and the fix commits d913106a, 7e85348c, 1e4aec6e only)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Scope: the Local Review at b4c786d0 (1 must-fix, 5 suggestions) and the three fix commits. Cross-model: skipped (round-3 convergence check, per handoff). All six findings are closed and no fix introduced a defect. Must-fix: the adapter's rule matches build.py case by case (`missing` = listed, not on disk, not in optional.txt, build.py:157; refusal before anything runs naming each `key (layer L)` and sync, build.py:163-175; a layer skipped only when `not on_disk and not missing`, build.py:85). A key the reader cannot parse (`grp/x`, `pkg+x`) cannot slip past the check: `_rc_check_manifest` refuses it by name first (`_rc_tool_refuse_unread_keys`, adapter.sh:330). The difference the fix pass named, a missing optional.txt, is acceptable: the adapter then counts every repo as required, so a missing repo still fails (fails closed), and when nothing is missing the run is still correct; an unreadable optional.txt behaves the same. The tool's `chosen` filter has no counterpart because test runs every layer. Reader failure (7e85348c): checked in a command substitution; awk on an unreadable file exits 2 and is caught. Interrupt path (1e4aec6e): `grep -s` leaves the condition false when the file is gone; the release file is created right after `kill` with no return in between, and the stub waits at most 10 s, so a failed assertion cannot hang the run or leave the stub behind (pgrep found none after the runs). The comments match the behaviour.
+
+Ran, on `git archive` copies of HEAD with every other test call commented out: `test_tool_test_over_the_resolved_layers` with HEAD's adapter.sh gave 29 passed, 0 failed. With the pre-fix adapter.sh (b4c786d0) it gave 18 passed, 11 failed: the required-missing case (5), the optional-only skip line (1, wording only) and the unreadable case (5). The optional-missing case passes on both, as it should, since it guards against refusing too much. `test_tool_build_runs_the_tool` gave 61 passed, 0 failed on four runs. `shellcheck --severity=warning` on both files: clean. CI on d5e64448 was pending when read. CI runs `test_ros2_colcon.sh` directly on `ubuntu-latest` with no container, so as a non-root user, and the chmod 000 case runs there.
+
+### Findings
+- [ ] (suggestion, deferrable) The chmod 000 case's root skip prints `SKIPPED:` but no counter counts it, so a root run's summary line says `0 skipped` (the same uncounted pattern as the existing root skip at line 4412, already on main). CI runs as non-root. Count it, like LOCALE_SKIPPED, when the suite's skip counters are next touched — `.agent/scripts/tests/test_ros2_colcon.sh:4782`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-23 13:35 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #562 at `d5e6444`
+**Sources**: 2 (Local Review @ `d5e6444` (exact), CI rollup: 10 check runs)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+Repeat triage: read only the entries after the Integrated Review at `1db4680`. No GitHub reviews, inline comments, conversation comments or hosted-reviewer check run on the pull request (fetch_pr_reviews.sh: 0 reviews, 0 comments). Every finding between the two triages is closed: the Integrated Review's one suggestion (interrupt path, fixed in 2ca7a73), then the Local Review at `d9cc234b` (1 must-fix, 5 suggestions, all fixed in d913106a, 7e85348c, 1e4aec6e, each checked by the convergence Local Review at `d5e6444`). That last review's depth was set by the host: a round-3 convergence check of the six findings and three fix commits, with no cross-model or outside reviewers; recorded as it stands. The sources helper lists the pre-push review at `5bb1a59` as stale (adapter.sh changed since); its two findings were ruled on in the previous Integrated Review.
+
+CI on `d5e6444`: all 10 check runs passed. The Validate Adapter Contract log for this head has `=== Results: 1551 passed, 0 failed, 0 skipped ===` for test_ros2_colcon.sh and no SKIPPED line at all, so the new chmod 000 case ran its assertions on CI.
+
+Note for the host, not a code finding: the pull request body's `## Decision summary` was written at publish and does not describe the two fix passes since (the interrupt handler restoring the caller's traps; the tool-route `adapter test` refusing a required repo missing from disk and failing on an unreadable `.repos` file; `grep -s`, the comments, the release-file test). Update it before the merge decision.
+
+### Findings
+- [x] (suggestion, deferred, Local Review @ `d5e6444`) A root run prints `SKIPPED:` for the chmod 000 case but no counter counts it, so the summary says `0 skipped`. It cannot occur on CI: the job runs the suite directly on ubuntu-latest, no container, as the runner's non-root user, and this head's log shows no SKIPPED line. It can occur in a root shell or a root dev container, where the skip line is still printed but the Results line undercounts. The gap is suite-wide, not this pull request's: main already has eight uncounted skip sites (lines 3114, 3156, 3179, 3540, 3647, 3847, 3895 for missing SHA-256 git, timeout, timeout --foreground, flock, /proc; 4412 for the root skip), so counting only the new one would leave the summary wrong in the same way for the rest. Fix, about 20 lines, in a later part of #503 or its own issue: one counter (e.g. ENV_SKIPPED) incremented at all nine sites, added to the Results sum with a "=== SKIPPED: N environment-dependent case(s) ===" line like the existing three, and a counter test like the one at line 1150 — `.agent/scripts/tests/test_ros2_colcon.sh:4782` (deferred: deferred by the owner at the findings checkpoint 2026-11-23 ("Merge, defer F1") to a later part of issue 503)
+
+### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 13:39 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+The owner's answer in the dialog, to "Merge pull request #562 with F1 deferred to a later part of issue #503?": "Merge, defer F1 (Recommended)". The dialog showed: the Integrated Review at 98a3505a (no must-fix, CI all-pass on d5e64448, no GitHub reviews or comments, one suggestion classified as deferred); what the pull request does on the tool's route; six review rounds, four defects found and fixed, the adapter suite at 1551 passed, 0 failed, 0 skipped on CI with both real-tool tests run. F1, the open suggestion: when the suite runs as root the chmod 000 case prints SKIPPED without being counted, with eight more such uncounted skips already on main, none possible on CI, one counter for all nine about 20 lines; deferred to a later part of issue 503. F2, to know: a root assembled by hand without a distros mapping now fails validate, and package selection through the adapter's build is narrower. F3, to know: the last review round was a check of the fixes only, with no outside reviewers, by the host's direction; a full re-review was offered and not chosen. The pull request's text was brought up to date with the two fix passes before the question was asked.

@@ -44,15 +44,18 @@
 # writes around a key YAML would read as a number or a boolean ('123',
 # 'on'). A key with a directory in it (grp/repo) is not read (a worktree
 # names a repo by the last part of its path; reading such keys is a later
-# part).
+# part): every verb that reads the resolved .repos files refuses it, build
+# alone does not, since the tool's build reads them itself.
 # The adapter reads only the tool's resolved files, its stated output, for
 # one distro: .repos-manifest/resolved/<distro>/ holds layers.txt (in build
 # order; the unnamed layer is "_unnamed"), <layer>.repos and optional.txt
-# (the optional repos, by key). It never reads config.yaml or state.yaml.
-# A layer's directory is <root>/<distro>/<layer>, the unnamed layer's
-# <root>/<distro>; its repos are in its src/. A repo's pin is the version
-# of its entry in <layer>.repos. No layer is optional; validate passes over
-# a missing repo optional.txt names.
+# (the optional repos, by key). It never reads config.yaml or state.yaml;
+# what they and the manifest say reaches it through the tool's commands
+# (status for validate, build). A layer's directory is
+# <root>/<distro>/<layer>, the unnamed layer's <root>/<distro>; its repos
+# are in its src/. A repo's pin is the version of its entry in
+# <layer>.repos. No layer is optional; an optional repo is status's to
+# report (validate does not fail on it).
 #
 # The distro on the tool route (owner, 2026-11-18: "the directory the
 # session is started in decides"), chosen by _rc_tool_distro_select alone:
@@ -89,14 +92,19 @@
 # from inside <root>/<x>/, from elsewhere the one resolved distro's name;
 # with no --distro only from outside every distro's directory when nothing
 # is resolved yet) and pass its output and exit
-# status through: the adapter never pulls, fetches or moves a clone here.
-# `build` and `test` are today's colcon loops over the resolved layers,
-# with --base-paths src so the unnamed layer's build in <root>/<distro>
-# does not take in the named layers below it; `build` is interim until
-# the tool's own build, and stops at the first failing layer. The adapter
-# does not run `repos-manifest build`, so <root>/<distro>/setup.bash stays
-# the tool's stub unless someone runs that by hand (it then sources the
-# built layers); the instance's environment is `adapter env` either way.
+# status through. The adapter itself pulls, fetches and moves no clone
+# here; the tool's sync clones what is missing and updates a clean clone
+# by the rules of its own design, and leaves one with local work.
+# `build` runs the tool's build (<tool> build --distro <d> -- <the
+# adapter's colcon flags> <the caller's arguments>) in the root, with the
+# distro's environment sourced first (_rc_tool_build); the tool builds the
+# layers in order over the repos on disk and writes
+# <root>/<distro>/setup.bash. It takes no layer argument: one layer is
+# built with the tool directly. `test` stays the adapter's colcon loop
+# (the tool has no test), each layer given the resolved repos on disk as
+# --base-paths, as the tool's build gives them. `validate` reads the
+# tool's `status --json` (_rc_tool_status). `env` sources each built
+# layer's install/local_setup.bash, which the tool's colcon writes there.
 #
 # Fresh hosting dir (#237, step 6 phase 2): `setup` bootstraps the manifest
 # when configs/manifest is absent, porting ros2's setup_layers.sh flow
@@ -1026,14 +1034,252 @@ _rc_tool_sync() {
     return "$rc"
 }
 
-# `validate` on the tool route: the checkouts against the tool's last
-# resolved files, for each distro the call covers (_rc_tool_distro_select
-# --every: the chosen one, or every one under resolved/ when none is
-# chosen; one whose layers.txt is missing or empty fails, named), and no
-# second record of what the tool records. Fails if any distro fails,
-# naming it. Says what it did not check: the manifest is not read again.
+# The reader of `repos-manifest status --json` (format 1), run by the
+# tool's own interpreter (_rc_tool_status), standard library only. Its
+# argument is the distro asked for; it prints one line per item, fields
+# separated by \x1f (a tab, a newline, a carriage return or \x1f inside a
+# value becomes a space; a byte that is not UTF-8, which the tool writes as
+# a lone surrogate, becomes \xXX as the tool's own show prints it, and any
+# other lone surrogate \uXXXX, so no line is lost to an encoding error):
+#   bad  <why>                     no document, or not one the adapter reads
+#   head <document ok 0|1> <distro ok 0|1> <the distro's problem, or empty>
+#   repo <layer> <key> <state> <optional 0|1> <path> <changed files>
+#        <unpushed commits> <detail>
+#   gone <key> <path>              a not_in_manifest entry
+_RC_STATUS_READER='
+import json, sys
+SEP = "\x1f"
+sys.stdout.reconfigure(errors="backslashreplace")
+def unpaired(ch):
+    c = ord(ch)
+    if 0xDC80 <= c <= 0xDCFF:
+        return "\\x%02x" % (c - 0xDC00)
+    if 0xD800 <= c <= 0xDFFF:
+        return "\\u%04x" % c
+    return ch
+def text(v):
+    if v is None:
+        return ""
+    s = "".join(unpaired(ch) for ch in str(v))
+    for ch in ("\t", "\n", "\r", SEP):
+        s = s.replace(ch, " ")
+    return s
+def count(v):
+    return str(v) if isinstance(v, int) and not isinstance(v, bool) and v > 0 else "0"
+def out(*fields):
+    print(SEP.join(fields))
+def flag(v):
+    return "1" if v is True else "0"
+want = sys.argv[1]
+raw = sys.stdin.read()
+if not raw.strip():
+    out("bad", "gave no document")
+    sys.exit(0)
+try:
+    doc = json.loads(raw)
+except ValueError as exc:
+    out("bad", "printed something that is not one JSON document (" + text(exc) + ")")
+    sys.exit(0)
+if not isinstance(doc, dict):
+    out("bad", "printed JSON that is not one object")
+    sys.exit(0)
+fmt = doc.get("format")
+if not isinstance(fmt, int) or isinstance(fmt, bool) or fmt != 1:
+    out("bad", "printed a document of format " + text(fmt) + "; the adapter reads format 1")
+    sys.exit(0)
+distros = doc.get("distros")
+mine = [d for d in distros if isinstance(d, dict) and d.get("distro") == want] if isinstance(distros, list) else []
+if len(mine) != 1:
+    out("bad", "printed a document without one entry for distro " + text(want))
+    sys.exit(0)
+entry = mine[0]
+repos = entry.get("repos")
+gone = entry.get("not_in_manifest")
+if entry.get("problem") in (None, "") and (repos is None or gone is None):
+    missing = [n for n, v in (("repos", repos), ("not_in_manifest", gone)) if v is None]
+    out("bad", "printed a malformed document: the entry for distro " + text(want) + " has no problem and no "
+        + " or ".join(missing) + " list")
+    sys.exit(0)
+if repos is None:
+    repos = []
+if gone is None:
+    gone = []
+if not isinstance(repos, list) or not isinstance(gone, list) or not all(isinstance(r, dict) for r in repos + gone):
+    out("bad", "printed a document whose repos or not_in_manifest for distro " + text(want) + " is not a list of objects")
+    sys.exit(0)
+out("head", flag(doc.get("ok")), flag(entry.get("ok")), text(entry.get("problem")))
+for r in repos:
+    out("repo", text(r.get("layer")), text(r.get("key")), text(r.get("state")), flag(r.get("optional")),
+        text(r.get("path")), count(r.get("changes")), count(r.get("unpushed")), text(r.get("detail")))
+for g in gone:
+    out("gone", text(g.get("key")), text(g.get("path")))
+'
+
+# One distro ($1) read against the manifest by the tool's `status --json`,
+# in the root, through _rc_nofd (no network call: status makes none), its
+# stderr passed through and its stdout kept in a variable. The document is
+# read by the tool's own interpreter, python3 beside the tool's executable
+# (the venv `make install-repos-manifest` makes), with _RC_STATUS_READER.
+# The exit status decides and the document explains (the mapping is the
+# table in docs/manifest/design.md, "The tool route"):
+#   - a repo that is not optional and is missing, not-a-directory,
+#     blocked-place, in-other-layer or unusable: a ❌ line, the tool's
+#     detail unchanged (a missing one names the tool's sync);
+#   - the same states for an optional repo, and different or left-alone for
+#     any: a ⚠️ line, no failure; skipped (optional, not there): counted;
+#   - local changes and unpushed commits: a NOTE line, no failure (status
+#     exits 0 for them);
+#   - a not_in_manifest path: a ⚠️ line;
+#   - the distro's problem (its manifest cannot be read or resolved): ❌;
+#   - exit 1 with no document, an exit status other than 0 and 1, a
+#     document not of format 1, a distro entry with no problem and a
+#     missing or null repos or not_in_manifest (malformed, not zero repos),
+#     a state the adapter does not know, and a
+#     document whose verdict and the exit status disagree: ❌, so a change
+#     in the tool's contract is seen.
+# Then the keys status names, by layer, against the last resolve's .repos
+# files: a difference is a ⚠️ (the last resolve is out of date with the
+# manifest), with the tool's sync step. Sets _RC_STATUS_ISSUES (the number
+# of ❌ lines) and, when it is 0, _RC_STATUS_PASS (the pass line). Its
+# counts are of the manifest's repos and add up (as expected, with a
+# warning, optional and skipped); a not_in_manifest path and the
+# out-of-date warning are named after them, apart.
+_rc_tool_status() {
+    local d="$1" root bin py doc lines rc=0 prc=0 kind a b c e f g h i
+    local doc_ok="" dist_ok="" problem="" failing=0 unknown=0 expected=0 warned=0 skipped=0 total=0 gone=0 outdated=""
+    local from_status="" from_resolve="" layer file only_status only_resolve resolve_ok=1
+    _RC_STATUS_ISSUES=0
+    _RC_STATUS_PASS=""
+    root="$(_rc_root)" || return 1
+    bin="$(_rc_resolver_bin)"
+    py="$(dirname "$bin")/python3"
+    if [ ! -x "$bin" ]; then
+        echo "❌ distro $d: the manifest tool is not installed at $bin, so status cannot be read; run: make install-repos-manifest (from the workspace main checkout)" >&2
+        _RC_STATUS_ISSUES=1
+        return 0
+    fi
+    if [ ! -x "$py" ]; then
+        local why="is missing"
+        if [ -L "$py" ] && [ ! -e "$py" ]; then
+            why="is a link to nothing ($(readlink "$py"))"
+        elif [ -e "$py" ]; then
+            why="is not executable"
+        fi
+        local main="${bin%/.venv/bin/repos-manifest}"
+        echo "❌ distro $d: the manifest tool is at $bin, but $py, the venv's Python that runs it and reads status's document, $why (the Python the venv was made from was moved or removed); make the venv again: remove the directory $main/.venv and the two stamp files $main/.make/setup-dev.done and $main/.make/repos-manifest.done, then run make install-repos-manifest from $main" >&2
+        _RC_STATUS_ISSUES=1
+        return 0
+    fi
+    doc="$(cd "$root" && _rc_nofd "$bin" status --distro "$d" --json)" || rc=$?
+    if [ "$rc" -ne 0 ] && [ "$rc" -ne 1 ]; then
+        echo "❌ distro $d: repos-manifest status exited $rc (it exits 0 or 1; 2 is a bad option, 128+n a signal); its own message, if any, is above" >&2
+        _RC_STATUS_ISSUES=1
+        return 0
+    fi
+    lines="$(printf '%s' "$doc" | _rc_nofd "$py" -I -c "$_RC_STATUS_READER" "$d")" || prc=$?
+    if [ "$prc" -ne 0 ]; then
+        echo "❌ distro $d: $py could not read the document repos-manifest status printed ($py exited $prc; repos-manifest status exited $rc); a message from either, if any, is above" >&2
+        _RC_STATUS_ISSUES=1
+        return 0
+    fi
+    kind="$(head -n1 <<< "$lines")"
+    if [ "${kind%%$'\x1f'*}" = bad ]; then
+        echo "❌ distro $d: repos-manifest status ${kind#bad$'\x1f'} (exit $rc); its own message, if any, is above" >&2
+        _RC_STATUS_ISSUES=1
+        return 0
+    fi
+    while IFS=$'\x1f' read -r kind a b c e f g h i; do
+        case "$kind" in
+            head)
+                doc_ok="$a"
+                dist_ok="$b"
+                problem="$c"
+                ;;
+            repo)
+                total=$((total + 1))
+                from_status="$from_status$a/$b"$'\n'
+                case "$c" in
+                    expected) expected=$((expected + 1)) ;;
+                    skipped) skipped=$((skipped + 1)) ;;
+                    different|left-alone)
+                        echo "⚠️ distro $d: $root/$f $c: $i" >&2
+                        warned=$((warned + 1))
+                        ;;
+                    missing|not-a-directory|blocked-place|in-other-layer|unusable)
+                        if [ "$e" = 1 ]; then
+                            echo "⚠️ distro $d: $root/$f $c (optional, so it does not fail validate): $i" >&2
+                            warned=$((warned + 1))
+                        elif [ "$c" = missing ]; then
+                            echo "❌ distro $d: $root/$f missing: $i (run: $(_rc_tool_sync_step "$d"))" >&2
+                            failing=$((failing + 1))
+                        else
+                            echo "❌ distro $d: $root/$f $c: $i" >&2
+                            failing=$((failing + 1))
+                        fi
+                        ;;
+                    *)
+                        echo "❌ distro $d: $root/$f is in a state the adapter does not know, '$c' (the tool's status format may have changed): $i" >&2
+                        unknown=$((unknown + 1))
+                        ;;
+                esac
+                if [ "$g" != 0 ] || [ "$h" != 0 ]; then
+                    echo "NOTE: distro $d: $root/$f has local work ($g changed file(s), $h commit(s) not on origin); it does not fail validate" >&2
+                fi
+                ;;
+            gone)
+                echo "⚠️ distro $d: $root/$b is still on disk and no longer in the manifest (recorded by an earlier sync, which does not remove it); remove it if nothing needs it" >&2
+                gone=$((gone + 1))
+                ;;
+        esac
+    done <<< "$lines"
+    if [ -n "$problem" ]; then
+        echo "❌ distro $d cannot be read or resolved: $problem" >&2
+        _RC_STATUS_ISSUES=$((_RC_STATUS_ISSUES + 1))
+    fi
+    _RC_STATUS_ISSUES=$((_RC_STATUS_ISSUES + failing + unknown))
+    # The exit status decides; the document must say the same.
+    local want=0
+    { [ "$failing" -gt 0 ] || [ -n "$problem" ]; } && want=1
+    if [ "$rc" -ne "$want" ] || [ "$doc_ok" != "$((1 - want))" ] || [ "$dist_ok" != "$((1 - want))" ]; then
+        echo "❌ distro $d: repos-manifest status's document and its exit status disagree (exit $rc; the document says ok=$doc_ok, distro ok=$dist_ok, $failing failing repo(s)${problem:+, a problem}); the adapter reads status as the tool's design states it" >&2
+        _RC_STATUS_ISSUES=$((_RC_STATUS_ISSUES + 1))
+    fi
+    # The keys status names against the last resolve's (a distro with a
+    # problem has no repos to compare).
+    if [ -z "$problem" ]; then
+        while IFS= read -r layer; do
+            file="$(_rc_repos_file "$layer")" || return 1
+            [ -f "$file" ] || { resolve_ok=0; continue; }
+            while IFS= read -r a; do
+                [ -n "$a" ] && from_resolve="$from_resolve$layer/$a"$'\n'
+            done < <(_rc_repos_entries "$file" --detail | cut -f1)
+        done < <(_rc_layers)
+        if [ "$resolve_ok" -eq 1 ]; then
+            # Sorted and compared in C order alike: in a UTF-8 locale GNU
+            # comm collates "_unnamed" after "core" and misreads the lists.
+            only_status="$(LC_ALL=C comm -23 <(printf '%s' "$from_status" | LC_ALL=C sort -u) <(printf '%s' "$from_resolve" | LC_ALL=C sort -u) | tr '\n' ' ' | sed 's/ $//')"
+            only_resolve="$(LC_ALL=C comm -13 <(printf '%s' "$from_status" | LC_ALL=C sort -u) <(printf '%s' "$from_resolve" | LC_ALL=C sort -u) | tr '\n' ' ' | sed 's/ $//')"
+            if [ -n "$only_status" ] || [ -n "$only_resolve" ]; then
+                echo "⚠️ distro $d: the last resolve ($(_rc_manifest_dir)) is out of date with the manifest (${only_status:+in the manifest only: $only_status}${only_status:+${only_resolve:+; }}${only_resolve:+in the last resolve only: $only_resolve}); the adapter's other verbs read the last resolve; run: $(_rc_tool_sync_step "$d")" >&2
+                outdated="; the last resolve out of date with the manifest, warned above"
+            fi
+        fi
+    fi
+    [ "$_RC_STATUS_ISSUES" -eq 0 ] && \
+        _RC_STATUS_PASS="✅ ros2_colcon checkout read against the manifest for distro $d (repos-manifest status: $total repo(s), $expected as expected, $warned with a warning above, $skipped optional and skipped$([ "$gone" -gt 0 ] && echo "; besides them, $gone path(s) on disk no longer in the manifest, warned above")$outdated; clones read as last fetched, nothing fetched)"
+    return 0
+}
+
+# `validate` on the tool route, for each distro the call covers
+# (_rc_tool_distro_select --every: the chosen one, or every one under
+# resolved/ when none is chosen; one whose layers.txt is missing or empty
+# fails, named): the workspace's own records (no second record of what the
+# tool records; a leftover of another route noted), the last resolve the
+# adapter's other verbs read (_rc_check_manifest and each layer's .repos
+# file), then the checkouts read against the manifest by the tool's status
+# (_rc_tool_status). Fails if any distro fails, naming it.
 _rc_tool_validate() {
-    local name root mdir layer layer_dir repos_file entry key d n issues=0 failed="" leftover=""
+    local name root layer repos_file d n issues=0 failed="" leftover=""
     local -a keys=() covered=() passed=()
     _rc_tool_distro_select --every || return 1
     covered=("${_RC_TOOL_DISTROS[@]}")
@@ -1061,30 +1307,21 @@ _rc_tool_validate() {
             issues=$((issues + 1))
             continue
         fi
-        mdir="$(_rc_manifest_dir)"
         n=0
         while IFS= read -r layer; do
             repos_file="$(_rc_repos_file "$layer")"
-            layer_dir="$(_rc_layer_dir "$layer")"
             if [ ! -f "$repos_file" ]; then
                 echo "❌ layer '$layer': missing $repos_file (run: $(_rc_tool_sync_step "$d"))" >&2
                 n=$((n + 1))
-                continue
             fi
-            while IFS= read -r entry; do
-                [ -z "$entry" ] && continue
-                key="${entry%%$'\t'*}"
-                [ -d "$layer_dir/src/$key" ] && continue
-                _rc_is_optional_repo "$key" && continue
-                echo "❌ layer '$layer': repo '$key' in ${layer}.repos but not checked out at $layer_dir/src/$key (run: $(_rc_tool_sync_step "$d"))" >&2
-                n=$((n + 1))
-            done < <(_rc_repos_entries "$repos_file" --detail | cut -f1)
         done < <(_rc_layers)
+        _rc_tool_status "$d" || return 1
+        n=$((n + _RC_STATUS_ISSUES))
         if [ "$n" -gt 0 ]; then
             failed="${failed:+$failed, }$d"
             issues=$((issues + n))
         else
-            passed+=("✅ ros2_colcon checkout matches the tool's last resolve for distro $d ($mdir); the manifest itself was not read again (the adapter does not call repos-manifest status yet; issue 503 makes it do so)")
+            passed+=("$_RC_STATUS_PASS")
         fi
     done
     [ "${#passed[@]}" -gt 0 ] && printf '%s\n' "${passed[@]}"
@@ -1758,18 +1995,11 @@ _rc_source_setup() {
     fi
 }
 
-# colcon <verb> [args...] in a layer directory, through _rc_nofd. On the
-# tool route --base-paths src comes first, so the unnamed layer's run in
-# <root>/<distro> does not take in the named layers below it (and the
-# --cmake-args a build passes last still take the rest).
+# colcon <verb> [args...] in a layer directory, through _rc_nofd. (On the
+# tool route only `test` runs colcon here, and it names the base paths
+# itself: see adapter_test.)
 _rc_colcon() {
-    local verb="$1"
-    shift
-    if [ "$(_rc_route)" = tool ]; then
-        _rc_nofd colcon "$verb" --base-paths src "$@"
-    else
-        _rc_nofd colcon "$verb" "$@"
-    fi
+    _rc_nofd colcon "$@"
 }
 
 # --- Contract verbs -------------------------------------------------------
@@ -1848,9 +2078,110 @@ adapter_setup() {
     echo "Setup complete. Next: .agent/scripts/adapter build"
 }
 
+# `build` on the tool route: the manifest tool's build for the chosen
+# distro, in the root, with the distro's environment sourced first in the
+# adapter's shell (the inherited prefix paths scrubbed, then
+# /opt/ros/<distro>/setup.bash), as the tool builds in the environment it
+# is run in. The adapter's colcon flags go after `--`, the caller's
+# arguments after them, so they reach every layer; the tool gives colcon
+# the repos on disk as --base-paths, keeps its record and writes
+# <root>/<distro>/setup.bash. Its output and exit status are passed
+# through. No layer argument: one layer is built with the tool directly.
+# The distro rule and the one read of layers.txt run first (a resolve
+# that cannot be used is refused naming the tool's sync); the key check of
+# _rc_check_manifest does not, since the tool reads the resolved files
+# itself: a nested key (grp/repo) builds, while env, test, validate, repos
+# and the worktree verbs still refuse it. The tool refuses package
+# selection (--packages-select and the like) for a layer not built yet,
+# and --packages-up-to (and the other selections colcon resolves in each
+# layer) when the run builds two or more layers; when the tool refuses a
+# run so (exit 1 and one of those two refusals on its stderr, which is
+# kept for that only when the arguments hold a --packages option the tool
+# counts as selection, not --packages-skip, --packages-ignore, their
+# -regex forms or --packages-skip-build-finished, or --cmake-target), the
+# adapter says how to run the tool's own step with the environment
+# sourced, since the step the tool names sources nothing.
+_rc_tool_build() {
+    local root bin underlay rc=0 arg selecting=0 refused=0 errlog
+    root="$(_rc_root)" || return 1
+    _rc_tool_distro_select || return 1
+    _rc_tool_read_layers || return 1
+    bin="$(_rc_resolver_bin)"
+    if [ ! -x "$bin" ]; then
+        echo "ERROR: the manifest tool is not installed at $bin; run: make install-repos-manifest (from the workspace main checkout)" >&2
+        return 1
+    fi
+    underlay="$(_rc_underlay)" || return 1
+    unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
+    _rc_source_setup "$underlay" || return 1
+    echo "Running: $bin build --distro $_RC_TOOL_DISTRO -- --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON $* (in $root, $underlay sourced)"
+    for arg in "$@"; do
+        case "${arg%%=*}" in
+            --packages-skip|--packages-skip-regex|--packages-ignore|--packages-ignore-regex|--packages-skip-build-finished) ;;
+            --packages*|--cmake-target) selecting=1 ;;
+        esac
+    done
+    if [ "$selecting" -eq 0 ]; then
+        (cd "$root" && _rc_nofd "$bin" build --distro "$_RC_TOOL_DISTRO" -- --symlink-install \
+            --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@") || rc=$?
+        return "$rc"
+    fi
+    # With selection, the tool's stderr is passed through and kept, to tell
+    # its selection refusal from any other failure. The status is the
+    # tool's own (PIPESTATUS, whatever the caller's pipefail). The reader
+    # never stops the tool: a stderr it cannot write to (closed, full)
+    # leaves the copy in the file, a file it cannot write leaves stderr,
+    # and whatever is left is drained. With no temporary file to be had,
+    # the build runs as without selection, with no note. The file goes on
+    # every way out, an interrupt included. While the build runs, the
+    # adapter's handler replaces the caller's handlers for INT, TERM and
+    # HUP, a signal the caller ignores included (so the tool starts with
+    # that signal's default action). The caller's handlers are put back
+    # when the build returns, or when one of the three arrives: then the
+    # file is removed, they are put back and the signal is sent again, so
+    # the caller's handler runs, or the default ends the run with the
+    # signal's status. Bash runs the handler only once the build pipeline
+    # ends, so a TERM sent to the adapter alone does not stop the tool,
+    # which finishes first; Ctrl-C and `timeout` signal the whole process
+    # group, the tool included. If the caller's handler returns instead of
+    # exiting, the run goes on with the file gone, so its grep is silent.
+    if ! errlog="$(mktemp 2>/dev/null)"; then
+        (cd "$root" && _rc_nofd "$bin" build --distro "$_RC_TOOL_DISTRO" -- --symlink-install \
+            --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@") || rc=$?
+        return "$rc"
+    fi
+    local sig traps
+    traps="$(trap -p INT TERM HUP)"
+    for sig in INT TERM HUP; do
+        # shellcheck disable=SC2064  # the file's name and the saved traps are fixed now
+        trap "rm -f -- $(printf '%q' "$errlog"); trap - INT TERM HUP; eval $(printf '%q' "$traps"); kill -$sig \$\$" "$sig"
+    done
+    { (cd "$root" && _rc_nofd "$bin" build --distro "$_RC_TOOL_DISTRO" -- --symlink-install \
+        --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@") 2>&1 1>&7 7>&- \
+        | { tee "$errlog" >&2 2>/dev/null || tee -a "$errlog" >/dev/null 2>&1 || :; cat >/dev/null 2>&1 || :; } \
+        && rc="${PIPESTATUS[0]}" || rc="${PIPESTATUS[0]}"; } 7>&1
+    if [ "$rc" -eq 1 ] && grep -sqF -e "builds only part of a layer, so it only rebuilds layers that are built" \
+            -e "names packages colcon must find in each layer it builds" "$errlog"; then
+        refused=1
+    fi
+    rm -f -- "$errlog"
+    trap - INT TERM HUP
+    eval "$traps"
+    if [ "$refused" -eq 1 ]; then
+        printf 'NOTE: with package selection the manifest tool builds only layers built before, and --packages-up-to only one layer at a time; the adapter builds every layer, so build without selection first, or run the tool'"'"'s step yourself with the distro'"'"'s environment sourced, from a shell with no other workspace'"'"'s prefix paths: unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX && source %q && cd %q && %q build --distro %q <layer> -- <colcon arguments>\n' \
+            "$underlay" "$root" "$bin" "$_RC_TOOL_DISTRO" >&2
+    fi
+    return "$rc"
+}
+
 adapter_build() {
     # Build layers in layers.txt order, sourcing each successful layer's
     # local_setup.bash so later layers overlay it. Stop on first failure.
+    # On the tool route: the manifest tool's build (_rc_tool_build).
+    if [ "$(_rc_route)" = tool ]; then
+        _rc_tool_build "$@"
+        return
+    fi
     _rc_require_manifest || return 1
     local underlay layer layer_dir rc
     underlay="$(_rc_underlay)" || return 1
@@ -1883,12 +2214,60 @@ adapter_build() {
 adapter_test() {
     # Test every layer that has sources; unlike build, a failing layer does
     # not stop the run — all failures are reported at the end.
+    # On the tool route colcon is given, as --base-paths, the src/<key>
+    # directories of the repos the layer's resolved .repos file lists that
+    # are on disk, as the tool's build gives them (so a clone left on disk
+    # that the role or the groups no longer keep is not tested, and the
+    # unnamed layer's run in <root>/<distro> does not take in the named
+    # layers below it). They are read before the underlay is sourced, with
+    # the call's one read of the layers. The tool's build rule holds: a
+    # listed repo missing from disk that the resolved optional.txt does not
+    # name (_rc_is_optional_repo) fails the run before anything runs,
+    # naming each such repo and the tool's sync; an optional repo missing is
+    # left out; a layer with none of its repos on disk (every one of them
+    # optional) is skipped with a line. A layer whose resolved .repos file
+    # is missing fails before anything runs too, naming the file and the
+    # tool's sync, as the tool's build refuses it; one the reader cannot
+    # read fails before anything runs as well.
     _rc_require_manifest || return 1
-    local underlay layer layer_dir rc failed=""
+    local underlay layer layer_dir rc failed="" route key list file entries missing="" i=0
+    local -a paths=() tool_paths=()
+    route="$(_rc_route)"
+    if [ "$route" = tool ]; then
+        while IFS= read -r layer; do
+            layer_dir="$(_rc_layer_dir "$layer")"
+            file="$(_rc_repos_file "$layer")" || return 1
+            if [ ! -f "$file" ]; then
+                echo "ERROR: $file is missing, and the last resolve's layers.txt lists layer '$layer'; test reads from it which repos of the layer to test (the manifest tool's build refuses the same)" >&2
+                echo "Run: $(_rc_tool_sync_step "$_RC_TOOL_DISTRO")" >&2
+                return 1
+            fi
+            if ! entries="$(_rc_repos_entries "$file" --detail)"; then
+                echo "ERROR: $file could not be read, and the last resolve's layers.txt lists layer '$layer'; test reads from it which repos of the layer to test" >&2
+                return 1
+            fi
+            list=""
+            while IFS= read -r key; do
+                [ -n "$key" ] || continue
+                if [ -d "$layer_dir/src/$key" ]; then
+                    list="$list src/$key"
+                elif ! _rc_is_optional_repo "$key"; then
+                    missing="${missing:+$missing, }$key (layer $layer)"
+                fi
+            done < <(printf '%s\n' "$entries" | cut -f1)
+            tool_paths+=("$list")
+        done < <(_rc_layers)
+        if [ -n "$missing" ]; then
+            echo "ERROR: not on disk, and not optional: $missing; nothing was run (the manifest tool's build refuses the same)" >&2
+            echo "Run: $(_rc_tool_sync_step "$_RC_TOOL_DISTRO") (it clones what is missing), then test again" >&2
+            return 1
+        fi
+    fi
     underlay="$(_rc_underlay)" || return 1
     unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
     _rc_source_setup "$underlay" || return 1
     while IFS= read -r layer; do
+        i=$((i + 1))
         layer_dir="$(_rc_layer_dir "$layer")"
         if [ -f "$layer_dir/install/local_setup.bash" ]; then
             _rc_source_setup "$layer_dir/install/local_setup.bash" || return 1
@@ -1897,12 +2276,21 @@ adapter_test() {
             echo "Skipping layer $layer (no src directory)"
             continue
         fi
+        paths=()
+        if [ "$route" = tool ]; then
+            read -r -a paths <<< "${tool_paths[$((i - 1))]}"
+            if [ "${#paths[@]}" -eq 0 ]; then
+                echo "Skipping layer $layer (every repo ${layer}.repos lists is optional, and none is on disk in $layer_dir/src)"
+                continue
+            fi
+            paths=(--base-paths "${paths[@]}")
+        fi
         echo "----------------------------------------"
         echo "Testing layer: $layer"
         echo "----------------------------------------"
         rc=0
         (cd "$layer_dir" \
-            && _rc_colcon test --event-handlers console_direct+ \
+            && _rc_colcon test ${paths[@]+"${paths[@]}"} --event-handlers console_direct+ \
                 --return-code-on-test-failure "$@") || rc=$?
         if [ "$rc" -ne 0 ]; then
             echo "ERROR: tests failed for layer: $layer" >&2
@@ -1921,7 +2309,8 @@ adapter_sync() {
     # branch; fetch otherwise. Never touches dirty or detached checkouts.
     # On the manifest route (issue #436) the source is fetched and resolved
     # first; a failure there stops sync with nothing changed. On the tool
-    # route: the tool's sync, nothing else (it pulls and fetches nothing).
+    # route: the tool's sync, nothing else (the adapter pulls and fetches
+    # nothing itself; the tool's sync clones and updates by its own rules).
     local route missing=0
     route="$(_rc_route)"
     if [ "$route" = tool ]; then
@@ -1986,7 +2375,8 @@ adapter_sync() {
 
 adapter_validate() {
     # Checkout shape vs manifest: every non-optional layer has a repos file
-    # and every repo pinned in it is checked out. Distro must resolve.
+    # and every repo pinned in it is checked out. Distro must resolve. On
+    # the tool route: _rc_tool_validate (the tool's status).
     if [ "$(_rc_route)" = tool ]; then
         _rc_tool_validate
         return
