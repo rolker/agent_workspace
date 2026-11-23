@@ -1180,6 +1180,15 @@ in this order.
    decides (the next pass through this point tries again, since nothing
    records it).
 
+   A cold read that ends `partial`, `failed` or with no entry goes to
+   `checkpoint:phase-failed` like any phase (step 4). A `retry` answer
+   re-dispatches it with the cold-read task line above, never the plain
+   step 4 `review-code <M>` line `next` prints (that would run a full
+   review with no cold-read words, and the next pass would run a second
+   cold read); when Codex was the agent that failed, the retry names
+   Gemini. A `takeover` writes the same cold read, its `**Depth**` line
+   carrying the cold-read words.
+
    Its `## Local Review` is routed like any PR-mode review, with no
    router change: `next` sends an `approved` one to `triage-reviews` (step
    9 then has nothing outstanding, so no wait) and any other verdict
