@@ -1001,7 +1001,10 @@ one repository; so local paths `/srv/robot` and `/srv/robot.git` are read as one
   remote; the report prints it. With `fetch_from`, a repo left as it is for its commits gets the
   two ways on in the same line: push them to the place first (the `git push` command for each
   branch that holds them, which names it in full, `refs/heads/<b>:refs/heads/<b>`, so a tag of
-  the same name cannot make it ambiguous, or for a detached `HEAD` its commit to a branch), then
+  the same name cannot make it ambiguous, and for each detached `HEAD` that holds them its
+  commit to a new branch named by a placeholder, `NEW_BRANCH`, or `NEW_BRANCH_1`, `NEW_BRANCH_2`
+  and so on for several, an upper-case word a shell reads as a word, which the line says is to
+  be replaced by a new branch's name and names the work tree each is for), then
   sync again; or point `origin` at the place by hand (the `set-url` command). Where the place's
   url is shown masked, the line says the whole url is the one `fetch_from` builds for the repo,
   as the `set-url` command does. A probe fetch that fails, with

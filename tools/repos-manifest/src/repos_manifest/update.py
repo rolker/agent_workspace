@@ -1686,18 +1686,24 @@ def _repoint(git: Git, origin: str, repo: Selected) -> Optional[Done]:
             return Done(LEFT, f"url changed to {mask_url(url)}; its commits cannot be counted")
         if local:
             names = []
+            branches = []
+            detached = []
             # The name after refs/heads/, never git's short form, which a tag of the same
             # name turns into `heads/<b>`.
             refs = git.out("for-each-ref", "--format=%(refname:lstrip=2)", "refs/heads/") or ""
             for name in refs.splitlines():
                 if count(git, f"refs/heads/{name}", "--not", f"--remotes={PROBE}"):
                     names.append(f"branch {name}")
+                    branches.append(name)
             for tree in trees:
                 if tree.branch is None and tree.head is not None and tree.head in heads:
                     if count(git, tree.head, "--not", f"--remotes={PROBE}"):
                         names.append(f"the detached HEAD of {tree.path}")
+                        detached.append((f"the detached HEAD of {tree.path}", tree.head))
             which = f" ({', '.join(names)})" if names else " (on HEAD)"
-            steps = _repoint_steps(git, repo, names)
+            if not names:
+                detached.append(("HEAD", "HEAD"))
+            steps = _repoint_steps(git, repo, branches, detached)
             return Done(
                 LEFT,
                 f"url changed to {mask_url(url)} but {counted(local, 'local commit')}{which}"
@@ -1712,32 +1718,50 @@ def _repoint(git: Git, origin: str, repo: Selected) -> Optional[Done]:
         delete_probe_refs(git)
 
 
-def _repoint_steps(git: Git, repo: Selected, names: Sequence[str]) -> str:
+def _repoint_steps(
+    git: Git, repo: Selected, branches: Sequence[str], detached: Sequence[Tuple[str, str]]
+) -> str:
     """With `fetch_from` set, the two ways on for a repo whose commits are not at the place:
-    push them there first, or point origin at it by hand. Empty without `fetch_from`, where the
-    manifest's new url is the published repo, which a person does not push to for `sync`."""
+    push them there first, or point origin at it by hand. `branches` are the local branches
+    with commits not there, `detached` the (description, commit) of each detached `HEAD` with
+    commits not there: each such commit is pushed to a branch whose name a person chooses, so
+    the command holds a placeholder per commit (`NEW_BRANCH`, or `NEW_BRANCH_1`, ... for
+    several), an upper-case word a shell reads as a word, and the line says what each stands
+    for. Empty without `fetch_from`, where the manifest's new url is the published repo, which
+    a person does not push to for `sync`."""
     if repo.published is None:
         return ""
     shown = quoted(mask_url(repo.url))
-    branches = [name[len("branch ") :] for name in names if name.startswith("branch ")]
     pushes = [push_to_place(git.place, repo.url, b) for b in branches]
-    if len(branches) < len(names) or not names:  # a detached HEAD: its commit, to a branch
-        pushes.append(push_to_place(git.place, repo.url, None))
+    placeholders = []
+    for number, (what, commit) in enumerate(detached, 1):
+        placeholder = "NEW_BRANCH" if len(detached) == 1 else f"NEW_BRANCH_{number}"
+        pushes.append(push_to_place(git.place, repo.url, None, commit, placeholder))
+        placeholders.append(f"{placeholder} replaced by a new branch's name for {what}")
     push = " && ".join(pushes) + built_url_note(repo.url, repo.key)
+    if placeholders:
+        push += f" (with {', and '.join(placeholders)})"
     return (
         f". To fetch from {shown}: push them there first ({push}), and sync again; or point"
         f" origin at it by hand ({set_url_command(git.place, repo.url, repo.key, built=True)})"
     )
 
 
-def push_to_place(place: Path, url: str, branch: Optional[str]) -> str:
+def push_to_place(
+    place: Path,
+    url: str,
+    branch: Optional[str],
+    commit: str = "HEAD",
+    placeholder: str = "NEW_BRANCH",
+) -> str:
     """The command that pushes `branch` of the clone at `place` to the url `fetch_from` built,
     `url`: the next step `sync`'s refusal to repoint names, and `status` with it. The branch is
     named in full on both sides (`refs/heads/<b>:refs/heads/<b>`), so a tag of the same name
-    cannot make it ambiguous; with no branch (a detached `HEAD`), its commit to a branch. The
-    url is shown masked: `built_url_note` says where the whole url is."""
+    cannot make it ambiguous; with no branch (a detached `HEAD`), `commit` to the branch
+    `placeholder`, which the caller says is to be replaced. The url is shown masked:
+    `built_url_note` says where the whole url is."""
     if branch is None:
-        ref = "<commit>:refs/heads/<a branch>"
+        ref = quoted(f"{commit}:refs/heads/{placeholder}")
     else:
         ref = quoted(f"refs/heads/{branch}:refs/heads/{branch}")
     shown = quoted(mask_url(url))

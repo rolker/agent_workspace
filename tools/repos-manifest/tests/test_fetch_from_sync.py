@@ -221,7 +221,16 @@ def test_a_detached_work_tree_with_commits_not_at_the_place_keeps_origin(existin
     assert snapshot_repo(clone) == before
     assert "1 local commit (the detached HEAD of" in out
     assert f"origin stays {remote}" in out
-    assert f"push {field}/a.git <commit>:refs/heads/<a branch>" in out
+    tip = head(clone)
+    (line,) = [each for each in out.splitlines() if "push them there first" in each]
+    command = line.split("push them there first (", 1)[1].split(" (with NEW_BRANCH", 1)[0]
+    assert command == f"git -C {clone} push {field}/a.git {tip}:refs/heads/NEW_BRANCH"
+    assert "(with NEW_BRANCH replaced by a new branch's name for the detached HEAD of" in line
+    # Pasted with the placeholder replaced, the command is one a shell runs as it reads.
+    subprocess.run(
+        shlex.split(command.replace("NEW_BRANCH", "mine")), check=True, capture_output=True
+    )
+    assert git("rev-parse", "refs/heads/mine", cwd=field / "a.git") == tip
 
 
 def test_the_printed_push_names_the_branch_where_a_tag_has_its_name(existing, capsys):
@@ -247,16 +256,25 @@ def test_a_masked_url_in_the_push_says_where_the_whole_url_is():
         "git -C /s/src/a push 'https://***@git.example.org/field/a.git'"
         " refs/heads/main:refs/heads/main"
     )
-    assert push_to_place(Path("/s/src/a"), url, None).endswith(" <commit>:refs/heads/<a branch>")
+    assert push_to_place(Path("/s/src/a"), url, None).endswith(" HEAD:refs/heads/NEW_BRANCH")
     note = built_url_note(url, "a")
     assert note == " (with the url of a as fetch_from builds it in place of the one shown)"
     assert built_url_note("git@gitcloud:field/a.git", "a") == ""
     selected = Selected("a", "git", url, "main", False, "m.yaml", published="https://h/o/a.git")
     git_here = SimpleNamespace(place=Path("/s/src/a"))
-    steps = _repoint_steps(git_here, selected, ["branch main", "the detached HEAD of /s/w"])
+    detached = [("the detached HEAD of /s/w", "a" * 40), ("the detached HEAD of /s/v", "b" * 40)]
+    steps = _repoint_steps(git_here, selected, ["main"], detached)
     assert steps.count(note) == 1
     assert "s3cret" not in steps and "field-user" not in steps
     assert "refs/heads/main:refs/heads/main && git -C /s/src/a push" in steps
+    # One placeholder per detached work tree, each with its own commit, each named.
+    assert f" {'a' * 40}:refs/heads/NEW_BRANCH_1 && " in steps
+    assert f" {'b' * 40}:refs/heads/NEW_BRANCH_2{note}" in steps
+    assert (
+        "(with NEW_BRANCH_1 replaced by a new branch's name for the detached HEAD of /s/w, and"
+        " NEW_BRANCH_2 replaced by a new branch's name for the detached HEAD of /s/v)"
+    ) in steps
+    assert "<" not in steps and ">" not in steps
 
 
 def test_an_origin_already_at_the_place_is_left_and_recorded(existing, capsys):
