@@ -1120,11 +1120,14 @@ order.
    - **A Copilot review that reviewed** is on the pull request: Copilot
      was available. Nothing more is requested; a review not yet read goes
      to `triage-reviews` by step 9's re-fetch rule.
-   - **A could-not-review notice**, or **a request or check-run with no
-     Copilot review and no concluded check-run** (a run resumed during
-     the wait, or an earlier pass's wait that ran out): Copilot is "not
-     available". Go to 3 with no new wait; a request listed on GitHub and
-     never answered is not waited for again.
+   - **A could-not-review notice**; **a concluded
+     `copilot-pull-request-reviewer` check-run with no Copilot review**
+     (step 9's wait ends on any conclusion, so a check-run can finish
+     with nothing posted); or **a request or a running check-run with no
+     Copilot review** (a run resumed during the wait, or an earlier
+     pass's wait that ran out): Copilot is "not available". Go to 3 with
+     no new wait; a request listed on GitHub and never answered is not
+     waited for again.
    - **No Copilot request, review or check-run**: request it, once:
 
      ```bash
@@ -1136,8 +1139,8 @@ order.
      (about 900 s with no check-run, the merge script's 1800 s hold on a
      running one). A review on the head arrived: dispatch
      `triage-reviews`, which reads it, and no cold read follows. A
-     could-not-review notice, or no answer within the bound: "not
-     available". Verified: `gh` 2.104.0's `gh pr edit --help` documents
+     could-not-review notice, a check-run that concluded with no review
+     on the head, or no answer within the bound: "not available". Verified: `gh` 2.104.0's `gh pr edit --help` documents
      `--add-reviewer "@copilot"`. Not verified: what the request does
      under exhausted quota, or when it is accepted and never answered;
      every outcome that is not a review counts as "not available".
