@@ -238,3 +238,48 @@ Revise for the three findings of the second Plan Review. Host decisions (owner m
 **Plan**: `.agent/work-plans/issue-452/plan.md` at `e55a68e9`
 
 Second revision: step 3 states the real routing (approved fallback to triage-reviews, other verdicts to address-findings; no router change, verified in dispatch_phase.sh) and accepts the fallback counting as a PR-mode round; step 2 skips the request on GitHub Copilot state OR a fallback Local Review marked by its `**Depth**` "cold read, cross-model only", with the ~900 s wait once at the request; step 4 adds a definite skill-text case to test_review_code_convergence.sh, listed in Files to Change.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-23 17:04 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #452 — Copilot review becomes optional: one request per pull request, with a cold cross-model read as the fallback
+**Plan**: `.agent/work-plans/issue-452/plan.md` at `e55a68e9`
+**Branch**: `feature/issue-452`
+
+### Earlier findings (second Plan Review)
+
+1. Fallback routing and round count: resolved. Step 3 states the real route (checked against `dispatch_phase.sh` ~1213: approved `## Local Review` to `triage-reviews`, any other verdict to `address-findings`) and accepts the fallback counting as a PR-mode round, as the checkpoint decided. The PR-mode round-3 words are written by a host, not appended by `dispatch_phase.sh` (its round-3 suffix applies only when there is no `--pr`), so the two handoff phrases do not collide.
+2. Once per PR: resolved in substance. Skip on GitHub Copilot state OR the fallback entry, marker named (`**Depth**` containing "cold read, cross-model only"), the ~900 s wait tied to the request moment. Its scoping is incomplete (new finding 1).
+3. Skill-text pin: resolved. A definite case in `.agent/scripts/tests/test_review_code_convergence.sh` (file exists), listed in Files to Change.
+
+Checkpoint decisions: none look wrong. One note, not a finding: the issue says the fallback's "findings go through triage like any other source"; under the accepted routing a non-approved fallback reaches `triage-reviews` only after `address-findings` and the PR-mode re-review. The PR description should say so, as a stated deviation.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | About ten files, one concept; split order kept. |
+| Issue alignment | Needs work | Serves line, as checked: "Goal 'Quality of the work' with the principle 'A safeguard has to earn its cost': `docs/design.md#review-loop-and-timeline`" (goal and anchor exist; the "principle" is a bullet under the goal, wording loose, goal right). All three acceptance lines are covered (hand-back line in step 6, no-wait default in step 1, audit wording in step 7), except that the fallback marker check can suppress a later PR's cold read (finding 1). |
+| File targeting | Good | Files match the work; `test_triage_reviews_integration.sh` and `test_review_code_convergence.sh` both exist. |
+| Consequences | Good | Covered as in the earlier reviews. |
+| Principle alignment | Good | Only what's needed, Test what breaks (new cases only, skill text said to have no failing test) and Verify before claiming (quota behaviour unverified, stated). |
+| ADR compliance | Good | ADR-0013: existing `## Local Review` type; ADR-0017: design.md in the same change; ADR-0010 not triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Issue alignment]** Step 2's timeline condition ("the timeline holds the fallback's `## Local Review`", found by the host grepping for "cold read, cross-model only") is not scoped, and as written it skips both the request and the fallback. Two ways it goes wrong: (a) the issue's second pull request (the plan itself allows a split into PR (a) and PR (b); run-issue step 13 starts a new PR after a `merge` answer) finds PR (a)'s fallback entry and gets neither a Copilot request nor a cold read, missing the acceptance "the cold read's entry is on the timeline" for that PR; (b) a whole-file grep matches the phrase in Checkpoint, Plan Review and Plan Authored entries: this issue's own progress.md already contains it four times (lines 206, 217, 231, 240), so PR 452 itself would skip its fallback. Fix in one sentence: match only a `**Depth**:` line inside a complete `## Local Review` entry from the current pull request's start (`pr_start.py` `pr_start`, the boundary run-issue's "Where a pull request ends" paragraph and review-code's round count already use).
+
+Suggestion (not blocking): a session that restarts during the ~900 s wait resumes with a Copilot request on GitHub and no fallback entry; by step 2 it skips the request and the wait, but step 3 runs the fallback only on "not available", which that resume never determines. Say that a resumed host seeing a request with no Copilot review or concluded check-run and no fallback entry treats it as "not available" and runs the fallback (no new wait).
+
+### Summary
+
+All three findings of the second review are resolved and the checkpoints are followed. One gap remains: the fallback-entry check must be limited to `## Local Review` `**Depth**` lines since the current PR's start, or a split second PR (and this issue's own PR, by text match) skips its cold read. One sentence of plan text; the approach is unchanged.
+
+### Recommended Actions
+
+- [ ] Step 2: scope the fallback-entry check to a `**Depth**:` line in a complete `## Local Review` entry after the current PR's start (`pr_start.py`), not a grep of the whole timeline.
+- [ ] (Suggestion) Step 2/3: on resume with a request listed but unanswered and no fallback entry, treat it as "not available" and run the fallback.
