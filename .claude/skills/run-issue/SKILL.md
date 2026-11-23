@@ -1088,8 +1088,20 @@ order.
 1. **The cold read already ran for this pull request**:
 
    ```bash
-   $WS_ROOT/.agent/scripts/review_progress.sh cold-read --progress <worktree>/.agent/work-plans/issue-<N>/progress.md
+   WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+   D="$($WS_ROOT/.agent/scripts/dispatch_phase.sh where --issue <ref> --type <type> [--project <project>])" \
+     && [[ -n "$D" && -d "$D" ]] \
+     || { echo "STOP: dispatch_phase.sh where refused or printed nothing (see above); do not request or dispatch"; exit 1; }
+   PF="$D/.agent/work-plans/issue-<N>/progress.md"
+   [[ -f "$PF" ]] || { echo "STOP: no progress.md at $PF; do not request or dispatch"; exit 1; }
+   $WS_ROOT/.agent/scripts/review_progress.sh cold-read --progress "$PF"
    ```
+
+   `PF` comes from `where`, as in step 4's `$BEFORE` block, never from
+   the worktree's top folder: for a package issue that folder holds no timeline, and the
+   script reads a missing file as `cold_read=no`, so every merge pass
+   would request again and run a second cold read. The file is checked to
+   exist for the same reason; by this point it always does.
 
    `cold_read=yes` means a complete `## Local Review` whose `**Depth**:`
    line carries "cold read, cross-model only" was written after the
