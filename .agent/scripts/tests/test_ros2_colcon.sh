@@ -4217,9 +4217,9 @@ EOF
 # no TOOL_STATUS_FILE, a format 1 document made from the last resolve and
 # what is on disk (status_stub.py) and its exit status. build: records the
 # underlay's SOURCED_LAYERS, COLCON_PREFIX_PATH and GIT_DIR as well, and
-# prints TOOL_STDERR on stderr; with TOOL_SLEEP, writes what is in TMPDIR
-# to tool.started (written whole, then moved into place) and sleeps that
-# long before going on.
+# prints TOOL_STDERR on stderr; with TOOL_HOLD (a file's path), writes
+# what is in TMPDIR to tool.started (written whole, then moved into place)
+# and waits for that file to exist, at most 10 seconds, before going on.
 case "\${1:-}" in
     status)
         echo "STATUS_RAN_IN:\$(pwd -P) ARGS:\$*" >> "$sb/status.log"
@@ -4232,10 +4232,11 @@ case "\${1:-}" in
     build)
         echo "build stub: ran"
         [ -n "\${TOOL_STDERR:-}" ] && echo "\$TOOL_STDERR" >&2
-        if [ -n "\${TOOL_SLEEP:-}" ]; then
+        if [ -n "\${TOOL_HOLD:-}" ]; then
             ls -A "\${TMPDIR:-/tmp}" > "$sb/tool.started.part"
             mv "$sb/tool.started.part" "$sb/tool.started"
-            sleep "\$TOOL_SLEEP"
+            n=0
+            while [ ! -e "\$TOOL_HOLD" ] && [ "\$n" -lt 200 ]; do sleep 0.05; n=\$((n + 1)); done
         fi
         echo "TOOL_RAN_IN:\$(pwd -P) ARGS:\$* EXIT:\${TOOL_EXIT:-0} SOURCED:\${SOURCED_LAYERS:-none} PREFIX:\${COLCON_PREFIX_PATH:-unset} GIT_DIR:\${GIT_DIR:-unset}" >> "$sb/tool.log"
         exit "\${TOOL_EXIT:-0}"
@@ -4311,18 +4312,21 @@ run_tool() {  # <sb> <dir> <verb and args...>
 }
 
 # The adapter's build with selection on toolsys from <root>, TMPDIR
-# <sb>/tmp, the stub tool sleeping a second; TERM goes to the dispatcher
-# (the background job itself, through exec) once the stub has started,
-# waited for at most 5 seconds. Prints the run's exit status.
+# <sb>/tmp, the stub tool held until <sb>/tool.release exists; TERM goes
+# to the dispatcher (the background job itself, through exec) once the
+# stub has started, waited for at most 5 seconds, and only then is the
+# stub released, so the signal is always sent while the tool runs. Prints
+# the run's exit status.
 tool_build_interrupted() {  # <sb> <root>
     local sb="$1" root="$2" pid n=0 rc=0
-    rm -f "$sb/tool.started"
-    (cd "$root" && export ROS_ROOT_DIR="$sb/rosroot" TMPDIR="$sb/tmp" TOOL_SLEEP=1 PATH="$sb/bin:$PATH" \
+    rm -f "$sb/tool.started" "$sb/tool.release"
+    (cd "$root" && export ROS_ROOT_DIR="$sb/rosroot" TMPDIR="$sb/tmp" TOOL_HOLD="$sb/tool.release" PATH="$sb/bin:$PATH" \
         COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
         && exec "$sb/.agent/scripts/adapter" --project toolsys build --packages-select pkg_a) >/dev/null 2>&1 &
     pid=$!
     while [ ! -e "$sb/tool.started" ] && [ "$n" -lt 100 ]; do sleep 0.05; n=$((n + 1)); done
     kill -TERM "$pid" 2>/dev/null || true
+    : > "$sb/tool.release"
     wait "$pid" || rc=$?
     echo "$rc"
 }

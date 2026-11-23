@@ -2133,10 +2133,18 @@ _rc_tool_build() {
     # leaves the copy in the file, a file it cannot write leaves stderr,
     # and whatever is left is drained. With no temporary file to be had,
     # the build runs as without selection, with no note. The file goes on
-    # every way out, an interrupt included: on INT, TERM or HUP the file is
-    # removed, the caller's own handlers for the three (or their ignoring)
-    # are put back, and the signal is sent again, so the caller's handler
-    # runs, or the default ends the run with the signal's status.
+    # every way out, an interrupt included. While the build runs, the
+    # adapter's handler replaces the caller's handlers for INT, TERM and
+    # HUP, a signal the caller ignores included (so the tool starts with
+    # that signal's default action). The caller's handlers are put back
+    # when the build returns, or when one of the three arrives: then the
+    # file is removed, they are put back and the signal is sent again, so
+    # the caller's handler runs, or the default ends the run with the
+    # signal's status. Bash runs the handler only once the build pipeline
+    # ends, so a TERM sent to the adapter alone does not stop the tool,
+    # which finishes first; Ctrl-C and `timeout` signal the whole process
+    # group, the tool included. If the caller's handler returns instead of
+    # exiting, the run goes on with the file gone, so its grep is silent.
     if ! errlog="$(mktemp 2>/dev/null)"; then
         (cd "$root" && _rc_nofd "$bin" build --distro "$_RC_TOOL_DISTRO" -- --symlink-install \
             --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@") || rc=$?
@@ -2152,7 +2160,7 @@ _rc_tool_build() {
         --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@") 2>&1 1>&7 7>&- \
         | { tee "$errlog" >&2 2>/dev/null || tee -a "$errlog" >/dev/null 2>&1 || :; cat >/dev/null 2>&1 || :; } \
         && rc="${PIPESTATUS[0]}" || rc="${PIPESTATUS[0]}"; } 7>&1
-    if [ "$rc" -eq 1 ] && grep -qF -e "builds only part of a layer, so it only rebuilds layers that are built" \
+    if [ "$rc" -eq 1 ] && grep -sqF -e "builds only part of a layer, so it only rebuilds layers that are built" \
             -e "names packages colcon must find in each layer it builds" "$errlog"; then
         refused=1
     fi
