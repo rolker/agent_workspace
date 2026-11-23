@@ -273,3 +273,13 @@ The revision answers both must-fix findings with the mechanisms the earlier revi
 - [ ] In the new test, unset `ROS2_COLCON_TESTS_REQUIRE_VCS` in case (a)'s subshell and set it in case (b)'s, so the test passes inside the adapter-contract step that sets it.
 - [ ] In `test_tool_real_init_and_sync`, return after the required-vcs FAIL.
 - [ ] Optionally note on the workflow step that the pin follows the `[test]` extra's floor.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 10:05 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+The owner's answer in the dialog, to "Implement part 2 as planned, with F1 to F3 passed to the implementer?": "Proceed (Recommended)". The dialog showed the Plan Review at 7db5a37c (verdict ready) and part 2 as planned, including that it changes .github/workflows/validate.yml (Ask First). F1, should-fix during implementation: in the new test, the variable-unset case must unset ROS2_COLCON_TESTS_REQUIRE_VCS explicitly inside its subshell and the other case must set it there, because the test runs inside the CI step that sets the variable. F2, note: the real-tool test must return after the required-vcs FAIL, as the skip branch does. F3, note: the workflow pin ==1.1.7 and the test extra's floor >=1.1.7 are two places to keep in step; a comment on the workflow step pointing to the extra. F4, the mechanism choice not to install vcs in the Lint job (the case still skips there, shown as 1 skipped): offered for veto and not vetoed. This proceed covers part 2 only; part 1 is delivered (pull request 540).
