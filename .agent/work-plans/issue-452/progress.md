@@ -159,3 +159,11 @@ Revise the plan for all five Plan Review findings. Host decisions on the two blo
 - Finding 1, the fallback's timeline entry: the cold read runs through the existing PR-mode `review-code` path, which writes `## Local Review` (a type the loop already routes on), with one cross-model reviewer (Codex, else Gemini) and a handoff that gives it the final diff only, no earlier review entries or findings. No new entry type, no new writer in `cross_model_review.sh`.
 - Finding 2, "requested once" surviving a restart: the durable record is GitHub's own state for the pull request (a Copilot review request, review or check-run already on it, read with `gh pr view --json reviewRequests,reviews` and the check list), plus the fallback's `## Local Review` on the timeline. The host checks these before requesting; nothing new is stored by the host.
 Findings 3 to 5 as the review states them: list only new tests (the merge hold already matches the decision and is pinned), say the step 9 and fallback changes are skill text with no failing test, state that fixes after Copilot or fallback findings go through the existing re-review path with no second request and no new wait, drop the `fetch_pr_reviews.sh` and orchestrator edits unless a named line needs them, make `skill_workflows.md:32` a definite edit, and drop `test_merge_pr_skill.sh`.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-23 17:00 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-452/plan.md` at `71fe90e7`
+
+Revision after plan review: fallback runs as a PR-mode review-code (cross-model only, final diff) writing `## Local Review`; "requested once" is read from GitHub PR state plus the fallback entry; merge hold verified as already implemented and pinned (comments only); tests trimmed to the new triage case; skill_workflows.md:32 a definite edit; fetch_pr_reviews.sh, orchestrator and test_merge_pr_skill.sh dropped.
