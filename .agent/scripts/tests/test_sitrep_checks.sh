@@ -833,8 +833,10 @@ n_gh="$(grep -c . "$MARK/gh" 2>/dev/null || true)"
 [[ "$n_gh" == 1 ]] && pass "(skill 1) gh called once for one gh row" || fail "(skill 1) gh called ${n_gh:-0} times: $OUT"
 [[ "$OUT" == *"lines 2/2 deferrals 0/1"* && -n "$rows_file" && -f "$rows_file" ]] \
     && pass "(skill 1) summary shown, rows saved" || fail "(skill 1) '$OUT'"
-[[ "$OUT" == *$'--- next steps\n(root)\tnone open\nrows_file='* ]] \
-    && pass "(skill 1) next steps from the saved rows, before rows_file" || fail "(skill 1) next steps '$OUT'"
+# The Line table sits under Path 2's paragraph (the nearest one above it),
+# so Path 1 has no lines (issue #563).
+[[ "$OUT" == *$'--- next steps\nPath 1, One\tno lines (no design yet)\nPath 2, Two\tnone open\nrows_file='* ]] \
+    && pass "(skill 1) next steps per path from the saved rows, before rows_file" || fail "(skill 1) next steps '$OUT'"
 
 echo "TEST: sit-rep step 1 with a failed run keeps no rows file and says so"
 mv "$WS/.agent/scripts/sitrep_checks.sh" "$SB/sitrep_checks.real"
@@ -897,7 +899,7 @@ echo OPEN > "$SB/gh_state"   # a re-run would now give lines 1/2
 # Step 2 counted 2 lines; a capture made since must not be in the record.
 run_step 4 "s|<rows_file printed in step 1>|$rows_file|; s|<inbox_lines printed in step 2>|2|"
 last="$(tail -n1 "$SB/notes/runs.txt" 2>/dev/null)"
-[[ "$(cut -f2-4 <<< "$last")" == $'workspace\tlines 2/2 deferrals 0/1\tinbox 2' && ! -e "$MARK/gh" ]] \
+[[ "$(cut -f2-4 <<< "$last")" == $'workspace\tlines 2/2 deferrals 0/1 paths P1 none P2 2/2\tinbox 2' && ! -e "$MARK/gh" ]] \
     && pass "(skill 4) record from the saved rows and step 2's count, nothing re-run" || fail "(skill 4) last='$last' out='$OUT'"
 [[ -n "$rows_file" && ! -e "$rows_file" ]] && pass "(skill 4) rows file removed" || fail "(skill 4) rows file left: $rows_file"
 [[ "$(cut -f5- <<< "$last")" == $'2026-10-12 10:00 -0400\tworkspace\t-\tb' ]] \
@@ -1596,7 +1598,7 @@ AT="" run_step 2
 
 echo "TEST: sit-rep step 4 in a project session records the project's name"
 run_step 4 "s|<rows_file printed in step 1>|$prows|; s|<inbox_lines printed in step 2>|4|"
-[[ "$(tail -n1 "$SB/notes/runs.txt" | cut -f2-4)" == $'proj\tlines 1/2 deferrals 0/0\tinbox 4' \
+[[ "$(tail -n1 "$SB/notes/runs.txt" | cut -f2-4)" == $'proj\tlines 1/2 deferrals 0/0 paths P1 1/2\tinbox 4' \
     && "$(head -n3 "$SB/notes/runs.txt" | cut -f2 | tr '\n' ' ')" == "workspace proj workspace " ]] \
     && pass "(project 4) the record's second column is the project's name; earlier lines untouched" || fail "(project 4) '$(cat "$SB/notes/runs.txt")' out='$OUT'"
 
@@ -1884,6 +1886,320 @@ RC=0; S="$(bash "$SITREP" --summary-from "$SB/rows-nf" 2>&1)" || RC=$?
 [[ $RC -eq 0 && "$S" == "lines 0/0 deferrals 0/0" ]] \
     && pass "(sub) --summary-from takes those rows (0/0), not 'no rows'" || fail "(sub) no-follow summary: rc=$RC '$S'"
 rm -rf "$SB/root/docs/part"
+
+# --- 16. paths (issue #563) ------------------------------------------------------------
+# The root's Direction section written as paths: a path row ahead of each
+# group's line rows, per-group counts in the summary and per-group next
+# steps. A section with no path paragraph reads as before.
+T='file-exists docs/notes.md'; F='file-exists docs/ghost.md'
+kinds() { cut -f1-4 <<< "$OUT"; }
+
+echo "TEST: two paths, one table each: a path row ahead of each, counted apart"
+run_rm "$(printf '%s\n' '# R' '' '## Direction' '' 'Intro.' '' \
+    '**Path 1, One.** First path.' '' '| Line | Check |' '|---|---|' "| A1 | $T |" "| A2 | $F |" '' \
+    '**Path 2, Two.** Second path.' '' '| Line | Check |' '|---|---|' "| B1 | $T |" '' '## Next')"
+want=$'path\tPath 1, One\ttrue\tlines\nline\tA1\ttrue\t'"$T"$'\nline\tA2\tfalse\t'"$F"$'\npath\tPath 2, Two\ttrue\tlines\nline\tB1\ttrue\t'"$T"
+[[ $RC -eq 0 && "$(kinds)" == "$want" ]] && pass "(paths) a path row ahead of each path's lines" || fail "(paths) rows rc=$RC '$OUT'"
+printf '%s\n' "$OUT" > "$SB/rows-paths"
+RC=0; S="$(bash "$SITREP" --summary-from "$SB/rows-paths" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == "lines 2/3 deferrals 0/0 paths P1 1/2 P2 1/1" ]] \
+    && pass "(paths) summary: the same prefix, then each path's count" || fail "(paths) summary rc=$RC '$S'"
+RC=0; S="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/root" --summary 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == "lines 2/3 deferrals 0/0 paths P1 1/2 P2 1/1" ]] \
+    && pass "(paths) --summary gives the same line" || fail "(paths) --summary rc=$RC '$S'"
+[[ "$S" != *$'\t'* ]] && pass "(paths) the summary holds no TAB (run-record readers cut on TABs)" || fail "(paths) TAB in '$S'"
+RC=0; S="$(bash "$SITREP" --next-steps-from "$SB/rows-paths" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == $'Path 1, One\tA2\tfalse\nPath 2, Two\tnone open' ]] \
+    && pass "(paths) next steps: one line per path by its name, none open when all are true" || fail "(paths) next rc=$RC '$S'"
+
+echo "TEST: lines above the first path, a path with no table, Across, a deferral table between, a table after Format"
+run_rm "$(printf '%s\n' '## Direction' '' '| Line | Check |' '|---|---|' "| U1 | $F |" '' \
+    '**Paths.** Several paths run.' '' \
+    '**Path 1, One.** First.' '' '| Line | Check |' '|---|---|' "| A1 | $T |" '' \
+    '| Deferral | Revisit check |' '|---|---|' "| D1 | $T |" '' \
+    '| Line | Check |' '|---|---|' "| A2 | $F |" '' \
+    '**Path 2, Two.** No design yet.' '' \
+    '**Across the paths.** Shared.' '' '| Line | Check |' '|---|---|' "| X1 | $T |" '' \
+    '**Format.** Rules.' '' '| Line | Check |' '|---|---|' "| X2 | $F |")"
+want="$(printf '%s\n' $'path\tno path\ttrue\tlines' $'line\tU1\tfalse' $'path\tPath 1, One\ttrue\tlines' \
+    $'line\tA1\ttrue' $'deferral\tD1\ttrue' $'line\tA2\tfalse' $'path\tPath 2, Two\tunchecked\tno lines (no design yet)' \
+    $'path\tAcross the paths\ttrue\tgroup' $'line\tX1\ttrue' $'line\tX2\tfalse')"
+got="$(awk -F'\t' '{ print ($1 == "path" ? $1 "\t" $2 "\t" $3 "\t" $4 : $1 "\t" $2 "\t" $3) }' <<< "$OUT")"
+[[ $RC -eq 0 && "$got" == "$want" ]] \
+    && pass "(paths) ungrouped lines are 'no path'; Paths. opens nothing; two tables under one path; a deferral table keeps its place; no table is no design yet; Across is a group; a table after Format is the group above's" \
+    || fail "(paths) groups rc=$RC got '$got'"
+printf '%s\n' "$OUT" > "$SB/rows-paths"
+RC=0; S="$(bash "$SITREP" --summary-from "$SB/rows-paths" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == "lines 2/5 deferrals 1/1 paths nopath 0/1 P1 1/2 P2 none across 1/2" ]] \
+    && pass "(paths) summary: nopath, P<n>, none for no lines, across, in roadmap order; the prefix counts every line" || fail "(paths) summary rc=$RC '$S'"
+RC=0; S="$(bash "$SITREP" --next-steps-from "$SB/rows-paths" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == $'no path\tU1\tfalse\nPath 1, One\tA2\tfalse\nPath 2, Two\tno lines (no design yet)\nAcross the paths\tX2\tfalse' ]] \
+    && pass "(paths) next steps: no path first, a path's first unmet line past a deferral, no design yet, Across" || fail "(paths) next rc=$RC '$S'"
+
+echo "TEST: Across with no lines, and paths whose tables are empty"
+run_rm "$(printf '%s\n' '## Direction' '' '**Path 1, One.** First.' '' '| Line | Check |' '|---|---|' '' \
+    '**Across the paths.** Nothing yet.' '' '| Deferral | Revisit check |' '|---|---|')"
+[[ $RC -eq 0 && "$(kinds)" == $'path\tPath 1, One\tunchecked\tno lines (no design yet)\npath\tAcross the paths\tunchecked\tno lines\nsection\t(no rows in the Line or Deferral tables)\tunchecked\tnone' ]] \
+    && pass "(paths) path rows are not table rows: empty tables still give the section row; Across with no lines is unchecked, no lines" \
+    || fail "(paths) empty rc=$RC '$OUT'"
+printf '%s\n' "$OUT" > "$SB/rows-paths"
+RC=0; S="$(bash "$SITREP" --next-steps-from "$SB/rows-paths" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == $'Path 1, One\tno lines (no design yet)\nAcross the paths\tno lines' ]] \
+    && pass "(paths) next steps of groups with no lines say so" || fail "(paths) empty next rc=$RC '$S'"
+RC=0; S="$(bash "$SITREP" --summary-from "$SB/rows-paths" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == "lines 0/0 deferrals 0/0 paths P1 none across none" ]] \
+    && pass "(paths) summary of groups with no lines: none" || fail "(paths) empty summary rc=$RC '$S'"
+
+echo "TEST: what opens a path: a bold Path <n> at a paragraph's start, joined when wrapped"
+run_rm "$(printf '%s\n' '## Direction' '' '**Paths.** Not a path.' '' \
+    'Text that wraps and' '**Path 3, Continued.** is not a path.' '' \
+    '- **Path 4, Bullet.** a bullet' '- an item' '**Path 5, Lazy.** a lazy continuation' '' \
+    '```md' '**Path 6, Fenced.** in a fence' '```' '' \
+    '| **Path 7, Cell.** | x |' '|---|---|' '' \
+    '**Path 1, Wrapped' 'over two lines.** Real.' '' '| Line | Check |' '|---|---|' "| W1 | $T |" '' \
+    '**Path' '2, Split.** Real too.' '' '## Next')"
+[[ $RC -eq 0 && "$(kinds)" == $'path\tPath 1, Wrapped over two lines\ttrue\tlines\nline\tW1\ttrue\t'"$T"$'\npath\tPath 2, Split\tunchecked\tno lines (no design yet)' ]] \
+    && pass "(paths) Paths., a continuation line, a bullet, a lazy continuation, a fence and a table cell open nothing; a wrapped bold span is joined" \
+    || fail "(paths) pattern rc=$RC '$OUT'"
+
+echo "TEST: no path paragraph: rows, summary and next steps as before paths were read"
+run_rm "$(printf '%s\n' '## Direction' '' '**Across the paths.** Alone, it opens nothing.' '' \
+    '| Line | Check |' '|---|---|' "| A | $T |" "| B | $F |" '' '**Path:** not a path either.')"
+[[ $RC -eq 0 && "$(kinds)" == $'line\tA\ttrue\t'"$T"$'\nline\tB\tfalse\t'"$F" ]] \
+    && pass "(paths) no path paragraph: no path row (an Across paragraph alone opens no group)" || fail "(paths) compat rows rc=$RC '$OUT'"
+printf '%s\n' "$OUT" > "$SB/rows-paths"
+RC=0; S="$(bash "$SITREP" --summary-from "$SB/rows-paths" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == "lines 1/2 deferrals 0/0" ]] && pass "(paths) no path paragraph: the summary has no paths part" || fail "(paths) compat summary '$S'"
+RC=0; S="$(bash "$SITREP" --next-steps-from "$SB/rows-paths" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == $'(root)\tB\tfalse' ]] && pass "(paths) no path paragraph: one (root) next step" || fail "(paths) compat next '$S'"
+
+echo "TEST: a sub-roadmap's own path paragraphs are not read"
+mkdir -p "$SB/root/docs/part"
+printf '%s\n' '# Part' '' '## Direction' '' '**Path 1, Part path.** Prose here.' '' '| Line | Check |' '|---|---|' "| P1 | $F |" > "$SB/root/docs/part/roadmap.md"
+run_rm "$(printf '%s\n' '## Direction' '' '**Path 1, One.** First.' '' '| Line | Check |' '|---|---|' "| A1 | $T |" '' \
+    '| Sub-roadmap | Root |' '|---|---|' '| docs/part/roadmap.md | . |')"
+[[ $RC -eq 0 && "$(grep -c $'^path\t' <<< "$OUT")" -eq 1 && "$(row 'docs/part/roadmap.md: P1' | cut -f1,3)" == $'subline\tfalse' ]] \
+    && pass "(paths) one path row, the root's; the part's lines are subline rows as before" || fail "(paths) sub rc=$RC '$OUT'"
+printf '%s\n' "$OUT" > "$SB/rows-paths"
+RC=0; S="$(bash "$SITREP" --next-steps-from "$SB/rows-paths" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == $'Path 1, One\tnone open\ndocs/part/roadmap.md\tP1\tfalse' ]] \
+    && pass "(paths) next steps: the root's paths, then the part by its path" || fail "(paths) sub next '$S'"
+RC=0; S="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/root" --list-pointers 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == "docs/part/roadmap.md" ]] && pass "(paths) --list-pointers prints no path row" || fail "(paths) list-pointers '$S'"
+rm -rf "$SB/root/docs/part"
+
+echo "TEST: an old rows file with no path row still reads"
+printf 'line\tA\ttrue\tnone\t2026-11-01\nline\tB\tunchecked\tnone\t2026-11-01\ndeferral\tD\tfalse\tnone\t2026-11-01\n' > "$SB/rows-old"
+RC=0; S="$(bash "$SITREP" --summary-from "$SB/rows-old" 2>&1)" || RC=$?
+S2="$(bash "$SITREP" --next-steps-from "$SB/rows-old" 2>&1)"
+[[ $RC -eq 0 && "$S" == "lines 1/2 deferrals 0/1" && "$S2" == $'(root)\tB\tunchecked' ]] \
+    && pass "(paths) an old rows file: summary and next step as before" || fail "(paths) old rows '$S' '$S2'"
+
+echo "TEST: the Across line's check finds its sentence on one line of the checker's header"
+cp "$SITREP" "$SB/root/.agent/scripts/sitrep_checks.sh"
+run_rm "$(direction '| Across | file-contains .agent/scripts/sitrep_checks.sh a path row governs the line rows up to the next path row |')"
+[[ $RC -eq 0 && "$(res Across)" == true ]] && pass "(paths) the sentence the roadmap's check looks for is on one line" || fail "(paths) header sentence rc=$RC '$OUT'"
+rm -f "$SB/root/.agent/scripts/sitrep_checks.sh"
+
+echo "TEST: the five-path Direction text as written (frozen; project names replaced)"
+# The Direction section of docs/roadmap.md on feature/issue-560 at commit
+# f3fe8604 (issue #560's five paths), project and machine names replaced
+# with invented ones. gh-issue checks go to the stub gh (CLOSED).
+reset_marks
+cat > "$SB/root/docs/roadmap.md" <<'ROADMAP'
+## Direction
+
+Where the workspace is going: five paths, each a lasting direction, with the
+lines that must be true on each, the check that says whether a line is true
+today, and what was set aside on purpose or is kept in view until its issue
+closes. The sit-rep (`/sitrep`) reads this section through
+`.agent/scripts/sitrep_checks.sh` and runs every check each time; this
+section holds no status and no dates, and results stay on the machine that
+ran them.
+
+**Paths.** Five paths run in parallel. In the owner's words (2026-11-10):
+"We can do stuff in parallel", and (2026-11-23) "having paths move
+independently so I can push one more as needed". When he asks for a sit-rep,
+he decides which to focus on. The order of work agreed on 2026-11-23: first
+finish what the design in [`docs/design.md`](design.md) already decided or
+proposed and did not build, which the lines below name; try a lighter level
+by hand before building one; and keep the parts that have no design yet as
+notes, listed as "Design later" in the deferral table.
+
+**Path 1, ROS 2 projects.** In the owner's words (2026-11-23): "supporting a
+ROS2 project like projectx". The path's test is the acceptance case below.
+The same test shows whether this workspace can replace the old ROS workspace
+(`old_agent_workspace`), and it drives the manifest format; retiring the old
+workspace belongs to this path. The manifest tool and the workspace's
+manifest support have roadmaps of their own, in the pointer table at the end
+of this section.
+
+**Acceptance case.** Projectx is developed on a second machine against
+ROS 2 Rolling through this workspace. In the owner's words (2026-11-10):
+"I also want to move projectx to this workspace ... test on machineb, the
+new desktop machine I have, and set it up to develop projectx against
+ROS2 rolling." It is done when the simulator works in Rolling: "a working
+simulator in Rolling" (2026-09-21). It is the test of Path 1, not the
+direction of the whole workspace.
+
+| Line | Check |
+|------|-------|
+| `/run-issue` drives an issue in a package repository of a multi-repository project (#429) | `gh-issue 429 closed` |
+| The workspace installs on the second machine from a clean clone, user tier included (#430) | `gh-issue 430 closed` |
+| The Rolling instance builds on the second machine, and a `/run-issue` run on a projectx package issue, started at the project root there, reaches the merge checkpoint (#433) | `gh-issue 433 closed` |
+| The simulator comes up from the Rolling manifest and a basic mission runs (acme/marine#396) | `gh-issue acme/marine#396 closed` |
+
+**Path 2, modular workflows.** In the owner's words (2026-11-23): "making the
+workflows modular to support various task types, not just coding issues".
+Three things a project or a piece of work can choose: the kind of work, how
+much checking it gets, and whether its records need a hosting service's
+issues and pull requests (#544). A low-stakes project, in the owner's words
+(2026-11-23), "does not need the full scrutiny, but I did feel like it was
+lacking the ability to keep all the threads organized. I also missed some of
+the structure we have to keep branches organized and flowing back into
+main." So a lighter level drops checks and keeps that organisation. The
+default stays the full loop: "Limits on what agents do on their own start
+strict, and only the user relaxes them" ([`docs/principles.md`](principles.md)).
+Field mode working from this workspace is the dated need: spring 2027. Kinds
+of work beyond coding issues have no design yet.
+
+| Line | Check |
+|------|-------|
+| A project chooses where its records live, and a session finds them through one lookup (#393) | `gh-issue 393 closed` |
+| The issue loop ignores timeline entries that belong to another kind of work, so two kinds of work can share one issue (#544) | |
+| A lighter level is tried by hand on a low-stakes project, and what it must keep is written down | |
+| Field mode works from this workspace: work goes in with its review owed, against a remote that is not GitHub (#208, #209) | `gh-issue 208 closed ; gh-issue 209 closed` |
+
+**Path 3, less waiting for the same care.** In the owner's words
+(2026-11-13): "We have a lot of safeguards to make sure we don't produce
+slop, but I fear we may be over cautious." and "We need to re-think the
+workflow to not depend on github and to be efficient with how we run tests
+and ci." Path 3 work removes a wait or a review round that does not find
+problems, and keeps the steps that do. The wait in view (2026-11-23): "I do
+see a lot of merge once CI is green statuses while agents are working".
+
+| Line | Check |
+|------|-------|
+| A merge does not wait on CI that the change cannot affect (#550) | `gh-issue 550 closed` |
+| A review round that raises only suggestions goes to the merge question, not to another round | |
+| Defects found after a merge are counted, so it is known what a lighter level or a removed step costs | |
+
+**Path 4, kinds of projects and knowledge.** In the owner's words
+(2026-11-23): "supporting various project types that vary in scale and
+purposes in a modular fashion". A project type says how a project is
+fetched, built and tested. Knowledge is separate: what the work is about,
+organised, in his words, "in a way that is context efficient, yet accessible
+to project agents when needed", in three tiers: general knowledge for all
+agents, deeper topics that some agents get, and a project's own knowledge. A
+topic can serve projects of different kinds, so ROS 2 knowledge (#440) is a
+topic, not a part of the ROS project type. Knowledge has no design yet; a
+topic is built only after a small test with and without it shows it helps.
+
+| Line | Check |
+|------|-------|
+| A project says where it keeps its goals, design and roadmap (#551) | `gh-issue 551 closed` |
+| The design says how one project lives on two machines | |
+| The workspace is a registered project of its own (#295) | `gh-issue 295 closed` |
+
+**Path 5, top-level work organisation.** In the owner's words (2026-11-23):
+"support ~ as a sort of project representing my top level work
+organization". The home level holds work that fits no project and gives "a
+glimpse of what other agents are working on to keep a global big picture".
+In his words (2026-11-23): "I think read only is fine with occasional asking
+at my request", and "I'm not sure I want a layer between what I see and do
+now with each project agent." It has no design yet.
+
+**Across the paths.** To be built (#563): the sit-rep reports each path on
+its own, with its lines in no fixed order. Today it reads the tables above
+as one list, names the first line not yet true as the next step, and marks
+work in flight by the three paths of before this section (work any line
+names as Path 1).
+
+| Line | Check |
+|------|-------|
+| The sit-rep reports each path on its own, and its marks for work in flight follow the paths as written here | |
+
+**Format.** `sitrep_checks.sh` has the full grammar in its header.
+
+- Three tables, picked by their header: `| Line | Check |`,
+  `| Deferral | Revisit check |` and `| Sub-roadmap | Root |`. Any other
+  table here is ignored.
+- A `Sub-roadmap | Root` row points at the roadmap of a part with goals,
+  design and roadmap of its own (ADR-0022): the sub-roadmap file and the
+  directory its checks' paths are relative to, both relative to this
+  repository's root (an empty Root is `.`). The sit-rep follows each
+  pointer one level, reports each part's next step by the sub-roadmap's
+  path, and keeps a part's lines out of this roadmap's counts; a broken
+  pointer is reported, and a pointer inside a sub-roadmap is listed as not
+  followed. A prose link to a part's roadmap is for the reader; the table
+  row is what the sit-rep reads. A part's design is cited by its path,
+  `<path>/design.md#<section>`. A Markdown link resolves from the file
+  holding it; a citation in backticks or prose resolves from that file's
+  directory when the file is there, else from the repository root, so in
+  this file `manifest/design.md#<section>` names `docs/manifest/` either
+  way and `docs/design.md#<section>` the root's design. From a file whose
+  directory has a `docs/design.md` of its own, such as a part's
+  `tools/<t>/ROADMAP.md`, `docs/design.md#<section>` names that part's
+  design; `/docs/design.md#<section>` names the root's from any file.
+- A check starts with its kind: `file-exists <path>`,
+  `file-contains <path> <text>`, `adr-status <path> <word>` (the first line
+  under the file's `## Status` heading starts with that word),
+  `gh-issue <N> <open|closed>` (or
+  `gh-issue <owner/repo>#<N> <state>`), or `script` followed by exactly one of
+  `adapter --project <name> validate`, `user_tier_install.sh --check`,
+  `user_tier_install.sh --check --require`, `check_design_anchors.sh`. Paths
+  are relative to the repository root. Several checks in one cell are joined
+  with ` ; `. An empty cell is reported as `unchecked`.
+- A check cell is never just an issue number, and deferrals are never
+  checklist items: `update_roadmap.sh` marks both done when that issue
+  merges. Put issue numbers in the prose instead, written `(#N)`.
+- A deferral's check says when to look at it again, or, for one kept in
+  view, that its issue is still open; while the check is true the sit-rep
+  lists the deferral as due.
+- A path's lines sit in a `| Line | Check |` table of their own under the
+  path's paragraph. A part still to be designed is a deferral row with an
+  empty check, so it is listed and never reported as due.
+
+| Deferral | Revisit check |
+|----------|---------------|
+| Follow-up: small tooling fixes (#323) | `gh-issue 323 open` |
+| Follow-up: fixes from the first ViewerY onboarding run (#415) | `gh-issue 415 open` |
+| Follow-up: loop defects seen on the ViewerY drives (#428) | `gh-issue 428 open` |
+| Follow-up: the orchestrator skill's first updates from the dogfooding log (#431) | `gh-issue 431 open` |
+| Instruction-file trim (#338), the backlog sweep | `gh-issue 430 closed` |
+| The fork cutover (#260 to #262) | `gh-issue acme/marine#396 closed` |
+| Design later: the home level (Path 5) | |
+| The orchestrator design session (#398) | `gh-issue acme/marine#396 closed` |
+| Design later: kinds of work beyond coding issues (Path 2) | |
+| Design later: knowledge as a part of its own, in three tiers (Path 4) | |
+
+The parts with a roadmap of their own (ADR-0022): the manifest tool,
+whose checks are relative to its own directory, and the workspace's
+manifest support, whose checks are relative to this root. Both belong to
+Path 1.
+
+| Sub-roadmap | Root |
+|-------------|------|
+| `tools/repos-manifest/docs/roadmap.md` | `tools/repos-manifest` |
+| `docs/manifest/roadmap.md` | . |
+
+Things set aside for good are under [Decided Against](#decided-against).
+
+## Decided Against
+
+Nothing.
+ROADMAP
+RC=0; OUT="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/root" --no-follow 2>"$SB/err")" || RC=$?
+[[ $RC -eq 0 && "$(awk -F'\t' '$1 == "path" { print $2 "\t" $3 "\t" $4 }' <<< "$OUT")" == $'Path 1, ROS 2 projects\ttrue\tlines\nPath 2, modular workflows\ttrue\tlines\nPath 3, less waiting for the same care\ttrue\tlines\nPath 4, kinds of projects and knowledge\ttrue\tlines\nPath 5, top-level work organisation\tunchecked\tno lines (no design yet)\nAcross the paths\ttrue\tgroup' ]] \
+    && pass "(paths) five paths and Across, by the names the section writes" || fail "(paths) five rc=$RC '$OUT'"
+printf '%s\n' "$OUT" > "$SB/rows-five"
+RC=0; S="$(bash "$SITREP" --summary-from "$SB/rows-five" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == "lines 9/15 deferrals 3/10 paths P1 4/4 P2 2/4 P3 1/3 P4 2/3 P5 none across 0/1" ]] \
+    && pass "(paths) five paths: 4, 4, 3 and 3 lines, Path 5 none, Across 1 (the acceptance case's table is Path 1's)" || fail "(paths) five summary rc=$RC '$S'"
+RC=0; S="$(bash "$SITREP" --next-steps-from "$SB/rows-five" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$(cut -f1 <<< "$S")" == $'Path 1, ROS 2 projects\nPath 2, modular workflows\nPath 3, less waiting for the same care\nPath 4, kinds of projects and knowledge\nPath 5, top-level work organisation\nAcross the paths' \
+    && "$(sed -n 1p <<< "$S")" == $'Path 1, ROS 2 projects\tnone open' && "$(sed -n 5p <<< "$S")" == $'Path 5, top-level work organisation\tno lines (no design yet)' ]] \
+    && pass "(paths) five paths: one next step each" || fail "(paths) five next rc=$RC '$S'"
 
 echo "TEST: usage"
 RC=0; bash "$SITREP" --bogus >/dev/null 2>&1 || RC=$?
