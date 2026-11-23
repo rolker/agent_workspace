@@ -485,8 +485,9 @@ def test_the_transports_that_only_fetch_are_accepted(url):
         ("u@[]:r", "the host is empty"),
         ("[u@]:r", "the host is empty"),
         ("u@:r", "the host is empty"),
-        # An http(s) url with an empty host: curl would read the first part of the path as
-        # the host.
+        # An http(s) url with an empty host: with a url such as https:///x.git, git takes the
+        # first part of the path as the host and contacts it; the other forms git refuses
+        # itself. The rule refuses them all, so no url with an empty host reaches git.
         ("https:///x.git", "the host is empty"),
         ("https://@/x.git", "the host is empty"),
         ("http://:80/x.git", "the host is empty"),

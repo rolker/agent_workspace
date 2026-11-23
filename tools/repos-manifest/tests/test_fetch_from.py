@@ -108,8 +108,10 @@ def test_a_prefix_a_manifest_url_could_start_with_is_taken(prefix):
         ("https://", "has no host, so a repo's name after it would be read as the host"),
         ("http://", "has no host, so a repo's name after it would be read as the host"),
         ("file://", "has no host, so a repo's name after it would be read as the host"),
-        # A scheme with an empty host and a path: curl would read the first part of the path,
-        # or the repo's name, as the host.
+        # A scheme with an empty host and a path: with a place such as https:///, git takes the
+        # first part of the path, here the repo's name, as the host and contacts it; the other
+        # forms git refuses itself. The rule refuses them all, so no url with an empty host
+        # reaches git.
         ("https:///", "the host is empty"),
         ("https://@/", "the host is empty"),
         ("http://:80/", "the host is empty"),
