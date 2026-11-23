@@ -1114,9 +1114,12 @@ fix round then changes. When 9a ends with a review or a cold read still
 to route (a Copilot review arrived, or a cold read was dispatched), the
 merge does not go ahead on the earlier answer: the new entry routes
 through `next` as below, and the loop comes back to a `merge` or
-`findings` checkpoint, where the owner answers again. Only when 9a has
-nothing to route (step 1 said `yes`, or the Copilot review it finds has
-already been read) does the merge answer stand.
+`findings` checkpoint, where the owner answers again. The merge answer
+stands when 9a has nothing to route (step 1 said `yes`, or the Copilot
+review it finds has already been read), and when it was given after 9a
+said no cold read is possible (item 3, neither agent available): 9a does
+not run again for that answer, so the owner is asked once, not in a
+loop.
 
 Nothing new is stored for "asked once": the record is GitHub's state for
 the pull request and the cold read's own entry on the timeline, checked
@@ -1201,12 +1204,20 @@ in this order.
    `/review-code <M> (cold read, cross-model only: codex; the final
    diff only, no earlier review entries or findings)`. Review-code step 2
    then runs only that agent's 5e read and records the words on its
-   `**Depth**` line, which is what step 1 reads next time. With neither
-   agent available, there is no cold read: say so on the
-   outside-reviewer line and present the checkpoint (on the `findings`
-   path, the merge question again, before `merge_pr.sh`); the owner
-   decides (the next pass through this point tries again, since nothing
-   records it).
+   `**Depth**` line, which is what step 1 reads next time.
+
+   **With neither agent available**, there is no cold read. First, a
+   Copilot could-not-review notice that step 9's "A review not yet read"
+   check finds unread goes to `triage-reviews`, as any unread review
+   does; otherwise step 11's re-fetch would find it and block the merge
+   again. Then say "no cold read possible: Codex and Gemini unavailable"
+   on the outside-reviewer line and present the checkpoint (on the
+   `findings` path, the merge question again, before `merge_pr.sh`). The
+   owner decides, and a `merge` answer to that question stands: step 11
+   does not run 9a again for it. The `## Checkpoint` entry's text
+   records "no cold read possible" with the answer. Nothing else records
+   the missing cold read, so a later pass through this point (after a
+   fix round, say) tries again.
 
    A cold read that ends `partial`, `failed` or with no entry goes to
    `checkpoint:phase-failed` like any phase (step 4). A `retry` answer
@@ -1291,7 +1302,8 @@ owner's merge answer, before anything else, run `fetch_pr_reviews.sh
 review landed while he decided, do not merge; send it to `triage-reviews`
 and present the merge checkpoint again. When the answer was `merge` at a
 `findings` checkpoint, step 9a runs next, before `merge_pr.sh` (step 9a
-says when the answer stands). Before
+says when the answer stands), except for a merge answer given after 9a
+said no cold read is possible, which stands as given. Before
 `action=merge` (row 21), still in the worktree, push the outstanding
 record commits and check that nothing is left unpushed or uncommitted
 (step 10). Then `cd` to this session's root: the `root=`
