@@ -4752,6 +4752,31 @@ d["repos"].append(dict(r["pkg_a"], key="pkg_new", path="fakefox/core/src/pkg_new
     assert_eq "a resolve out of date: exit 0" "0" "$rc"
     assert_contains "a resolve out of date: a warning naming both sides and the sync" \
         "is out of date with the manifest (in the manifest only: core/pkg_new; in the last resolve only: extra/pkg_c); the adapter's other verbs read the last resolve; run: $step" "$out"
+    # The same comparison under a UTF-8 locale whose collation puts
+    # "_unnamed" after "core" (C order puts it first): the lists are sorted
+    # in C order, so comm must compare in C order too. GNU comm (CI's) says
+    # "not in sorted order" and gives a wrong difference otherwise; a comm
+    # that compares bytes in every locale (uutils) hides it, so GNU comm is
+    # put first on PATH when it is here under another name (gnucomm).
+    local utf8 gnu=""
+    utf8="$(locale -a 2>/dev/null | grep -ixE 'en_US\.utf-?8' | head -n1 || true)"
+    if comm --version 2>/dev/null | head -n1 | grep -q GNU; then
+        gnu="comm"
+    elif command -v gnucomm >/dev/null 2>&1; then
+        ln -s "$(command -v gnucomm)" "$sb/bin/comm"
+        gnu=gnucomm
+    fi
+    if [ -z "$utf8" ] || [ -z "$gnu" ]; then
+        echo "  SKIPPED (locale part): needs the en_US.UTF-8 locale and GNU comm (locale: ${utf8:-none}; GNU comm: ${gnu:-none})"
+    else
+        tool_status_doc "$sb" "$root" "$doc" 'd["repos"] = [x for x in d["repos"] if x["layer"] != "_unnamed"]'
+        rc=0; out="$(LC_ALL="$utf8" TOOL_STATUS_FILE="$doc" run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
+        assert_eq "under $utf8 with $gnu: exit 0" "0" "$rc"
+        assert_contains "under $utf8 with $gnu: the unnamed layer's repo alone, in the last resolve only" \
+            "is out of date with the manifest (in the last resolve only: _unnamed/pkg_u); the adapter's other verbs" "$out"
+        assert_not_contains "under $utf8 with $gnu: comm did not see unsorted input" "sorted order" "$out"
+        rm -f "$sb/bin/comm"
+    fi
     # The tool's interpreter missing.
     mv "$sb/.venv/bin/python3" "$sb/python3.aside"
     rc=0; out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?

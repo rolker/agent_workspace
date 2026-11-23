@@ -1222,8 +1222,10 @@ _rc_tool_status() {
             done < <(_rc_repos_entries "$file" --detail | cut -f1)
         done < <(_rc_layers)
         if [ "$resolve_ok" -eq 1 ]; then
-            only_status="$(comm -23 <(printf '%s' "$from_status" | LC_ALL=C sort -u) <(printf '%s' "$from_resolve" | LC_ALL=C sort -u) | tr '\n' ' ' | sed 's/ $//')"
-            only_resolve="$(comm -13 <(printf '%s' "$from_status" | LC_ALL=C sort -u) <(printf '%s' "$from_resolve" | LC_ALL=C sort -u) | tr '\n' ' ' | sed 's/ $//')"
+            # Sorted and compared in C order alike: in a UTF-8 locale GNU
+            # comm collates "_unnamed" after "core" and misreads the lists.
+            only_status="$(LC_ALL=C comm -23 <(printf '%s' "$from_status" | LC_ALL=C sort -u) <(printf '%s' "$from_resolve" | LC_ALL=C sort -u) | tr '\n' ' ' | sed 's/ $//')"
+            only_resolve="$(LC_ALL=C comm -13 <(printf '%s' "$from_status" | LC_ALL=C sort -u) <(printf '%s' "$from_resolve" | LC_ALL=C sort -u) | tr '\n' ' ' | sed 's/ $//')"
             if [ -n "$only_status" ] || [ -n "$only_resolve" ]; then
                 echo "⚠️ distro $d: the last resolve ($(_rc_manifest_dir)) is out of date with the manifest (${only_status:+in the manifest only: $only_status}${only_status:+${only_resolve:+; }}${only_resolve:+in the last resolve only: $only_resolve}); the adapter's other verbs read the last resolve; run: $(_rc_tool_sync_step "$d")" >&2
             fi
