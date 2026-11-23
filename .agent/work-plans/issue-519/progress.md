@@ -578,3 +578,30 @@ Checked: `git show --stat c2b82910` touches only `tools/repos-manifest/docs/spec
 **Decision**: address
 
 Read: the Integrated Review at 8c33f8e0 for pull request 565: no GitHub reviews or comments, CI pending on aef7e3c6 (all-pass on the head before it), one valid finding with its box open: two test comments still give the old, too-broad reason for the empty-host rule (tools/repos-manifest/tests/test_manifest_reading.py:488-489 and tools/repos-manifest/tests/test_fetch_from.py:111-112); the fix rewords the two comments to match the spec's new sentence, with no assertion or test case changed. The owner was told the same turn and offered merging now instead. The entry's notes for the host (a duplicated block and out-of-date paragraphs in the pull request's text) are corrected by the host before the merge.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 15:56 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #565 at `a83b7a40`
+**Addressed**: Integrated Review at `aef7e3c` (2026-11-23 15:54 -05:00)
+**Commits**: a83b7a40
+
+### Actions
+- [x] Reworded the two test comments that gave the too-broad reason for the empty-host rule ("curl would read the first part of the path as the host") to the reason docs/spec.md gives: with a url such as https:///x.git git takes the first part of the path as the host and contacts it; git refuses the other forms itself; the rule refuses them all. Comment lines only, no assertion or test case changed. — `tools/repos-manifest/tests/test_manifest_reading.py:488`, `tools/repos-manifest/tests/test_fetch_from.py:111`
+
+### Sweep for other places with the old reason
+`git grep -n -i -E "first part of the path|reads? the first|as the host" -- tools/repos-manifest` and `git grep -n -i "curl would" -- .`, every hit read:
+- `docs/design.md:339` ("reads the first of these that exists"): about manifest files, unrelated; right.
+- `docs/design.md:1853`: a bare `https://` prefix has no host so the repo's name would be the host, and `https:///`, `https://@/`, `http://:80/` are refused by the URL rule; gives no too-broad reason; right.
+- `docs/spec.md:482`: the reworded sentence (c2b82910); right.
+- `src/repos_manifest/fetch_from.py:112`: error message for a prefix with no host (`https://` alone); right.
+- `src/repos_manifest/manifest.py:389`: the `authority` docstring, reworded in c2b82910; right.
+- `tests/test_fetch_from.py:104,107-110`: url-rule reading of `user:pass@host:` and the bare-scheme cases; right.
+- `tests/test_fetch_from.py:112` and `tests/test_manifest_reading.py:489`: the two comments, corrected in a83b7a40.
+- `curl would`: hits only in `.agent/work-plans/issue-519/progress.md` (lines 500, 549, 563), a record, excluded; no hit anywhere else after the fix.
+
+### Checks
+- `cd tools/repos-manifest && PYTHONPATH=src .venv python -m pytest tests/test_manifest_reading.py tests/test_fetch_from.py -q`: `414 passed in 2.65s`.
+- No script under `.agent/scripts/` changed, so no script suite applies; the full pre-commit pass is left to the host. Commits made with `SKIP=validate-script-tests`; every other hook ran (black and flake8 passed).
