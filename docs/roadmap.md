@@ -115,7 +115,41 @@ as one list and names the first line not yet true as the next step.
 
 **Format.** `sitrep_checks.sh` has the full grammar in its header.
 
-- Three tables, picked by their header: `
+- Three tables, picked by their header: `| Line | Check |`,
+  `| Deferral | Revisit check |` and `| Sub-roadmap | Root |`. Any other
+  table here is ignored.
+- A `Sub-roadmap | Root` row points at the roadmap of a part with goals,
+  design and roadmap of its own (ADR-0022): the sub-roadmap file and the
+  directory its checks' paths are relative to, both relative to this
+  repository's root (an empty Root is `.`). The sit-rep follows each
+  pointer one level, reports each part's next step by the sub-roadmap's
+  path, and keeps a part's lines out of this roadmap's counts; a broken
+  pointer is reported, and a pointer inside a sub-roadmap is listed as not
+  followed. A prose link to a part's roadmap is for the reader; the table
+  row is what the sit-rep reads. A part's design is cited by its path,
+  `<path>/design.md#<section>`. A Markdown link resolves from the file
+  holding it; a citation in backticks or prose resolves from that file's
+  directory when the file is there, else from the repository root, so in
+  this file `manifest/design.md#<section>` names `docs/manifest/` either
+  way and `docs/design.md#<section>` the root's design. From a file whose
+  directory has a `docs/design.md` of its own, such as a part's
+  `tools/<t>/ROADMAP.md`, `docs/design.md#<section>` names that part's
+  design; `/docs/design.md#<section>` names the root's from any file.
+- A check starts with its kind: `file-exists <path>`,
+  `file-contains <path> <text>`, `adr-status <path> <word>` (the first line
+  under the file's `## Status` heading starts with that word),
+  `gh-issue <N> <open|closed>` (or
+  `gh-issue <owner/repo>#<N> <state>`), or `script` followed by exactly one of
+  `adapter --project <name> validate`, `user_tier_install.sh --check`,
+  `user_tier_install.sh --check --require`, `check_design_anchors.sh`. Paths
+  are relative to the repository root. Several checks in one cell are joined
+  with ` ; `. An empty cell is reported as `unchecked`.
+- A check cell is never just an issue number, and deferrals are never
+  checklist items: `update_roadmap.sh` marks both done when that issue
+  merges. Put issue numbers in the prose instead, written `(#N)`.
+- A deferral's check says when to look at it again, or, for one kept in
+  view, that its issue is still open; while the check is true the sit-rep
+  lists the deferral as due.
 - A path's lines sit in a `| Line | Check |` table of their own under the
   path's paragraph. A part still to be designed is a deferral row with an
   empty check, so it is listed and never reported as due.

@@ -21,7 +21,7 @@ Checks run: sitrep_checks.sh --root/--roadmap on the worktree exit 0, 15 line ro
 Every check cell follows the grammar (gh-issue, owner/repo#N, ' ; ' joins, empty cells read unchecked). Owner quotes are each marked as quotes with a date.
 
 ### Findings
-- [ ] (must-fix) Format block cut off mid-bullet at an open backtick; the grammar bullets (table headers, Sub-roadmap/Root and citation rules, check kinds, never-just-an-issue-number, deferral due rule) were deleted; restore them and keep the new bullet — `docs/roadmap.md:118`
+- [x] (must-fix) Format block cut off mid-bullet at an open backtick; the grammar bullets (table headers, Sub-roadmap/Root and citation rules, check kinds, never-just-an-issue-number, deferral due rule) were deleted; restore them and keep the new bullet — `docs/roadmap.md:118`
 - [ ] (must-fix) test_skill_paths.sh fails on the new layout ("table row between the Paths paragraphs: | Line | Check |"); allow a Line table under each path, require Paths 1 to 5, update the header's "three Paths" — `.agent/scripts/tests/test_skill_paths.sh:895`
 - [ ] (must-fix) Direction row says only Path 2 is not a true mark; the sit-rep tests "a line names it" first (sitrep SKILL.md:447), so work on a line of Paths 2 to 4 (#393, #208, #209, #550, #551, #295) is marked Path 1 too, and Paths 4 and 5 are never marked — `docs/design.md:105`
 - [ ] (suggestion) Format bullet says a part still to be designed has an empty check, but the Design later row for Path 5 keeps the #396 check and will turn due; say why or empty it (design.md:105 also says every deferral has a revisit check) — `docs/roadmap.md:120`
