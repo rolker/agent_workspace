@@ -353,3 +353,29 @@ Four commits on plan.md at `e55a68e9`, with the third Plan Review's findings app
 - [x] (suggestion) 9a item 2 bullet 1 counts any Copilot review in the PR's history (e.g. one requested by hand on an early commit) as "available, nothing more requested"; say whether it must be on the head or accept it explicitly — `.claude/skills/run-issue/SKILL.md:1108`
 - [x] (suggestion) The "Independent review" hygiene item is "in place" whenever the project uses PRs, with no check at all, so it can never report anything; consider dropping it (the issue allowed that) or checking something real — `.claude/skills/audit-project/SKILL.md:244`
 - [x] (suggestion) Stale text: "we have Copilot review working via default behavior" — `.agent/knowledge/inspiration_ros2_agent_workspace_digest.md:877`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 18:22 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-452 at `5d5c332f`
+**Addressed**: Local Review (Pre-Push) at `6ed21d63` (2026-11-23 18:18 -05:00)
+**Commits**: 780eb5b6 6dad3c90 cf2f4080 927ebf39 73f435d3 5a682a4b a8a40573 7d82d8e2 9f06ca0a 194703fa 5d5c332f
+
+### Actions
+- [x] (must-fix 1) 9a item 1 reads the timeline at `PF` from `dispatch_phase.sh where`, stops on a missing file, says why (a package issue's worktree has no timeline; a missing file reads `cold_read=no`) — `.claude/skills/run-issue/SKILL.md` step 9a item 1 (780eb5b6)
+- [x] (must-fix 2) a concluded `copilot-pull-request-reviewer` check-run with no Copilot review is "not available", in item 2's state bullets and among the outcomes after the request — `.claude/skills/run-issue/SKILL.md` step 9a item 2 (6dad3c90)
+- [x] (must-fix 3, host-settled) 9a runs before every merge: at `checkpoint:merge` and on a `findings` checkpoint answered `merge` (after step 11's re-fetch, before `merge_pr.sh`); a merge answer stands only when 9a has nothing left to route, else the loop returns to a checkpoint; step 11 and design.md (Independent review bullet, change-log row) updated — `.claude/skills/run-issue/SKILL.md` steps 9a/9/11, `docs/design.md` (cf2f4080, 5d5c332f)
+- [x] (suggestion 1) a failed or partial cold read goes to `phase-failed`; a retry keeps the cold-read task line, names Gemini when Codex failed; a takeover writes the same cold read — `.claude/skills/run-issue/SKILL.md` step 9a item 3 (927ebf39)
+- [x] (suggestion 2, host-settled) a check-run still running past 1800 s: "not available" sends 9a to the cold read, but `merge_pr.sh` keeps its hold and refuses without `--allow-pending-review`, which only the owner grants at the merge checkpoint — `.claude/skills/run-issue/SKILL.md` step 9 wait bullet and 9a item 2 (73f435d3)
+- [x] (suggestion 3) outside-reviewer line no longer says Copilot "not requested yet"; Copilot is named only once requested, matching `host_standing_rules.md` — `.claude/skills/run-issue/SKILL.md` end of 9a (5a682a4b)
+- [x] (suggestion 4) could-not-review paragraph: during 9a's wait the notice goes to the cold read first, triage reads it later; outside 9a's wait, triage at once — `.claude/skills/run-issue/SKILL.md` step 9 (a8a40573)
+- [x] (suggestion 5, host-settled with must-fix 3) 9a runs after step 9's unread-review re-fetch, stated in 9a and in the re-fetch paragraph — `.claude/skills/run-issue/SKILL.md` (cf2f4080)
+- [x] (suggestion 6) a Copilot review on any commit of the pull request counts, accepted explicitly with the reason (a head-only rule would re-request after every fix round; a hand-requested earlier review counts as the one request) — `.claude/skills/run-issue/SKILL.md` step 9a item 2 (7d82d8e2)
+- [x] (suggestion 7) audit-project's Independent review item is marked informational (never `missing`), says what meets it (pull requests merged through the review loop's cold read) and its report line; `test_skill_paths.sh` asserts both phrases — `.claude/skills/audit-project/SKILL.md` §8, `.agent/scripts/tests/test_skill_paths.sh` (9f06ca0a)
+- [x] (suggestion 8) stale "Copilot review working via default behavior" replaced with a dated note that automatic review is off — `.agent/knowledge/inspiration_ros2_agent_workspace_digest.md:877` (194703fa)
+
+### Checks
+- `bash .agent/scripts/tests/test_skill_paths.sh`: `test_skill_paths: 200 passed, 0 failed` (skill/knowledge text and that suite changed).
+- No script under `.agent/scripts/` changed, so no other suite applies. Commits made with `SKIP=validate-script-tests` (dispatched-pass hook rule); the full pre-commit pass is left to the host.
