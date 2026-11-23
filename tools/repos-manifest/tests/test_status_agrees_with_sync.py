@@ -51,6 +51,12 @@ DIFFER = {
     # `status` answers from the old url's refs, where the branch is not behind; `sync` repoints
     # origin to the new url, fetches from it and fast-forwards to the commit it has ahead.
     "a url changed": "updated",
+    # `status` cannot know offline whether the place `fetch_from` names holds the commits made
+    # here; `sync` fetches from it, finds it does not, and leaves origin and the repo as they
+    # are. Named apart from "commits only here", which has no `fetch_from`.
+    "fetch_from set, commits only here": "left alone",
+    # As "a url changed, probe remote taken": no check is made while that name is taken.
+    "fetch_from set, probe remote taken": "left alone",
 }
 
 # Cases whose text is not checked against `sync`, and why: the ones `status` cannot know
@@ -61,6 +67,9 @@ CLAIMS_DIFFER = {
     # `status` reads the local tag as origin's, so it says `sync` would try to move there;
     # `sync` asks origin, which lacks it, and fails.
     "a local tag origin lacks",
+    # `status` says `sync` tries to repoint origin to the place (it does); offline it cannot
+    # know the place lacks the commit made here, so `sync`'s refusal, not a repoint, follows.
+    "fetch_from set, commits only here",
 }
 
 # Each sentence of `status`'s text that says what `sync` does, as a pattern, with the outcome
