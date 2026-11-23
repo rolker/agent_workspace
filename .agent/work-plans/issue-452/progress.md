@@ -379,3 +379,28 @@ Four commits on plan.md at `e55a68e9`, with the third Plan Review's findings app
 ### Checks
 - `bash .agent/scripts/tests/test_skill_paths.sh`: `test_skill_paths: 200 passed, 0 failed` (skill/knowledge text and that suite changed).
 - No script under `.agent/scripts/` changed, so no other suite applies. Commits made with `SKIP=validate-script-tests` (dispatched-pass hook rule); the full pre-commit pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-23 18:28 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent ae1d788436c60f74d, resume 1 of 3)
+
+**Branch**: feature/issue-452 at `2a058ffe`
+**Base**: main
+**Depth**: Deep (reason: whole diff 19 files, +968/-75; skill and governance files)
+**Must-fix**: 2 | **Suggestions**: 8
+**Round**: 2 | **Ship**: recommended — round 2: 2 mechanical must-fix (prev 3), not rising — fix and ship rather than another full round
+
+### Findings
+- [ ] (must-fix) The cold read (and its retry) can go to a resumed `review-code` agent under step 4a, which already holds every earlier finding, defeating "no earlier review entries or findings"; add the cold read and its retry to 4a's never-reuse list, or say "fresh agent" in 9a item 3 — `.claude/skills/run-issue/SKILL.md:528` / `:1192-1214`
+- [ ] (must-fix) With neither Codex nor Gemini available, the merge question is asked again but that answer does not stand (not in the "nothing to route" list at :1114-1116), and step 11 re-runs 9a on every `findings`-answered merge: an endless re-ask; an unread could-not-review notice is also never triaged on that path, so step 11's re-fetch blocks the merge again. Send an unread notice to `triage-reviews` first, and say a merge answer given after "no cold read possible" stands — `.claude/skills/run-issue/SKILL.md:1110-1116, 1196-1205, 1286`
+- [ ] (suggestion) The three new change-log rows give 1239 lines; `wc -l docs/design.md` prints 1240 — `docs/design.md:1184-1186`
+- [ ] (suggestion) With `github=unknown` the Independent review item is reported "in place (informational)" though there may be no GitHub PR; list it under `not checked: github=unknown` (adversarial + Gemini) — `.claude/skills/audit-project/SKILL.md:244, 274-277`
+- [ ] (suggestion) A check-run that concludes `success` a few seconds before Copilot's review is visible becomes "not available" and spends the cold read; re-poll once briefly on a non-failure conclusion — `.claude/skills/run-issue/SKILL.md:967, 1184`
+- [ ] (suggestion) When both Codex and Gemini fail the cold read, a `takeover` stamps a Claude-only review with "cold read, cross-model only"; route it to the no-agent owner-decision path instead — `.claude/skills/run-issue/SKILL.md:1205-1213`
+- [ ] (suggestion) `cold-read` does not match the entry's PR number, so a PR closed and replaced without a `merge` checkpoint inherits the old PR's cold read (Codex) — `.agent/scripts/review_progress.sh:815`
+- [ ] (suggestion) In cold-read mode review-code's PR-mode step 1a still fetches `comments,reviews` into the lead's context; give cold-read mode a metadata query without them (Codex) — `.claude/skills/review-code/SKILL.md:116, 219`
+- [ ] (suggestion) "A review not yet read", below" points to a section above (line 1035) — `.claude/skills/run-issue/SKILL.md:1100`
+- [ ] (suggestion) The Plan Review fixture writes `Depth:` without bold, so it never tests the `base_type` guard on a parsed `**Depth**` field; use `**Depth**: cold read, cross-model only` — `.agent/scripts/tests/test_review_code_convergence.sh:306`
