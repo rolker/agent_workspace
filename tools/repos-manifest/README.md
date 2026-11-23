@@ -156,8 +156,10 @@ or set `origin` by hand), and a place that cannot be fetched fails the repo with
 was. A repo missing at the place is an error: `fallback: true`, which would fetch from the
 published url instead, and the `upstream` remote are not built yet, and `fallback: true` is
 refused. Two repos of one name from different owners cannot both be fetched this way and are
-refused, in one distro or across the distros of a system. `show` and `status` print the urls the prefix builds, with any user name and password
-masked. [docs/design.md](docs/design.md#where-repos-are-fetched-from) gives the rules, and what
+refused, in one distro or across the distros of a system. `show` prints the url the prefix builds
+for each repo, and the prefix; `status` names a built url only in its text, for a clone whose
+`origin` is not that url yet, and in `status --json` `url` is the published url and
+`fetched_from` the clone's `origin`. Any user name and password is masked. [docs/design.md](docs/design.md#where-repos-are-fetched-from) gives the rules, and what
 happens when one server is spelled two ways.
 
 A machine that fetches over https and pushes over ssh does not need `fetch_from`: git's own
