@@ -141,3 +141,24 @@ The design choices are sound and follow the host checkpoint: a separate `path` r
 - [ ] Define the plain mark text and what Serves `none`, no complete review, no Serves line, steps not checked and a no-Paths root each print.
 - [ ] Write the Direction row edit against #560's wording (name its two sentences) and touch the Measures row.
 - [ ] Add `.agent/knowledge/script_reference.md` (lines 55-56) to Files to Change.
+
+## Checkpoint
+**When**: 2026-11-23 14:20 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review's verdict is revise; its findings are missed consequences and undefined edges, none changes what the work is for)
+**After**: plan
+**Decision**: revise
+
+Revise the plan to close M1 to M6 and S1 to S7 of the Plan Review. Host decisions for the revision (listed for the owner's veto):
+- M1: lines in a table above the first path paragraph are a group of their own, reported as "no path", with its own count and unmet lines like any path.
+- M2: the plan names every part of the skill text it changes, including step 1's row kinds and next-steps text, step 5's lookup (which reads what it needs from the saved rows, per path), and step 8's mark for a pull request with no worktree: the path whose line names its issue, read from the saved rows.
+- M3: the plan names each existing test that changes, by section and line, and what it will assert after.
+- M4: marks for work in flight. A line names it: that path's name as the roadmap writes it. No line names it: "no path line", then in brackets one of: serves a goal; serves no goal; no complete issue review; its issue review has no Serves line. Rows not saved: "path unknown (steps not checked)". A root with no Path paragraph: no path word, as today. The Path 2 and Path 3 rules in the skill text are removed.
+- M5: the plan assumes the five-path roadmap (issue 560) is on main first, which is the host's order, and edits the Direction row as that change leaves it; the Measures row gains the per-path counts.
+- M6: `.agent/knowledge/script_reference.md` is in the change.
+- S1, S2: a table belongs to the nearest path or Across paragraph above it; the rule goes in the roadmap's Format block and the checker header. A paragraph opens a path when its first line starts with `**Path <n>` once a bold span wrapped over two lines is joined; `**Paths.**` never matches. The plan says plainly that main's roadmap reads wrongly until the five-path section lands, which the owner accepted: "it's ok if something breaks with the sit-rep skill if one lands before the other".
+- S3: path rows do not count as rows of a table; the Across group's label is "across the paths".
+- S4: the roadmap's Across line gets a real check (a `file-contains` on the checker for text this change adds; the plan names the text), not a tick.
+- S5: the top of the report gives one line per path: its name, how many of its lines are true, and its first line not yet true as written. The full lists stay in the Steps section. The line after the heading names the acceptance case as Path 1's test. Branches that match any path's unmet line come first in In flight.
+- S6: the run-record suffix lists paths in roadmap order; two records are compared per path only when both carry the same labels.
+- S7: correct the three claims the review found untrue.
