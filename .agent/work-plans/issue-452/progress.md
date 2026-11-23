@@ -283,3 +283,16 @@ All three findings of the second review are resolved and the checkpoints are fol
 
 - [ ] Step 2: scope the fallback-entry check to a `**Depth**:` line in a complete `## Local Review` entry after the current PR's start (`pr_start.py`), not a grep of the whole timeline.
 - [ ] (Suggestion) Step 2/3: on resume with a request listed but unanswered and no fallback entry, treat it as "not available" and run the fallback.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 17:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: plan
+**Decision**: proceed
+
+Owner's answer: "Proceed, fixes in handoff (Recommended)". Implementation goes ahead on plan.md at e55a68e9 with the third Plan Review's findings carried in the implement handoff, to be applied in the code and noted in the Implementation entry:
+- F1 (blocking): the "fallback already ran" check counts only a complete `## Local Review` whose `**Depth**:` line carries "cold read, cross-model only" and that was written after the current pull request's start (`pr_start.py`'s boundary); never a whole-file match.
+- F2: a Copilot request with no Copilot review, no concluded check-run and no fallback entry counts as "not available", so a run resumed during the wait still runs the fallback.
+- Note for the PR description: a non-approved fallback reaches `triage-reviews` only after `address-findings` and the PR-mode re-review, a deviation from the issue's "go through triage like any other source".
