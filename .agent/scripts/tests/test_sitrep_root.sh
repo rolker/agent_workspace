@@ -478,6 +478,36 @@ wts "$R/proj" "$SB/rows-order.tsv"
 wts "$R/proj"
 [[ "$(field 4 named_part)" == "(absent)" ]] && pass "named_part: absent without a rows file" || fail "named_part without rows: '$(field 4 named_part)'"
 
+echo "TEST: --worktrees: named_path is the group whose lines name the work (issue #563)"
+printf '%s\n' \
+    $'path\tno path\ttrue\tlines\t2026-11-23' \
+    $'line\tUngrouped names 13\tfalse\tgh-issue 13 closed\t2026-11-23' \
+    $'path\tPath 1, One\ttrue\tlines\t2026-11-23' \
+    $'line\tP1 names 4\tfalse\tgh-issue 4 closed\t2026-11-23' \
+    $'path\tPath 2, Two\ttrue\tlines\t2026-11-23' \
+    $'line\tP2 names (#4, #12)\tfalse\tnone\t2026-11-23' \
+    $'path\tPath 3, Three\tunchecked\tno lines (no design yet)\t2026-11-23' \
+    $'path\tAcross the paths\ttrue\tgroup\t2026-11-23' \
+    $'line\tAcross names workspace 3\tfalse\tgh-issue acme/ws#3 closed\t2026-11-23' \
+    $'deferral\tLater\tfalse\tgh-issue 20 closed\t2026-11-23' \
+    $'part\tdocs/part/roadmap.md\ttrue\tread\t2026-11-23' \
+    $'subline\tdocs/part/roadmap.md: Part names 21\tfalse\tgh-issue acme/pkgx#21 closed\t2026-11-23' > "$SB/rows-paths.tsv"
+wts "$R/proj" "$SB/rows-paths.tsv"
+[[ $RC -eq 0 && "$(field 13 named_path)" == "no path" && "$(field 4 named_path)" == "Path 1, One" \
+    && "$(field 12 named_path)" == "Path 2, Two" && "$(field 3 named_path)" == "Across the paths" \
+    && "$(field 20 named_path)" == "" && "$(field 21 named_path)" == "" ]] \
+    && pass "named_path: lines above the first path are 'no path'; named in two paths, the first wins; Across is a group; a deferral or a part's line names no path" \
+    || fail "named_path: 13='$(field 13 named_path)' 4='$(field 4 named_path)' 12='$(field 12 named_path)' 3='$(field 3 named_path)' 20='$(field 20 named_path)' 21='$(field 21 named_path)'"
+[[ "$(field 4 named)" == yes && "$(field 12 named)" == yes && "$(field 3 named)" == yes && "$(field 13 named)" == yes \
+    && "$(field 20 named)" == no && "$(field 21 named_part)" == docs/part/roadmap.md ]] \
+    && pass "named and named_part are unchanged beside named_path" \
+    || fail "named beside named_path: 4=$(field 4 named) 12=$(field 12 named) 3=$(field 3 named) 13=$(field 13 named) 20=$(field 20 named) 21=$(field 21 named_part)"
+wts "$R/proj" "$SB/rows-g.tsv"
+[[ "$(field 4 named)" == yes && "$(field 4 named_path)" == "" ]] \
+    && pass "named_path: empty when the rows hold no path row (a section not written as paths)" || fail "named_path no paths: '$(field 4 named_path)'"
+wts "$R/proj"
+[[ "$(field 4 named_path)" == "(absent)" ]] && pass "named_path: absent without a rows file" || fail "named_path without rows: '$(field 4 named_path)'"
+
 wt "$R/parts" parts 8; wt "$R/parts" parts 9
 root_of "$R/parts"
 PATH="$SB/bin:$PATH" bash "$WSC/.agent/scripts/sitrep_checks.sh" --root "$(val root)" --roadmap "$(val roadmap)" > "$SB/rows-parts.tsv" 2>/dev/null

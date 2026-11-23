@@ -128,11 +128,17 @@
 #             "repository" and issue; `adapter --project <name>` for a
 #             project entry whose `repo` is <name> as resolved in (b)),
 #             else "no".
+#         "named_path": only with a readable <file>: the name of the
+#             first group (a `path` row of step 1's rows, in roadmap
+#             order; sitrep_checks.sh's header, Paths) whose line rows name
+#             the work by the same rules as "named", else "" (also when
+#             the rows hold no path row: a root whose Direction section is
+#             not written as paths). Issue #563.
 #         "named_part": only with a readable <file>: the path of the first
 #             followed sub-roadmap (a `part` row with result `true`) whose
 #             lines (`subline` rows) name the work by the same rules, else
 #             "" (issue #488). Set whatever "named" is; the sit-rep marks
-#             work a root line names as Path 1 first. A bare number in a
+#             work a root line names by that line's path first. A bare number in a
 #             sub-roadmap names the root's own work: a sub-roadmap's Root
 #             lies inside the root (a part in a repository of its own is
 #             not yet supported, ADR-0022).
@@ -434,15 +440,21 @@ root_git = os.environ["ROOT_GIT"]
 # line rows (kind, item, result, check, date). "named_part": what a
 # followed sub-roadmap's lines name (subline rows, item "<path>: <item>",
 # after the part row that read <path>), mapped to the first such path.
+# "named_path": the group (a `path` row, issue #563) whose line rows name
+# it; a path row governs the line rows up to the next path row.
 have_rows = bool(os.environ["ROWS"])
 named_bare, named_issues, named_projects = set(), set(), set()
 part_bare, part_issues, part_projects = {}, {}, {}
 part_order = {}
+groups = []  # [name, bare, issues, projects], in roadmap order
 if have_rows:
     parts = []
     with open(os.environ["ROWS"], encoding="utf-8", errors="replace") as fh:
         for row in fh:
             f = row.rstrip("\n").split("\t")
+            if len(f) >= 2 and f[0] == "path":
+                groups.append([f[1], set(), set(), set()])
+                continue
             if len(f) >= 3 and f[0] == "part" and f[2] == "true":
                 parts.append(f[1])
                 part_order.setdefault(f[1], len(part_order))
@@ -454,6 +466,10 @@ if have_rows:
                 named_bare |= b
                 named_issues |= i
                 named_projects |= p
+                if groups:
+                    groups[-1][1] |= b
+                    groups[-1][2] |= i
+                    groups[-1][3] |= p
                 continue
             owner = max((q for q in parts if f[1].startswith(q + ": ")), key=len, default="")
             if not owner:
@@ -465,6 +481,8 @@ if have_rows:
 # Each through the registry, as the adapter resolves it (PROJECT_MAP).
 resolved = dict(l.split("\t", 1) for l in os.environ["PROJECT_MAP"].splitlines() if "\t" in l)
 named_projects = {resolved[p] for p in named_projects if p in resolved}
+for g in groups:
+    g[3] = {resolved[p] for p in g[3] if p in resolved}
 part_projects_r = {}
 for p, owner in part_projects.items():
     if p in resolved:
@@ -558,6 +576,15 @@ for w in entries:
             or (bool(s) and ("%s#%s" % (s.lower(), issue)) in named_issues))
         named = named or (t == "project" and (w.get("repo") or "") in named_projects)
         w["named"] = "yes" if named else "no"
+        # The first group, in roadmap order, whose lines name the work by
+        # the same rules.
+        w["named_path"] = ""
+        for gname, gb, gi, gp in groups:
+            if (issue is not None and ((own and str(issue) in gb)
+                    or (bool(s) and ("%s#%s" % (s.lower(), issue)) in gi))) \
+                    or (t == "project" and (w.get("repo") or "") in gp):
+                w["named_path"] = gname
+                break
         # Every rule that matches gives the first part that names the work
         # that way; of those, the part followed first wins, whichever rule
         # matched (the header: "the first followed sub-roadmap").
