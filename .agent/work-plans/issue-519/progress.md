@@ -87,3 +87,11 @@ Read: the Issue Review at 2a2498ff (sound, ready to plan, two pull requests). Th
 ### Decisions made (owner may veto)
 - Two pull requests: the first builds fetch_from with fallback off (the same repos from another place, origin set to it, sync and status acting on clones that already exist), which is the case the drive was started for; the second adds fallback on (a developer's forks where they exist, the upstream remote, the same-repo-by-another-transport rule) — undoing it: plan both as one pull request; nothing is built yet.
 - fetch_from is set per system directory, as the tool's design says; the per-user settings file stays a deferral on the tool's roadmap — undoing it: a design change to the tool, asked on its own.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-23 12:29 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-519/plan.md` at `9101667d`
+
+Two pull requests. Part 1 builds fetch_from with fallback off: the effective url becomes Selected.url, so the existing url rule and _repoint move origin of clones that exist, and status and sync agree through one resolve step; an existing system gets the key by hand-editing config.yaml. Part 2 (outlined) adds fallback, the probe, upstream and the same-repo rule.
