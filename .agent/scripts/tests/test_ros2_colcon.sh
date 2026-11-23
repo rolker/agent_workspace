@@ -4714,21 +4714,49 @@ COLCON_RAN_IN:$root/fakefox/extra CMD:test SOURCED:base+fakefox+core+extra" "$(c
         "COLCON_ARGS:$root/fakefox test --base-paths src/pkg_u --event-handlers console_direct+ --return-code-on-test-failure" "$(cat "$sb/colcon.log.args")"
     assert_contains "test: each resolved repo on disk as a base path" \
         "COLCON_ARGS:$root/fakefox/core test --base-paths src/pkg_a src/pkg_b --event-handlers" "$(cat "$sb/colcon.log.args")"
-    # A repo dropped from the resolve but left on disk is not tested; one
-    # resolved but not on disk is not named; a layer with none of its
-    # resolved repos on disk is skipped with a line.
+    # The tool's build rule: a required repo (pkg_c) not on disk fails the
+    # run before colcon runs, naming it and the tool's sync.
+    assert_eq "precondition: optional.txt names pkg_b alone" "pkg_b" \
+        "$(grep -v '^#' "$root/.repos-manifest/resolved/fakefox/optional.txt")"
+    mv "$root/fakefox/extra/src/pkg_c" "$(dirname "$root")/pkg_c.aside"
+    : > "$sb/colcon.log"
+    rc=0; out="$(run_tool "$sb" "$root" test 2>&1)" || rc=$?
+    assert_eq "test, a required repo missing: exit 1" "1" "$rc"
+    assert_contains "test, a required repo missing: named" \
+        "ERROR: not on disk, and not optional: pkg_c (layer extra); nothing was run" "$out"
+    assert_contains "test, a required repo missing: the tool's sync named" \
+        "Run: cd $root && $sb/.venv/bin/repos-manifest sync --distro fakefox (it clones what is missing)" "$out"
+    assert_not_contains "test, a required repo missing: no layer skipped" "Skipping layer" "$out"
+    assert_eq "test, a required repo missing: colcon not run" "" "$(cat "$sb/colcon.log")"
+    mv "$(dirname "$root")/pkg_c.aside" "$root/fakefox/extra/src/pkg_c"
+    # An optional repo (pkg_b) not on disk is left out; the tests run.
+    mv "$root/fakefox/core/src/pkg_b" "$(dirname "$root")/pkg_b.aside"
+    : > "$sb/colcon.log"
+    : > "$sb/colcon.log.args"
+    rc=0; out="$(run_tool "$sb" "$root" test 2>&1)" || rc=$?
+    assert_eq "test, an optional repo missing: exit 0" "0" "$rc"
+    assert_contains "test, an optional repo missing: left out" \
+        "COLCON_ARGS:$root/fakefox/core test --base-paths src/pkg_a --event-handlers" "$(cat "$sb/colcon.log.args")"
+    assert_eq "test, an optional repo missing: every layer tested" "3" "$(wc -l < "$sb/colcon.log")"
+    mv "$(dirname "$root")/pkg_b.aside" "$root/fakefox/core/src/pkg_b"
+    # A repo dropped from the resolve but left on disk is not tested; a
+    # layer whose repos are all optional (pkg_c made so here) and none on
+    # disk is skipped with a line.
     sed -i '/^  pkg_b:/,/^    version:/d' "$root/.repos-manifest/resolved/fakefox/core.repos"
+    cp "$root/.repos-manifest/resolved/fakefox/optional.txt" "$sb/optional.txt.aside"
+    echo pkg_c >> "$root/.repos-manifest/resolved/fakefox/optional.txt"
     mv "$root/fakefox/extra/src/pkg_c" "$(dirname "$root")/pkg_c.aside"
     : > "$sb/colcon.log"
     : > "$sb/colcon.log.args"
     rc=0; out="$(run_tool "$sb" "$root" test --packages-select pkg_a 2>&1)" || rc=$?
-    assert_eq "test, a repo dropped and a layer emptied: exit 0" "0" "$rc"
+    assert_eq "test, a repo dropped and an optional-only layer emptied: exit 0" "0" "$rc"
     assert_contains "test: the dropped repo left out, the caller's arguments last" \
         "COLCON_ARGS:$root/fakefox/core test --base-paths src/pkg_a --event-handlers console_direct+ --return-code-on-test-failure --packages-select pkg_a" "$(cat "$sb/colcon.log.args")"
-    assert_contains "test: the emptied layer skipped, said" \
-        "Skipping layer extra (none of the repos extra.repos lists is on disk in $root/fakefox/extra/src)" "$out"
+    assert_contains "test: the optional-only layer skipped, said" \
+        "Skipping layer extra (every repo extra.repos lists is optional, and none is on disk in $root/fakefox/extra/src)" "$out"
     assert_not_contains "test: no colcon run in the emptied layer" "$root/fakefox/extra " "$(cat "$sb/colcon.log.args")"
     mv "$(dirname "$root")/pkg_c.aside" "$root/fakefox/extra/src/pkg_c"
+    mv "$sb/optional.txt.aside" "$root/.repos-manifest/resolved/fakefox/optional.txt"
     # A layer's resolved .repos file missing is not "none on disk": test
     # fails before colcon runs, naming the file and the tool's sync.
     mv "$root/.repos-manifest/resolved/fakefox/core.repos" "$sb/core.repos.aside"

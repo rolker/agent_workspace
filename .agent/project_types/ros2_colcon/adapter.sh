@@ -2212,12 +2212,16 @@ adapter_test() {
     # that the role or the groups no longer keep is not tested, and the
     # unnamed layer's run in <root>/<distro> does not take in the named
     # layers below it). They are read before the underlay is sourced, with
-    # the call's one read of the layers; a layer with none of them on disk
-    # is skipped with a line, as the tool's build skips it. A layer whose
-    # resolved .repos file is missing fails before anything runs, naming
-    # the file and the tool's sync, as the tool's build refuses it.
+    # the call's one read of the layers. The tool's build rule holds: a
+    # listed repo missing from disk that the resolved optional.txt does not
+    # name (_rc_is_optional_repo) fails the run before anything runs,
+    # naming each such repo and the tool's sync; an optional repo missing is
+    # left out; a layer with none of its repos on disk (every one of them
+    # optional) is skipped with a line. A layer whose resolved .repos file
+    # is missing fails before anything runs too, naming the file and the
+    # tool's sync, as the tool's build refuses it.
     _rc_require_manifest || return 1
-    local underlay layer layer_dir rc failed="" route key list file i=0
+    local underlay layer layer_dir rc failed="" route key list file entries missing="" i=0
     local -a paths=() tool_paths=()
     route="$(_rc_route)"
     if [ "$route" = tool ]; then
@@ -2229,12 +2233,23 @@ adapter_test() {
                 echo "Run: $(_rc_tool_sync_step "$_RC_TOOL_DISTRO")" >&2
                 return 1
             fi
+            entries="$(_rc_repos_entries "$file" --detail)"
             list=""
             while IFS= read -r key; do
-                [ -n "$key" ] && [ -d "$layer_dir/src/$key" ] && list="$list src/$key"
-            done < <(_rc_repos_entries "$file" --detail | cut -f1)
+                [ -n "$key" ] || continue
+                if [ -d "$layer_dir/src/$key" ]; then
+                    list="$list src/$key"
+                elif ! _rc_is_optional_repo "$key"; then
+                    missing="${missing:+$missing, }$key (layer $layer)"
+                fi
+            done < <(printf '%s\n' "$entries" | cut -f1)
             tool_paths+=("$list")
         done < <(_rc_layers)
+        if [ -n "$missing" ]; then
+            echo "ERROR: not on disk, and not optional: $missing; nothing was run (the manifest tool's build refuses the same)" >&2
+            echo "Run: $(_rc_tool_sync_step "$_RC_TOOL_DISTRO") (it clones what is missing), then test again" >&2
+            return 1
+        fi
     fi
     underlay="$(_rc_underlay)" || return 1
     unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
@@ -2253,7 +2268,7 @@ adapter_test() {
         if [ "$route" = tool ]; then
             read -r -a paths <<< "${tool_paths[$((i - 1))]}"
             if [ "${#paths[@]}" -eq 0 ]; then
-                echo "Skipping layer $layer (none of the repos ${layer}.repos lists is on disk in $layer_dir/src)"
+                echo "Skipping layer $layer (every repo ${layer}.repos lists is optional, and none is on disk in $layer_dir/src)"
                 continue
             fi
             paths=(--base-paths "${paths[@]}")
