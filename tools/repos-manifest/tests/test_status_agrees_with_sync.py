@@ -67,9 +67,19 @@ CLAIMS_DIFFER = {
     # `status` reads the local tag as origin's, so it says `sync` would try to move there;
     # `sync` asks origin, which lacks it, and fails.
     "a local tag origin lacks",
-    # `status` says `sync` tries to repoint origin to the place (it does); offline it cannot
-    # know the place lacks the commit made here, so `sync`'s refusal, not a repoint, follows.
-    "fetch_from set, commits only here",
+}
+
+# One claim of one case that `sync` answers otherwise than the claim's own outcome, and why:
+# (case, claim pattern) -> the outcomes and the pattern `sync`'s output then holds. The case's
+# other sentences are checked as usual.
+CLAIM_DIFFERS = {
+    # `status` says `sync` tries to repoint origin to the place (it does, with a fetch from it
+    # first); offline it cannot know the place lacks the commit made here, so `sync`'s refusal
+    # to repoint, not a repoint, follows.
+    ("fetch_from set, commits only here", r"sync tries to repoint origin to it"): (
+        {"left alone"},
+        r"url changed to \S+ but \d+ local commits? \(branch main\) (is|are) not on it",
+    ),
 }
 
 # Each sentence of `status`'s text that says what `sync` does, as a pattern, with the outcome
@@ -187,6 +197,7 @@ def test_status_agrees_with_what_sync_then_does(vcs, tmp_path, capsys, name, opt
     if name in CLAIMS_DIFFER:
         return
     for said, then, shown in claims:
+        then, shown = CLAIM_DIFFERS.get((name, said), (then, shown))
         if then is not None:
             assert outcome in then, (name, said, outcome, out)
         assert re.search(shown, out), (name, said, shown, out)
