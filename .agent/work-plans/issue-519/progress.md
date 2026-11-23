@@ -259,3 +259,23 @@ Read: the Plan Review at 131414e1 for plan ca8dc681, verdict needs-work, six fin
 ### Decisions made (owner may veto)
 - Implementation starts from a plan whose review said needs-work, with the review's findings in the handoff, instead of a third plan round: the findings are text and test details and the mechanism was confirmed by running it — undoing it: a plan revision and review before any code; costs the implement pass if it has started.
 - The same-repo-by-another-spelling comparison stays in part 2; part 1 documents the behaviour and advises matching the spelling — undoing it: bring the comparison into part 1, a larger pull request.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 13:29 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-519 at `096f7420`
+
+Part 1 only (fallback off), for a field machine fetching every repo from one prefix on a private server.
+
+- `17181ddb` `fetch_from` read from `config.yaml` (`fetch_from.py`, `manifest.check_url` over the existing `_Checker.url`): prefix ends in `/`, or `:` in the scp-like form only; no control or invisible character; a missing `fallback` is false, `fallback: true` refused naming the file. `apply` sets `Selected.url` to the built url and keeps the manifest's in `Selected.published`; refuses two repos of one name with different published urls, and a name that cannot follow a prefix.
+- `ab2e4500` `sync.resolve_for`, used by `init`, `sync`/`status` (`resolve_all`) and `show` in a system; a fetch_from error is its own reported distro. `init --fetch-from PREFIX` (checked before anything is created). `show` prints the built urls and a `fetch from` head line; resolved files gain `# fetch from:` (masked).
+- `ca1ade07` url rule: `update.was_recorded` (shared by sync and status) counts a record with no url as the published url when fetch_from is set; "the url to fetch from changed to"; with fetch_from the "left as set" line and status notes name the place and the manifest's url, and a refusal for local commits gives the two ways on (push there, or set-url). status JSON `url` stays the manifest's, `fetched_from` origin's; `published` registered for masking. `_repoint` reused, no second rule ladder.
+- `709fe1d2` tests: `test_fetch_from.py`, `test_fetch_from_sync.py` (local repos only), five agreement cases in `status_cases.py`; "fetch_from set, commits only here" in DIFFER and CLAIMS_DIFFER, "fetch_from set, probe remote taken" in DIFFER.
+- `096f7420` design, README, roadmap (row split; the field half checked by `fetch_from.py`), including the pushInsteadOf/insteadOf passage for an https-fetch, ssh-push machine.
+
+Review findings: 1 examples use `git@gitcloud:field/` in tests and the design's `git@git.example.org:field/` in documents, no development-machine framing; 2a url rule sentences on a missing recorded url rewritten; 2b head-comment list gains the `# fetch from:` line; 3 the two-spellings outcomes documented with the advice, test for unpushed commits left on every run; 4 DIFFER entry added; 5 one edit and status before sync documented, test that a repo named otherwise on the server fails and keeps origin; 6 documents say the path is for a system `init` set up.
+
+Tests run (this worktree's `src`, checked via `repos_manifest.__file__`): `test_fetch_from.py test_fetch_from_sync.py test_system.py test_init.py test_init_refusals.py test_show_system.py test_status.py test_status_agrees_with_sync.py test_update.py test_update_safety.py test_sync.py test_untrusted_input.py test_url_messages.py test_masking.py test_cli.py test_documents.py`: 1180 passed; also `test_show.py test_output.py test_base_output.py test_selection.py test_sync_distros.py`: 148 passed. The full pre-commit pass and the whole tool suite are left to the host and CI.
+
+Gaps: none against part 1's list. Not built (part 2): fallback on, the probe, `upstream`, the same-repo-by-another-spelling comparison. `docs/spec.md`, `docs/manifest/*` unchanged (grep: no fetch_from claim to update).
