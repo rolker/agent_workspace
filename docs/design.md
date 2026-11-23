@@ -818,7 +818,7 @@ sessions walk the same order by hand, one `SKILL.md` at a time
   request unanswered), one PR-mode `review-code` reads the final diff with one cross-model reviewer
   (Codex, else Gemini) and no earlier findings, and records "cold read, cross-model only" on its
   `**Depth**` line. "Asked once" is read from GitHub's state for the pull request and from that entry
-  since the pull request's start (`review_progress.sh cold-read`, `pr_start.py`); nothing else is
+  since the pull request's start (`review_progress.sh cold-read --pr <M>`, `pr_start.py`); nothing else is
   stored. The cold read's `## Local Review` routes as any PR-mode review: approved to `triage-reviews`,
   otherwise `address-findings`, the re-review, then triage. What the request does under exhausted quota
   is not verified; every outcome that is not a review counts as not available.

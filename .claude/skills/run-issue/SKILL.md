@@ -1141,7 +1141,7 @@ in this order.
      || { echo "STOP: dispatch_phase.sh where refused or printed nothing (see above); do not request or dispatch"; exit 1; }
    PF="$D/.agent/work-plans/issue-<N>/progress.md"
    [[ -f "$PF" ]] || { echo "STOP: no progress.md at $PF; do not request or dispatch"; exit 1; }
-   $WS_ROOT/.agent/scripts/review_progress.sh cold-read --progress "$PF"
+   $WS_ROOT/.agent/scripts/review_progress.sh cold-read --progress "$PF" --pr <M>
    ```
 
    `PF` comes from `where`, as in step 4's `$BEFORE` block, never from
@@ -1155,7 +1155,9 @@ in this order.
    current pull request's start (`pr_start.py` `pr_start`, the boundary
    step 13 draws after a `merge` answer). Never a whole-file text match:
    the same words sit in checkpoint and plan-review text, and an earlier
-   merged pull request's cold read does not count for the next one. On
+   merged pull request's cold read does not count for the next one, and
+   `--pr <M>` keeps a closed and replaced pull request's cold read from
+   counting for its replacement. On
    `yes`: no request, no wait, no second cold read.
 
 2. **Copilot's state on GitHub**, from `fetch_pr_reviews.sh --pr <M>`

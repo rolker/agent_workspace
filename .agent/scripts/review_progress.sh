@@ -88,7 +88,10 @@
 #          current pull request's start (pr_start.py pr_start), never a
 #          whole-file match: the words also appear in checkpoint and plan
 #          text, and an earlier merged pull request's cold read does not
-#          count for the next one. A missing file is "no". See cmd_cold_read.
+#          count for the next one. With --pr <M>, only an entry whose
+#          **PR** correlation is #<M> counts, so a pull request closed and
+#          replaced without a merge checkpoint does not lend its cold read
+#          to the new one. A missing file is "no". See cmd_cold_read.
 #
 # The records gate: every subcommand that takes or builds a records path
 # (round, persist in both modes, sources, findings, check, cold-read,
@@ -133,7 +136,7 @@ Usage:
   review_progress.sh sources --head <sha> --reviews <fetch_pr_reviews.json> [--progress <file>]
   review_progress.sh findings --progress <file>
   review_progress.sh check --progress <file> --index <i> [--deferred "<reason>"]
-  review_progress.sh cold-read --progress <file>
+  review_progress.sh cold-read --progress <file> [--pr <M>]
 See the header comment of this script for what each subcommand prints.
 Exit codes: 0 ok; 2 usage/validation; 3 append/commit failure; 4 strict-mode resolver abort, or the records gate refused the path (a package-worktree checkout that is not the issue's own; for persist and check also a main checkout or another issue's worktree).
 EOF
@@ -779,17 +782,22 @@ cmd_plan_sha() {
 # with **Status** complete whose **Depth** field contains "cold read,
 # cross-model only" (case-insensitive); otherwise "cold_read=no". Only the
 # **Depth** field of such an entry is read: the same words in a
-# Checkpoint, a Plan Review or an entry body never count. A missing file
+# Checkpoint, a Plan Review or an entry body never count. With --pr <M>,
+# the entry's **PR** correlation must also be #<M>: pr_start moves only on
+# a merge checkpoint, so a pull request closed and replaced by another
+# would otherwise lend its cold read to the replacement. A missing file
 # is "no" (no review has run).
 cmd_cold_read() {
-    local progress=""
+    local progress="" pr=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --progress) [[ $# -ge 2 ]] || usage; progress="$2"; shift 2 ;;
+            --pr) [[ $# -ge 2 ]] || usage; pr="$2"; shift 2 ;;
             *) usage ;;
         esac
     done
     [[ -n "$progress" ]] || { echo "error: cold-read: --progress <file> required" >&2; exit 2; }
+    [[ -z "$pr" || "$pr" =~ ^[0-9]+$ ]] || { echo "error: cold-read: --pr must be a pull request number, got '$pr'" >&2; exit 2; }
     records_path "$progress" >/dev/null || { echo "error: cold-read: the records gate refused $progress — see above" >&2; exit 4; }
     if [[ ! -e "$progress" ]]; then
         echo "cold_read=no"; return 0
@@ -800,18 +808,24 @@ cmd_cold_read() {
     # Implementation entries.
     json=$("$PYTHON" "$PROGRESS_READ" "$progress") || {
         echo "error: cold-read: progress_read.py failed on $progress (malformed file?)" >&2; exit 2; }
-    printf '%s' "$json" | PR_START_DIR="$SCRIPT_DIR" "$PYTHON" -c '
+    printf '%s' "$json" | PR_START_DIR="$SCRIPT_DIR" COLD_READ_PR="$pr" "$PYTHON" -c '
 import json, os, sys
 sys.dont_write_bytecode = True  # a read leaves no __pycache__ beside the scripts
 sys.path.insert(0, os.environ["PR_START_DIR"])
 from pr_start import pr_start
 MARK = "cold read, cross-model only"
+PR = os.environ.get("COLD_READ_PR", "")
 entries = json.load(sys.stdin).get("entries", [])
+def on_pr(e):
+    if not PR:
+        return True
+    c = e.get("correlation") or {}
+    return c.get("kind") == "pr" and c.get("pr") == int(PR)
 def is_cold_read(e):
     fields = e.get("fields") or {}
     status = (e.get("status") or fields.get("Status") or "").strip().lower()
     return (e.get("base_type") == "Local Review" and status == "complete"
-            and MARK in (fields.get("Depth") or "").lower())
+            and MARK in (fields.get("Depth") or "").lower() and on_pr(e))
 print("cold_read=" + ("yes" if any(is_cold_read(e) for e in entries[pr_start(entries):]) else "no"))
 '
 }

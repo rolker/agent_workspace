@@ -337,6 +337,16 @@ out=$(cr "$FIX/cold-merged1.md")
 out=$(cr "$FIX/cold-restart.md")
 [[ "$out" == "cold_read=yes" ]] && pass "cold-read: a restart does not hide the open pull request's cold read -> yes" || fail "cold-read: restart (out=$out)"
 
+# --pr <M>: only a cold read correlated to that pull request counts (a
+# pull request closed and replaced without a merge checkpoint keeps the
+# same pr_start, so the replacement must not inherit the old read).
+out=$("$RP" cold-read --progress "$FIX/cold1.md" --pr 70 2>&1)
+[[ "$out" == "cold_read=yes" ]] && pass "cold-read --pr: the same pull request's cold read -> yes" || fail "cold-read --pr 70 (out=$out)"
+out=$("$RP" cold-read --progress "$FIX/cold1.md" --pr 72 2>&1)
+[[ "$out" == "cold_read=no" ]] && pass "cold-read --pr: a replaced pull request's cold read does not count for another -> no" || fail "cold-read --pr 72 (out=$out)"
+"$RP" cold-read --progress "$FIX/cold1.md" --pr abc >/dev/null 2>&1; rc=$?
+[[ "$rc" -eq 2 ]] && pass "cold-read --pr: a non-number is a usage error (rc 2)" || fail "cold-read --pr abc (rc=$rc)"
+
 "$RP" cold-read --progress "$FIX/bad.md" >/dev/null 2>&1; rc=$?
 [[ "$rc" -ne 0 ]] && pass "cold-read: malformed progress.md fails loudly (rc=$rc), never a silent no" || fail "cold-read: malformed (rc=$rc)"
 "$RP" cold-read >/dev/null 2>&1; rc=$?
