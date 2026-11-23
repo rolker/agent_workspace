@@ -404,3 +404,38 @@ Four commits on plan.md at `e55a68e9`, with the third Plan Review's findings app
 - [x] (suggestion) In cold-read mode review-code's PR-mode step 1a still fetches `comments,reviews` into the lead's context; give cold-read mode a metadata query without them (Codex) — `.claude/skills/review-code/SKILL.md:116, 219`
 - [x] (suggestion) "A review not yet read", below" points to a section above (line 1035) — `.claude/skills/run-issue/SKILL.md:1100`
 - [x] (suggestion) The Plan Review fixture writes `Depth:` without bold, so it never tests the `base_type` guard on a parsed `**Depth**` field; use `**Depth**: cold read, cross-model only` — `.agent/scripts/tests/test_review_code_convergence.sh:306`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 18:38 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent af605468d1e45efa8, resume 1 of 3)
+
+**Branch**: feature/issue-452 at `a3cc8a43`
+**Addressed**: Local Review (Pre-Push) at `2a058ffe` (2026-11-23 18:28 -05:00)
+**Commits**: 5c60c91d dcb5a15f c54078c9 94a67200 b0ac5c81 e573715d c04fe975 dadd8d63 7c7449e9 d11452a0 a3cc8a43
+
+### Actions
+- [x] (must-fix 1) the cold read and any retry of it are on step 4a's never-reuse list and always go to a fresh agent; 9a item 3 says so too — `.claude/skills/run-issue/SKILL.md` step 4a, step 9a item 3 (5c60c91d)
+- [x] (must-fix 2) with neither Codex nor Gemini available: an unread Copilot notice goes to `triage-reviews` first; the outside-reviewer line says "no cold read possible"; a `merge` answer given after that stands (step 11 does not re-run 9a for it; the Checkpoint text records it) — `.claude/skills/run-issue/SKILL.md` step 9a intro and item 3, step 11 (dcb5a15f)
+- [x] (suggestion 1) change-log rows for #452 give 1240 lines, matching `wc -l` — `docs/design.md:1184-1186` (c54078c9)
+- [x] (suggestion 2) with `github=unknown`, independent review is reported `not checked: github=unknown` with branch protection and component labels; `test_skill_paths.sh` pins the phrase — `.claude/skills/audit-project/SKILL.md` (94a67200)
+- [x] (suggestion 3) a Copilot check-run concluding other than `failure` with no review on the head gets one more poll about 60 s later before "not available" — `.claude/skills/run-issue/SKILL.md` step 9 wait, step 9a item 2 (b0ac5c81). Skill text only, no suite covers host polling.
+- [x] (suggestion 4) a takeover writes the cold-read words only when the host itself runs Codex or Gemini; with neither, it writes a complete `## Local Review` of its own read with `**Depth**: <tier> (reason: no cold read possible: Codex and Gemini unavailable)` (no marker, so `cold-read` stays `no`; not `failed`, which would loop back to phase-failed), and the next pass takes the no-agent path — `.claude/skills/run-issue/SKILL.md` step 9a item 3 (e573715d)
+- [x] (suggestion 5) `review_progress.sh cold-read --pr <M>`: only a cold read correlated to that pull request counts; 9a passes it; script_reference.md and design.md updated; three new cases in `test_review_code_convergence.sh` — `.agent/scripts/review_progress.sh` cmd_cold_read (dadd8d63)
+- [x] (suggestion 6) review-code step 1a gives cold-read mode a metadata query without `comments,reviews`; text pin added — `.claude/skills/review-code/SKILL.md` step 1a, step 2 (7c7449e9)
+- [x] (suggestion 7) "A review not yet read", below -> above — `.claude/skills/run-issue/SKILL.md:1110` (d11452a0)
+- [x] (suggestion 8) the Plan Review fixture writes `**Depth**: cold read, cross-model only`, now a parsed field (checked: `progress_read.py` returns it as the entry's Depth), so the `base_type` guard is exercised — `.agent/scripts/tests/test_review_code_convergence.sh:306` (a3cc8a43)
+- [x] (found while testing, not a review finding) round 1's step 9a `where` block made `test_package_issue_loop.sh` count 4 blocks against its expected 3 (1 failure); the test now expects 4 and adds a case: 9a's block on a package issue with no timeline stops, never prints `cold_read=no` (c04fe975)
+
+### Checks
+- `bash .agent/scripts/tests/test_address_findings.sh`: `24 passed, 0 failed`
+- `bash .agent/scripts/tests/test_issue_review_entry.sh`: `6 passed, 0 failed`
+- `bash .agent/scripts/tests/test_package_issue_loop.sh`: `228 passed, 0 failed` (was 226 passed, 1 failed before c04fe975)
+- `bash .agent/scripts/tests/test_plan_correlation.sh`: `18 passed, 0 failed`
+- `bash .agent/scripts/tests/test_review_code_convergence.sh`: `54 passed, 0 failed`
+- `bash .agent/scripts/tests/test_records_write_gate.sh`: `68 passed, 0 failed`
+- `bash .agent/scripts/tests/test_dispatch_phase.sh`: `244 passed, 0 failed`
+- `bash .agent/scripts/tests/test_triage_reviews_integration.sh`: `70 passed, 0 failed`
+- `bash .agent/scripts/tests/test_skill_paths.sh`: `200 passed, 0 failed`
+- Suites chosen by the grep for `review_progress.sh` (the one script changed), plus test_skill_paths.sh (skill text). Commits used `SKIP=validate-script-tests`; the full pre-commit pass is left to the host.
