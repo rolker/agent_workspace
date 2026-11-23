@@ -1059,3 +1059,11 @@ Read: parts 1A and 1B merged (pull requests 513 and 514); the issue is open for 
 
 ### Decisions made (owner may veto)
 - Part 4 is planned before parts 2 and 3: it depends on nothing in them, the tool commands it calls are all merged, and it closes the hole where validate passes a clone that is on the wrong version or emptied — undoing it: replan in the plan's original order; nothing is built yet.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-23 11:04 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-503/plan.md` at `a1be602a`
+
+Revision: part 4 detailed as the next pull request (Part of #503): validate reads repos-manifest status (--json and exit status), build calls repos-manifest build with the distro underlay sourced first, test limited to the resolved repos, sync and setup need only text fixes; one pull request; parts 2 and 3 kept as later parts.
