@@ -363,8 +363,8 @@ def build_parser() -> argparse.ArgumentParser:
     sync_p = sub.add_parser(
         "sync",
         help=(
-            "Resolve the system's manifest again and clone the repos that are missing; repos"
-            " that are there are not touched yet"
+            "Resolve the system's manifest again, clone the repos that are missing and update"
+            " the ones that are there"
         ),
     )
     sync_p.add_argument(

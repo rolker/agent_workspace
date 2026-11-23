@@ -44,15 +44,18 @@
 # writes around a key YAML would read as a number or a boolean ('123',
 # 'on'). A key with a directory in it (grp/repo) is not read (a worktree
 # names a repo by the last part of its path; reading such keys is a later
-# part).
+# part): every verb that reads the resolved .repos files refuses it, build
+# alone does not, since the tool's build reads them itself.
 # The adapter reads only the tool's resolved files, its stated output, for
 # one distro: .repos-manifest/resolved/<distro>/ holds layers.txt (in build
 # order; the unnamed layer is "_unnamed"), <layer>.repos and optional.txt
-# (the optional repos, by key). It never reads config.yaml or state.yaml.
-# A layer's directory is <root>/<distro>/<layer>, the unnamed layer's
-# <root>/<distro>; its repos are in its src/. A repo's pin is the version
-# of its entry in <layer>.repos. No layer is optional; validate passes over
-# a missing repo optional.txt names.
+# (the optional repos, by key). It never reads config.yaml or state.yaml;
+# what they and the manifest say reaches it through the tool's commands
+# (status for validate, build). A layer's directory is
+# <root>/<distro>/<layer>, the unnamed layer's <root>/<distro>; its repos
+# are in its src/. A repo's pin is the version of its entry in
+# <layer>.repos. No layer is optional; an optional repo is status's to
+# report (validate does not fail on it).
 #
 # The distro on the tool route (owner, 2026-11-18: "the directory the
 # session is started in decides"), chosen by _rc_tool_distro_select alone:
@@ -89,14 +92,19 @@
 # from inside <root>/<x>/, from elsewhere the one resolved distro's name;
 # with no --distro only from outside every distro's directory when nothing
 # is resolved yet) and pass its output and exit
-# status through: the adapter never pulls, fetches or moves a clone here.
-# `build` and `test` are today's colcon loops over the resolved layers,
-# with --base-paths src so the unnamed layer's build in <root>/<distro>
-# does not take in the named layers below it; `build` is interim until
-# the tool's own build, and stops at the first failing layer. The adapter
-# does not run `repos-manifest build`, so <root>/<distro>/setup.bash stays
-# the tool's stub unless someone runs that by hand (it then sources the
-# built layers); the instance's environment is `adapter env` either way.
+# status through. The adapter itself pulls, fetches and moves no clone
+# here; the tool's sync clones what is missing and updates a clean clone
+# by the rules of its own design, and leaves one with local work.
+# `build` runs the tool's build (<tool> build --distro <d> -- <the
+# adapter's colcon flags> <the caller's arguments>) in the root, with the
+# distro's environment sourced first (_rc_tool_build); the tool builds the
+# layers in order over the repos on disk and writes
+# <root>/<distro>/setup.bash. It takes no layer argument: one layer is
+# built with the tool directly. `test` stays the adapter's colcon loop
+# (the tool has no test), each layer given the resolved repos on disk as
+# --base-paths, as the tool's build gives them. `validate` reads the
+# tool's `status --json` (_rc_tool_status). `env` sources each built
+# layer's install/local_setup.bash, which the tool's colcon writes there.
 #
 # Fresh hosting dir (#237, step 6 phase 2): `setup` bootstraps the manifest
 # when configs/manifest is absent, porting ros2's setup_layers.sh flow
@@ -2187,7 +2195,8 @@ adapter_sync() {
     # branch; fetch otherwise. Never touches dirty or detached checkouts.
     # On the manifest route (issue #436) the source is fetched and resolved
     # first; a failure there stops sync with nothing changed. On the tool
-    # route: the tool's sync, nothing else (it pulls and fetches nothing).
+    # route: the tool's sync, nothing else (the adapter pulls and fetches
+    # nothing itself; the tool's sync clones and updates by its own rules).
     local route missing=0
     route="$(_rc_route)"
     if [ "$route" = tool ]; then
@@ -2252,7 +2261,8 @@ adapter_sync() {
 
 adapter_validate() {
     # Checkout shape vs manifest: every non-optional layer has a repos file
-    # and every repo pinned in it is checked out. Distro must resolve.
+    # and every repo pinned in it is checked out. Distro must resolve. On
+    # the tool route: _rc_tool_validate (the tool's status).
     if [ "$(_rc_route)" = tool ]; then
         _rc_tool_validate
         return
