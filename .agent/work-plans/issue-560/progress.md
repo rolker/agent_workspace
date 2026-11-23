@@ -69,3 +69,12 @@ Checks: test_skill_paths.sh 198 passed 0 failed; test_sitrep_checks.sh 252 passe
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**When**: 2026-11-23 14:29 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 2 pre-push review approved with nothing open; the full pre-commit pass with no SKIP exited 0 at ab0073e7; the owner asked for this: "review the Y1 with the goal of merging it")
+**After**: publish
+**Decision**: publish
+
+Push the branch and open the pull request. The merge is the owner's.
