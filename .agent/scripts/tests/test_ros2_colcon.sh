@@ -4105,6 +4105,7 @@ test_worktree_create_package_root_outside_git_repo_not_git_refused() {
 }
 
 TOOL_SKIPPED=0
+LOCALE_SKIPPED=0
 
 # ---- A root the manifest tool set up (issue 503 part 1B) ----
 
@@ -4836,6 +4837,7 @@ d["repos"].append(dict(r["pkg_a"], key="pkg_new", path="fakefox/core/src/pkg_new
     fi
     if [ -z "$utf8" ] || [ -z "$gnu" ]; then
         echo "  SKIPPED (locale part): needs the en_US.UTF-8 locale and GNU comm (locale: ${utf8:-none}; GNU comm: ${gnu:-none})"
+        LOCALE_SKIPPED=$((LOCALE_SKIPPED + 1))
     else
         tool_status_doc "$sb" "$root" "$doc" 'd["repos"] = [x for x in d["repos"] if x["layer"] != "_unnamed"]'
         rc=0; out="$(LC_ALL="$utf8" TOOL_STATUS_FILE="$doc" run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
@@ -4843,8 +4845,9 @@ d["repos"].append(dict(r["pkg_a"], key="pkg_new", path="fakefox/core/src/pkg_new
         assert_contains "under $utf8 with $gnu: the unnamed layer's repo alone, in the last resolve only" \
             "is out of date with the manifest (in the last resolve only: _unnamed/pkg_u); the adapter's other verbs" "$out"
         assert_not_contains "under $utf8 with $gnu: comm did not see unsorted input" "sorted order" "$out"
-        rm -f "$sb/bin/comm"
     fi
+    # The gnucomm link goes whichever branch ran, so no later part sees it.
+    rm -f "$sb/bin/comm"
     # The tool's interpreter missing, or a link to nothing: named as that,
     # not as the tool not installed, with the step that makes the venv again.
     local venv_step="make the venv again: cd $sb && rm -rf .venv .make/setup-dev.done .make/repos-manifest.done && make install-repos-manifest"
@@ -5746,5 +5749,8 @@ echo ""
 if [ "$MR_SKIPPED" -gt 0 ]; then
     echo "=== SKIPPED: $MR_SKIPPED manifest-route test(s): PyYAML not importable with $MR_SRC ==="
 fi
-echo "=== Results: ${PASS} passed, ${FAIL} failed, $((MR_SKIPPED + TOOL_SKIPPED)) skipped ==="
+if [ "$LOCALE_SKIPPED" -gt 0 ]; then
+    echo "=== SKIPPED: the locale part of test_tool_validate (no en_US.UTF-8 locale or no GNU comm) ==="
+fi
+echo "=== Results: ${PASS} passed, ${FAIL} failed, $((MR_SKIPPED + TOOL_SKIPPED + LOCALE_SKIPPED)) skipped ==="
 [[ $FAIL -eq 0 ]]
