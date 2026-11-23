@@ -100,3 +100,12 @@ No open findings. (Host correction: the triage wrote this sentence as an uncheck
 
 ### False positives
 - none
+
+## Checkpoint
+**When**: 2026-11-23 14:48 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner's words: "Don't wait for copilot on github anymore, I've disabled auto running it since we run out of quota each month within days. merge when ci is green". Merge pull request 564 once CI is green; no relaxing flag is passed.
