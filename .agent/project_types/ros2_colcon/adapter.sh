@@ -1159,7 +1159,7 @@ _rc_tool_status() {
             why="is not executable"
         fi
         local main="${bin%/.venv/bin/repos-manifest}"
-        echo "❌ distro $d: the manifest tool is at $bin, but $py, the venv's Python that runs it and reads status's document, $why (the Python the venv was made from was moved or removed); make the venv again: cd $(printf %q "$main") && rm -rf .venv .make/setup-dev.done .make/repos-manifest.done && make install-repos-manifest" >&2
+        echo "❌ distro $d: the manifest tool is at $bin, but $py, the venv's Python that runs it and reads status's document, $why (the Python the venv was made from was moved or removed); make the venv again: remove the directory $main/.venv and the two stamp files $main/.make/setup-dev.done and $main/.make/repos-manifest.done, then run make install-repos-manifest from $main" >&2
         _RC_STATUS_ISSUES=1
         return 0
     fi

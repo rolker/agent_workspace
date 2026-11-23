@@ -4875,7 +4875,7 @@ d["repos"].append(dict(r["pkg_a"], key="pkg_new", path="fakefox/core/src/pkg_new
     rm -f "$sb/bin/comm"
     # The tool's interpreter missing, or a link to nothing: named as that,
     # not as the tool not installed, with the step that makes the venv again.
-    local venv_step="make the venv again: cd $sb && rm -rf .venv .make/setup-dev.done .make/repos-manifest.done && make install-repos-manifest"
+    local venv_step="make the venv again: remove the directory $sb/.venv and the two stamp files $sb/.make/setup-dev.done and $sb/.make/repos-manifest.done, then run make install-repos-manifest from $sb"
     mv "$sb/.venv/bin/python3" "$sb/python3.aside"
     rc=0; out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
     assert_eq "no python3 beside the tool: exit 1" "1" "$rc"
@@ -4883,6 +4883,7 @@ d["repos"].append(dict(r["pkg_a"], key="pkg_new", path="fakefox/core/src/pkg_new
         "❌ distro fakefox: the manifest tool is at $sb/.venv/bin/repos-manifest, but $sb/.venv/bin/python3, the venv's Python that runs it and reads status's document, is missing" "$out"
     assert_contains "no python3 beside the tool: the step" "$venv_step" "$out"
     assert_not_contains "no python3 beside the tool: the tool not called uninstalled" "is not installed" "$out"
+    assert_not_contains "no python3 beside the tool: no rm command printed" "rm -rf" "$out"
     ln -s "$sb/nowhere/python3" "$sb/.venv/bin/python3"
     rc=0; out="$(run_tool "$sb" "$sb" validate 2>&1)" || rc=$?
     assert_eq "python3 a link to nothing: exit 1" "1" "$rc"
