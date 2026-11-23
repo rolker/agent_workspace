@@ -73,3 +73,17 @@ Mechanism choices (not for the owner; I would decide them in the plan): where th
 - [ ] Decide how an existing directory gets `fetch_from` (hand edit of `config.yaml`, a flag on `sync`, or a small command) and say so in the plan.
 - [ ] Change the `status` "set by hand" note so a differing origin that matches `fetch_from` is shown as fetched from the configured place.
 - [ ] For "same repo by another transport", compare host and path after normalizing `git@host:path` and `https://host/path`, drop `upstream` when they match, and document the rule in `design.md`.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 12:24 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the Issue Review finds the issue sound; its actions are for the plan and none changes what the work is for)
+**After**: issue-actions
+**Decision**: proceed
+
+Read: the Issue Review at 2a2498ff (sound, ready to plan, two pull requests). The owner started this drive on 2026-11-23: "yes, drive 519 as the second issue", for the case of a system cloned over https that has to push over ssh. The review's six actions go to the plan. Its two questions marked owner-level are answered by what is already recorded, so neither is asked: (1) per system directory or per user: the tool's design, "Where repos are fetched from", puts fetch_from in the system directory's config.yaml, and the tool's roadmap lists "A per-user settings file, so where to fetch from is set once for all systems" as a deferral; the plan follows the design. (2) whether the first pull request may stop at the same repos over ssh: that is the order of parts, a mechanism choice, listed below.
+
+### Decisions made (owner may veto)
+- Two pull requests: the first builds fetch_from with fallback off (the same repos from another place, origin set to it, sync and status acting on clones that already exist), which is the case the drive was started for; the second adds fallback on (a developer's forks where they exist, the upstream remote, the same-repo-by-another-transport rule) — undoing it: plan both as one pull request; nothing is built yet.
+- fetch_from is set per system directory, as the tool's design says; the per-user settings file stays a deferral on the tool's roadmap — undoing it: a design change to the tool, asked on its own.
