@@ -245,3 +245,17 @@ The revision answers the first review's findings 2 to 8 correctly and states the
 - [ ] Put "fetch_from set, probe remote taken" in `DIFFER` ("left alone").
 - [ ] Document the edit order for an existing field system and the `status`-before-`sync` check.
 - [ ] Say whether the existing field system is a `repos-manifest` system or a vcstool checkout.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 13:07 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the second Plan Review confirms the mechanism by running it and says nothing needs the owner; its six findings are stale example text, two design sentences missing from the edit list, and test and document details, all carried into the implement handoff, which overrides the plan where they differ)
+**After**: plan
+**Decision**: proceed
+
+Read: the Plan Review at 131414e1 for plan ca8dc681, verdict needs-work, six findings, none for the owner. This proceed covers part 1 only (fallback off, for a field machine that fetches every repo from one prefix on a private server); the pull request says Part of #519 and states the change of aim from the issue's title. The owner confirmed on 2026-11-23 that the server's url form is git@gitcloud:field/<repo>.git ("the colon form is right"). Carried into the implement handoff, to be done in this part: finding 1 (the existing-system text and examples are written for the field machine, not for a development machine's https clones; no example uses a prefix under a public host's single owner); 2a (the design's url-rule sentences about a missing recorded url change with step 7b); 2b (the design's list of the resolved files' head-comment lines gains the fetch-from line); 3 (the documents say what an origin spelled differently from the built url does: a clean clone is repointed once; one with unpushed commits is left alone on every run; a hand-set origin in the other spelling is left as set; advise spelling the prefix as the origins are spelled; a test for the unpushed-commits case); 4 (the agreement test's "probe remote taken" case gets a DIFFER entry); 5 (the documents say to make the manifest and fetch_from changes in one edit of config.yaml and to run status before sync, and why); 6 (the documents say the existing-system path applies to a system directory the tool set up, not to a checkout made another way).
+
+### Decisions made (owner may veto)
+- Implementation starts from a plan whose review said needs-work, with the review's findings in the handoff, instead of a third plan round: the findings are text and test details and the mechanism was confirmed by running it — undoing it: a plan revision and review before any code; costs the implement pass if it has started.
+- The same-repo-by-another-spelling comparison stays in part 2; part 1 documents the behaviour and advises matching the spelling — undoing it: bring the comparison into part 1, a larger pull request.
