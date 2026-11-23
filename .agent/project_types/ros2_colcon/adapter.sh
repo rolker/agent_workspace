@@ -1146,8 +1146,20 @@ _rc_tool_status() {
     root="$(_rc_root)" || return 1
     bin="$(_rc_resolver_bin)"
     py="$(dirname "$bin")/python3"
-    if [ ! -x "$bin" ] || [ ! -x "$py" ]; then
-        echo "❌ distro $d: the manifest tool is not installed at $bin (with python3 beside it), so status cannot be read; run: make install-repos-manifest (from the workspace main checkout)" >&2
+    if [ ! -x "$bin" ]; then
+        echo "❌ distro $d: the manifest tool is not installed at $bin, so status cannot be read; run: make install-repos-manifest (from the workspace main checkout)" >&2
+        _RC_STATUS_ISSUES=1
+        return 0
+    fi
+    if [ ! -x "$py" ]; then
+        local why="is missing"
+        if [ -L "$py" ] && [ ! -e "$py" ]; then
+            why="is a link to nothing ($(readlink "$py"))"
+        elif [ -e "$py" ]; then
+            why="is not executable"
+        fi
+        local main="${bin%/.venv/bin/repos-manifest}"
+        echo "❌ distro $d: the manifest tool is at $bin, but $py, the venv's Python that runs it and reads status's document, $why (the Python the venv was made from was moved or removed); make the venv again: cd $(printf %q "$main") && rm -rf .venv .make/setup-dev.done .make/repos-manifest.done && make install-repos-manifest" >&2
         _RC_STATUS_ISSUES=1
         return 0
     fi
