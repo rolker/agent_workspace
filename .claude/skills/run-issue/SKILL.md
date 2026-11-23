@@ -1013,8 +1013,8 @@ gates the merge on CI regardless — triaging early never merges anything
 early.
 
 **Fetch again before every merge checkpoint.** Before presenting any
-`merge` checkpoint, run `fetch_pr_reviews.sh --pr <M>` again, on every
-path (a review that arrived, "review never arrived", "review still
+`merge` checkpoint, and after step 9a, run `fetch_pr_reviews.sh --pr <M>`
+again, on every path (a review that arrived, "review never arrived", "review still
 running after 1800 s", or a head moved by a bookkeeping push). Two
 checks on its output:
 
@@ -1072,6 +1072,101 @@ newest entry to route on and no `checkpoint:merge-refused` re-route.
 `triage-reviews` with only the local review as
 a source still writes `## Integrated Review` — the only entry type that
 reaches the `findings`/`merge` checkpoints.
+
+### 9a. One Copilot request per pull request, and the cold read
+
+Independent review after publishing is one cold read of the final diff
+(issue 452): Copilot when the loop asks for it and it answers, else one
+cross-model reviewer through `review-code`. Copilot is asked once per pull
+request, at the pre-merge point: when `next` prints
+`action=checkpoint:merge` (the last fix round and its triage are done),
+before step 9's re-fetch and before the checkpoint is presented. Nothing
+new is stored for "asked once": the record is GitHub's state for the pull
+request and the cold read's own entry on the timeline, checked in this
+order.
+
+1. **The cold read already ran for this pull request**:
+
+   ```bash
+   $WS_ROOT/.agent/scripts/review_progress.sh cold-read --progress <worktree>/.agent/work-plans/issue-<N>/progress.md
+   ```
+
+   `cold_read=yes` means a complete `## Local Review` whose `**Depth**:`
+   line carries "cold read, cross-model only" was written after the
+   current pull request's start (`pr_start.py` `pr_start`, the boundary
+   step 13 draws after a `merge` answer). Never a whole-file text match:
+   the same words sit in checkpoint and plan-review text, and an earlier
+   merged pull request's cold read does not count for the next one. On
+   `yes`: no request, no wait, no second cold read.
+
+2. **Copilot's state on GitHub**, from `fetch_pr_reviews.sh --pr <M>`
+   (reviews by `copilot-pull-request-reviewer[bot]`, the
+   `copilot-pull-request-reviewer` check-run in `ci_checks`) and
+   `gh pr view <M> --json reviewRequests` (a request whose login names
+   Copilot):
+
+   - **A Copilot review that reviewed** is on the pull request: Copilot
+     was available. Nothing more is requested; a review not yet read goes
+     to `triage-reviews` by step 9's re-fetch rule.
+   - **A could-not-review notice**, or **a request or check-run with no
+     Copilot review and no concluded check-run** (a run resumed during
+     the wait, or an earlier pass's wait that ran out): Copilot is "not
+     available". Go to 3 with no new wait; a request listed on GitHub and
+     never answered is not waited for again.
+   - **No Copilot request, review or check-run**: request it, once:
+
+     ```bash
+     gh pr edit <M> --add-reviewer "@copilot"
+     ```
+
+     A non-zero exit is "not available" (quote its message on the
+     outside-reviewer line). On exit 0, wait once, by step 9's rules
+     (about 900 s with no check-run, the merge script's 1800 s hold on a
+     running one). A review on the head arrived: dispatch
+     `triage-reviews`, which reads it, and no cold read follows. A
+     could-not-review notice, or no answer within the bound: "not
+     available". Verified: `gh` 2.104.0's `gh pr edit --help` documents
+     `--add-reviewer "@copilot"`. Not verified: what the request does
+     under exhausted quota, or when it is accepted and never answered;
+     every outcome that is not a review counts as "not available".
+
+3. **The cold read** (Copilot not available, and step 1 said `no`):
+   dispatch `review-code` for the pull request as in step 4
+   (`dispatch_phase.sh --issue <ref> --skill review-code --pr <M>`), with
+   the task line given the cold-read words and the one agent, Codex, or
+   Gemini when Codex is known to be unavailable:
+   `/review-code <M> (cold read, cross-model only: codex; the final
+   diff only, no earlier review entries or findings)`. Review-code step 2
+   then runs only that agent's 5e read and records the words on its
+   `**Depth**` line, which is what step 1 reads next time. With neither
+   agent available, there is no cold read: say so on the
+   outside-reviewer line and present the checkpoint; the owner decides
+   (the next pass through this point tries again, since nothing records
+   it).
+
+   Its `## Local Review` is routed like any PR-mode review, with no
+   router change: `next` sends an `approved` one to `triage-reviews` (step
+   9 then has nothing outstanding, so no wait) and any other verdict
+   straight to `address-findings`, then the ordinary PR-mode re-review
+   and `triage-reviews`. So a cold read with findings reaches triage only
+   after the fix and its re-review, with review-code's own lead judgment
+   as the filter before the fix (accepted; the issue asked for "through
+   triage like any other source"). When the loop comes back to the
+   `merge` checkpoint, step 1 finds the cold read: no second request, no
+   second cold read, and step 9 does not wait again. A Copilot review's
+   findings likewise go through `triage-reviews` and the ordinary fix
+   round, with no second request.
+
+   The cold read is a complete PR-mode `## Local Review`, so it counts as
+   a PR-mode round for review-code's round-3 convergence check; a fix
+   round after it can reach round 3 one round early and skip
+   cross-model. Accepted: the cold read is itself the cross-model read.
+
+The outside-reviewer line (hand-back and checkpoints) names only the
+reviewers that were asked: Copilot "requested, reviewed", "not available"
+with the reason, or "not requested yet" before the pre-merge point; the
+cold read's agent with ran, failed or skipped and whether it found
+anything of substance.
 
 ### 10. The host owns every push
 

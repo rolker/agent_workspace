@@ -13,6 +13,7 @@
 #     triage-reviews' own call site: strict abort on a mismatched worktree,
 #     compatibility mode refused the same way (issue 437), matching worktree no-notice,
 #     degradation (skill worktree / no linked issue) skips without aborting
+#   - no Copilot review at all is the ordinary case (issue 452)
 #
 # All cases run in mktemp -d sandboxes; host worktree state is cleared first.
 # Run: bash .agent/scripts/tests/test_triage_reviews_integration.sh
@@ -115,6 +116,22 @@ fp=$(printf '%s' "$out" | jq '[.local_findings[] | select(.text | test("jq missi
 out=$("$RP" sources --head "$HEAD" --reviews "$REVIEWS"); rc=$?
 [[ "$rc" -eq 0 && "$(printf '%s' "$out" | jq '.local_findings | length')" -eq 0 && "$(printf '%s' "$out" | jq '.github_comments | length')" -eq 3 ]] \
     && pass "sources: no progress.md -> GitHub comments only, exit 0" || fail "sources: absent timeline (rc=$rc)"
+# No Copilot review at all, no check-run, no conversation (issue 452: the
+# automatic rule is off everywhere, so this is the ordinary case): the
+# local review's findings are the whole input, exit 0, nothing dropped, no
+# error and nothing waiting on a source that is not there.
+cat > "$TMPD/no_copilot.json" <<EOF
+{"pr": 70, "repo": "o/r", "head_sha": "$HEAD", "reviews": [], "ci_checks": [], "conversation_comments": []}
+EOF
+out=$("$RP" sources --progress "$PROG" --head "$HEAD" --reviews "$TMPD/no_copilot.json" 2>"$TMPD/no_copilot.err"); rc=$?
+if [[ "$rc" -eq 0 && ! -s "$TMPD/no_copilot.err" \
+      && "$(printf '%s' "$out" | jq '.local_findings | length')" -eq 3 \
+      && "$(printf '%s' "$out" | jq '.github_comments | length')" -eq 0 \
+      && "$(printf '%s' "$out" | jq '.candidates | length')" -eq 0 ]]; then
+    pass "sources: no Copilot review and no check-run -> the local findings alone, exit 0, no warning"
+else
+    fail "sources: no Copilot review at all (rc=$rc err=$(cat "$TMPD/no_copilot.err") out=$out)"
+fi
 # malformed progress.md -> loud failure, not a silent empty timeline
 printf '## Implementation\n```\nopen\n' > "$TMPD/bad.md"
 "$RP" sources --progress "$TMPD/bad.md" --head "$HEAD" --reviews "$REVIEWS" >/dev/null 2>&1; rc=$?

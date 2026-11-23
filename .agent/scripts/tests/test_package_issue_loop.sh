@@ -520,6 +520,7 @@ review_progress findings%"$S/review_progress.sh" findings --progress "$P/progres
 review_progress check%"$S/review_progress.sh" check --progress "$P/progress.md" --index 0
 review_progress check --deferred%"$S/review_progress.sh" check --progress "$P/progress.md" --index 0 --deferred why
 review_progress plan-sha%"$S/review_progress.sh" plan-sha --plan "$P/plan.md"
+review_progress cold-read%"$S/review_progress.sh" cold-read --progress "$P/progress.md"
 review_progress plan-sha --ref%"$S/review_progress.sh" plan-sha --plan ./.agent/work-plans/issue-7/plan.md --ref HEAD
 progress_append%checkpoint_entry | "$S/progress_append.sh" 7
 progress_append -C%checkpoint_entry | (cd "$H" && "$S/progress_append.sh" -C "$OLDPWD" 7)
@@ -553,8 +554,8 @@ usage_subs=$("$S/review_progress.sh" 2>&1 | sed -n 's/^  review_progress\.sh \([
 check "review_progress.sh's dispatch table: every row has a label" "$([[ -n "$table" && -z "$unparsed" ]]; echo $?)" "unparsed: $unparsed"
 check "the table's labels are exactly the subcommands its usage text names" \
     "$([[ -n "$usage_subs" && "$(sort <<< "${subs%$'\n'}")" == "$usage_subs" ]]; echo $?)" "table: $subs usage: $usage_subs"
-check "review_progress.sh's dispatch table lists the seven known subcommands" \
-    "$([[ "$(sort <<< "${subs%$'\n'}" | tr '\n' ' ')" == "check findings persist plan-sha round sources verdict " ]]; echo $?)" "$subs"
+check "review_progress.sh's dispatch table lists the eight known subcommands" \
+    "$([[ "$(sort <<< "${subs%$'\n'}" | tr '\n' ' ')" == "check cold-read findings persist plan-sha round sources verdict " ]]; echo $?)" "$subs"
 for sub in $subs; do
     if [[ " $NO_RECORDS_SUBS " == *" $sub "* ]]; then
         out=$(cd "$B" && "$S/review_progress.sh" "$sub" --must-fix 0 --round 1 2>&1); rc=$?
@@ -607,6 +608,8 @@ for where_ in A WS; do
     check "findings from $where_ lists the open finding" "$([[ "$rc" -eq 0 && "$out" == *'"index": 0'* ]]; echo $?)" "$out"
     out=$(cd "$dir" && "$S/review_progress.sh" sources --progress "$P/progress.md" --head 1234567 --reviews "$SANDBOX/reviews.json" 2>&1); rc=$?
     check "sources from $where_ runs" "$([[ "$rc" -eq 0 ]]; echo $?)" "$out"
+    out=$(cd "$dir" && "$S/review_progress.sh" cold-read --progress "$P/progress.md" 2>&1); rc=$?
+    check "cold-read from $where_ reads its own timeline" "$([[ "$rc" -eq 0 && "$out" == "cold_read=no" ]]; echo $?)" "$out"
     out=$(cd "$dir" && "$S/review_progress.sh" plan-sha --plan "$P/plan.md" 2>&1); rc=$?
     check "plan-sha from $where_ prints the plan commit" "$([[ "$rc" -eq 0 && "$out" == "$(git -C "$dir" log -1 --format=%h -- .agent/work-plans/issue-7/plan.md)" ]]; echo $?)" "$out"
     sum_before=$(md5sum < "$P/progress.md")

@@ -80,8 +80,19 @@
 # check    Flip one of that entry's checkboxes to [x], optionally with a
 #          "(deferred: <reason>)" annotation. See cmd_findings / cmd_check.
 #
+# cold-read Whether the current pull request's cold read (run-issue step 9a,
+#          issue 452) has already run: prints "cold_read=yes" or
+#          "cold_read=no". Yes only for a complete "## Local Review" (PR
+#          mode; never Pre-Push) whose **Depth** line contains the handoff
+#          words "cold read, cross-model only", written at or after the
+#          current pull request's start (pr_start.py pr_start), never a
+#          whole-file match: the words also appear in checkpoint and plan
+#          text, and an earlier merged pull request's cold read does not
+#          count for the next one. A missing file is "no". See cmd_cold_read.
+#
 # The records gate: every subcommand that takes or builds a records path
-# (round, persist in both modes, sources, findings, check, plan-sha) passes
+# (round, persist in both modes, sources, findings, check, cold-read,
+# plan-sha) passes
 # it through records_path / records_dir (_resolve_work_plans_dir.sh) before
 # reading or writing anything, and exits 4 when it refuses: inside a
 # package worktree, a timeline that is not in the issue's own checkout (a
@@ -122,6 +133,7 @@ Usage:
   review_progress.sh sources --head <sha> --reviews <fetch_pr_reviews.json> [--progress <file>]
   review_progress.sh findings --progress <file>
   review_progress.sh check --progress <file> --index <i> [--deferred "<reason>"]
+  review_progress.sh cold-read --progress <file>
 See the header comment of this script for what each subcommand prints.
 Exit codes: 0 ok; 2 usage/validation; 3 append/commit failure; 4 strict-mode resolver abort, or the records gate refused the path (a package-worktree checkout that is not the issue's own; for persist and check also a main checkout or another issue's worktree).
 EOF
@@ -756,6 +768,54 @@ cmd_plan_sha() {
     echo "$sha"
 }
 
+# ------------------------------------------------------------ cold-read ---
+# cold-read --progress <file>
+# run-issue step 9a's durable "the fallback already ran" record (issue 452):
+# the host requests Copilot, or dispatches the cold read, at most once per
+# pull request, and nothing new is stored for it. Prints "cold_read=yes"
+# when the timeline holds, from the current pull request's start
+# (pr_start.py pr_start; a restart does not move it), a "## Local Review"
+# entry (base_type exactly that: a pre-push review is never the cold read)
+# with **Status** complete whose **Depth** field contains "cold read,
+# cross-model only" (case-insensitive); otherwise "cold_read=no". Only the
+# **Depth** field of such an entry is read: the same words in a
+# Checkpoint, a Plan Review or an entry body never count. A missing file
+# is "no" (no review has run).
+cmd_cold_read() {
+    local progress=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --progress) [[ $# -ge 2 ]] || usage; progress="$2"; shift 2 ;;
+            *) usage ;;
+        esac
+    done
+    [[ -n "$progress" ]] || { echo "error: cold-read: --progress <file> required" >&2; exit 2; }
+    records_path "$progress" >/dev/null || { echo "error: cold-read: the records gate refused $progress — see above" >&2; exit 4; }
+    if [[ ! -e "$progress" ]]; then
+        echo "cold_read=no"; return 0
+    fi
+    [[ -f "$progress" ]] || { echo "error: cold-read: --progress '$progress' is not a regular file" >&2; exit 2; }
+    local json
+    # The whole timeline: pr_start needs the Checkpoint, Plan Authored and
+    # Implementation entries.
+    json=$("$PYTHON" "$PROGRESS_READ" "$progress") || {
+        echo "error: cold-read: progress_read.py failed on $progress (malformed file?)" >&2; exit 2; }
+    printf '%s' "$json" | PR_START_DIR="$SCRIPT_DIR" "$PYTHON" -c '
+import json, os, sys
+sys.dont_write_bytecode = True  # a read leaves no __pycache__ beside the scripts
+sys.path.insert(0, os.environ["PR_START_DIR"])
+from pr_start import pr_start
+MARK = "cold read, cross-model only"
+entries = json.load(sys.stdin).get("entries", [])
+def is_cold_read(e):
+    fields = e.get("fields") or {}
+    status = (e.get("status") or fields.get("Status") or "").strip().lower()
+    return (e.get("base_type") == "Local Review" and status == "complete"
+            and MARK in (fields.get("Depth") or "").lower())
+print("cold_read=" + ("yes" if any(is_cold_read(e) for e in entries[pr_start(entries):]) else "no"))
+'
+}
+
 case "$SUB" in
     plan-sha) cmd_plan_sha "$@" ;;
     round)    cmd_round "$@" ;;
@@ -764,6 +824,7 @@ case "$SUB" in
     sources)  cmd_sources "$@" ;;
     findings) cmd_findings "$@" ;;
     check)    cmd_check "$@" ;;
+    cold-read) cmd_cold_read "$@" ;;
     -h|--help|help) usage ;;
     *) echo "error: unknown subcommand '$SUB'" >&2; usage ;;
 esac
