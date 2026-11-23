@@ -107,3 +107,58 @@ Host decisions on the rest of the actions (owner may veto):
 **Plan**: `.agent/work-plans/issue-551/plan.md` at `ea96d2d3`
 
 Two pull requests: PR 1 adds the goals/design/roadmap settings, one resolver helper, the sitrep_root/update_roadmap/check_design_anchors readers, tests and the design text; PR 2 edits onboard-project, audit-project and design-discussion. PR 1 does not touch the two skills issue 452 is editing.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-23 18:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #551 — Where a project keeps its goals, design and roadmap: asked at onboarding, stored once, followed by every reader
+**Plan**: `.agent/work-plans/issue-551/plan.md` at `ea96d2d3`
+**Branch**: `feature/issue-551`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Two PRs as the issue review and checkpoint asked; PR 1 avoids #452's skill files. |
+| Issue alignment | Needs work | Serves line as written: "Goal "Projects keep their own documents" (README workspace goals), under `docs/design.md#documentation-layers` and `docs/design.md#registry-and-adapters`." Both anchors resolve; the goal name does not exist under `README.md#workspace-goals` (finding 5). The ARCHITECTURE.md design fallback breaks the issue's "with no setting, each keeps today's fixed search" (finding 1). |
+| File targeting | Needs work | Missing `.claude/skills/sitrep/SKILL.md` (finding 2) and `.agent/scripts/_bookkeeping.sh` / `merge_pr.sh` bookkeeping paths (finding 3). |
+| Consequences | Needs work | Merge-gate bookkeeping list and the sit-rep skill's own `docs/design.md` reads not in the table. |
+| Principle alignment | Good | Design text in PR 1 (Keep one current design); unset/none/decide later (A project is never forced); one helper (Only what's needed). Test plan is per reader. |
+| ADR compliance | Good | ADR-0017, -0022, -0016, -0013 addressed; OQ-1 wording over-claims (suggestion 6). |
+| ROS conventions | N/A | Workspace plan. |
+
+### Fallback lists checked against the code that reads them
+
+- **roadmap** (`docs/roadmap.md`, `docs/ROADMAP.md`, `ROADMAP.md`): matches `update_roadmap.sh:169` and `_bookkeeping.sh:22` (same set); `sitrep_root.sh:324` reads only `docs/roadmap.md ROADMAP.md`. Adding `docs/ROADMAP.md` to the sit-rep is the host's shared-list decision; accepted.
+- **design** (`docs/design.md`, `ARCHITECTURE.md`): `audit-project/SKILL.md:186` and `discover_governance.sh:114-115` accept both. But the script readers the plan routes through the helper accept only `docs/design.md`: `check_design_anchors.sh:174` (exit 2 without it), `sitrep_root.sh:354-357`, and the sitrep skill's Audit/Documentation blocks. design-discussion (`SKILL.md:130`) names only `docs/design.md`. So the second candidate is right for audit-project, wrong for the script readers (finding 1).
+- **goals** (`README.md`): no script reads goals. design-discussion (`SKILL.md:135-138`) accepts "the goals its own design or README names" and asks when none is found; the workspace's is `README.md#workspace-goals`. A bare `README.md` fallback is wider than that: nearly every project has a README, so the lookup would almost never report "missing" (finding 4).
+
+### Findings
+
+1. **[Issue alignment / File targeting]** — `ARCHITECTURE.md` as a design fallback for the script readers changes behaviour for projects that never set the key, against the issue ("With no setting, each keeps today's fixed search"). Today a project with only `ARCHITECTURE.md` gets `check_design_anchors.sh` exit 2 and the sit-rep's decision_register/design_anchors/documentation checks skipped; under the plan they would run against `ARCHITECTURE.md`. Worse, `check_design_anchors.sh`'s citation grammar only recognises paths ending in `design.md#` (header lines 18-66), and any `design.md` other than `docs/design.md` is treated as a part's design. So a design key or fallback naming `ARCHITECTURE.md` gets only its in-file links checked, citations `ARCHITECTURE.md#x` are never seen, and a key naming e.g. `docs/arch/design.md` would be both the root design and a "part design". Resolve: either keep the script readers' fallback at `docs/design.md` only (ARCHITECTURE.md stays an audit-project/discover_governance display name), or have step 5 define how citations of a root design with another file name are recognised and resolved, with tests (key naming a non-`design.md` file; key naming a `design.md` that is not `docs/design.md`; key with `#heading`).
+2. **[File targeting]** — `.claude/skills/sitrep/SKILL.md` reads the design file itself: Audit reads `$ROOT/docs/design.md` (line 868), Documentation runs `git log ... -- docs/design.md` (lines 915-921) and the text at lines 77, 949 and 968 names the fixed paths. Step 3 moves only `sitrep_root.sh`'s `check` gate to the helper, so the gate would say "run" for one file while the skill reads another. Add the skill to PR 1 (it is not one of #452's files), e.g. have `sitrep_root.sh` print a `design=` line the skill reads, as it already does for `roadmap=`.
+3. **[Consequences]** — The merge gate's bookkeeping allow-list is fixed: `_bookkeeping.sh:22` `BOOKKEEPING_ROADMAP_PATHS` feeds `_review_bookkeeping_between` (line 190) and `merge_pr.sh:1663` `MERGE_PR_CI_BOOKKEEPING_PATTERNS`. Once `update_roadmap.sh` ticks a key-named roadmap at another path, that post-review edit is no longer bookkeeping, so the review goes stale / the gate blocks. Either the bookkeeping paths include the resolved roadmap key, or the plan says why not; add a test in the bookkeeping/merge tests.
+4. **[Issue alignment]** — The helper does not say whether a result came from the key or from the fallback (step 2 marks only explicit `none`). PR 2 needs exactly that: onboarding "offer the detected candidate" and design-discussion "ask when a key is unset" (issue item 4). Add a source field (`set` / `fallback` / `none`) to the helper output and the `doc` CLI, with tests. With that, reconsider the goals fallback: a bare `README.md` makes "goals found" almost always true; either no goals fallback in the scripts, or the readers treat a fallback as "suggested, ask".
+5. **[Issue alignment]** — The `## Serves` goal "Projects keep their own documents" is not a heading under `README.md#workspace-goals` (they are Quality of the work, Trust control and information, Flexibility, Modular, Light touch on projects, Easy to use, The long view). Name the real goal (most likely "Light touch on projects"); the issue review used the same non-existent name.
+
+Suggestions (do not by themselves need another plan round):
+
+6. OQ-1 asks where a project records its mapping of the **seven** roles; this maps three. Word the design change as "answered for where (the settings file); goals, design and direction have keys, the other four roles are unmapped", rather than marking the seven-role Target fully decided.
+7. Step 4: say `update_roadmap.sh --root` finds the project name through `project_document_name_for_root` (an unregistered root uses the candidates).
+8. State per reader what a `#heading` on `roadmap`/`design` does (sitrep_checks scans the `## Direction` section of the file; check_design_anchors checks all headings of the file), so a `README.md#Design` value has defined behaviour and a test.
+9. `project_integration_audit.sh:941` checks `docs/roadmap.md` for ignore rules; consider the key's path there (could be PR 2).
+
+### Summary
+
+The structure (keys, one helper, two PRs, design text with PR 1) is right and follows the owner's decisions. Before implementation, fix the design fallback so unset projects keep today's behaviour in the script readers, add the sitrep skill and the merge-gate bookkeeping list to PR 1, give the helper a set/fallback marker that PR 2 needs, and correct the Serves goal.
+
+### Recommended Actions
+
+- [ ] Restrict or define the `ARCHITECTURE.md` design fallback for `check_design_anchors.sh` and the sit-rep checks; add tests for non-`design.md` design keys (finding 1).
+- [ ] Add `.claude/skills/sitrep/SKILL.md` (Audit, Documentation, line 77) to PR 1, reading the design path from `sitrep_root.sh` (finding 2).
+- [ ] Add `_bookkeeping.sh` / `merge_pr.sh` bookkeeping paths to PR 1 so a key-named roadmap tick stays bookkeeping, with a test (finding 3).
+- [ ] Give `project_document_path` and `project_setting.sh doc` a set/fallback/none source field; revisit the goals `README.md` fallback (finding 4).
+- [ ] Correct the `## Serves` goal to a real `README.md#workspace-goals` heading (finding 5).
