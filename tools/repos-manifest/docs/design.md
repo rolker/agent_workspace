@@ -1805,11 +1805,13 @@ The repo is cloned with the place it came from as `origin`. When that is not the
 URL, and `fallback` is true, the published repo is added as a remote named `upstream`.
 
 Because only the repo's name is kept, repos from different owners all land side by side at
-the other place. Two repos in a manifest with the same name and different owners cannot both
-be fetched this way: `init`, `sync`, `status` and `show` in a system, the commands that read
-`config.yaml`, say so and name the two repos, and `sync` changes nothing of that distro.
-`resolve` reads no `config.yaml` and does not check it. One repo listed twice with one URL is
-fine. A name that could not follow a prefix (one that is not letters, digits, `.`, `_` and
+the other place. Two repos with the same name and different owners cannot both be fetched this
+way, whether one distro selects both or each of two distros of a system with a directory per
+distro selects one: across every distro the system is set up for, `init`, `sync`, `status` and
+`show` in a system, the commands that read `config.yaml`, say so and name the two repos and
+their distros, and `sync` changes nothing of a distro that has either. `resolve` reads no
+`config.yaml` and does not check it. One repo listed twice with one URL, or selected by several
+distros, is fine. A name that could not follow a prefix (one that is not letters, digits, `.`, `_` and
 `-` starting with a letter or a digit) is refused the same way.
 
 The name is read from the URL's path only, separated from the scheme, user, host and port by

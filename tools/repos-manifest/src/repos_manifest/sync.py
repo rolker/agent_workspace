@@ -719,11 +719,23 @@ def resolve_for(manifest: Manifest, config: Config, distro: Optional[str], named
     """What a system resolves to for `distro`: the manifest resolved with the system's role
     and groups, then, when `config.yaml` has `fetch_from`, each repo given the url built from
     its prefix (`fetch_from.apply`; `named` says where the setting is). The one place `init`,
-    `sync`, `status` and `show` resolve a system, so they never differ in the urls they use."""
+    `sync`, `status` and `show` resolve a system, so they never differ in the urls they use.
+    With `fetch_from`, every other distro the system is set up for is resolved too, so that two
+    repos of one name are refused across the whole system, not only within `distro`; a distro
+    that does not resolve is left out of that check (it is reported where it is resolved)."""
     resolved = selection.resolve(manifest, config.role, distro, config.groups)
     if config.fetch_from is None:
         return resolved
-    return fetch_from.apply(resolved, config.fetch_from, named)
+    system = []
+    for other in config.distro_keys:
+        if other == distro:
+            system.append(resolved)
+            continue
+        try:
+            system.append(selection.resolve(manifest, config.role, other, config.groups))
+        except ManifestError:
+            continue
+    return fetch_from.apply(resolved, config.fetch_from, named, system)
 
 
 def resolve_all(

@@ -156,7 +156,7 @@ or set `origin` by hand), and a place that cannot be fetched fails the repo with
 was. A repo missing at the place is an error: `fallback: true`, which would fetch from the
 published url instead, and the `upstream` remote are not built yet, and `fallback: true` is
 refused. Two repos of one name from different owners cannot both be fetched this way and are
-refused. `show` and `status` print the urls the prefix builds, with any user name and password
+refused, in one distro or across the distros of a system. `show` and `status` print the urls the prefix builds, with any user name and password
 masked. [docs/design.md](docs/design.md#where-repos-are-fetched-from) gives the rules, and what
 happens when one server is spelled two ways.
 

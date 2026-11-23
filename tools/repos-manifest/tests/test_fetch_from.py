@@ -9,7 +9,7 @@ import os
 import pytest
 import yaml
 
-from helpers import make_remote, make_system, repo, run, snapshot, write_manifest
+from helpers import git, make_remote, make_system, repo, run, snapshot, write_manifest
 from repos_manifest.fetch_from import (
     FetchFrom,
     FetchFromError,
@@ -162,6 +162,44 @@ def test_two_repos_of_one_name_and_different_owners_are_refused():
     text = str(raised.value)
     assert text.startswith("`fetch_from` in /s/.repos-manifest/config.yaml: repos a and b")
     assert "both named Tools" in text
+
+
+def _in_distro(distro, *repos):
+    return Resolved("m.yaml", None, distro, [], [Layer("_unnamed", list(repos))])
+
+
+def test_two_repos_of_one_name_in_two_distros_of_one_system_are_refused():
+    one = _in_distro("one", _repo("a", "https://github.com/one/tools.git"))
+    two = _in_distro("two", _repo("b", "https://github.com/two/tools.git"))
+    for resolved, system in ((one, [one, two]), (two, [one, two]), (one, [two])):
+        with pytest.raises(FetchFromError) as raised:
+            apply(resolved, FetchFrom(FIELD), "--fetch-from", system)
+        text = str(raised.value)
+        assert "a (distro one)" in text and "b (distro two)" in text
+        assert "are both named tools" in text
+
+
+def test_a_distro_that_selects_neither_of_two_repos_of_one_name_is_not_refused():
+    one = _in_distro("one", _repo("a", "https://github.com/one/tools.git"))
+    two = _in_distro("two", _repo("b", "https://github.com/two/tools.git"))
+    three = _in_distro("three", _repo("c", "https://github.com/one/c.git"))
+    done = apply(three, FetchFrom(FIELD), "--fetch-from", [one, two, three])
+    assert done.layers[0].repos[0].url == "git@gitcloud:field/c.git"
+
+
+def test_one_published_repo_selected_by_two_distros_is_taken():
+    one = _in_distro("one", _repo("a", "https://github.com/one/tools.git"))
+    two = _in_distro("two", _repo("a", "https://github.com/one/tools"))
+    done = apply(one, FetchFrom(FIELD), "--fetch-from", [one, two])
+    assert done.layers[0].repos[0].url == "git@gitcloud:field/tools.git"
+
+
+def test_a_repo_of_another_distro_that_gives_no_name_is_refused_there_not_here():
+    one = _in_distro("one", _repo("a", "https://github.com/one/a.git"))
+    two = _in_distro("two", _repo("b", "https://github.com/"))
+    assert apply(one, FetchFrom(FIELD), "--fetch-from", [one, two]).fetch_from == FIELD
+    with pytest.raises(FetchFromError, match="repo b: its url"):
+        apply(two, FetchFrom(FIELD), "--fetch-from", [one, two])
 
 
 def test_one_repo_listed_twice_with_one_url_is_taken():
@@ -379,3 +417,70 @@ def test_the_head_comment_names_the_prefix_masked():
     files = output_files(resolved)
     assert "url: https://u:s3cret@git.example.org/field/a.git" in files["_unnamed.repos"]
     assert "fetch from" not in head_comment(_resolved(_repo("a", "https://h/o/a.git")))
+
+
+def _two_distros_two_tools(tmp_path):
+    """A manifest with distros one and two, where one selects tools from owner one and two
+    selects tools from owner two: two published repos of one name, one in each distro."""
+    one = make_remote(tmp_path / "one", "tools")
+    two = make_remote(tmp_path / "two", "tools")
+    data = {
+        "format": 1,
+        "distros": ["one", "two"],
+        "repositories": {
+            "a": {**repo(one, "main"), "distros": {"two": {"absent": True}}},
+            "b": {**repo(two, "main"), "distros": {"one": {"absent": True}}},
+        },
+    }
+    return write_manifest(tmp_path / "m.manifest.yaml", data)
+
+
+DISTRO_DIRS = ["--distro-dirs", "--distro", "one", "--distro", "two"]
+
+
+def test_init_refuses_two_repos_of_one_name_in_two_distros(vcs, tmp_path, capsys):
+    _two_distros_two_tools(tmp_path)
+    system = tmp_path / "sys"
+    system.mkdir()
+    argv = ["init", "../m.manifest.yaml", *DISTRO_DIRS, "--fetch-from", f"{tmp_path}/place/"]
+    assert run(system, *argv, "--yes") == 1
+    err = capsys.readouterr().err
+    assert "--fetch-from: repos a (distro one) and b (distro two) are both named tools" in err
+    assert "nothing was set up" in err
+    assert os.listdir(system) == []
+
+
+def test_sync_status_and_show_refuse_two_repos_of_one_name_in_two_distros(vcs, tmp_path, capsys):
+    _two_distros_two_tools(tmp_path)
+    system = tmp_path / "sys"
+    system.mkdir()
+    assert run(system, "init", "../m.manifest.yaml", *DISTRO_DIRS, "--yes") == 0
+    config = system / ".repos-manifest/config.yaml"
+    config.write_text(config.read_text() + f"fetch_from:\n  prefix: {tmp_path}/place/\n")
+    said = "repos a (distro one) and b (distro two) are both named tools"
+    before = {k: v for k, v in snapshot(system).items() if "build-" not in k}
+    capsys.readouterr()
+    assert run(system, "sync") == 1
+    out = capsys.readouterr().out
+    assert f"distro one: nothing of it has been changed: `fetch_from` in {config}: {said}" in out
+    assert f"distro two: nothing of it has been changed: `fetch_from` in {config}: {said}" in out
+    assert {k: v for k, v in snapshot(system).items() if "build-" not in k} == before
+    assert run(system, "status") == 1
+    assert capsys.readouterr().out.count(said) == 2
+    for distro in ("one", "two"):
+        assert run(system, "show", "--distro", distro) == 1
+        assert said in capsys.readouterr().err
+
+
+def test_one_published_repo_in_two_distros_is_fetched_from_the_place(vcs, tmp_path, capsys):
+    one = make_remote(tmp_path / "one", "tools")
+    place = make_remote(tmp_path / "place", "tools.git")
+    data = {"format": 1, "distros": ["one", "two"], "repositories": {"a": repo(one, "main")}}
+    write_manifest(tmp_path / "m.manifest.yaml", data)
+    system = tmp_path / "sys"
+    system.mkdir()
+    argv = ["init", "../m.manifest.yaml", *DISTRO_DIRS, "--fetch-from", f"{tmp_path}/place/"]
+    assert run(system, *argv, "--yes") == 0
+    for distro in ("one", "two"):
+        origin = git("remote", "get-url", "origin", cwd=system / distro / "src/a").strip()
+        assert origin == str(place)
