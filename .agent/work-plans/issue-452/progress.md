@@ -74,3 +74,21 @@ Current "What is needed", restated:
 - [ ] Land the step 9 fix first (or as the first commit) so the loop stops waiting immediately; the rest can follow in the same pull request.
 - [ ] Make the merge-hold decision explicit in the plan (keep the hold only for a requested, running review), and record the verified behaviour of `gh pr edit --add-reviewer "@copilot"` under quota failure.
 - [ ] Check overlap with the remaining parts of issue 428 on `run-issue` step 9 before planning edits there.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 16:55 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (every action is how the issue's own goal is met; none changes what the work is for or its scope)
+**After**: issue-actions
+**Decision**: proceed
+
+The owner's direction for this drive (2026-11-23): "I've disabled automatic copilot reviews on all repos on github due to not having enough quota for more than a few days a month."
+
+How the host settled the six actions, for plan-task to take as given (owner may veto):
+- Step 9 wait: the loop waits for a Copilot review only after it has itself requested one (once per pull request, at the pre-merge point); with no request outstanding there is no wait. Fix lands as the first commit.
+- Merge hold: `merge_pr.sh` keeps its bounded hold only on a Copilot check-run that exists and is running (which, with the automatic rule off, means one the loop requested); an absent check-run never holds, and a failed or quota-notice one never holds. This keeps the owner's "merge only when clean" rule (a review in flight is read before the merge) and his "nice to have, not something we rely on" (absence costs nothing).
+- Issue body: not edited. The issue review's comment on the issue already restates "What is needed" against main with the owner's all-repositories fact; plan-task reads it there.
+- One pull request unless the plan finds it too large; if split, loop and merge behaviour first.
+- `gh pr edit --add-reviewer "@copilot"` behaviour under exhausted quota: plan records it as unverified and the implementation treats any non-review outcome as "not available"; it is not tested against a real pull request.
+- Issue 428's remaining part (item 4, the repository-slug helper) does not touch run-issue step 9; no overlap to wait for.
