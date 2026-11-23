@@ -444,3 +444,23 @@ Read the Local Review (Pre-Push) at 94e29b13 (round 3, a convergence check, appr
 **Decision**: address
 
 Read: the Integrated Review at b9dadc87 for pull request 565: CI all-pass on 35f93f96 (the tool's whole suite, 2295 passed on Python 3.10 and 3.14), no GitHub reviews or comments, one valid finding. The owner said on 2026-11-23 "merge 565", then, asked whether the open round 3 suggestion should be fixed first, "I'm not sure, what do you think?"; the host recommended deferring it on the ground that the built url fails loudly when fetched. Triage ran git on the three forms and found that ground partly wrong: with the prefix https:/// git takes the first path part as the host, so it contacts a host named after each repo, which is the very case the refusal message says is refused; a wrong server is unlikely to answer but can. So the host does not merge on the earlier recommendation. The fix, as triage gives it: refuse an empty host for https and http in the general url rule (_Checker.authority in manifest.py, told the scheme so that file urls keep their empty host), which makes check_prefix refuse all three forms; rows for the three forms beside the ssh empty-host rows in test_manifest_reading.py, a check_prefix test, and the design sentence. The owner is told of the correction and can still say merge now.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 14:56 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #565 at `85da8cc`
+**Addressed**: Integrated Review at `35f93f9` (2026-11-23 14:53 -05:00)
+**Commits**: 85da8cc
+
+### Actions
+- [x] An https or http url with an empty host (`https:///x.git`, `https://@/x.git`, `http://:80/x.git`, `https:///localhost/x.git`) now fails the url rule: `_Checker.authority` takes `host_required` (every scheme but `file://`, and the `[user@]host:path` form) in place of `ssh`, so `check_prefix` refuses `https:///`, `https://@/` and `http://:80/` through its `url_path` call with `--fetch-from 'https:///', with a repo name after it: 'https:///x': the host is empty` (credentials masked: `'https://***@/f/'`). `file:///srv/...` and `file://localhost/srv/...` are still accepted, as manifest urls and as prefixes. — `tools/repos-manifest/src/repos_manifest/manifest.py`, `tools/repos-manifest/src/repos_manifest/fetch_from.py:108`
+
+### Tests
+- New: five refused rows in `tests/test_manifest_reading.py` (the three forms, `https:///localhost/x.git`, `https://[]/x.git`) and `file://localhost/srv/git/a.git` accepted; in `tests/test_fetch_from.py` four refused prefixes (`https:///`, `https://@/`, `http://:80/`, `https:///field/`), `file://localhost/srv/mirror/` accepted, and a test that `https://user:s3cret@/field/` is refused as an empty host without its user or password. Without the fix, 10 of them failed (every refused case; the `file://` cases passed already).
+- Ran with this worktree's source (`repos_manifest.__file__` under the worktree): `tests/test_manifest_reading.py tests/test_fetch_from.py tests/test_untrusted_input.py tests/test_url_messages.py tests/test_masking.py tests/test_base_reading.py tests/test_project11.py tests/test_documents.py tests/test_fetch_from_sync.py tests/test_init_refusals.py tests/test_validate.py`: `980 passed in 55.88s`. No script under `.agent/scripts/` changed, so no script suite applies; the full pre-commit pass is left to the host.
+
+### Notes
+- The earlier-format reader (`schema.py` `_check_url`, used for `extends.url` too) does not share this rule: it is an allow-list whose https shape requires a non-empty host (`_HOST`) and has no http shape, so it already refuses these urls. Left as is.
+- Documents: `docs/spec.md` (the url rule) now says an https or http url's host is not empty and a file url's may be; `docs/design.md`'s prefix paragraph names the three refused prefixes. Both checked against `_Checker.authority`.
