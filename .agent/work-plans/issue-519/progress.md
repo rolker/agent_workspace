@@ -464,3 +464,23 @@ Read: the Integrated Review at b9dadc87 for pull request 565: CI all-pass on 35f
 ### Notes
 - The earlier-format reader (`schema.py` `_check_url`, used for `extends.url` too) does not share this rule: it is an allow-list whose https shape requires a non-empty host (`_HOST`) and has no http shape, so it already refuses these urls. Left as is.
 - Documents: `docs/spec.md` (the url rule) now says an https or http url's host is not empty and a file url's may be; `docs/design.md`'s prefix paragraph names the three refused prefixes. Both checked against `_Checker.authority`.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-23 15:10 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #565 at `5e18053`
+**Depth**: Deep (reason: convergence check per handoff, set by the host's direction: three pre-push rounds and two whole-diff cross-model reads already; this round re-reads only the finding of the Integrated Review at `b9dadc8` and fix commit `85da8cc`. Cross-model: skipped (convergence check, per handoff))
+**Must-fix**: 0 | **Suggestions**: 1
+
+### Findings
+- [ ] (suggestion) The reason given for the new rule is stated for all three examples but holds only for `https:///x.git`: `git ls-remote` on `https://@/x.git` and `http://:80/x.git` fails at once with "URL rejected: No host part in the URL" and contacts nothing. The rule itself is right; reword to say git reads the first path part as the host in a url such as `https:///x.git`, and refuses the others. Can be deferred to part 2. — `tools/repos-manifest/docs/spec.md:480`, `tools/repos-manifest/src/repos_manifest/manifest.py:387`
+
+### Checked
+- The finding is closed. With this worktree's source (`repos_manifest.__file__` under the worktree), the url rule refuses with "the host is empty" `https:///x.git`, `https://@/x.git`, `http://:80/x.git`, `https:///localhost/x.git`, `https://[]/x.git`, `https://:@/x.git`, `https://user@:443/x.git`, `https://user:pw@/x.git`, `https://user:pw@:443/x.git`, `http://[]:80/x.git`, `https://u@[]/x.git`, `http:///`; `check_prefix` refuses the matching prefixes, user and password masked (`'https://***@:443/f/'`). Hosts of `.`, `..`, a space, `[` or `]` are still accepted, but they are not empty and git refuses or fails to resolve each without contacting a named host (checked with `git ls-remote`), so they are outside this finding.
+- Nothing valid is refused: `file:///srv/x.git`, `file://localhost/srv/x.git`, `file://user@/srv/x.git`, `/srv/x.git`, `ssh://git@host/x.git`, `git@host:o/x.git`, `host:o/x.git`, `https://host/o/x.git`, `https://user:pw@host:8443/o/x.git`, `https://[::1]/x.git` accepted; prefixes `file:///srv/m/`, `file://localhost/srv/m/`, `https://h/f/`, `git@h:`, `/srv/m/`, `https://[::1]/f/` accepted. `validate --manifest tests/fixtures/project11/project11.manifest.yaml`: valid (exit 0); `tests/fixtures/p11/manifest.yaml` is the earlier format, read by `schema.py`, which this rule does not touch.
+- Both `authority` callers pass the right flag: `ssh://` now gets `host_required=True` as it had `ssh=True`; the `[user@]host:path` form passes `True` as before; https and http newly `True`; `file://` alone `False`. No other caller (`git grep`).
+- The new tests fail without the fix: with the pre-fix `manifest.py`, `tests/test_manifest_reading.py tests/test_fetch_from.py` gave 10 failed, 404 passed (the ten refused cases). The full suite with the fix: `2307 passed in 724.64s`. pre-commit (black, flake8) passed on the three changed Python files.
+- Documents: spec.md's refused examples and "a file url's host may be empty", and design.md's three refused prefixes, match the code; only the reason clause is over-general (the suggestion).
