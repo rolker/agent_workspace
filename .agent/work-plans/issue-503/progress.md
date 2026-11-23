@@ -1434,3 +1434,13 @@ Note for the host, not a code finding: the pull request body's `## Decision summ
 - [ ] (suggestion, deferred, Local Review @ `d5e6444`) A root run prints `SKIPPED:` for the chmod 000 case but no counter counts it, so the summary says `0 skipped`. It cannot occur on CI: the job runs the suite directly on ubuntu-latest, no container, as the runner's non-root user, and this head's log shows no SKIPPED line. It can occur in a root shell or a root dev container, where the skip line is still printed but the Results line undercounts. The gap is suite-wide, not this pull request's: main already has eight uncounted skip sites (lines 3114, 3156, 3179, 3540, 3647, 3847, 3895 for missing SHA-256 git, timeout, timeout --foreground, flock, /proc; 4412 for the root skip), so counting only the new one would leave the summary wrong in the same way for the rest. Fix, about 20 lines, in a later part of #503 or its own issue: one counter (e.g. ENV_SKIPPED) incremented at all nine sites, added to the Results sum with a "=== SKIPPED: N environment-dependent case(s) ===" line like the existing three, and a counter test like the one at line 1150 — `.agent/scripts/tests/test_ros2_colcon.sh:4782`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 13:39 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+The owner's answer in the dialog, to "Merge pull request #562 with F1 deferred to a later part of issue #503?": "Merge, defer F1 (Recommended)". The dialog showed: the Integrated Review at 98a3505a (no must-fix, CI all-pass on d5e64448, no GitHub reviews or comments, one suggestion classified as deferred); what the pull request does on the tool's route; six review rounds, four defects found and fixed, the adapter suite at 1551 passed, 0 failed, 0 skipped on CI with both real-tool tests run. F1, the open suggestion: when the suite runs as root the chmod 000 case prints SKIPPED without being counted, with eight more such uncounted skips already on main, none possible on CI, one counter for all nine about 20 lines; deferred to a later part of issue 503. F2, to know: a root assembled by hand without a distros mapping now fails validate, and package selection through the adapter's build is narrower. F3, to know: the last review round was a check of the fixes only, with no outside reviewers, by the host's direction; a full re-review was offered and not chosen. The pull request's text was brought up to date with the two fix passes before the question was asked.
