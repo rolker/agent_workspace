@@ -202,6 +202,13 @@ def version_ref(version: str) -> Tuple[Optional[str], str]:
     return None, version
 
 
+def check_url(url, where: str, source: str) -> str:
+    """`url` checked by the rules a manifest's `url` is checked by (`_Checker.url`), for a url
+    that does not come from a manifest, such as one `fetch_from` builds: an error names
+    `source` and `where`. Returns the url."""
+    return _Checker(source).url(url, where)
+
+
 # A value of the wrong type is described by its kind, never shown: a url inside it would not
 # be masked.
 _type_name = type_name

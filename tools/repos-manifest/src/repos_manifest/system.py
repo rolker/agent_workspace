@@ -26,6 +26,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import yaml
 
 from .base import load_manifest
+from .fetch_from import FetchFrom, check_prefix
 from .manifest import UNNAMED_LAYER, Manifest
 from .yamlload import ManifestError
 
@@ -113,6 +114,7 @@ class Config:
     groups: List[str]
     layout: str
     distros: Optional[List[str]]  # in order; None when the manifest has no distros
+    fetch_from: Optional[FetchFrom] = None  # where every repo is fetched from, when not published
 
     @property
     def distro_keys(self) -> List[Optional[str]]:
@@ -128,6 +130,11 @@ def config_text(config: Config) -> str:
     data["layout"] = config.layout
     if config.distros is not None:
         data["distros"] = {name: {} for name in config.distros}
+    if config.fetch_from is not None:
+        data["fetch_from"] = {
+            "prefix": config.fetch_from.prefix,
+            "fallback": config.fetch_from.fallback,
+        }
     return yaml.safe_dump(data, default_flow_style=False, sort_keys=False, width=4096)
 
 
@@ -189,7 +196,7 @@ def read_config(system: Path) -> Config:
         raise bad(f"cannot be read ({exc.strerror or type(exc).__name__})") from None
     except (yaml.YAMLError, UnicodeDecodeError):
         raise bad("does not read as YAML") from None
-    _check_keys(data, "", ("manifest", "layout"), ("role", "groups", "distros"), bad)
+    _check_keys(data, "", ("manifest", "layout"), ("role", "groups", "distros", "fetch_from"), bad)
     manifest = data["manifest"]
     if not isinstance(manifest, str):
         raise bad(f"`manifest` is {_kind(manifest)}, not {ONLY_A_PATH}")
@@ -228,7 +235,31 @@ def read_config(system: Path) -> Config:
         groups=list(groups),
         layout=layout,
         distros=list(distros) if distros is not None else None,
+        fetch_from=_read_fetch_from(data, bad),
     )
+
+
+def _read_fetch_from(data: dict, bad) -> Optional[FetchFrom]:
+    """`fetch_from`, when there is one: a `prefix` that `check_prefix` accepts and an optional
+    `fallback`, false when it is missing. `fallback: true` is refused: this version fetches
+    from the place named or fails, and a config must not say what the tool then does not do."""
+    if "fetch_from" not in data:
+        return None
+    value = data["fetch_from"]
+    _check_keys(value, "fetch_from", ("prefix",), ("fallback",), bad)
+    fallback = value.get("fallback", False)
+    if not isinstance(fallback, bool):
+        raise bad(f"`fetch_from.fallback` is {_kind(fallback)}, not true or false")
+    if fallback:
+        raise bad(
+            "`fetch_from.fallback` is true; this version fetches from the place named or fails"
+            " (fallback is not built yet), so set it to false or remove it"
+        )
+    try:
+        prefix = check_prefix(value["prefix"], "`fetch_from.prefix`")
+    except ManifestError as exc:
+        raise bad(str(exc)) from None
+    return FetchFrom(prefix, fallback)
 
 
 def find_system(start: Path) -> Optional[Path]:
