@@ -1219,10 +1219,10 @@ in this order.
    cross-model. Accepted: the cold read is itself the cross-model read.
 
 The outside-reviewer line (hand-back and checkpoints) names only the
-reviewers that were asked: Copilot "requested, reviewed", "not available"
-with the reason, or "not requested yet" before the pre-merge point; the
-cold read's agent with ran, failed or skipped and whether it found
-anything of substance.
+reviewers that were asked: Copilot "requested, reviewed" or "not
+available" with the reason, and nothing about Copilot before it is
+requested (`host_standing_rules.md`); the cold read's agent with ran,
+failed or skipped and whether it found anything of substance.
 
 ### 10. The host owns every push
 
