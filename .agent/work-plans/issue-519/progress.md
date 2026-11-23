@@ -515,3 +515,20 @@ Read: the Integrated Review at b9dadc87 for pull request 565: CI all-pass on 35f
 **Decision**: address
 
 The owner's answer in the dialog, to "Merge pull request #565 now, with F1 left for part 2?": "Fix F1 first". The dialog showed: the Integrated Review at 6173c91e (CI all-pass on 5e180530, the tool's whole suite at 2307 passed on Python 3.10 and 3.14; no GitHub reviews or comments; no must-fix; one suggestion that triage had marked deferred to part 2); his earlier words "ok, fix it first then merge" for the empty-host fix, which is in. F1, the suggestion: the reason written for the new rule, in tools/repos-manifest/docs/spec.md (about line 480) and in the authority docstring in tools/repos-manifest/src/repos_manifest/manifest.py (about line 387), says git reads the first part of the path as the host and contacts it, for all three refused example forms; that is true of https:///x.git only, and git rejects https://@/x.git and http://:80/x.git at once ("URL rejected: No host part in the URL"). The rule and its list of refused forms are correct. The box for F1 was ticked "(deferred: ...)" by triage before the owner's answer; his answer overrides that deferral, and the fix pass's handoff names the finding since the timeline no longer lists it as open.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 15:52 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #565 at `c2b82910`
+**Addressed**: Integrated Review at `5e18053` (2026-11-23 15:17 -05:00), recorded at 6173c91e: its one suggestion (F1) was ticked "(deferred: ...)" by triage; it is fixed here on the owner's answer "Fix F1 first" (Checkpoint, After: merge, Decision: address). review_progress.sh has no step to record a fixing commit against an already checked box, so the box keeps its deferred note and the fix is commit c2b82910.
+**Commits**: c2b82910
+
+### Actions
+- [x] F1: the reason for the empty-host rule now holds for each refused form: a url such as `https:///x.git` makes git take the first part of the path as the host and contact it, git refuses the other empty-host forms itself, and the rule refuses them all so that no url with an empty host reaches git. List of refused forms unchanged; wording only. Checked first with git 2.53.0: `https:///x.git` gives "Could not resolve host: x.git", `https://@/x.git` and `http://:80/x.git` give "URL rejected: No host part in the URL". — `tools/repos-manifest/docs/spec.md:480`, `tools/repos-manifest/src/repos_manifest/manifest.py:387`
+- design.md (line 1854) states the rule without the reason and the README does not mention it, so neither changed.
+
+### Checks
+- `cd tools/repos-manifest && PYTHONPATH=src .venv/bin/python -m pytest tests/test_documents.py tests/test_manifest_reading.py -q`: 306 passed in 0.14s.
+- Commit hooks ran with SKIP=validate-script-tests (dispatched pass); the full pre-commit pass is left to the host.
