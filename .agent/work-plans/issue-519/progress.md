@@ -643,3 +643,13 @@ Checked: `git show --stat a83b7a40` touches only comment lines in `tools/repos-m
 - No GitHub reviews, conversation comments or inline comments on the PR. CI on `acc16502`: 10 check runs, all success (workflow runs 45264536046 and 45264547642); the repos-manifest suite passed 2307 tests on Python 3.10 and 3.14 in both, as it did at `5e18053`.
 - `sources` dropped the Local Review (Pre-Push) at `048d186` and the Local Reviews at `5e18053` and `aef7e3c` as stale; each was ruled on in an earlier Integrated Review and its finding fixed (`85da8cc`, `c2b82910`, `a83b7a40`).
 - The PR body, as rewritten by the host, was checked against the branch: one `## Decision summary` at level 2, no duplicated block, a "Since publishing" paragraph covering the url-rule fix (`85da8cc`) and the wording fixes (`c2b82910`, `a83b7a40`), "Nothing is open." The claims checked hold: the two commits since the url-rule fix touch only `docs/spec.md`, the `manifest.py` docstring and two test comments; 2307 tests on 3.10 and 3.14; three local reviews since publishing (`5e18053`, `aef7e3c`, `acc16502`). Nothing in it found untrue.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 16:15 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner's words, in the session on 2026-11-23: "merge 565"; then, told that the one open suggestion (a prefix with an empty host) was not the loud failure the host had said, "ok, fix it first then merge"; then, at the merge checkpoint that followed that fix, shown the wording suggestion F1, "Fix F1 first". The host said each time that it would merge once the fix, its check, CI and triage were clean with nothing open, and bring anything new back to him. All of that is now true: the Integrated Review at de52f534 has no open finding from any source; CI is all-pass on acc16502 (the tool's whole suite, 2307 passed on Python 3.10 and 3.14); no GitHub reviews or comments; the last Local Review (0a5e4d8c) approved with no findings; F1 is corrected in the spec, the docstring and the two test comments, and a search of the repository finds the old reason nowhere outside the records; the pull request's text was rewritten and triage found nothing untrue in it. Nothing new is open, so the merge is made on his words without asking again.
