@@ -950,9 +950,14 @@ this pull request, and its check-run completes with it (seen on pull
 request 400: conclusion `failure`, within seconds of the review). So the
 wait ends as for any review; nothing has to recognise the notice for
 that. Read it like any review: it holds no findings only because its own
-words say it could not review. Say so on the hand-back's
-outside-reviewer line and dispatch `triage-reviews`, which reads it too
-(issue 428, item 5); for step 9a it is "not available".
+words say it could not review, and say so on the hand-back's
+outside-reviewer line. During step 9a's wait the cold read comes first:
+the notice makes Copilot "not available", 9a dispatches the cold read
+straight away, and `triage-reviews` reads the notice later with the
+cold read's outcome (an approved cold read goes to triage next; one with
+findings reaches it after the fix round). Outside 9a's wait (a notice on
+a review someone requested by hand), dispatch `triage-reviews`, which
+reads it too (issue 428, item 5).
 
 **What ends the wait, and what is read, are two different things** (issue
 428, item 5). `fetch_pr_reviews.sh` returns every review in the pull
