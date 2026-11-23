@@ -1234,8 +1234,20 @@ in this order.
    step 4 `review-code <M>` line `next` prints (that would run a full
    review with no cold-read words, and the next pass would run a second
    cold read); when Codex was the agent that failed, the retry names
-   Gemini. A `takeover` writes the same cold read, its `**Depth**` line
-   carrying the cold-read words.
+   Gemini. A `takeover` is a cold read only when the host itself runs
+   the one agent's read (`cross_model_review.sh --agents codex`, or
+   `gemini`, title, URL and diff only, as review-code's cold-read mode
+   does); its entry's `**Depth**` line then carries the cold-read words
+   naming that agent. When neither agent can run, a takeover must not
+   write those words, since a Claude-only read is not cross-model. It
+   writes what a taken-over PR-mode `review-code` writes (step 5): a
+   complete `## Local Review` of the host's own read, with `**Depth**:
+   <tier> (reason: no cold read possible: Codex and Gemini unavailable)`
+   and the agents' errors in its cross-model outcome. `cold-read` still
+   says `no`, the entry routes as any PR-mode review, and when the loop
+   comes back to this point 9a takes "With neither agent available"
+   above. (A `failed` entry instead would send `next` back to
+   `checkpoint:phase-failed`, a loop.)
 
    Its `## Local Review` is routed like any PR-mode review, with no
    router change: `next` sends an `approved` one to `triage-reviews` (step
