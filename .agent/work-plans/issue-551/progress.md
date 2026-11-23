@@ -162,3 +162,20 @@ The structure (keys, one helper, two PRs, design text with PR 1) is right and fo
 - [ ] Add `_bookkeeping.sh` / `merge_pr.sh` bookkeeping paths to PR 1 so a key-named roadmap tick stays bookkeeping, with a test (finding 3).
 - [ ] Give `project_document_path` and `project_setting.sh doc` a set/fallback/none source field; revisit the goals `README.md` fallback (finding 4).
 - [ ] Correct the `## Serves` goal to a real `README.md#workspace-goals` heading (finding 5).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 18:15 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (plan review needs-work, five findings, approach unchanged; first host revise at plan)
+**After**: plan
+**Decision**: revise
+
+Revise for all five Plan Review findings and the Q3 suggestion. Host decisions (owner may veto):
+- F1: an unset key keeps each reader's behaviour exactly as today. The `design` fallback is `docs/design.md` only (no `ARCHITECTURE.md` for the scripts; audit-project's existing reporting of `ARCHITECTURE.md` is untouched). When the `design` key names another file, `check_design_anchors.sh` recognises citations of that path (`<path>#<section>`) as root citations, with tests; a part's design stays recognised as today.
+- F2: add `.claude/skills/sitrep/SKILL.md` to PR 1; `sitrep_root.sh` prints a `design=` line beside `roadmap=` and the skill reads it instead of hard-coding `docs/design.md`.
+- F3: `_bookkeeping.sh`'s roadmap bookkeeping paths include the path the `roadmap` key names, so a post-review tick there still counts as bookkeeping in the review check and `merge_pr.sh`; with tests.
+- F4: the helper reports where the answer came from (set / fallback / none). `goals` has no fallback: unset reads as unset, and design-discussion's own "the goals its design or README names" rule stays.
+- F5: the Serves goal is "Light touch on projects", as written in README.md's goals; check the exact wording there.
+- Q3 correction (review's suggestion, adopted): OQ-1 is answered for where a project records its mapping, for three roles; the other four roles stay unmapped, said so in the text.
+- The other suggestions: say how `update_roadmap.sh --root` finds the project name; define what `#heading` does in each reader (or refuse it where a reader cannot use it); `project_integration_audit.sh:941` follows the key in PR 2.
