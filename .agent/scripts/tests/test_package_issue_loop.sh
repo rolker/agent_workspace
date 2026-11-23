@@ -648,7 +648,7 @@ for i, b in enumerate(blocks, 1):
 print(len(blocks))
 PY
 nblocks=$(find "$BLOCKS" -name '*.sh' | wc -l)
-check "SKILL.md has three blocks that use where (step 1, step 4, step 6)" "$([[ "$nblocks" -eq 3 ]]; echo $?)" "n=$nblocks"
+check "SKILL.md has four blocks that use where (step 1, step 4, step 6, step 9a)" "$([[ "$nblocks" -eq 4 ]]; echo $?)" "n=$nblocks"
 run_block() {  # <block-file> <ref> -- prints the block's output, then rc= and cwd=
     local body
     body=$(sed -e "s|<ref>|$2|g" -e 's| \[--project <project>\]||g' -e 's|<type>|project|g' -e 's|<N>|7|g' \
@@ -682,6 +682,12 @@ check "step 4's block for a package issue with no timeline yet: BEFORE=0" "$([[ 
 out=$(dp "$H" --check-exit --issue 'owner/pkg_a#8' --skill review-issue --type project --before 0)
 check "check-exit on that missing timeline: MISSING, not OK" "$([[ "$out" == "status=MISSING"$'\n'"rc=0" ]]; echo $?)" "$out"
 check "... and A8 has no timeline (so nothing was counted elsewhere)" "$([[ ! -e "$A8/.agent/work-plans/issue-8/progress.md" ]]; echo $?)"
+# Step 9a's cold-read block (issue 452) reads the timeline where `where`
+# puts it and stops on a missing one, never a silent cold_read=no.
+out=$(sed -e 's|<ref>|owner/pkg_a#8|g' -e 's| \[--project <project>\]||g' -e 's|<type>|project|g' -e 's|<N>|8|g' \
+    -e 's|<M>|5|g' "$BLOCKS/4.sh" | (cd "$H" && bash 2>&1); echo "rc=$?")
+check "step 9a's block for a package issue with no timeline: STOP, never cold_read=no" \
+    "$([[ "$out" == *"STOP: no progress.md at "* && "$out" != *"cold_read="* && "$out" != *"rc=0" ]]; echo $?)" "$out"
 
 # ----------------------------------------------------------------- case 10
 # Pre-push review round 2. (1) The gate matches the records shape on the
