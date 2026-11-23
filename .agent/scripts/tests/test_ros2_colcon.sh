@@ -5357,6 +5357,117 @@ EOF
     assert_eq "the clone is back, on its pin" "fakefox" "$(git -C "$root/fakefox/core/src/pkg_a" branch --show-current 2>/dev/null)"
 }
 
+# The real tool's status and build through the adapter: init and sync a
+# system from local repositories, then validate (read by the real status)
+# and build (the real build, with a stub colcon first on PATH: CI's
+# adapter-contract job has no colcon). The same vcs rule as
+# test_tool_real_init_and_sync: skipped, counted, without vcs; a failure
+# when ROS2_COLCON_TESTS_REQUIRE_VCS is set.
+test_tool_real_status_and_build() {
+    echo "TEST: tool route with the real tool and vcs: validate reads the real status, build runs the real build"
+    local vcs_bin sb outer root out rc=0 name adapter
+    vcs_bin="$(command -v vcs 2>/dev/null || true)"
+    if [ -z "$vcs_bin" ] && [ -n "${ROS2_COLCON_TESTS_REQUIRE_VCS:-}" ]; then
+        echo "  FAIL: vcs is not on PATH, though ROS2_COLCON_TESTS_REQUIRE_VCS says it is meant to be present"
+        FAIL=$((FAIL + 1))
+        return 0
+    fi
+    if [ -z "$vcs_bin" ]; then
+        echo "  SKIPPED: vcs is not on PATH; the real tool's sync needs it"
+        TOOL_SKIPPED=$((TOOL_SKIPPED + 1))
+        return 0
+    fi
+    sb="$(make_sandbox)"
+    outer="$(mktemp -d -p "$SANDBOX")"
+    root="$outer/toolsys"
+    adapter="$sb/.agent/scripts/adapter"
+    for name in pkg_u pkg_a; do
+        mkdir -p "$outer/remotes/$name"
+        git -C "$outer/remotes/$name" init --quiet -b main
+        echo "$name" > "$outer/remotes/$name/README"
+        git -C "$outer/remotes/$name" add README
+        git -C "$outer/remotes/$name" -c user.name=t -c user.email=t@t commit --quiet -m first
+        git -C "$outer/remotes/$name" branch fakefox
+    done
+    cat > "$outer/m.manifest.yaml" <<EOF
+format: 1
+distros: [fakefox]
+layers: [core]
+repositories:
+  pkg_u:
+    type: git
+    url: file://$outer/remotes/pkg_u
+    version: main
+  pkg_a:
+    type: git
+    url: file://$outer/remotes/pkg_a
+    version: fakefox
+    layer: core
+EOF
+    mkdir -p "$sb/.venv/bin" "$sb/stubbin" "$root"
+    printf '#!/usr/bin/env bash\nPYTHONPATH=%q exec %q -m repos_manifest.cli "$@"\n' "$MR_SRC" "$MR_PY" > "$sb/.venv/bin/repos-manifest"
+    chmod +x "$sb/.venv/bin/repos-manifest"
+    ln -s "$MR_PY" "$sb/.venv/bin/python3"
+    # A stub colcon: records where it ran and its arguments, and writes the
+    # setup files a build leaves.
+    cat > "$sb/stubbin/colcon" <<EOF
+#!/usr/bin/env bash
+echo "\$(pwd -P) \$*" >> "$sb/colcon.log"
+mkdir -p install
+echo '# stub' > install/setup.bash
+echo '# stub' > install/local_setup.bash
+exit 0
+EOF
+    chmod +x "$sb/stubbin/colcon"
+    out="$(cd "$root" && "$sb/.venv/bin/repos-manifest" init ../m.manifest.yaml --distro-dirs --distro fakefox --yes 2>&1)" || rc=$?
+    assert_eq "init: exit 0" "0" "$rc"
+    echo "toolsys ros2_colcon $root" >> "$sb/.agent/projects.local"
+    make_underlay "$sb" fakefox
+    rc=0; out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" "$adapter" --project toolsys validate 2>&1)" || rc=$?
+    assert_eq "validate: exit 0" "0" "$rc"
+    assert_contains "validate: the pass line, from the real status" \
+        "for distro fakefox (repos-manifest status: 2 repo(s), 2 as expected, 0 with a warning above, 0 optional and skipped" "$out"
+    # An emptied clone (issue 517, item 2): unusable, named.
+    find "$root/fakefox/src/pkg_u" -mindepth 1 -delete
+    rc=0; out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" "$adapter" --project toolsys validate 2>&1)" || rc=$?
+    assert_eq "an emptied clone: validate exit 1" "1" "$rc"
+    assert_contains "an emptied clone: unusable, named" "❌ distro fakefox: $root/fakefox/src/pkg_u unusable:" "$out"
+    # Removed, then cloned again by the adapter's sync: validate passes.
+    rm -rf "$root/fakefox/src/pkg_u"
+    rc=0; out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" "$adapter" --project toolsys validate 2>&1)" || rc=$?
+    assert_eq "a clone removed: validate exit 1" "1" "$rc"
+    assert_contains "a clone removed: missing, with the tool's sync" \
+        "❌ distro fakefox: $root/fakefox/src/pkg_u missing:" "$out"
+    rc=0; out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" "$adapter" --project toolsys sync 2>&1)" || rc=$?
+    assert_eq "sync: exit 0" "0" "$rc"
+    rc=0; out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" "$adapter" --project toolsys validate 2>&1)" || rc=$?
+    assert_eq "after sync: validate exit 0" "0" "$rc"
+    # On another branch, and with a local change: warned and noted, exit 0.
+    git -C "$root/fakefox/core/src/pkg_a" checkout --quiet -b other
+    echo changed >> "$root/fakefox/src/pkg_u/README"
+    rc=0; out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" "$adapter" --project toolsys validate 2>&1)" || rc=$?
+    assert_eq "another branch, a local change: validate exit 0" "0" "$rc"
+    assert_contains "another branch: a warning" "⚠️ distro fakefox: $root/fakefox/core/src/pkg_a different:" "$out"
+    assert_contains "a local change: a note" "NOTE: distro fakefox: $root/fakefox/src/pkg_u has local work (1 changed file(s), 0 commit(s) not on origin)" "$out"
+    git -C "$root/fakefox/core/src/pkg_a" checkout --quiet fakefox
+    git -C "$root/fakefox/src/pkg_u" checkout --quiet -- README
+    # build: the real tool's build, the stub colcon in each layer.
+    rc=0; out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" PATH="$sb/stubbin:$PATH" "$adapter" --project toolsys build 2>&1)" || rc=$?
+    assert_eq "build: exit 0" "0" "$rc"
+    assert_eq "build: colcon in the unnamed layer, then core, with the adapter's flags and the tool's base paths" \
+        "$root/fakefox build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON --base-paths src/pkg_u
+$root/fakefox/core build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON --base-paths src/pkg_a" \
+        "$(cat "$sb/colcon.log" 2>/dev/null)"
+    assert_contains "build: the distro's setup.bash sources the last layer built" \
+        "$root/fakefox/core/install/setup.bash" "$(cat "$root/fakefox/setup.bash" 2>/dev/null)"
+    rc=0; out="$(cd "$root" && ROS_ROOT_DIR="$sb/rosroot" "$adapter" --project toolsys env 2>&1)" || rc=$?
+    assert_eq "env after the tool's build: each layer's local_setup.bash" \
+        "unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
+source $sb/rosroot/fakefox/setup.bash
+source $root/fakefox/install/local_setup.bash
+source $root/fakefox/core/install/local_setup.bash" "$out"
+}
+
 # ---- Run all tests ----
 echo "=== ros2_colcon adapter tests ==="
 echo ""
@@ -5499,6 +5610,7 @@ mr_test test_tool_quoted_keys_from_the_tool
 mr_test test_tool_package_worktree_two_distros
 test_bootstrap_no_url_names_the_tool
 mr_test test_tool_real_init_and_sync
+mr_test test_tool_real_status_and_build
 if [ "$TOOL_SKIPPED" -gt 0 ]; then
     echo "=== SKIPPED: the real-tool test (vcs is not on PATH) ==="
 fi
