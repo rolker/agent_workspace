@@ -99,3 +99,11 @@ Host decisions on the rest of the actions (owner may veto):
 - One shared candidate list in the helper replaces the differing fixed searches of `update_roadmap.sh` and `sitrep_root.sh`.
 - Two pull requests: first the settings, helper, script readers and tests; then the skills' onboarding and design-discussion question.
 - Sequencing: issue 452 (Copilot review optional) also edits `onboard-project` and `audit-project`; whichever merges second merges main first. No wait: 551's first pull request does not touch the skills.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-23 18:13 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-551/plan.md` at `ea96d2d3`
+
+Two pull requests: PR 1 adds the goals/design/roadmap settings, one resolver helper, the sitrep_root/update_roadmap/check_design_anchors readers, tests and the design text; PR 2 edits onboard-project, audit-project and design-discussion. PR 1 does not touch the two skills issue 452 is editing.
