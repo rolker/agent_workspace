@@ -590,10 +590,21 @@ if [[ -f "$AUD" ]]; then
         '"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --facts --format text [--instance <settings-name>]' \
         '| `github` |' '| `issues` |' '| `prs` |' '| `windows` |' '| `multi_component` |'
     has "$AUD" "audit-project: the seven checklist items with their fix approaches" \
-        '**Pre-commit config**' '**CI workflow**' '**Branch protection**' '**Copilot auto-review**' \
+        '**Pre-commit config**' '**CI workflow**' '**Branch protection**' '**Independent review**' \
         '**Component labels**' '**git-bug bridge**' '**License headers**' \
         'gh label create "component:<name>"' 'git bug bridge new' \
         'with no dependency on workspace scripts or paths'
+    # issue 452: the independent-review item needs no automatic Copilot rule,
+    # never turns it back on, and gives the hand request.
+    has "$AUD" "audit-project: independent review is met without the automatic Copilot rule, which is never re-enabled" \
+        'a review by someone other than the author'"'"'s own session' \
+        'its absence is no finding' 'Never turn the automatic Copilot rule back on' \
+        'gh pr edit <N> --add-reviewer "@copilot"'
+    if grep -qF 'Copilot auto-review' "$AUD"; then
+        fail "audit-project still has the Copilot auto-review item (issue 452)"
+    else
+        pass "audit-project no longer has the Copilot auto-review item"
+    fi
     has "$AUD" "audit-project: the facts table names what each fact makes moot, reported as skipped" \
         'skipped: no remote on github.com (github=no)' \
         'as gh decides: `gh repo view --json nameWithOwner`, run in the repository with `GH_HOST=github.com`' \
