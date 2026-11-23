@@ -211,10 +211,43 @@ def test_one_repo_listed_twice_with_one_url_is_taken():
     assert {r.url for r in done.layers[0].repos} == {"git@gitcloud:field/tools.git"}
 
 
-@pytest.mark.parametrize("url", ["https://host/owner/..", "/srv/_x", "https://h/o/r.git?x=1"])
+@pytest.mark.parametrize("url", ["https://host/owner/..", "/srv/_x", "git@host:o/to?ols"])
 def test_a_name_that_cannot_follow_a_prefix_is_refused(url):
     with pytest.raises(FetchFromError, match="not a repo name a prefix can be followed by"):
         apply(_resolved(_repo("a", url)), FetchFrom(FIELD), "--fetch-from")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://host/o/real.git?x=/other",
+        "https://host/o/repo#a/b",
+        "https://example.org?target=/tools.git",
+        "http://host/o/r.git?x=1",
+        "https://user:s3cret@host/o/r.git#x",
+    ],
+)
+def test_an_http_url_with_a_query_or_a_fragment_is_refused(url):
+    """A query can change which repo the server gives, so no name is read from such a url."""
+    with pytest.raises(FetchFromError, match="with a '\\?' or a '#' is refused"):
+        repo_name(url)
+    with pytest.raises(FetchFromError) as raised:
+        apply(_resolved(_repo("a", url)), FetchFrom(FIELD), "--fetch-from")
+    assert "repo a: its url" in str(raised.value) and "s3cret" not in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    "url,name",
+    [
+        ("ssh://git@host/o/x?y/tools.git", "tools"),
+        ("git@host:o/a#b/tools.git", "tools"),
+        ("file:///srv/a?b/tools.git", "tools"),
+        ("/srv/a#b/tools", "tools"),
+    ],
+)
+def test_a_question_mark_or_a_hash_in_an_ssh_or_file_path_is_part_of_the_path(url, name):
+    """git reads these urls' paths literally, '?' and '#' included, and so does the name."""
+    assert repo_name(url) == name
 
 
 @pytest.mark.parametrize(

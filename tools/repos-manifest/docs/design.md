@@ -1828,7 +1828,12 @@ an empty name; both are refused the same way, with the URL masked, so a name is 
 out of a host, a port or a password. The name is the whole last part of the path, as git reads
 it: in `/srv/team:tools.git` and `https://host/o/foo:bar.git` it is `team:tools` and
 `foo:bar`, which hold a `:` and so break the name rule above and are refused. Taking what
-follows the `:` instead would fetch `tools` or `bar` from the place, another repo.
+follows the `:` instead would fetch `tools` or `bar` from the place, another repo. An https or
+http URL with a `?` or a `#` is refused the same way, not cut: the server reads the query, which
+can change which repo it gives, so no name read from such a URL is trusted
+(`https://host/o/real.git?x=/other` would otherwise give `other`). In ssh, `[user@]host:path`
+and file URLs and local paths git reads `?` and `#` as part of the path, and so does the name:
+`ssh://git@host/o/x?y/tools.git` gives `tools`.
 
 The prefix ends in `/`, or in `:` in the `[user@]host:` form only, with nothing after the host
 (`git@git.example.org:`; an `https://host:` would read the repo's name as a port, and in

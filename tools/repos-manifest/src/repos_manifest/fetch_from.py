@@ -47,13 +47,21 @@ def repo_name(url: str) -> str:
     separate the path from the scheme, user, host and port (``manifest.url_path``), with one
     trailing `/` and then one trailing `.git` taken off. The whole last part is the name, as git
     reads the path, so a `:` in it is part of it (and refused, below). A `FetchFromError` that
-    says why when there is none: a url with no path after its host, an empty name (a last part
-    of `.git`), or one a prefix cannot be followed by. The message names neither the url nor
-    the name: the caller names the url, masked."""
+    says why when there is none: an http(s) url with a `?` or a `#`, a url with no path after
+    its host, an empty name (a last part of `.git`), or one a prefix cannot be followed by. An
+    http(s) url with a `?` or a `#` is refused, not cut: the server reads the query, which can
+    change which repo it gives, so no name read from such a url is trusted. In ssh, scp-like
+    and file urls and local paths git reads `?` and `#` as part of the path, and so does this.
+    The message names neither the url nor the name: the caller names the url, masked."""
     try:
         path = url_path(url, "", "url")
     except ManifestError:
         raise FetchFromError("it is not a url a manifest may name") from None
+    if url.startswith(("https://", "http://")) and ("?" in url or "#" in url):
+        raise FetchFromError(
+            "an http or https url with a '?' or a '#' is refused: a query or a fragment can"
+            " change which repo the server gives, so no name read from it is trusted"
+        )
     if path.endswith("/"):
         path = path[:-1]
     last = path.rpartition("/")[2]
