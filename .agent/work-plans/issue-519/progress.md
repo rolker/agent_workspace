@@ -185,3 +185,63 @@ What this settles for the plan: part 1 stays fallback off and its first real use
 **Plan**: `.agent/work-plans/issue-519/plan.md` at `ca8dc681`
 
 Revision. Part 1 (fallback off) now aims at a field machine fetching every repo from one private prefix such as git@gitcloud:field/, from the one published manifest; the development machine's https-fetch, ssh-push case is left to git's pushInsteadOf and insteadOf and documented beside fetch_from. Review findings 2 to 8 are answered and the mechanism decisions are listed for the owner's veto.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-23 13:06 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #519 — repos-manifest: fetch_from fetches every repo from another place, such as the same repos over ssh
+**Plan**: `.agent/work-plans/issue-519/plan.md` at `ca8dc681`
+**Branch**: `feature/issue-519`
+
+### What was run
+
+With the installed tool (`.venv/bin/repos-manifest`, from main) and local bare repos: a "published" place with two owners (`pub/ownerX/a.git`, `pub/ownerY/b.git`) and a "private server" (`priv/field/a.git`, `b.git`), as `file://` urls.
+
+- (a) A system made by `init` from a hand-made copy of the manifest naming the private urls. The system records the manifest in `config.yaml` (`manifest:`) and in the resolved files' head comment (`# manifest:`, rewritten by the next `sync`); `state.yaml` and `build-_unnamed.lock` do not name it. Changing `manifest:` by hand is supported by the design ("`manifest` and `local_manifest` can be changed after `init`, by editing `config.yaml`") and works: swapped to a second file with the same urls, `status` all expected with no note, `sync` "up to date (2)", origin unchanged. Swapped to the published manifest (today, no `fetch_from`): `status` says "the manifest now says <pub url>, and sync tries to repoint origin to it", and `sync` repointed both clones to the published place. That is exactly what `fetch_from` with `E` = the clones' origins has to turn into the url rule's "nothing to do"; the plan's reasoning (W = R = E) holds.
+- (b) Origin spelled differently from the wanted url (`file:///…/priv/field/a.git` against `/…/priv/field/a.git`, the stand-in for `ssh://git@gitcloud/field/x.git` against `git@gitcloud:field/x.git`). B1, recorded and origin in one spelling, wanted the other, clean: "origin repointed from … to …", second `sync` quiet: harmless. B2, origin set by hand to the other spelling than the recorded and wanted one: "origin is …, the manifest says …; left as set" on every run, forever. B3, as B1 with one local commit not pushed: "left alone: url changed to … but 1 local commit (branch main) is not on it; origin stays …", outcome left alone, so the repo is not updated until the commit is pushed, under a message that says the url changed when it is the same repo.
+- `_Checker("config.yaml").url` (main): `git@gitcloud:field/project11.git`, `gitcloud:field/x.git`, `ssh://git@gitcloud/field/x.git`, `https://host:x.git` pass; `git@gitcloud/field/x.git` refused. The plan's statements in step 2 hold.
+- The tool reads origin with `git config --get-all remote.origin.url` (`update.py:1000`, `status.py:308`), not `remote get-url` (which expands `insteadOf`), so the plan's claim that `insteadOf`/`pushInsteadOf` leave the url rule unaffected holds.
+- Read `test_status_agrees_with_sync.py` (`GOES_WITH`, `DIFFER`, `CLAIMS_DIFFER`, `CLAIMS`) and `status_cases.py`; the design's url rule (about 973 to 1000), "Where repos are fetched from" (1741 to 1800), resolved-file head comment (571), field-machine example (1905 to 1925).
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One pull request, about 15 files, about 950 lines with tests and documents: large but one mechanism. Part 2 outlined with its waits. |
+| Issue alignment | Needs work | Serves: "Workspace goal "Flexibility" (a published manifest fetched from other places without editing it, one manifest and no copy to drift); `tools/repos-manifest/docs/design.md#where-repos-are-fetched-from` and the tool's goal "The published manifest can point at the released repos while a machine fetches them from somewhere else" (`tools/repos-manifest/README.md#goals`)". Anchors exist (`README.md` "### Flexibility", tool README "## Goals", design section). The Context states the owner's new aim in his terms and drops the development-machine claim, but the worked section "An existing system directory" still describes the development machine (finding 1). |
+| File targeting | Good | Every consumer of `Selected.url` named (first review's list still holds). |
+| Consequences | Needs work | Two design changes in the plan are missing from its design-edit list (finding 2); one agreement-test case will fail as listed (finding 4). |
+| Principle alignment | Good | No silent failures: `fallback: true` refused, unreachable place fails and keeps origin, same-name refusal. Prior art corrected: `pushInsteadOf` can be global; the plan's wording of what the two git settings do is accurate (`pushInsteadOf` rewrites push urls only; `insteadOf` rewrites fetch and, with no `pushInsteadOf` or `pushurl`, push). |
+| ADR compliance | Good | ADR-0022 (tool design only), ADR-0017 (same pull request), ADR-0013. |
+| ROS conventions | N/A | Workspace tool. |
+
+First review's findings 2 to 8: 2 answered (DIFFER and CLAIMS_DIFFER, distinct name); 3 answered (trailing `:` only for scp-like, `https://host:` test); 4 answered (state comment, `R`, "`U` is recorded", line 864); 5 answered (conditional repoint in "Where repos are fetched from"); 6 answered (`show` sentence reworded, head-comment line); 7 answered (password text in design, prefix registered before messages); 8 answered (no xdist, plain run). Finding 1 settled by the owner; the Context and decision 7 say so.
+
+### Findings
+
+1. **[Issue alignment] Medium** — The section "An existing system directory (the real first use)" still describes the development machine the owner moved out of part 1: its example is `prefix: git@github.com:rolker/` (which, with fallback off and a manifest of several owners, is exactly the first review's finding 1), "each https clone", and the table's "Commits not on `E` (the common case: committed locally, could not push over https)". It is also labelled "the real first use", which is now the field machine. Resolution: rewrite the section's example and wording for the field machine (`prefix: git@gitcloud:field/`, clones whose origin is the published url or the private url), or say plainly that it is the generic rule, with a field-machine example.
+2. **[Consequences / design] Medium** — Two design changes in the plan are not on its design-edit list. (a) Step 7b changes the url rule: the design says "Anything else, `R` missing included, is an `origin` a person set"; the plan repoints a clone with no recorded url whose origin is the published url. That sentence and "A record with no url yet … is given the manifest's url at the next sync when `W` is `U`" (about 991 to 994) have to change. (b) Step 6 adds a `# fetch from:` line to the resolved files' head comment; the design lists those lines (about 571: "which manifest, role, distro and extra groups … one `# base:` line"). Add both to the `design.md` row.
+3. **[Field machine paths] Low** — The plan's "harmless" for an origin spelled differently from `E` holds only for a clean clone whose recorded url has the same spelling (run: B1). Run: an origin set by hand in the other spelling gets a "left as set" line on every run (B2), and a clone with unpushed commits, the usual state on a field machine, is "left alone" on every `sync` with "url changed to … but 1 local commit … is not on it" (B3), though it is the same repo. The real boat's files use the `:` form, so the real case does not meet it. Resolution: state these two outcomes in the plan and in the design's `fetch_from` text ("spell the prefix as the clones' origins are spelled"), and leave the same-repo rule to part 2, which already plans it; or move that normalisation into part 1 for the `W` against `E` comparison. A test of B3's message is cheap.
+4. **[Tests] Low** — "fetch_from set, probe remote taken" is listed with no `DIFFER` entry. `status` gives it `expected` and `sync` "left alone", which `GOES_WITH["expected"]` (`{"up to date", "updated"}`) does not allow; the existing "a url changed, probe remote taken" is in `DIFFER` for this reason. Add it to `DIFFER` with the same reason.
+5. **[Field machine paths] Low** — Order of the hand edit. Run (a): changing `manifest:` to the published manifest without `fetch_from` makes the next `sync` repoint every clone to the published host when that host is reachable (the boat in the lab), with the probe succeeding. The plan says "in the same edit"; the documents should say so too, and give the check: run `status` (offline) after the edit, before `sync`; with `fetch_from` right, it names no repoint; any "sync tries to repoint origin to it" means the prefix or a repo name differs from the clones' origins. A repo whose name on the server differs from its published name gets an `E` that does not exist, so `sync` fails it loudly and keeps origin (the plan's row for an unreachable `E`); worth one sentence in the field-machine passage.
+6. **[Scope note] Low** — The plan's existing-field-system path assumes clones made by a `repos-manifest init` (they have `state.yaml` records). If the boat today is a vcstool checkout from its hand-made `.repos` files with no `.repos-manifest/`, that path does not apply and the way in is `init` (and whether `init` takes existing clones is not in this plan). Not checked: what the boat's directory is (the workspace's copy of its `.repos` files was not read by this review). Say in the plan which of the two the existing field system is.
+
+### Judgement on the decisions listed for veto
+
+None is a goal or design question for the owner. 6 is settled by the field boat's own files (all 22 repos `git@gitcloud:field/<repo>.git`, checked by the host) and by the run above (the `/` form is refused); 7 is the owner's own answer ("use the combination setting"); 1 to 5 and 8 are mechanism. Decision 1 (record `E`) remains right: run (a) shows that with `R` = the published url the existing field clones (`W` = private url) would read as set by hand.
+
+### Summary
+
+The revision answers the first review's findings 2 to 8 correctly and states the owner's new aim; the mechanism is confirmed by running for the field machine (swap of `manifest:` is supported and moves nothing when the urls match). Not ready only because the worked "existing system" section still describes the development machine, and two design changes (the url rule for records with no url, the resolved files' head line) are missing from the design edits; the rest is small. Nothing must go to the owner.
+
+### Recommended Actions
+
+- [ ] Rewrite "An existing system directory" for the field machine (prefix `git@gitcloud:field/`, no "https clone" framing), or mark it generic with a field example.
+- [ ] Add to the `design.md` edits: the url rule's "`R` missing" sentence and the no-url record sentence (step 7b); the resolved-file head-comment list (step 6).
+- [ ] State the different-spelling outcomes (B2, B3) and the "spell the prefix as the origins are" advice; add a test for B3, or bring the same-repo comparison into part 1.
+- [ ] Put "fetch_from set, probe remote taken" in `DIFFER` ("left alone").
+- [ ] Document the edit order for an existing field system and the `status`-before-`sync` check.
+- [ ] Say whether the existing field system is a `repos-manifest` system or a vcstool checkout.
