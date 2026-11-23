@@ -403,3 +403,18 @@ Tests (worktree src): test_fetch_from, test_fetch_from_sync, test_status_agrees_
 
 ### Findings
 - [ ] (suggestion) An http(s) prefix with an empty host (`https:///`, `https://@/`, `http://:80/`) still passes `check_prefix`, though the new message says a prefix with no host is refused; the built url fails loudly at fetch (no wrong repo), and the root is `manifest.url_path` accepting an empty https host where ssh's is checked; can be deferred to part 2 — `tools/repos-manifest/src/repos_manifest/fetch_from.py:108`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 14:36 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 approved with no must-fix; the host's full pass passed on this head)
+**After**: publish
+**Decision**: publish
+
+Read the Local Review (Pre-Push) at 94e29b13 (round 3, a convergence check, approved, ship recommended, 0 must-fix, 1 suggestion left open for triage and the owner's merge decision: an http(s) prefix with an empty host, such as https:///, passes the prefix check although the message says a prefix with no host is refused; the built url fails loudly on fetch, and the reviewer says it can wait for part 2). The full pass (pre-commit run --files over the branch's 29 files, no SKIP, branch even with origin/main) passed: every hook Passed or Skipped for no files, black, flake8 and the design-anchor check included; the tree was clean after it. The tool's whole test suite is CI's; the affected test files (1118 tests) passed locally in the fix pass and again in round 3.
+
+### Decisions made (owner may veto)
+- Published with the round 3 suggestion open instead of a third fix round — undoing it: a fix pass on the open pull request before the merge.
+- When two distros of one system select different published repos of one name, only the distros that select one of them are refused; round 2 ran it and found the refused distros untouched and the reason reported with exit 1 — undoing it: a one-line change to refuse the whole system.
+- show's labels are all widened to line up with the new fetch-from line, which changes show's output for every system; nothing outside the tool reads those lines — undoing it: shorten the new label instead.
