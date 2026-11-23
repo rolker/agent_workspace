@@ -4599,7 +4599,7 @@ test_tool_build_runs_the_tool() {
 }
 
 test_tool_test_over_the_resolved_layers() {
-    echo "TEST: tool route: test runs colcon per resolved layer, in order, with --base-paths src; env sources each built layer"
+    echo "TEST: tool route: test runs colcon per resolved layer, in order, over the resolved repos on disk; env sources each built layer"
     local sb root out rc=0 layer
     sb="$(make_sandbox)"
     make_toolchain_stubs "$sb"
@@ -4616,7 +4616,25 @@ test_tool_test_over_the_resolved_layers() {
         "COLCON_RAN_IN:$root/fakefox CMD:test SOURCED:base+fakefox
 COLCON_RAN_IN:$root/fakefox/core CMD:test SOURCED:base+fakefox+core
 COLCON_RAN_IN:$root/fakefox/extra CMD:test SOURCED:base+fakefox+core+extra" "$(cat "$sb/colcon.log")"
-    assert_contains "test: --base-paths src" "COLCON_ARGS:$root/fakefox/core test --base-paths src --event-handlers" "$(cat "$sb/colcon.log.args")"
+    assert_contains "test: the unnamed layer's resolved repo on disk as its base path" \
+        "COLCON_ARGS:$root/fakefox test --base-paths src/pkg_u --event-handlers console_direct+ --return-code-on-test-failure" "$(cat "$sb/colcon.log.args")"
+    assert_contains "test: each resolved repo on disk as a base path" \
+        "COLCON_ARGS:$root/fakefox/core test --base-paths src/pkg_a src/pkg_b --event-handlers" "$(cat "$sb/colcon.log.args")"
+    # A repo dropped from the resolve but left on disk is not tested; one
+    # resolved but not on disk is not named; a layer with none of its
+    # resolved repos on disk is skipped with a line.
+    sed -i '/^  pkg_b:/,/^    version:/d' "$root/.repos-manifest/resolved/fakefox/core.repos"
+    mv "$root/fakefox/extra/src/pkg_c" "$(dirname "$root")/pkg_c.aside"
+    : > "$sb/colcon.log"
+    : > "$sb/colcon.log.args"
+    rc=0; out="$(run_tool "$sb" "$root" test --packages-select pkg_a 2>&1)" || rc=$?
+    assert_eq "test, a repo dropped and a layer emptied: exit 0" "0" "$rc"
+    assert_contains "test: the dropped repo left out, the caller's arguments last" \
+        "COLCON_ARGS:$root/fakefox/core test --base-paths src/pkg_a --event-handlers console_direct+ --return-code-on-test-failure --packages-select pkg_a" "$(cat "$sb/colcon.log.args")"
+    assert_contains "test: the emptied layer skipped, said" \
+        "Skipping layer extra (none of the repos extra.repos lists is on disk in $root/fakefox/extra/src)" "$out"
+    assert_not_contains "test: no colcon run in the emptied layer" "$root/fakefox/extra " "$(cat "$sb/colcon.log.args")"
+    mv "$(dirname "$root")/pkg_c.aside" "$root/fakefox/extra/src/pkg_c"
     rc=0; out="$(run_tool "$sb" "$root" env 2>&1)" || rc=$?
     assert_eq "env: the underlay, then each built layer in order" \
         "unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX

@@ -1951,18 +1951,11 @@ _rc_source_setup() {
     fi
 }
 
-# colcon <verb> [args...] in a layer directory, through _rc_nofd. On the
-# tool route --base-paths src comes first, so the unnamed layer's run in
-# <root>/<distro> does not take in the named layers below it (and the
-# --cmake-args a build passes last still take the rest).
+# colcon <verb> [args...] in a layer directory, through _rc_nofd. (On the
+# tool route only `test` runs colcon here, and it names the base paths
+# itself: see adapter_test.)
 _rc_colcon() {
-    local verb="$1"
-    shift
-    if [ "$(_rc_route)" = tool ]; then
-        _rc_nofd colcon "$verb" --base-paths src "$@"
-    else
-        _rc_nofd colcon "$verb" "$@"
-    fi
+    _rc_nofd colcon "$@"
 }
 
 # --- Contract verbs -------------------------------------------------------
@@ -2126,12 +2119,33 @@ adapter_build() {
 adapter_test() {
     # Test every layer that has sources; unlike build, a failing layer does
     # not stop the run — all failures are reported at the end.
+    # On the tool route colcon is given, as --base-paths, the src/<key>
+    # directories of the repos the layer's resolved .repos file lists that
+    # are on disk, as the tool's build gives them (so a clone left on disk
+    # that the role or the groups no longer keep is not tested, and the
+    # unnamed layer's run in <root>/<distro> does not take in the named
+    # layers below it). They are read before the underlay is sourced, with
+    # the call's one read of the layers; a layer with none of them on disk
+    # is skipped with a line, as the tool's build skips it.
     _rc_require_manifest || return 1
-    local underlay layer layer_dir rc failed=""
+    local underlay layer layer_dir rc failed="" route key list i=0
+    local -a paths=() tool_paths=()
+    route="$(_rc_route)"
+    if [ "$route" = tool ]; then
+        while IFS= read -r layer; do
+            layer_dir="$(_rc_layer_dir "$layer")"
+            list=""
+            while IFS= read -r key; do
+                [ -n "$key" ] && [ -d "$layer_dir/src/$key" ] && list="$list src/$key"
+            done < <(_rc_repos_entries "$(_rc_repos_file "$layer")" --detail | cut -f1)
+            tool_paths+=("$list")
+        done < <(_rc_layers)
+    fi
     underlay="$(_rc_underlay)" || return 1
     unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX
     _rc_source_setup "$underlay" || return 1
     while IFS= read -r layer; do
+        i=$((i + 1))
         layer_dir="$(_rc_layer_dir "$layer")"
         if [ -f "$layer_dir/install/local_setup.bash" ]; then
             _rc_source_setup "$layer_dir/install/local_setup.bash" || return 1
@@ -2140,12 +2154,21 @@ adapter_test() {
             echo "Skipping layer $layer (no src directory)"
             continue
         fi
+        paths=()
+        if [ "$route" = tool ]; then
+            read -r -a paths <<< "${tool_paths[$((i - 1))]}"
+            if [ "${#paths[@]}" -eq 0 ]; then
+                echo "Skipping layer $layer (none of the repos ${layer}.repos lists is on disk in $layer_dir/src)"
+                continue
+            fi
+            paths=(--base-paths "${paths[@]}")
+        fi
         echo "----------------------------------------"
         echo "Testing layer: $layer"
         echo "----------------------------------------"
         rc=0
         (cd "$layer_dir" \
-            && _rc_colcon test --event-handlers console_direct+ \
+            && _rc_colcon test ${paths[@]+"${paths[@]}"} --event-handlers console_direct+ \
                 --return-code-on-test-failure "$@") || rc=$?
         if [ "$rc" -ne 0 ]; then
             echo "ERROR: tests failed for layer: $layer" >&2
