@@ -167,3 +167,51 @@ Findings 3 to 5 as the review states them: list only new tests (the merge hold a
 **Plan**: `.agent/work-plans/issue-452/plan.md` at `71fe90e7`
 
 Revision after plan review: fallback runs as a PR-mode review-code (cross-model only, final diff) writing `## Local Review`; "requested once" is read from GitHub PR state plus the fallback entry; merge hold verified as already implemented and pinned (comments only); tests trimmed to the new triage case; skill_workflows.md:32 a definite edit; fetch_pr_reviews.sh, orchestrator and test_merge_pr_skill.sh dropped.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-23 17:03 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #452 — Copilot review becomes optional: one request per pull request, with a cold cross-model read as the fallback
+**Plan**: `.agent/work-plans/issue-452/plan.md` at `71fe90e7`
+**Branch**: `feature/issue-452`
+
+### Earlier findings (first Plan Review)
+
+1. Fallback timeline entry: resolved. Step 3 runs the fallback as PR-mode `review-code` writing `## Local Review`, per the checkpoint; cold-ness holds (`cross_model_review.sh` embeds title, URL and diff only, excluding `.agent/work-plans/**`; the handoff skips 5a-5d and the Claude pass).
+2. "Requested once" surviving a restart: partly resolved; a gap remains (new finding 2).
+3. Tests: resolved. Step 4 records the merge hold as implemented and pinned (ci-19/22/23/25, `--allow-pending-review`), header comments only; skill text said to have no failing test.
+4. After-findings sequence: resolved (step 2, last bullet).
+5. File targeting: resolved. `fetch_pr_reviews.sh`, orchestrator and `test_merge_pr_skill.sh` dropped; `skill_workflows.md:32` a definite edit.
+
+Checkpoint decisions: none look wrong.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | About ten files, one concept; split order (loop and merge first) kept. |
+| Issue alignment | Needs work | Serves line, as checked: "Goal 'Quality of the work' with the principle 'A safeguard has to earn its cost': `docs/design.md#review-loop-and-timeline`" (README.md:33/37, design.md:742; the "principle" is a bullet under the goal, wording loose, goal right). Gaps in the once-per-PR rule and the fallback's routing (findings 1, 2). |
+| File targeting | Good | Files match the work; `test_review_code_convergence.sh` exists and could carry the skill-text pin (finding 3). |
+| Consequences | Needs work | The fallback `## Local Review` also counts as a PR-mode review round (finding 1). |
+| Principle alignment | Good | Only what's needed, Test what breaks and Verify before claiming handled as the earlier review asked. |
+| ADR compliance | Good | ADR-0013: existing `## Local Review` type, no new entry type. ADR-0017: design.md in the same change. ADR-0010 not triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Issue alignment / Consequences]** Step 3 says the fallback's "Findings go through `triage-reviews`." The router does not do that: `dispatch_phase.sh` (the `if base == "Local Review":` block, ~line 1213) sends a `## Local Review` to `triage-reviews` only when `**Verdict**: approved`; any other verdict goes straight to `address-findings`. So a cold read that finds something skips triage (review-code's own lead judgment is the only filter), and an approved one goes to triage and then step 9 ("host waits for reviews first"). Either accept that path and say so in step 3 and the design text, or name the routing change. Also: the fallback entry is a complete PR-mode `## Local Review`, so it counts in the PR-mode round count that `review-code`'s round-3 convergence check uses (review-code SKILL.md ~191-208); a fix round after it can reach round 3 one round early and skip cross-model. State whether that is accepted or how the fallback entry is excluded.
+2. **[Issue alignment]** The durable "already requested" check (step 2) reads only GitHub state. When `gh pr edit --add-reviewer "@copilot"` exits non-zero, nothing lands on GitHub, so after the fallback runs, the next pass through the pre-merge point (after a fallback fix round, or on resume) finds no Copilot state and requests again. Make the skip condition "a Copilot request/review/check-run on GitHub **or** a fallback `## Local Review` on the timeline", and name the marker that tells the fallback entry apart from ordinary PR-mode re-reviews (e.g. the `**Depth**` reason text "cold read, cross-model only" that step 3 records, grepped by the host). Likewise say the ~900 s wait happens once, at the request, not whenever a request is visible on GitHub: an accepted-but-unanswered request stays in `reviewRequests`, and step 9 must not wait again on every later round.
+3. **[Principle alignment: Test what breaks]** Step 4 leaves the review-code skill-text pin conditional ("check `ls ... | grep review_code`"). The check was run: `.agent/scripts/tests/test_review_code_convergence.sh` exists and pins the round-3 "no cross-model reviewers" path. Make the pin definite (a case for the new handoff words there, or say why not) and add the file to Files to Change. Minor.
+
+### Summary
+
+All five earlier findings are addressed and the checkpoints are followed. Three gaps remain. The plan's account of how fallback findings travel does not match the router. The once-per-PR rule can re-request or re-wait after a failed request. The skill-text pin is left conditional. Each is a few sentences of plan text. None changes the approach.
+
+### Recommended Actions
+
+- [ ] Step 3: state the real route of a fallback `## Local Review` (non-approved goes to `address-findings` directly, approved to `triage-reviews`), or name the router change; say how the fallback entry relates to the PR-mode round count.
+- [ ] Step 2: skip the request when a fallback `## Local Review` exists, name the marker that identifies it, and tie the ~900 s wait to the request moment only.
+- [ ] Step 4 / Files to Change: make the `test_review_code_convergence.sh` (or equivalent) pin for the "cold read, cross-model only" handoff words definite.
