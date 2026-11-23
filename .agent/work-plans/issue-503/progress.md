@@ -1046,3 +1046,16 @@ PR mode, round 3 triage, final before the owner's merge decision. Hosted reviews
 **Decision**: merge
 
 The owner chose "Merge (Recommended)" in a dialog for pull request 514 (part 1B: the adapter's route for a root the manifest tool set up, and its registration), which named the AGENTS.md sentence, the dated note under ADR-0021 and the rule that a folder of the user's own directly under the root is treated as a distro. The issue stays open: later parts are a session started inside a distro's directory, /run-issue from the root of a project with several distros, and the switch to the tool's build, status and show when they exist. Noted for a later part: the test block labelled "a set-aside directory gone once globbed" does not stage a real disappearance.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 11:00 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan changed since its last review and its later parts are four lines each, so proceed is not open to the host; run-issue step 13)
+**After**: plan
+**Decision**: revise
+
+Read: parts 1A and 1B merged (pull requests 513 and 514); the issue is open for the plan's "Later parts" 2, 3 and 4; plan.md is at a53288dc against the last Plan Review's 3f2dae10. The owner started this drive on 2026-11-23 ("work on those as orchestrator") after the host proposed "the adapter's validate reading status (the rest of #503)". The revision details part 4 next: the adapter's build calls repos-manifest build, validate reads repos-manifest status, and sync relies on the tool updating clones. All three tool commands are on main now (build: pull request 518; sync updating clones: 535; status: 546, merged 2026-11-23). Parts 2 and 3 stay as later parts.
+
+### Decisions made (owner may veto)
+- Part 4 is planned before parts 2 and 3: it depends on nothing in them, the tool commands it calls are all merged, and it closes the hole where validate passes a clone that is on the wrong version or emptied — undoing it: replan in the plan's original order; nothing is built yet.
