@@ -525,9 +525,12 @@ that sub-review never resumes. Round 1 is never reused (see below), so the
 first read of any branch is always cold.
 
 **Never reuse**: round 1 of any phase; an agent from a different issue; an
-agent already resumed 3 times; or any agent from before a merge of the base
+agent already resumed 3 times; any agent from before a merge of the base
 (step 8: `main`, or a package issue's `<base>`) landed on the branch (its
-view of the diff is stale). A resumed agent is
+view of the diff is stale); or for the cold read (step 9a item 3) and any
+retry of it, whatever its round: a `review-code` agent that already ran
+holds every earlier finding, and the cold read is defined by reading
+none, so it always goes to a fresh agent. A resumed agent is
 held to the *same* exit contract and the same `--check-exit` check as a
 fresh one — nothing about the contract relaxes.
 
@@ -1191,7 +1194,8 @@ in this order.
 
 3. **The cold read** (Copilot not available, and step 1 said `no`):
    dispatch `review-code` for the pull request as in step 4
-   (`dispatch_phase.sh --issue <ref> --skill review-code --pr <M>`), with
+   (`dispatch_phase.sh --issue <ref> --skill review-code --pr <M>`), to a
+   fresh agent, never a resumed one (step 4a's never-reuse list), with
    the task line given the cold-read words and the one agent, Codex, or
    Gemini when Codex is known to be unavailable:
    `/review-code <M> (cold read, cross-model only: codex; the final
