@@ -56,6 +56,8 @@ def test_the_url_is_the_prefix_the_name_and_dot_git():
     [
         FIELD,
         "git@gitcloud:",
+        "gitcloud:",
+        "git@[::1]:",
         "gitcloud:field/",
         "ssh://git@gitcloud/field/",
         "ssh://git@gitcloud:2222/field/",
@@ -91,6 +93,23 @@ def test_a_prefix_a_manifest_url_could_start_with_is_taken(prefix):
         ("git@host:o/\nx/", "holds a control or invisible character"),
         ("git@host:field‮/", "holds a control or invisible character"),
         ("git@host:field\t/", "holds a control or invisible character"),
+        # A trailing ':' in the [user@]host: form only, with nothing after the host.
+        ("/srv/mirror:", "ends in ':' but is not in the [user@]host: form"),
+        ("git@host:field:", "ends in ':' but is not in the [user@]host: form"),
+        ("host:field:", "ends in ':' but is not in the [user@]host: form"),
+        # The url rules read `user` as the host, and `pass@host:` as the path.
+        ("user:pass@host:", "ends in ':' but is not in the [user@]host: form"),
+        ("./mirror:", "is refused; a url uses"),
+        # A repo's name must end up in the path, never in a query or a fragment.
+        ("https://h/f/?a=/", "holds a '?' or a '#'"),
+        ("https://h/f#/", "holds a '?' or a '#'"),
+        ("https://h/f/#", "holds a '?' or a '#'"),
+        ("git@host:f?x/", "holds a '?' or a '#'"),
+        ("/srv/m#x/", "holds a '?' or a '#'"),
+        # '%' where the url rules refuse it, with a ':' ending too.
+        ("git@%2dhost:", "a '%' in an ssh address is refused"),
+        ("git@host:%2d/", "a '%' in an ssh address is refused"),
+        ("https://u%40x@host/f/", "a '%' in the user, host or port is refused"),
     ],
 )
 def test_a_prefix_that_is_not_a_url_prefix_is_refused(prefix, why):

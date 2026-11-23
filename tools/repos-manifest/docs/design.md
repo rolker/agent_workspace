@@ -1822,8 +1822,11 @@ it: in `/srv/team:tools.git` and `https://host/o/foo:bar.git` it is `team:tools`
 `foo:bar`, which hold a `:` and so break the name rule above and are refused. Taking what
 follows the `:` instead would fetch `tools` or `bar` from the place, another repo.
 
-The prefix ends in `/`, or in `:` in the `[user@]host:` form only (`git@git.example.org:`; an
-`https://host:` would read the repo's name as a port). With a repo's name after it, it is a
+The prefix ends in `/`, or in `:` in the `[user@]host:` form only, with nothing after the host
+(`git@git.example.org:`; an `https://host:` would read the repo's name as a port, and in
+`/srv/mirror:`, `git@host:field:` and `user:pass@host:` the URL rule reads a path before the
+`:`, so the repo's name would not be the whole path). It holds no `?` or `#`, so a repo's name
+is always in the path, never in a query or a fragment. With a repo's name after it, it is a
 URL a manifest may name (the rule under "Reading a manifest before using it" in the
 specification: https, http, ssh, file, the `[user@]host:path` form or an absolute path), and it
 holds no control or invisible character; every URL built from it is checked the same way.

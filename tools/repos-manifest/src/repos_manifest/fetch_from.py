@@ -78,23 +78,39 @@ def effective_url(prefix: str, name: str) -> str:
 def check_prefix(prefix: object, named: str) -> str:
     """A prefix as `config.yaml` or `--fetch-from` gives it (`named` says which), or a
     `ManifestError` that says what is wrong without showing a user name or password. A prefix
-    ends in `/`, or in `:` in the scp-like form only (`git@host:`; `https://host:` would read
-    the repo's name as a port), holds no control or invisible character, and with a repo name
-    after it is a url a manifest may name."""
+    holds no control or invisible character and no `?` or `#` (a repo's name after it would be
+    in a query or a fragment, not the path). It ends in `/`, or in `:` in the `[user@]host:`
+    form only, with nothing after the host: the url rules (``manifest.url_path``) read the
+    whole of `x` after it as the path (`https://host:` would read the repo's name as a port,
+    `/srv/mirror:` is a path on the local disk, `git@host:field:` and `user:pass@host:` have a
+    path before the `:`). With a repo name after it, it is a url a manifest may name."""
     if not isinstance(prefix, str) or prefix == "":
         raise ManifestError(f"{named} is {_kind(prefix)}, not a url prefix")
     remember_url(prefix)  # before any message that quotes it
     if has_unsafe_char(prefix):
         raise ManifestError(f"{named} {quoted_url(prefix)} holds a control or invisible character")
-    scp_like = "://" not in prefix
-    if not (prefix.endswith("/") or (prefix.endswith(":") and scp_like)):
-        ends = "'/', or ':' in the [user@]host: form," if scp_like else "'/'"
+    if "?" in prefix or "#" in prefix:
         raise ManifestError(
-            f"{named} {quoted_url(prefix)} does not end in {ends} so a repo's name cannot"
-            " follow it"
+            f"{named} {quoted_url(prefix)} holds a '?' or a '#', so a repo's name after it"
+            " would not be in the url's path"
         )
-    check_url(prefix + "x", "", f"{named} {quoted_url(prefix)}, with a repo name after it")
-    return prefix
+    with_name = f"{named} {quoted_url(prefix)}, with a repo name after it"
+    if prefix.endswith("/"):
+        check_url(prefix + "x", "", with_name)
+        return prefix
+    scp_like = "://" not in prefix
+    if prefix.endswith(":") and scp_like:
+        if url_path(prefix + "x", "", with_name) == "x":
+            return prefix
+        raise ManifestError(
+            f"{named} {quoted_url(prefix)} ends in ':' but is not in the [user@]host: form,"
+            " with nothing after the host, so a repo's name after it would not be the whole"
+            " path; end it in '/'"
+        )
+    ends = "'/', or ':' in the [user@]host: form," if scp_like else "'/'"
+    raise ManifestError(
+        f"{named} {quoted_url(prefix)} does not end in {ends} so a repo's name cannot follow it"
+    )
 
 
 def _kind(value: object) -> str:
