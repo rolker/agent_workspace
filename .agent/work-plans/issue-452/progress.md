@@ -144,3 +144,18 @@ The plan is the right shape and takes the checkpoint's six decisions correctly, 
 - [ ] Record that `merge_pr.sh` and `test_merge_pr_gate.sh` (ci-19, ci-22, ci-23, ci-25, line 2170) already implement and pin the merge-hold decision; limit step 4 to comments and design text and list only genuinely new tests.
 - [ ] Add the after-findings sequence to step 2 (no re-request, existing re-review path, no new wait).
 - [ ] Make `skill_workflows.md:32` a definite edit; drop `fetch_pr_reviews.sh` unless a concrete line is named.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 17:00 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (plan review verdict needs-work with two blocking findings; first host revise at plan)
+**After**: plan
+**Decision**: revise
+
+The owner's direction for this drive (2026-11-23): "I've disabled automatic copilot reviews on all repos on github due to not having enough quota for more than a few days a month."
+
+Revise the plan for all five Plan Review findings. Host decisions on the two blocking ones (owner may veto):
+- Finding 1, the fallback's timeline entry: the cold read runs through the existing PR-mode `review-code` path, which writes `## Local Review` (a type the loop already routes on), with one cross-model reviewer (Codex, else Gemini) and a handoff that gives it the final diff only, no earlier review entries or findings. No new entry type, no new writer in `cross_model_review.sh`.
+- Finding 2, "requested once" surviving a restart: the durable record is GitHub's own state for the pull request (a Copilot review request, review or check-run already on it, read with `gh pr view --json reviewRequests,reviews` and the check list), plus the fallback's `## Local Review` on the timeline. The host checks these before requesting; nothing new is stored by the host.
+Findings 3 to 5 as the review states them: list only new tests (the merge hold already matches the decision and is pinned), say the step 9 and fallback changes are skill text with no failing test, state that fixes after Copilot or fallback findings go through the existing re-review path with no second request and no new wait, drop the `fetch_pr_reviews.sh` and orchestrator edits unless a named line needs them, make `skill_workflows.md:32` a definite edit, and drop `test_merge_pr_skill.sh`.
