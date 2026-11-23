@@ -1372,3 +1372,26 @@ Scope: the fix 2ca7a73f (handler restores the caller's traps before re-sending t
 - [x] (suggestion) The test's timing margin is the stub's 1 s sleep. If more than about 1 s passes between `tool.started` appearing and the `kill` (a stalled CI runner), the build ends first, the run exits 0 and the test fails spuriously (reproduced with an injected 1.5 s pause). Have the stub wait on a release file the test creates after `kill`, or sleep longer — `.agent/scripts/tests/test_ros2_colcon.sh:4325`
 - [x] (suggestion) A TERM sent to the adapter alone does not stop the tool. Bash runs the trap only after the foreground pipeline ends, so the build runs to completion and only then is the file removed and the signal re-sent. A process-group signal (Ctrl-C, `timeout`) reaches both. The test sends TERM to the dispatcher only, so it does not show the tool being stopped. Say this in the comment, or forward the signal to the build (Codex) — `.agent/project_types/ros2_colcon/adapter.sh:2149`
 - [x] (suggestion) In `adapter test`, the `.repos` reader runs in a process substitution, so its failure is not seen. A file that passes `-f` but cannot be read yields no keys, and the layer is "skipped" with status 0, while the reader's own error goes to stderr. Check the reader's status before treating an empty list as no repos on disk (Codex) — `.agent/project_types/ros2_colcon/adapter.sh:2235`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 13:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #562 at `1e4aec6e`
+**Addressed**: Local Review at `d9cc234b` (2026-11-23 13:07 -05:00)
+**Commits**: d913106a, 7e85348c, 1e4aec6e
+
+### Actions
+- [x] (must-fix) Tool-route `adapter test` follows the tool's build rule (build.py `missing_repos` / `Layer.empty`): a listed repo not on disk and not named in the resolved `optional.txt` fails before colcon runs, naming each repo and the tool's sync; a missing optional repo is left out; a layer is skipped with its line only when none of its repos is on disk and all are optional. Optional repos are learned through the existing `_rc_is_optional_repo` (reads the resolved `optional.txt`; no new parser, not the status document). Tests: required repo missing (exit 1, named, colcon not run), optional repo missing (left out, all layers tested), optional-only layer with none on disk (skipped with the line). Code comment and docs/manifest/design.md bullet corrected; docs/design.md does not repeat the claim — d913106a — `.agent/project_types/ros2_colcon/adapter.sh:2232`
+- [x] (suggestion) `.repos` reader failure in `adapter test` is a failure: output taken in a command substitution, status checked, error names the file; test with a chmod 000 `core.repos` (skipped as root); comment and design bullet say so — 7e85348c — `.agent/project_types/ros2_colcon/adapter.sh:2235`
+- [x] (suggestion) `grep -sqF` on the temporary file, so a returning caller handler leaves no "No such file or directory" — 1e4aec6e — `.agent/project_types/ros2_colcon/adapter.sh:2154`
+- [x] (suggestion) Handler comment now says the adapter's handler replaces the caller's (an ignored signal included) while the build runs, and they are put back on return or on a signal; no change to trapping — 1e4aec6e — `.agent/project_types/ros2_colcon/adapter.sh:2147`
+- [x] (suggestion) Interrupt test: stub waits on a release file (TOOL_HOLD, bounded at 10 s) that the test creates after `kill`, replacing the 1 s sleep — 1e4aec6e — `.agent/scripts/tests/test_ros2_colcon.sh:4325`
+- [x] (suggestion) Comment says a TERM to the adapter alone does not stop the tool, which finishes first, while Ctrl-C and `timeout` signal the whole process group; no forwarding added — 1e4aec6e — `.agent/project_types/ros2_colcon/adapter.sh:2149`
+
+### Checks
+- `bash .agent/scripts/tests/test_ros2_colcon.sh` (after the last change): `=== Results: 1551 passed, 0 failed, 0 skipped ===`
+- `bash .agent/scripts/tests/test_adapter.sh`: `=== Results: 248 passed, 0 failed ===`
+- `bash .agent/scripts/validate_adapter.sh`: `✅ ros2_colcon: all 13 verbs implemented`, `✅ single_project: all 13 verbs implemented`
+- Full pre-commit pass and the other suites left to the host and CI; commits made with `SKIP=validate-script-tests`.
