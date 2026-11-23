@@ -179,3 +179,11 @@ Revise for all five Plan Review findings and the Q3 suggestion. Host decisions (
 - F5: the Serves goal is "Light touch on projects", as written in README.md's goals; check the exact wording there.
 - Q3 correction (review's suggestion, adopted): OQ-1 is answered for where a project records its mapping, for three roles; the other four roles stay unmapped, said so in the text.
 - The other suggestions: say how `update_roadmap.sh --root` finds the project name; define what `#heading` does in each reader (or refuse it where a reader cannot use it); `project_integration_audit.sh:941` follows the key in PR 2.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-23 18:16 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-551/plan.md` at `7ab07af2`
+
+Revised for the five plan-review findings: design fallback is docs/design.md only (citations of a key-named design file recognised), sitrep skill reads a design= line, merge-gate bookkeeping includes the roadmap key's path, helper reports set/fallback/none and goals has no fallback, Serves goal is "Light touch on projects". OQ-1 worded as three of seven roles; heading behaviour per reader defined. PR 1 still avoids the onboard-project and audit-project skills.
