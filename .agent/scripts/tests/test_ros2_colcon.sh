@@ -4635,6 +4635,20 @@ COLCON_RAN_IN:$root/fakefox/extra CMD:test SOURCED:base+fakefox+core+extra" "$(c
         "Skipping layer extra (none of the repos extra.repos lists is on disk in $root/fakefox/extra/src)" "$out"
     assert_not_contains "test: no colcon run in the emptied layer" "$root/fakefox/extra " "$(cat "$sb/colcon.log.args")"
     mv "$(dirname "$root")/pkg_c.aside" "$root/fakefox/extra/src/pkg_c"
+    # A layer's resolved .repos file missing is not "none on disk": test
+    # fails before colcon runs, naming the file and the tool's sync.
+    mv "$root/.repos-manifest/resolved/fakefox/core.repos" "$sb/core.repos.aside"
+    : > "$sb/colcon.log"
+    rc=0; out="$(run_tool "$sb" "$root" test 2>&1)" || rc=$?
+    assert_eq "test, a layer's .repos file missing: exit 1" "1" "$rc"
+    assert_contains "test, a layer's .repos file missing: the file named" \
+        "ERROR: $root/.repos-manifest/resolved/fakefox/core.repos is missing, and the last resolve's layers.txt lists layer 'core'" "$out"
+    assert_contains "test, a layer's .repos file missing: the tool's sync named" \
+        "Run: cd $root && $sb/.venv/bin/repos-manifest sync --distro fakefox" "$out"
+    assert_not_contains "test, a layer's .repos file missing: no layer skipped as if empty" "Skipping layer core" "$out"
+    assert_not_contains "test, a layer's .repos file missing: no success said" "passed" "$out"
+    assert_eq "test, a layer's .repos file missing: colcon not run" "" "$(cat "$sb/colcon.log")"
+    mv "$sb/core.repos.aside" "$root/.repos-manifest/resolved/fakefox/core.repos"
     rc=0; out="$(run_tool "$sb" "$root" env 2>&1)" || rc=$?
     assert_eq "env: the underlay, then each built layer in order" \
         "unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX

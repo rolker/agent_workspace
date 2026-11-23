@@ -190,7 +190,9 @@ The root need not be a git repository. The registry line holds its name, type an
   command), each layer's colcon given as `--base-paths` the `src/<key>` directories of the
   repos its resolved `.repos` file lists that are on disk, as the tool's build gives them: a
   clone left on disk after the role or the groups dropped it is not tested. A layer with none
-  of them on disk is skipped with a line, as the tool's build skips it.
+  of them on disk is skipped with a line, as the tool's build skips it. A layer whose resolved
+  `.repos` file is missing fails the run before colcon runs, naming the file and the tool's
+  `sync`, as the tool's build refuses it.
 - **`validate`** checks, for each distro it covers, the workspace's own records, then the
   checkouts through the tool's `status`. It fails when the registry line carries `role=` or
   `distro=`, or the settings file `source`, `source_ref`, `source_path` or `bootstrap_url`:

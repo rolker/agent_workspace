@@ -2136,18 +2136,26 @@ adapter_test() {
     # unnamed layer's run in <root>/<distro> does not take in the named
     # layers below it). They are read before the underlay is sourced, with
     # the call's one read of the layers; a layer with none of them on disk
-    # is skipped with a line, as the tool's build skips it.
+    # is skipped with a line, as the tool's build skips it. A layer whose
+    # resolved .repos file is missing fails before anything runs, naming
+    # the file and the tool's sync, as the tool's build refuses it.
     _rc_require_manifest || return 1
-    local underlay layer layer_dir rc failed="" route key list i=0
+    local underlay layer layer_dir rc failed="" route key list file i=0
     local -a paths=() tool_paths=()
     route="$(_rc_route)"
     if [ "$route" = tool ]; then
         while IFS= read -r layer; do
             layer_dir="$(_rc_layer_dir "$layer")"
+            file="$(_rc_repos_file "$layer")" || return 1
+            if [ ! -f "$file" ]; then
+                echo "ERROR: $file is missing, and the last resolve's layers.txt lists layer '$layer'; test reads from it which repos of the layer to test (the manifest tool's build refuses the same)" >&2
+                echo "Run: $(_rc_tool_sync_step "$_RC_TOOL_DISTRO")" >&2
+                return 1
+            fi
             list=""
             while IFS= read -r key; do
                 [ -n "$key" ] && [ -d "$layer_dir/src/$key" ] && list="$list src/$key"
-            done < <(_rc_repos_entries "$(_rc_repos_file "$layer")" --detail | cut -f1)
+            done < <(_rc_repos_entries "$file" --detail | cut -f1)
             tool_paths+=("$list")
         done < <(_rc_layers)
     fi
