@@ -2133,7 +2133,10 @@ _rc_tool_build() {
     # leaves the copy in the file, a file it cannot write leaves stderr,
     # and whatever is left is drained. With no temporary file to be had,
     # the build runs as without selection, with no note. The file goes on
-    # every way out, an interrupt included.
+    # every way out, an interrupt included: on INT, TERM or HUP the file is
+    # removed, the caller's own handlers for the three (or their ignoring)
+    # are put back, and the signal is sent again, so the caller's handler
+    # runs, or the default ends the run with the signal's status.
     if ! errlog="$(mktemp 2>/dev/null)"; then
         (cd "$root" && _rc_nofd "$bin" build --distro "$_RC_TOOL_DISTRO" -- --symlink-install \
             --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@") || rc=$?
@@ -2142,8 +2145,8 @@ _rc_tool_build() {
     local sig traps
     traps="$(trap -p INT TERM HUP)"
     for sig in INT TERM HUP; do
-        # shellcheck disable=SC2064  # the file's name is fixed now
-        trap "rm -f -- $(printf '%q' "$errlog"); trap - $sig; kill -$sig \$\$" "$sig"
+        # shellcheck disable=SC2064  # the file's name and the saved traps are fixed now
+        trap "rm -f -- $(printf '%q' "$errlog"); trap - INT TERM HUP; eval $(printf '%q' "$traps"); kill -$sig \$\$" "$sig"
     done
     { (cd "$root" && _rc_nofd "$bin" build --distro "$_RC_TOOL_DISTRO" -- --symlink-install \
         --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "$@") 2>&1 1>&7 7>&- \

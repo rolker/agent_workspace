@@ -4217,7 +4217,9 @@ EOF
 # no TOOL_STATUS_FILE, a format 1 document made from the last resolve and
 # what is on disk (status_stub.py) and its exit status. build: records the
 # underlay's SOURCED_LAYERS, COLCON_PREFIX_PATH and GIT_DIR as well, and
-# prints TOOL_STDERR on stderr.
+# prints TOOL_STDERR on stderr; with TOOL_SLEEP, writes what is in TMPDIR
+# to tool.started (written whole, then moved into place) and sleeps that
+# long before going on.
 case "\${1:-}" in
     status)
         echo "STATUS_RAN_IN:\$(pwd -P) ARGS:\$*" >> "$sb/status.log"
@@ -4230,6 +4232,11 @@ case "\${1:-}" in
     build)
         echo "build stub: ran"
         [ -n "\${TOOL_STDERR:-}" ] && echo "\$TOOL_STDERR" >&2
+        if [ -n "\${TOOL_SLEEP:-}" ]; then
+            ls -A "\${TMPDIR:-/tmp}" > "$sb/tool.started.part"
+            mv "$sb/tool.started.part" "$sb/tool.started"
+            sleep "\$TOOL_SLEEP"
+        fi
         echo "TOOL_RAN_IN:\$(pwd -P) ARGS:\$* EXIT:\${TOOL_EXIT:-0} SOURCED:\${SOURCED_LAYERS:-none} PREFIX:\${COLCON_PREFIX_PATH:-unset} GIT_DIR:\${GIT_DIR:-unset}" >> "$sb/tool.log"
         exit "\${TOOL_EXIT:-0}"
         ;;
@@ -4301,6 +4308,23 @@ run_tool() {  # <sb> <dir> <verb and args...>
     shift 2
     (cd "$dir" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/bin:$PATH" COLCON_LOG="$sb/colcon.log" \
         VCS_LOG="$sb/vcs.log" "$sb/.agent/scripts/adapter" --project toolsys "$@")
+}
+
+# The adapter's build with selection on toolsys from <root>, TMPDIR
+# <sb>/tmp, the stub tool sleeping a second; TERM goes to the dispatcher
+# (the background job itself, through exec) once the stub has started,
+# waited for at most 5 seconds. Prints the run's exit status.
+tool_build_interrupted() {  # <sb> <root>
+    local sb="$1" root="$2" pid n=0 rc=0
+    rm -f "$sb/tool.started"
+    (cd "$root" && export ROS_ROOT_DIR="$sb/rosroot" TMPDIR="$sb/tmp" TOOL_SLEEP=1 PATH="$sb/bin:$PATH" \
+        COLCON_LOG="$sb/colcon.log" VCS_LOG="$sb/vcs.log" \
+        && exec "$sb/.agent/scripts/adapter" --project toolsys build --packages-select pkg_a) >/dev/null 2>&1 &
+    pid=$!
+    while [ ! -e "$sb/tool.started" ] && [ "$n" -lt 100 ]; do sleep 0.05; n=$((n + 1)); done
+    kill -TERM "$pid" 2>/dev/null || true
+    wait "$pid" || rc=$?
+    echo "$rc"
 }
 
 # The tool's sync step a message printed (`cd <root> && <tool> sync
@@ -4624,6 +4648,21 @@ test_tool_build_runs_the_tool() {
     rc=0; out="$(TMPDIR="$sb/tmp" TOOL_STDERR="a line on stderr" run_tool "$sb" "$root" build --packages-select pkg_a 2>/dev/full)" || rc=$?
     assert_eq "selection, stderr on /dev/full: a successful build exits 0" "0" "$rc"
     assert_eq "selection: no temporary file left behind" "" "$(ls -A "$sb/tmp")"
+    # Interrupted: TERM to the dispatcher while the tool builds. The
+    # temporary file goes and the run ends with TERM's status, 143.
+    rc="$(tool_build_interrupted "$sb" "$root")"
+    assert_contains "selection, TERM: the temporary file was there while the tool ran" "tmp." "$(cat "$sb/tool.started")"
+    assert_eq "selection, TERM: exit 143" "143" "$rc"
+    assert_eq "selection, TERM: no temporary file left behind" "" "$(ls -A "$sb/tmp")"
+    # A caller with its own TERM handler (one put at the top of the
+    # sandbox's dispatcher): the file goes, then that handler runs.
+    sed -i "s|^set -euo pipefail\$|&\ntrap 'echo caller TERM handler ran >> \"$sb/caller.log\"; exit 7' TERM|" "$sb/.agent/scripts/adapter"
+    assert_eq "the sandbox's dispatcher has its own TERM handler" "1" "$(grep -c 'caller TERM handler' "$sb/.agent/scripts/adapter")"
+    rc="$(tool_build_interrupted "$sb" "$root")"
+    assert_eq "selection, TERM, a caller's handler: its status, 7" "7" "$rc"
+    assert_eq "selection, TERM, a caller's handler: it ran" "caller TERM handler ran" "$(cat "$sb/caller.log" 2>/dev/null)"
+    assert_eq "selection, TERM, a caller's handler: no temporary file left behind" "" "$(ls -A "$sb/tmp")"
+    cp "$REAL_ROOT/.agent/scripts/adapter" "$sb/.agent/scripts/adapter"
     rc=0; out="$(TOOL_EXIT=130 run_tool "$sb" "$root" build 2>&1)" || rc=$?
     assert_eq "a signal's status 130 passed through" "130" "$rc"
     # A nested key: the tool reads it, so build runs; env and test still refuse it.
