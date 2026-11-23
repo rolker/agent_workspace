@@ -236,3 +236,16 @@ All five earlier findings are resolved in plan.md and the checkpoint's host deci
 - [ ] (Suggestion) Bound the step 6b bookkeeping addition to worktrees of the project root's own repository; test unregistered root adds nothing.
 - [ ] (Suggestion) State and test how `check_design_anchors.sh --root` finds the project name.
 - [ ] (Suggestion) Keep design-section additions to the decision; mechanics in script headers.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 18:18 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (second plan review: ready, all earlier findings resolved, three suggestions only)
+**After**: plan
+**Decision**: proceed
+
+Implement PR 1 of the plan. The second Plan Review's three suggestions are adopted and carried in the implement handoff (owner may veto):
+- Bookkeeping: add the `roadmap` setting's path only when the worktree's repository is the project root's own; an unregistered root (the workspace) adds nothing; tests for both.
+- `check_design_anchors.sh --root` finds the project name the same way `update_roadmap.sh` does; test that the workspace root still reads `docs/design.md`.
+- `docs/design.md` Documentation layers: only the decision goes there (the section is already past its length limit); details go in script headers and `script_reference.md`.
