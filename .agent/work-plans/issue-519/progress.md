@@ -279,3 +279,26 @@ Review findings: 1 examples use `git@gitcloud:field/` in tests and the design's 
 Tests run (this worktree's `src`, checked via `repos_manifest.__file__`): `test_fetch_from.py test_fetch_from_sync.py test_system.py test_init.py test_init_refusals.py test_show_system.py test_status.py test_status_agrees_with_sync.py test_update.py test_update_safety.py test_sync.py test_untrusted_input.py test_url_messages.py test_masking.py test_cli.py test_documents.py`: 1180 passed; also `test_show.py test_output.py test_base_output.py test_selection.py test_sync_distros.py`: 148 passed. The full pre-commit pass and the whole tool suite are left to the host and CI.
 
 Gaps: none against part 1's list. Not built (part 2): fallback on, the probe, `upstream`, the same-repo-by-another-spelling comparison. `docs/spec.md`, `docs/manifest/*` unchanged (grep: no fetch_from claim to update).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-23 13:36 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-519 at `09475a7a`
+**Base**: origin/main
+**Depth**: Deep (reason: untrusted input reaching git, and sync's repoint of origin on existing clones)
+**Must-fix**: 3 | **Suggestions**: 4
+**Round**: 1 | **Ship**: continue — round 1: 3 must-fix; first round always re-reviews after fixes
+
+Verified safe by running (this worktree's src, local bare repos): fetch_from added to a clean clone, with uncommitted changes, with unpushed commits (origin kept, both ways on named), origin already the place, origin set by hand, place missing (fails, origin kept, record keeps the published url, a later sync repoints once the place exists), record with no url, prefix changed, fetch_from removed; status agreed with sync in each; no fallback to the published url; init --fetch-from failures leave nothing; a prefix password is masked in show, status, status --json, errors and the head comment. Tests: test_fetch_from, test_fetch_from_sync, test_status_agrees_with_sync, test_update_safety, test_untrusted_input, test_masking, test_system, test_update: 814 passed. pre-commit on the changed files: clean. Cross-model: gemini and codex completed; their findings 1-3 below were confirmed by running.
+
+### Findings
+- [ ] (must-fix) `repo_name` splits the whole url on every `/` and `:`, so it reads into the authority and into colons in a path: `/srv/team:tools.git` and `https://h/o/foo:bar.git` silently fetch `tools`/`bar` (a wrong repo), `https://host/` gives `host`, `https://host:8443/` gives `8443`, `/srv/b/.git` gives `''`; and `https://user:s3cret@host/` gives the name `s3cret@host`, printed unmasked in the FetchFromError. Take the name from the path part only (after scheme://authority, after the scp `host:`), and refuse a url with no path — `tools/repos-manifest/src/repos_manifest/fetch_from.py:106`
+- [ ] (must-fix) `check_prefix` accepts prefixes the documents refuse or git reads otherwise: a trailing `:` is taken whenever there is no `://` (`/srv/mirror:`, `git@host:field:`, `user:pass@host:`), not in the `[user@]host:` form only as design.md says; and `?` or `#` before the final `/` (`https://h/f/?a=/`, `https://h/f#/`) puts every repo's name in a query or fragment, so all repos can reach one resource and the same-name guard is bypassed — `tools/repos-manifest/src/repos_manifest/fetch_from.py:130`
+- [ ] (must-fix) The same-name refusal runs per distro (`resolve_for` per distro key), so in a --distro-dirs system two distros selecting different repos of one name (`one/tools`, `two/tools`) both fetch `<prefix>tools.git`, one of them the wrong repo; check across all of the system's distros in init, sync and status (and test it) — `tools/repos-manifest/src/repos_manifest/fetch_from.py:179`
+- [ ] (suggestion) With fetch_from set and a local commit the place lacks, status's detail advises `git push origin <branch>` (the published repo), while sync advises pushing to the place; the status advice does not unblock the repoint — `tools/repos-manifest/src/repos_manifest/update.py:1171`
+- [ ] (suggestion) `_repoint_steps` push commands print a masked url with no note that the full url goes there (as `set_url_command` gives), and push a bare branch name a same-named tag makes ambiguous; use `refs/heads/<b>:refs/heads/<b>` — `tools/repos-manifest/src/repos_manifest/update.py:1705`
+- [ ] (suggestion) No test pins that a failed repoint leaves the record's url unchanged and a later sync repoints once the place exists (verified by hand; a regression would make the clone "set by hand" for good) — `tools/repos-manifest/tests/test_fetch_from_sync.py:251`
+- [ ] (suggestion) "fetch_from set, commits only here" in CLAIMS_DIFFER skips every sentence of that case, though status's sentence already names the leave-alone condition; allow the outcome for that claim instead of exempting the case — `tools/repos-manifest/tests/test_status_agrees_with_sync.py:72`
