@@ -1324,3 +1324,13 @@ CI cost: the job took 141 s and 174 s on main's two runs today and 216 s and 231
 
 ### False positives
 - (Local Review (Pre-Push) @ `5bb1a59`) on CI the locale part may always be a counted skip, so add a `sudo locale-gen en_US.UTF-8` step to validate.yml — the failure mode did not occur: the CI image has en_US.UTF-8 and GNU comm, and this head's Validate Adapter Contract log shows both real-tool tests running, no SKIPPED line and `1530 passed, 0 failed, 0 skipped`. Should a future image drop the locale, the skip is counted and printed in that Results line, not silent, so the CI change (Ask First) is not needed — `.agent/scripts/tests/test_ros2_colcon.sh:4880`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 12:49 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (one open suggestion with a fix of about 20 lines; merging with a finding open is the owner's answer only, and sending it for the fix is the host's)
+**After**: findings
+**Decision**: address
+
+Read: the Integrated Review at 4a465e73 for pull request 562: CI all-pass, no GitHub reviews or comments, one valid finding and one false positive. The valid finding (suggestion), .agent/project_types/ros2_colcon/adapter.sh:2146: when a build that selects packages is interrupted, nothing tests that the temporary stderr file is removed and the run ends with the signal's status, and the handler resets the signal instead of restoring a caller's own handlers; no caller on this branch sets one. The fix: in the handler, restore the saved traps before re-sending the signal, and a test with a stub tool that sleeps, TERM sent, the temporary file gone and exit 143. The false positive: the locale-gen step for the CI workflow; this pull request's CI run showed the locale part running (1530 passed, 0 failed, 0 skipped), so no CI change is needed.
