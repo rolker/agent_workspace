@@ -547,3 +547,24 @@ Checked: `git show --stat c2b82910` touches only `tools/repos-manifest/docs/spec
 
 ### Findings
 - [ ] (suggestion) Two test comments still give the old too-broad reason for all three empty-host forms ("curl would read the first part of the path as the host"); true only of the `https:///…` cases — `tools/repos-manifest/tests/test_manifest_reading.py:488`, `tools/repos-manifest/tests/test_fetch_from.py:111`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-23 15:54 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #565 at `aef7e3c`
+**Sources**: 2 (Local Review @ `aef7e3c` (convergence check, depth set by the host; no outside reviewers, cross-model skipped), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+- [ ] (suggestion, Local Review @ `aef7e3c`) Valid; the unfinished part of F1, which the owner chose to have fixed before the merge ("Fix F1 first", Checkpoint after the Integrated Review at `5e18053`), so it is to be fixed now, not deferred. The fix pass reworded `docs/spec.md` and the `authority` docstring but not the tests, and two test comments still give the old reason for all three empty-host forms: `test_manifest_reading.py:488-489` says "curl would read the first part of the path as the host" above `https:///x.git`, `https://@/x.git`, `http://:80/x.git`; `test_fetch_from.py:111-112` says "curl would read the first part of the path, or the repo's name, as the host" above `https:///`, `https://@/`, `http://:80/`. Both are true only of the `https:///` case; git rejects the other two itself ("URL rejected: No host part in the URL"). Fix: reword the two comments to match the new spec sentence (a url such as `https:///x.git` makes git take the first part of the path as the host; git refuses the others itself; the rule refuses all so no url with an empty host reaches git). Comment lines only; no assertion or test case changes. — `tools/repos-manifest/tests/test_manifest_reading.py:488`, `tools/repos-manifest/tests/test_fetch_from.py:111`
+
+### False positives
+
+### Notes for the host
+- The PR body's `## Decision summary` is out of date in two ways. (1) Its paragraph "Open, deferred to part 2: the reason given for the new rule, in `docs/spec.md` and in one docstring, ..." is no longer true: commit `c2b82910` reworded both on the owner's answer "Fix F1 first", and once the two test comments above are fixed nothing of F1 stays open; replace it with a line saying F1 was fixed before the merge. (2) The body holds a leftover second copy of the older summary: after the closing line, from a stray "Part of #519`." (body line 44) to the end, it repeats the earlier text, including the stale "Open, from round 3, for the merge decision: an http(s) prefix with an empty host (`https:///`) passes the prefix check ..." paragraph that commit `85da8cc` closed. Remove that duplicate. The "Reviews in all" line should also count the convergence check at `aef7e3c`.
+- No GitHub reviews, conversation comments or inline comments on the PR; no hosted-reviewer check run. CI on `aef7e3c` when read (15:54): 10 check runs, 2 pass (Validate Documentation, twice), 8 pending (Lint, Validate Adapter Contract, repos-manifest tests on Python 3.10 and 3.14, each twice). The previous head `5e18053` was all-pass. Local head is one record commit (`2b2ccaa`, progress only) ahead of the PR head.
+- `sources` dropped the Local Review (Pre-Push) at `048d186` and the Local Review at `5e18053` as stale; both were ruled on in earlier Integrated Reviews (`048d186`'s finding fixed in `85da8cc`; `5e18053`'s F1 fixed in `c2b82910`, its test-comment remainder is the open finding above).
