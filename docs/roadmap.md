@@ -52,11 +52,15 @@ direction of the whole workspace.
 workflows modular to support various task types, not just coding issues".
 Three things a project or a piece of work can choose: the kind of work, how
 much checking it gets, and whether its records need a hosting service's
-issues and pull requests (#544). A lighter level keeps the organisation (a
-thread per piece of work, a branch per thread, the merge back) and drops
-checks; the default stays the full loop, and only the user lowers it. Field
-mode working from this workspace is the dated need: spring 2027. Kinds of
-work beyond coding issues have no design yet.
+issues and pull requests (#544). A low-stakes project, in the owner's words
+(2026-11-23), "does not need the full scrutiny, but I did feel like it was
+lacking the ability to keep all the threads organized. I also missed some of
+the structure we have to keep branches organized and flowing back into
+main." So a lighter level drops checks and keeps that organisation. The
+default stays the full loop: "Limits on what agents do on their own start
+strict, and only the user relaxes them" ([`docs/principles.md`](principles.md)).
+Field mode working from this workspace is the dated need: spring 2027. Kinds
+of work beyond coding issues have no design yet.
 
 | Line | Check |
 |------|-------|
@@ -100,9 +104,9 @@ topic is built only after a small test with and without it shows it helps.
 "support ~ as a sort of project representing my top level work
 organization". The home level holds work that fits no project and gives "a
 glimpse of what other agents are working on to keep a global big picture".
-It reads where the project sessions stand and asks one at his request; it
-does not direct them, and he keeps working with each project's agent
-directly. It has no design yet.
+In his words (2026-11-23): "I think read only is fine with occasional asking
+at my request", and "I'm not sure I want a layer between what I see and do
+now with each project agent." It has no design yet.
 
 **Across the paths.** The sit-rep reports each path on its own, with its
 lines in no fixed order, and a check tests the fact a line states where a
