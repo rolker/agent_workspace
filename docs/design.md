@@ -810,7 +810,8 @@ sessions walk the same order by hand, one `SKILL.md` at a time
   `review-code` step 5e has the reviewers outside Claude read the branch before publishing. Automatic
   Copilot review is off on every repository (owner, 2026-11-23: the quota lasts a few days a month), so
   after a push nothing is waited for unless the loop asked: `run-issue` step 9 dispatches
-  `triage-reviews` at once on the sources that exist. At the `merge` checkpoint, step 9a asks Copilot
+  `triage-reviews` at once on the sources that exist. Before every merge (at the `merge` checkpoint, and
+  on a `findings` checkpoint answered `merge`), after the re-fetch for unread reviews, step 9a asks Copilot
   once per pull request (`gh pr edit <M> --add-reviewer "@copilot"`) and waits once, about 900 s, or up
   to the merge script's 1800 s while its check-run runs. When Copilot is not available (the request
   fails, it posts a could-not-review notice, no answer comes in the bound, or a run resumes to find a

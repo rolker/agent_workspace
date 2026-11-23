@@ -1013,10 +1013,10 @@ gates the merge on CI regardless — triaging early never merges anything
 early.
 
 **Fetch again before every merge checkpoint.** Before presenting any
-`merge` checkpoint, and after step 9a, run `fetch_pr_reviews.sh --pr <M>`
-again, on every path (a review that arrived, "review never arrived", "review still
-running after 1800 s", or a head moved by a bookkeeping push). Two
-checks on its output:
+`merge` checkpoint, and so before step 9a, which runs after this check,
+run `fetch_pr_reviews.sh --pr <M>` again, on every path (a review that
+arrived, "review never arrived", "review still running after 1800 s", or
+a head moved by a bookkeeping push). Two checks on its output:
 
 - **A review not yet read.** The latest `## Integrated Review` in
   `progress.md` lists on its `**Reviews-read**` line the `review_id` of
@@ -1078,12 +1078,32 @@ reaches the `findings`/`merge` checkpoints.
 Independent review after publishing is one cold read of the final diff
 (issue 452): Copilot when the loop asks for it and it answers, else one
 cross-model reviewer through `review-code`. Copilot is asked once per pull
-request, at the pre-merge point: when `next` prints
-`action=checkpoint:merge` (the last fix round and its triage are done),
-before step 9's re-fetch and before the checkpoint is presented. Nothing
-new is stored for "asked once": the record is GitHub's state for the pull
-request and the cold read's own entry on the timeline, checked in this
-order.
+request, at the pre-merge point, and that point comes before **every**
+merge, by either of the two ways to one:
+
+- **`next` prints `action=checkpoint:merge`** (the last fix round and its
+  triage are done): 9a runs after step 9's re-fetch ("A review not yet
+  read", below) and before the checkpoint is presented.
+- **A `findings` checkpoint answered `merge`** (row 21 merges with the
+  `## Integrated Review`'s boxes still open): 9a runs after step 11's
+  re-fetch on the merge answer and before `merge_pr.sh`, which a
+  `findings` checkpoint would otherwise reach with no request and no
+  cold read.
+
+The re-fetch comes first because a review it finds unread goes to
+`triage-reviews`, and its findings to a fix round, before the one request
+or the one cold read is spent: spent first, either would read a diff the
+fix round then changes. When 9a ends with a review or a cold read still
+to route (a Copilot review arrived, or a cold read was dispatched), the
+merge does not go ahead on the earlier answer: the new entry routes
+through `next` as below, and the loop comes back to a `merge` or
+`findings` checkpoint, where the owner answers again. Only when 9a has
+nothing to route (step 1 said `yes`, or the Copilot review it finds has
+already been read) does the merge answer stand.
+
+Nothing new is stored for "asked once": the record is GitHub's state for
+the pull request and the cold read's own entry on the timeline, checked
+in this order.
 
 1. **The cold read already ran for this pull request**:
 
@@ -1155,9 +1175,10 @@ order.
    then runs only that agent's 5e read and records the words on its
    `**Depth**` line, which is what step 1 reads next time. With neither
    agent available, there is no cold read: say so on the
-   outside-reviewer line and present the checkpoint; the owner decides
-   (the next pass through this point tries again, since nothing records
-   it).
+   outside-reviewer line and present the checkpoint (on the `findings`
+   path, the merge question again, before `merge_pr.sh`); the owner
+   decides (the next pass through this point tries again, since nothing
+   records it).
 
    Its `## Local Review` is routed like any PR-mode review, with no
    router change: `next` sends an `approved` one to `triage-reviews` (step
@@ -1231,7 +1252,9 @@ References for the gate rule.
 owner's merge answer, before anything else, run `fetch_pr_reviews.sh
 --pr <M>` once more and apply step 9's "A review not yet read" check: if a
 review landed while he decided, do not merge; send it to `triage-reviews`
-and present the merge checkpoint again. Before
+and present the merge checkpoint again. When the answer was `merge` at a
+`findings` checkpoint, step 9a runs next, before `merge_pr.sh` (step 9a
+says when the answer stands). Before
 `action=merge` (row 21), still in the worktree, push the outstanding
 record commits and check that nothing is left unpushed or uncommitted
 (step 10). Then `cd` to this session's root: the `root=`
