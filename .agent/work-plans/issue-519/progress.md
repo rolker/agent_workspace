@@ -484,3 +484,24 @@ Read: the Integrated Review at b9dadc87 for pull request 565: CI all-pass on 35f
 - Both `authority` callers pass the right flag: `ssh://` now gets `host_required=True` as it had `ssh=True`; the `[user@]host:path` form passes `True` as before; https and http newly `True`; `file://` alone `False`. No other caller (`git grep`).
 - The new tests fail without the fix: with the pre-fix `manifest.py`, `tests/test_manifest_reading.py tests/test_fetch_from.py` gave 10 failed, 404 passed (the ten refused cases). The full suite with the fix: `2307 passed in 724.64s`. pre-commit (black, flake8) passed on the three changed Python files.
 - Documents: spec.md's refused examples and "a file url's host may be empty", and design.md's three refused prefixes, match the code; only the reason clause is over-general (the suggestion).
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-23 15:17 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #565 at `5e18053`
+**Sources**: 2 (Local Review @ `5e18053` (convergence check, depth set by the host; no outside reviewers, cross-model skipped), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+### Findings
+- [x] (suggestion, Local Review @ `5e18053`) The reason clause for the empty-host rule is false for two of its three examples: spec.md says that with an empty host git "reads the first part of the path as the host and contacts it", and the `authority` docstring says "curl would read the first part of the path as the host"; that holds for `https:///x.git` only, while `git ls-remote` on `https://@/x.git` and `http://:80/x.git` (git 2.53.0, re-run in this triage) fails at once with "URL rejected: No host part in the URL" and contacts nothing. The rule and the refused list are right, and the error leads no reader to a wrong action (it overstates the danger of two forms that are refused either way, and points nobody at relaxing the rule). Fix: reword the two sentences to say a url such as `https:///x.git` makes git read the first path part as the host and contact it, and git refuses the others; no code or test change. — `tools/repos-manifest/docs/spec.md:480`, `tools/repos-manifest/src/repos_manifest/manifest.py:387` (deferred: part 2 of #519 (fallback on) rewrites this section of the spec and design; a separate fix now costs a further fix, review and CI round for a wording correction that changes no behaviour; part 2 must correct both sentences)
+
+### False positives
+
+### Notes for the host
+- The PR body's `## Decision summary`, "Open, from round 3" paragraph, is stale: it calls the empty-host prefix open, which commit `85da8cc` closed (the url rule now refuses `https:///`, `https://@/`, `http://:80/`), and its ground "the built url fails loudly when fetched" was shown wrong in the Integrated Review at `35f93f9` (`https:///` makes git contact a host named after the repo). Its test counts (1118 tests, three rounds) also predate the fix round (full suite 2307 passed at `5e18053`). To update before the merge decision; not a code finding.
+- No GitHub reviews, conversation comments or inline comments on the PR; no hosted-reviewer check run. CI on `5e18053`: 10 check runs, all success (Lint, Validate Documentation, Validate Adapter Contract, repos-manifest tests on Python 3.10 and 3.14, each twice).
+- `sources` dropped the Local Review (Pre-Push) at `048d186` as stale; its one open finding was ruled on by the Integrated Review at `35f93f9` and fixed in `85da8cc`.
