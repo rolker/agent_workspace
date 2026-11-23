@@ -177,3 +177,11 @@ The Plan Review at cb1e933a said needs-work; its first finding (part 1 with fall
 To "Shall I continue #519 on that basis?" (part 1, fallback off, aimed at the field machine's server; the fork part with fallback on later; the development machine's ssh pushes handled by a git setting, not by the tool): "yes, continue 519, and use the combination setting".
 
 What this settles for the plan: part 1 stays fallback off and its first real use is a field machine that fetches every repo, whatever its published owner, from one prefix on a private server (for example git@gitcloud:field/<repo>.git), with no second copy of the manifest. Finding 1's objection does not apply to that case. The development machine's case is met outside the tool by git's own url rules, set on this machine the same day (pushInsteadOf for the public host, insteadOf for the one owner with a private repo); the tool's documents say so where they describe pushing over ssh. The plan is revised for the review's findings 2 to 8 and for this aim; part 2 (fallback on, a developer's forks) stays outlined.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-23 13:03 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-519/plan.md` at `ca8dc681`
+
+Revision. Part 1 (fallback off) now aims at a field machine fetching every repo from one private prefix such as git@gitcloud:field/, from the one published manifest; the development machine's https-fetch, ssh-push case is left to git's pushInsteadOf and insteadOf and documented beside fetch_from. Review findings 2 to 8 are answered and the mechanism decisions are listed for the owner's veto.
