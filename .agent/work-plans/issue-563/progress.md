@@ -62,3 +62,21 @@ issue: 563
 - [ ] Add to the issue's "What should be true" (or the plan) what happens with the `gh-issue N closed` line whose fact is true while the issue stays open: either a roadmap edit using another existing check kind, or state it as out of scope; today the bullet describes a defect with no stated fix.
 - [ ] Test against both the real #560 Direction text and a fixture set covering the edge cases above, and state which roadmap the checker was run on.
 - [ ] State in the plan what changes if the #560 branch is not on main at implementation time (see Dependencies).
+
+## Checkpoint
+**When**: 2026-11-23 14:12 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review's actions are directions for the plan and change no scope; the owner asked for this start: "as soon as practical, do Y2 and Y3")
+**After**: issue-actions
+**Decision**: proceed
+
+Proceed to planning. The owner's words this serves (2026-11-23): "the roadmap was done with an expected sequence, and any deviation from that sequence might trip up the tracking of actual progress."
+
+Instructions for the plan (host decisions, listed for the owner's veto):
+- One pull request, in two commit groups: the checker with its tests, then the skill text with the Direction row of docs/design.md.
+- Row format: a separate `path` row ahead of each path's lines, not a sixth field, so saved rows keep five fields.
+- The "Across the paths" table is a group of its own, reported under that name and never counted as behind. A path with no table (no design yet) says so and is not behind.
+- A Direction section with no Path paragraph (a project's roadmap, or the workspace's before the five-path section lands) is read as today: one group. The plan states this as the compatibility rule and tests it.
+- A `gh-issue N closed` line whose fact is true while the issue stays open is out of scope for the checker: the roadmap uses another existing check kind where one fits, else an empty cell. The plan says so.
+- Tests: fixtures for the path-attribution cases the review lists, plus one run against the real five-path Direction text (branch feature/issue-560 until it is on main); the plan says which roadmap each test reads.
+- The plan names every consequence the review lists (checker header grammar, the summary options and the run-record line, both test files, check_design_anchors.sh, sub-roadmap reading, skill steps 3, 5 and 8 and the closing question).
