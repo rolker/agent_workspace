@@ -1222,3 +1222,24 @@ Suites run (each on its own, from the worktree):
 The full pre-commit pass and the remaining suites are left to the host. The source manifest route and the bootstrap route were not touched.
 
 Not verified: the venv-remake step was not run (it would remove the main checkout's .venv); it was checked against the Makefile's setup-dev.done and repos-manifest.done rules only.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-23 11:58 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-503 at `c0233251`
+**Base**: origin/main
+**Depth**: Deep (reason: whole-diff classification as round 1: 11 files, about +1414/-133, the ros2_colcon adapter's build/test/validate and registration's gate; fix-round rule, not lowered)
+**Must-fix**: 1 | **Suggestions**: 4
+**Round**: 2 | **Ship**: recommended — round 2: 1 mechanical must-fix (prev 2), not rising; fix and ship rather than another full round
+
+Scope: part 4 only. The six round 1 findings and the python3 message are fixed as described; each fix was read against its test. Ran: test_ros2_colcon.sh at HEAD, "=== Results: 1512 passed, 0 failed, 0 skipped ===" (1 min 48 s); test_adapter.sh 248/0; validate_adapter.sh (all 13 verbs); test_register_project.sh 222/0; test_register_session_root.sh 72/0; pre-commit shellcheck on the four changed shell files: passed. In a throwaway detached worktree (removed), with only test_tool_validate enabled: the LC_ALL=C prefixes removed gives 2 failures (the wrong difference and "not in sorted order", with gnucomm), restored gives 66/0; with `locale` on PATH listing only C, C.utf8 and POSIX, the locale part prints "SKIPPED (locale part)" and the results line says "63 passed, 0 failed, 0 skipped". The tee construct, run alone: without pipefail rc is tee's (0 for a failing tool); with pipefail (the shim's `set -euo pipefail`) the tool's status comes through, 130 included, and the stub tests check this through the shim; stderr to /dev/full turns a tool exit 0 into rc 1; stderr closed gives rc 1 and the tool is killed by SIGPIPE at its first stderr write (before this change it ran to the end, rc 0). The rebuild step was read against the Makefile, not run: removing .venv and the two stamps makes install-repos-manifest rebuild setup-dev.done (python3 -m venv, requirements, pre-commit install) then reinstall the tool, so it is correct. The source manifest route and the bootstrap route: the only change in shared code is _rc_colcon, which now always runs `colcon "$@"` as those routes did; their tests pass unchanged. Cross-model: gemini and codex completed; codex's caller `--base-paths` override dropped (the caller's explicit choice), its "removed missing repo passes validate" dropped (the out-of-date warning names the sync); gemini's IFS, set -e, flag() and double "disagree" line findings dropped (speculative, or the outcome is already a failure). Claude adversarial: no must-fix, the PIPESTATUS suggestion below.
+
+### Findings
+- [ ] (must-fix) the locale part of test_tool_validate skips without being counted: where en_US.UTF-8 (or GNU comm) is missing it prints SKIPPED and the results line still says 0 skipped, the uncounted skip issue 539 removed; whether CI's ubuntu-latest has en_US.UTF-8 was not checked by the fix pass or here. Count it in the summary's skipped number (and remove the gnucomm link in the skip branch too) — `.agent/scripts/tests/test_ros2_colcon.sh:4838`
+- [ ] (suggestion) the selection build's status is the pipeline's: it depends on the caller's pipefail, a tee failure (TMPDIR full, stderr on /dev/full) turns a tool exit 0 into 1, and with stderr closed the tool is killed by SIGPIPE where it used to run to the end; take ${PIPESTATUS[0]} and keep the pipe drained if tee cannot write; the mktemp file also has no trap on interrupt — `.agent/project_types/ros2_colcon/adapter.sh:2126`
+- [ ] (suggestion) the venv rebuild step is correct against the Makefile, but it is the only adapter message that prints an `rm -rf` (the others say "remove it"), and it removes the .venv every worktree's pre-commit hook runs from; give it a Makefile target (it would also be testable) or name what to remove in words — `.agent/project_types/ros2_colcon/adapter.sh:1162`
+- [ ] (suggestion) the status reader takes a missing or null repos / not_in_manifest as an empty list even on an entry with no problem, so a malformed ok document passes as zero repos; require both lists when there is no problem — `.agent/project_types/ros2_colcon/adapter.sh:1098`
+- [ ] (suggestion) the selection NOTE's manual step sources the underlay but does not clear COLCON_PREFIX_PATH, AMENT_PREFIX_PATH and CMAKE_PREFIX_PATH as the adapter's own build does, so run from a shell with another workspace sourced it builds against that — `.agent/project_types/ros2_colcon/adapter.sh:2133`
