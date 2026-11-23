@@ -474,9 +474,10 @@ Status: `decided`
   is read from the tool's resolved files for one distro, chosen by the directory the call comes from
   (the dispatcher's `ACTIVE_PROJECT_FROM`), else the one distro resolved, else refused (`validate`
   then checks every distro); its `setup` and
-  `sync` run the tool's `sync`, `build` and `test` are the colcon loop over its layers, and `validate`
-  checks the last resolve and refuses a `role=`, `distro=` or manifest source recorded beside the
-  tool's. A `.repos-manifest/` the adapter cannot use is an error naming the way out with the tool's own
+  `sync` run the tool's `sync`, `build` runs the tool's `build` with the distro's environment sourced
+  first (part 4), `test` is the colcon loop over its layers given the resolved repos on disk, and
+  `validate` reads the tool's `status --json` (failing as its exit status does) and refuses a `role=`,
+  `distro=` or manifest source recorded beside the tool's. A `.repos-manifest/` the adapter cannot use is an error naming the way out with the tool's own
   commands, never another route. The other two (#436) are chosen by one fact, the settings file setting
   `source`. The bootstrap route is the `bootstrap.yaml` flow. On the manifest route the manifest, in the
   new format, is named by `source` (an absolute path, or a git repository with `source_ref` and,
@@ -1158,6 +1159,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-18 | Sessions and roots, Registry and adapters | `ros2_colcon` gains the tool route (issue 503 part 1B): a root holding the manifest tool's `.repos-manifest/` is read from its resolved files for the distro the calling directory chooses (the dispatcher's new `ACTIVE_PROJECT_FROM`), checked before the two routes of #436, with `setup`/`sync` running the tool's `sync`; the type bullet names the tool's resolved directory and the routes; the distro sentence names the tool route's rule; registration's "needs a git repository today" and the onboarding bullet's known gap are narrowed to a single-repository folder, as a root the tool set up registers outside git from the workspace or its own session. Registry and adapters grows by 9 lines and Sessions and roots by 1; the route's rules live in the `ros2_colcon/adapter.sh` header and its mechanics in `docs/manifest/design.md` | #503 | 1211 |
 | 2026-11-21 | Instruction layers | The skill count is recounted to 24 (`ls -d .claude/skills/*/`): the line said 22 while 23 existed, and `design-discussion` is added (a skill, no new mechanism) | #370 | 1213 |
 | 2026-11-21 | Documentation layers | The Decisions row adds the anchor issue's comments as the home of a design discussion's reasons (`/design-discussion` posts each as a signed comment): an entry in the issue's `progress.md` would derail a later `/run-issue` on that issue, which reads its next phase from those entries (owner decision 2026-11-21; workflow kinds sharing that machinery go to #544) | #370 | 1214 |
+| 2026-11-23 | Registry and adapters | The tool route's `build` runs the manifest tool's `build` with the distro's environment sourced first, `test` gives colcon the resolved repos on disk, and `validate` reads the tool's `status --json` (issue 503 part 4); the sentence that said `build` and `test` are the colcon loop and `validate` checks the last resolve is replaced. Registry and adapters grows by 1 line; the mapping from `status` to `validate` lives in `docs/manifest/design.md` | #503 | 1216 |
 
 ## Glossary
 

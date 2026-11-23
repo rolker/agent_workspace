@@ -708,6 +708,9 @@ if [ -n "$MR_PY" ]; then
     mkdir -p "$WS/.venv/bin"
     printf '#!/usr/bin/env bash\nPYTHONPATH=%q exec %q -m repos_manifest.cli "$@"\n' "$MR_SRC" "$MR_PY" > "$WS/.venv/bin/repos-manifest"
     chmod +x "$WS/.venv/bin/repos-manifest"
+    # python3 beside the tool, as in the venv make install-repos-manifest
+    # makes: the tool route's validate reads status's document with it.
+    ln -sf "$MR_PY" "$WS/.venv/bin/python3"
     MW="$SANDBOX/mwork/tau"
     mkdir -p "$MW"
     gitq init --quiet --bare -b main "$SANDBOX/mremote/tau.git"
@@ -1053,19 +1056,28 @@ fi
 
 # ------------------------------------- a root the manifest tool set up ---
 echo "TEST: a root the manifest tool set up, in no git repository (issue 503): type detected, the gate passes, no role= or distro="
-# Its resolved files are written by THIS checkout's resolver (MR_PY, found
-# above); each repo is a git repository at <root>/<distro>/<layer>/src.
+# Its config.yaml is the tool's shape (the manifest, the layout, the
+# distros: validate runs the real status, which reads it); its resolved
+# files are written by THIS checkout's resolver (MR_PY, found above); each
+# repo is a git clone of a local repository at <root>/<distro>/<layer>/src.
 if [ -n "$MR_PY" ]; then
     TS="$(mktemp -d -p "$SANDBOX")"
     TROOT="$TS/tsys"
+    for _n in pkg_u pkg_a; do
+        mkdir -p "$TS/remote/$_n"
+        gitq -C "$TS/remote/$_n" init --quiet -b main
+        echo "$_n" > "$TS/remote/$_n/README"
+        gitq -C "$TS/remote/$_n" add README
+        gitq -C "$TS/remote/$_n" commit --quiet -m first
+    done
     mkdir -p "$TROOT/.repos-manifest/resolved"
-    printf 'format: 1\ndistros: [fakefox]\nlayers: [core]\nrepositories:\n  pkg_u:\n    type: git\n    url: file:///nonexistent/pkg_u.git\n    version: main\n  pkg_a:\n    type: git\n    url: file:///nonexistent/pkg_a.git\n    version: main\n    layer: core\n' > "$TS/m.manifest.yaml"
+    printf 'format: 1\ndistros: [fakefox]\nlayers: [core]\nrepositories:\n  pkg_u:\n    type: git\n    url: file://%s\n    version: main\n  pkg_a:\n    type: git\n    url: file://%s\n    version: main\n    layer: core\n' \
+        "$TS/remote/pkg_u" "$TS/remote/pkg_a" > "$TS/m.manifest.yaml"
+    printf 'manifest: ../m.manifest.yaml\nlayout: distro-dirs\ndistros:\n  fakefox: {}\n' > "$TROOT/.repos-manifest/config.yaml"
     (cd "$TS" && PYTHONPATH="$MR_SRC" "$MR_PY" -m repos_manifest.cli resolve --manifest m.manifest.yaml \
         --distro fakefox --out "$TROOT/.repos-manifest/resolved/fakefox" >/dev/null)
-    for _d in fakefox/src/pkg_u fakefox/core/src/pkg_a; do
-        mkdir -p "$TROOT/$_d"
-        gitq -C "$TROOT/$_d" init --quiet
-    done
+    gitq clone --quiet "file://$TS/remote/pkg_u" "$TROOT/fakefox/src/pkg_u"
+    gitq clone --quiet "file://$TS/remote/pkg_a" "$TROOT/fakefox/core/src/pkg_a"
     check "precondition: the root is in no git repository" bash -c '! git -C "$1" rev-parse --git-dir >/dev/null 2>&1' _ "$TROOT"
     : > "$STUB_LOG"
     out="$(reg "$WS" "$TROOT")"; rc=$?
@@ -1098,12 +1110,13 @@ if [ -n "$MR_PY" ]; then
     echo "TEST: a root the manifest tool set up with two distros, in no git repository, registers from the workspace: validate covers both"
     T2="$TS/t2"
     mkdir -p "$T2/.repos-manifest/resolved"
-    printf 'format: 1\ndistros: [fakefox, fakefox2]\nlayers: [core]\nrepositories:\n  pkg_a:\n    type: git\n    url: file:///nonexistent/pkg_a.git\n    version: main\n    layer: core\n' > "$TS/m2.manifest.yaml"
+    printf 'format: 1\ndistros: [fakefox, fakefox2]\nlayers: [core]\nrepositories:\n  pkg_a:\n    type: git\n    url: file://%s\n    version: main\n    layer: core\n' \
+        "$TS/remote/pkg_a" > "$TS/m2.manifest.yaml"
+    printf 'manifest: ../m2.manifest.yaml\nlayout: distro-dirs\ndistros:\n  fakefox: {}\n  fakefox2: {}\n' > "$T2/.repos-manifest/config.yaml"
     for _d in fakefox fakefox2; do
         (cd "$TS" && PYTHONPATH="$MR_SRC" "$MR_PY" -m repos_manifest.cli resolve --manifest m2.manifest.yaml \
             --distro "$_d" --out "$T2/.repos-manifest/resolved/$_d" >/dev/null)
-        mkdir -p "$T2/$_d/core/src/pkg_a"
-        gitq -C "$T2/$_d/core/src/pkg_a" init --quiet
+        gitq clone --quiet "file://$TS/remote/pkg_a" "$T2/$_d/core/src/pkg_a"
     done
     out="$(reg "$WS" "$T2")"; rc=$?
     check "exit 0, STATUS=registered, its gate's adapter validate passed" \
@@ -1139,12 +1152,12 @@ if [ -n "$MR_PY" ]; then
         out="$(reg "$WS" "$TR")"; rc=$?
         check "nothing resolved: registration then passes" [ "$rc" -eq 0 -a "$(status_of "$out")" = registered ]
         out="$(reg "$WS" --remove treal)"
-        # A clone missing: validate's not-checked-out line at the gate.
+        # A clone missing: validate's missing line (from the tool's status) at the gate.
         rm -rf "$TR/fakefox/core/src/pkg_a"
         out="$(reg "$WS" "$TR")"; rc=$?
         check "a clone missing: refused and rolled back, no adapter verb named" \
-            bash -c '[ "$1" -eq 1 ] && [ "$2" = refused ] && ! grep -q "^treal " "$3" && [[ "$4" == *"not checked out"* && "$4" != *"--project treal sync"* ]]' _ "$rc" "$(status_of "$out")" "$WS/.agent/projects.local" "$out"
-        _step="$(grep "not checked out" <<< "$out" | grep -oE 'cd [^ ]+ && [^ ]+ sync( --distro [a-z0-9_]+)?' | head -n1 || true)"
+            bash -c '[ "$1" -eq 1 ] && [ "$2" = refused ] && ! grep -q "^treal " "$3" && [[ "$4" == *"fakefox/core/src/pkg_a missing:"* && "$4" != *"--project treal sync"* ]]' _ "$rc" "$(status_of "$out")" "$WS/.agent/projects.local" "$out"
+        _step="$(grep " missing: " <<< "$out" | grep -oE 'cd [^ ]+ && [^ ]+ sync( --distro [a-z0-9_]+)?' | head -n1 || true)"
         check "a clone missing: the step is the tool's sync for fakefox in the root" \
             [ "$_step" = "cd $TR && $WS/.venv/bin/repos-manifest sync --distro fakefox" ]
         (cd "$SANDBOX" && bash -c "$_step" >/dev/null 2>&1); rc=$?

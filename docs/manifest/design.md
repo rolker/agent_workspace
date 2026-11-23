@@ -169,21 +169,70 @@ The root need not be a git repository. The registry line holds its name, type an
   clones what is missing and updates a clean clone that is there by the rules in the tool's
   design (under "sync"); a clone with local work is left as it is and reported. When the layers changed, `sync` says that
   package worktrees made before keep their old environment script.
-- **`build` and `test`** are the colcon loops of the other routes, over the resolved layers,
-  with `--base-paths src`. `build` is interim until the tool's own `build`, and stops at the
-  first failing layer; a tree that does not build yet is built by hand, a layer at a time, with
-  `colcon build --symlink-install --base-paths src --continue-on-error` in
-  `<root>/<distro>/<layer>`. The tool's `<root>/<distro>/setup.bash` is its stub until its
-  `build` lands and returns an error, so the instance's environment is `adapter env`.
-- **`validate`** checks, for each distro it covers, that each layer's `.repos` file is there
-  and that every repo it lists is a directory at `<layer dir>/src/<key>`, passing over a
-  missing repo that `optional.txt` names. It fails when the registry line carries `role=` or
+- **`build`** runs the tool's build (#503 part 4): with the inherited prefix paths cleared
+  and `/opt/ros/<distro>/setup.bash` sourced first in the adapter's shell, it runs
+  `cd <root> && repos-manifest build --distro <distro> -- --symlink-install --cmake-args
+  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON <the caller's arguments>` and passes its output and exit
+  status through. The tool builds the layers in order, gives colcon the repos on disk as
+  `--base-paths`, keeps its record of what it built and writes `<root>/<distro>/setup.bash`.
+  The adapter's `build` takes no layer argument; one layer is built with the tool itself.
+  The caller's arguments reach every layer, so package selection works through the adapter
+  only as far as the tool allows it on every layer: the tool refuses `--packages-select` and
+  the like for a layer not built yet, and `--packages-up-to` (and the other selections colcon
+  must find in each layer) when the run builds two or more layers. When the tool refuses a run
+  so (the adapter recognizes those two refusals on the tool's stderr, which it keeps only when
+  the arguments hold an option the tool counts as selection: not `--packages-skip`,
+  `--packages-ignore`, their `-regex` forms or `--packages-skip-build-finished`), the
+  adapter says to build without selection first, or to run the tool's step with the distro's
+  environment sourced, the prefix paths the adapter's own build clears cleared first
+  (`unset COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH AMENT_CURRENT_PREFIX &&
+  source /opt/ros/<distro>/setup.bash && cd <root> && repos-manifest build --distro <distro>
+  <layer> -- ...`), since the step the tool itself names sources nothing and a shell with
+  another workspace sourced would build against it. The adapter does not check the resolved keys before a build (the tool reads the
+  resolved files itself), so a key with a directory in it builds; `env`, `test` and the other
+  verbs below still refuse it.
+- **`test`** stays the adapter's colcon loop over the resolved layers (the tool has no test
+  command), each layer's colcon given as `--base-paths` the `src/<key>` directories of the
+  repos its resolved `.repos` file lists that are on disk, as the tool's build gives them: a
+  clone left on disk after the role or the groups dropped it is not tested. It follows the
+  tool's build rule for what is not on disk: a listed repo that the resolved `optional.txt`
+  does not name fails the run before colcon runs, naming each such repo and the tool's `sync`;
+  an optional repo that is not there is left out; a layer with none of its repos on disk, every
+  one of them optional, is skipped with a line. A layer whose resolved `.repos` file is missing
+  fails the run before colcon runs, naming the file and the tool's `sync`, as the tool's
+  build refuses it; one that cannot be read fails the run before colcon runs too.
+- **`validate`** checks, for each distro it covers, the workspace's own records, then the
+  checkouts through the tool's `status`. It fails when the registry line carries `role=` or
   `distro=`, or the settings file `source`, `source_ref`, `source_path` or `bootstrap_url`:
   each is a second record beside the tool's. A leftover `configs/manifest` or
   `configs/project_bootstrap.url`, which this route does not read, is noted without failing.
-  Its success line, one per distro, says it checked the tool's last resolve and did not read
-  the manifest again; it does not call `repos-manifest status` yet (#503, the issue where the
-  adapter calls the tool's commands).
+  It fails when the last resolve the adapter's other verbs read cannot be read (each layer's
+  `.repos` file is there, and every key line is one the adapter reads). Then it runs
+  `cd <root> && repos-manifest status --distro <distro> --json`, which reads the manifest
+  from where the tool's `config.yaml` points, looks at each clone as it was last fetched and
+  fetches nothing, and reads the document with the tool's own Python (`python3` beside the
+  tool's executable). The exit status decides; the document says what to name:
+
+  | `status` says | `validate` says |
+  |---|---|
+  | a repo that is not optional is `missing` | a ❌ line with the tool's text and its `sync` step; a failure |
+  | a repo that is not optional is `not-a-directory`, `blocked-place`, `in-other-layer` or `unusable` (an emptied clone, one with no commit or no `origin`, a version not in the refs of its last fetch) | a ❌ line with the tool's text; a failure |
+  | an optional repo in one of those states | a ⚠️ line; no failure |
+  | `skipped` (an optional repo that is not there) | counted in the pass line |
+  | `different` (another version) or `left-alone` (a rebase in progress, a link, a sparse checkout, ...) | a ⚠️ line; no failure, as `status` exits 0 for them |
+  | local changes or unpushed commits | a `NOTE` line; no failure, as `status` exits 0 for them |
+  | a `not_in_manifest` path | a ⚠️ line; no failure |
+  | the distro's manifest cannot be read or resolved (its `problem`) | a ❌ line; a failure |
+  | no document, an exit status other than 0 and 1, a format other than 1, a distro entry with no `problem` and no `repos` or `not_in_manifest` list, a state the adapter does not know, or a document whose verdict and the exit status disagree | a ❌ line naming it; a failure, so a change in the tool's contract is seen |
+
+  The repos `status` names, by layer, are compared with the keys of the last resolve: a
+  difference (a manifest change the tool's `sync` has not resolved yet) is a warning naming
+  that `sync`, not a failure. The success line, one per distro, counts the manifest's repos
+  (as expected, with a warning, optional and skipped, which add up to the total), names a
+  `not_in_manifest` path and the out-of-date warning apart from those counts, and says the
+  clones were read as last fetched. Since `status` reads the manifest, `validate` now also
+  fails when the manifest cannot be read, or when a repo that is not optional was added to it
+  and not synced yet.
 - **`env`, `repos`, `repo_pin`, `worktree_repos` and `worktree_env`** read the same files and
   directories, so package worktrees work as on the other routes.
 - **A `.repos-manifest/` the adapter cannot use** is an error, never another route, so a root
@@ -203,14 +252,15 @@ The root need not be a git repository. The registry line holds its name, type an
   and `-`, bare or in the single quotes the tool writes around a key YAML would read as a
   number or a boolean (`'123'`, `'on'`). A key with a directory in it, such as
   `grp/repo`, which the tool allows, is one case: the adapter and `worktree_create.sh` do not
-  read it yet (a later part reads it).
+  read it yet (a later part reads it). Every verb that reads the resolved `.repos` files
+  refuses it; `build` alone does not, since the tool's build reads them itself.
 
 After a package pull request merges, `merge_pr.sh` fast-forwards the root's clone of that
 repo, when it is clean and on the pull request's base, past the commit the tool recorded for
 it in `state.yaml`. That is the move the tool's `sync` makes to a clean repo that is still
 on the manifest's version: the next `sync` finds the clone on the manifest's branch and records
 its commit, or fast-forwards it further. The tool's `status` treats such a clone as
-expected. The layer is then rebuilt by hand until the tool builds.
+expected. `adapter build` (the tool's build) then rebuilds the layer.
 
 ### Worktrees
 
@@ -311,8 +361,8 @@ Which route an instance is on is decided in this order, until the older routes a
 2. Otherwise `source` is set: today's manifest route, reading `configs/manifest-resolved`.
 3. Otherwise: the bootstrap route.
 
-Until the adapter calls `status` (#503, the issue where the adapter calls the tool's commands),
-the test is the folder being there, as built today. A folder the
+The test is the folder being there, as built today (`validate` calls `status` once the route
+is chosen, not to choose it). A folder the
 adapter or the tool cannot use, one whose record cannot be read included, is an error that
 names the next step, not a sign that the instance is on another route: falling through would
 send a root the tool set up to the bootstrap route's fetch. A `status` that reports a missing
@@ -337,8 +387,8 @@ become thin without it, and it is asked of the tool, not rebuilt in the adapter:
 - **A status a script can read.** The tool gives it now: `repos-manifest status --json`
   prints one document a script can read, which also gives the role and the distros the system
   directory was set up for, and `status` exits 1 when a repo the manifest calls for is missing,
-  not at its place or unusable. The adapter does not use it yet (#503, the issue where the
-  adapter calls the tool's commands).
+  not at its place or unusable. The adapter's `validate` reads it on the tool route (#503
+  part 4, under "The tool route").
 - **Protection against two runs at once.** The adapter locks its fetch and resolve. The
   tool's design has no lock.
 - **Time limits on fetches.** The adapter bounds its fetches, and the resolver bounds its

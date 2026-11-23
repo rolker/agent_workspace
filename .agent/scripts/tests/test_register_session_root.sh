@@ -318,14 +318,27 @@ for _py in ${_common:+"${_common%/.git}/.venv/bin/python3"} "$(command -v python
     fi
 done
 if [ -n "$MR_PY" ]; then
+    # The gate's validate runs the tool's status, from the workspace's
+    # .venv/bin/repos-manifest (this checkout's source) with python3 beside
+    # it, as make install-repos-manifest installs them; the root's
+    # config.yaml is the tool's shape, and its repo a clone of a local one.
+    mkdir -p "$WS/.venv/bin"
+    printf '#!/usr/bin/env bash\nPYTHONPATH=%q exec %q -m repos_manifest.cli "$@"\n' "$MR_SRC" "$MR_PY" > "$WS/.venv/bin/repos-manifest"
+    chmod +x "$WS/.venv/bin/repos-manifest"
+    ln -sf "$MR_PY" "$WS/.venv/bin/python3"
     TS="$SANDBOX/toolsys"
     TROOT="$TS/tsys"
+    mkdir -p "$TS/remote/pkg_a"
+    gitq -C "$TS/remote/pkg_a" init --quiet -b main
+    echo pkg_a > "$TS/remote/pkg_a/README"
+    gitq -C "$TS/remote/pkg_a" add README
+    gitq -C "$TS/remote/pkg_a" commit --quiet -m first
     mkdir -p "$TROOT/.repos-manifest/resolved"
-    printf 'format: 1\ndistros: [fakefox]\nlayers: [core]\nrepositories:\n  pkg_a:\n    type: git\n    url: file:///nonexistent/pkg_a.git\n    version: main\n    layer: core\n' > "$TS/m.manifest.yaml"
+    printf 'format: 1\ndistros: [fakefox]\nlayers: [core]\nrepositories:\n  pkg_a:\n    type: git\n    url: file://%s\n    version: main\n    layer: core\n' "$TS/remote/pkg_a" > "$TS/m.manifest.yaml"
+    printf 'manifest: ../m.manifest.yaml\nlayout: distro-dirs\ndistros:\n  fakefox: {}\n' > "$TROOT/.repos-manifest/config.yaml"
     (cd "$TS" && PYTHONPATH="$MR_SRC" "$MR_PY" -m repos_manifest.cli resolve --manifest m.manifest.yaml \
         --distro fakefox --out "$TROOT/.repos-manifest/resolved/fakefox" >/dev/null)
-    mkdir -p "$TROOT/fakefox/core/src/pkg_a"
-    gitq -C "$TROOT/fakefox/core/src/pkg_a" init --quiet
+    gitq clone --quiet "file://$TS/remote/pkg_a" "$TROOT/fakefox/core/src/pkg_a"
     check "precondition: the root is in no git repository" bash -c '! git -C "$1" rev-parse --git-dir >/dev/null 2>&1' _ "$TROOT"
     out="$(rsr "$TROOT")"; rc=$?
     check "the real call registers it: STATUS=registered, type ros2_colcon from .repos-manifest/" \
@@ -339,12 +352,12 @@ if [ -n "$MR_PY" ]; then
     echo "TEST: a root the manifest tool set up with two distros, in no git repository, registers from its own session"
     T2="$TS/t2"
     mkdir -p "$T2/.repos-manifest/resolved"
-    printf 'format: 1\ndistros: [fakefox, fakefox2]\nlayers: [core]\nrepositories:\n  pkg_a:\n    type: git\n    url: file:///nonexistent/pkg_a.git\n    version: main\n    layer: core\n' > "$TS/m2.manifest.yaml"
+    printf 'format: 1\ndistros: [fakefox, fakefox2]\nlayers: [core]\nrepositories:\n  pkg_a:\n    type: git\n    url: file://%s\n    version: main\n    layer: core\n' "$TS/remote/pkg_a" > "$TS/m2.manifest.yaml"
+    printf 'manifest: ../m2.manifest.yaml\nlayout: distro-dirs\ndistros:\n  fakefox: {}\n  fakefox2: {}\n' > "$T2/.repos-manifest/config.yaml"
     for _d in fakefox fakefox2; do
         (cd "$TS" && PYTHONPATH="$MR_SRC" "$MR_PY" -m repos_manifest.cli resolve --manifest m2.manifest.yaml \
             --distro "$_d" --out "$T2/.repos-manifest/resolved/$_d" >/dev/null)
-        mkdir -p "$T2/$_d/core/src/pkg_a"
-        gitq -C "$T2/$_d/core/src/pkg_a" init --quiet
+        gitq clone --quiet "file://$TS/remote/pkg_a" "$T2/$_d/core/src/pkg_a"
     done
     out="$(rsr "$T2")"; rc=$?
     check "the real call registers it: STATUS=registered, its gate's adapter validate passed" \
