@@ -215,3 +215,18 @@ All five earlier findings are addressed and the checkpoints are followed. Three 
 - [ ] Step 3: state the real route of a fallback `## Local Review` (non-approved goes to `address-findings` directly, approved to `triage-reviews`), or name the router change; say how the fallback entry relates to the PR-mode round count.
 - [ ] Step 2: skip the request when a fallback `## Local Review` exists, name the marker that identifies it, and tie the ~900 s wait to the request moment only.
 - [ ] Step 4 / Files to Change: make the `test_review_code_convergence.sh` (or equivalent) pin for the "cold read, cross-model only" handoff words definite.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 17:06 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (second plan review needs-work, three plan-text gaps, approach unchanged; second host revise at plan in a row, so the next plan answer is the owner's)
+**After**: plan
+**Decision**: revise
+
+The owner's direction for this drive (2026-11-23): "I've disabled automatic copilot reviews on all repos on github due to not having enough quota for more than a few days a month."
+
+Revise for the three findings of the second Plan Review. Host decisions (owner may veto):
+- Finding 1, routing: no router change. The plan states the real route: a fallback `## Local Review` that is approved goes to `triage-reviews`; any other verdict goes to `address-findings` and then the existing PR-mode re-review and triage path, as for any PR-mode Local Review. The fallback counting as a PR-mode round is accepted: it is itself the cross-model read, so a later round-3 convergence check without cross-model reviewers loses nothing the fallback did not already provide. State this in the plan.
+- Finding 2, once per PR: adopt the review's fix. Skip the request when GitHub shows a Copilot request, review or check-run, OR a fallback `## Local Review` is on the timeline; name the marker that identifies the fallback entry (its `**Depth**` reason, e.g. "cold read, cross-model only"); the ~900 s wait happens once, right after the request is made, never again on later rounds even while the request stays listed in `reviewRequests`.
+- Finding 3: add a definite case to `.agent/scripts/tests/test_review_code_convergence.sh` for the new handoff words and list it under Files to Change.
