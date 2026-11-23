@@ -160,7 +160,7 @@ def _plan(system: Path, config: Config, distros: Sequence[Optional[str]]):
     """Each distro resolved in memory, as `sync` resolves it; a manifest that cannot be read
     is reported for every distro."""
     try:
-        return sync.resolve_all(system, config, distros)
+        return sync.resolve_all(system, config, distros, changes=False)
     except ManifestError as exc:
         return [sync.Reported(distro, str(exc)) for distro in distros]
 

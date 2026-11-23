@@ -739,12 +739,14 @@ def resolve_for(manifest: Manifest, config: Config, distro: Optional[str], named
 
 
 def resolve_all(
-    system: Path, config: Config, distros: Sequence[Optional[str]]
+    system: Path, config: Config, distros: Sequence[Optional[str]], changes: bool = True
 ) -> List[Union[Planned, Reported]]:
     """Phase one: read the manifest, then resolve each distro and build its resolved files, in
     memory. A manifest that cannot be read ends the run with nothing changed; a distro that
     does not resolve, or whose files cannot be written out, is reported, and nothing of it is
-    changed, while the others go on."""
+    changed, while the others go on. `changes` is false for `status`, which changes nothing:
+    a distro `fetch_from` refuses is then reported as refused, without `sync`'s words about
+    what it left unchanged."""
     try:
         manifest = read_manifest(config.manifest, system)
     except ManifestError as exc:
@@ -769,7 +771,12 @@ def resolve_all(
         try:
             resolved = resolve_for(manifest, config, distro, fetch_from_named(system))
         except fetch_from.FetchFromError as exc:
-            plan.append(Reported(distro, f"{named}: nothing of it has been changed: {exc}"))
+            said = (
+                "nothing of it has been changed"
+                if changes
+                else "fetch_from refuses it, so status checks none of its repos"
+            )
+            plan.append(Reported(distro, f"{named}: {said}: {exc}"))
             continue
         except ManifestError as exc:
             plan.append(

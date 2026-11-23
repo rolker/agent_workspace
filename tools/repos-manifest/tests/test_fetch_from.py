@@ -405,7 +405,11 @@ def test_the_same_name_refusal_in_a_system_is_reported_by_sync_and_status(vcs, t
         k: v for k, v in before.items() if "build-" not in k
     }
     assert run(system, "status") == 1
-    assert "repos a and b are both named tools" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "repos a and b are both named tools" in out
+    # `status` changes nothing ever, so it does not say what it left unchanged.
+    assert "fetch_from refuses it, so status checks none of its repos" in out
+    assert "nothing of it has been changed" not in out
     assert run(system, "show") == 1
     assert "repos a and b are both named tools" in capsys.readouterr().err
 
