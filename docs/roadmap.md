@@ -8,94 +8,38 @@ and keep track of what's relevant while not needing to micromanage."
 
 ## Direction
 
-What must be true for the workspace's current acceptance case, each line with
-the check that says whether it is true today, and what was set aside on
-purpose or is kept in view until its issue closes. The sit-rep (`/sitrep`) reads this section through
+Where the workspace is going: five paths, each a lasting direction, with the
+lines that must be true on each, the check that says whether a line is true
+today, and what was set aside on purpose or is kept in view until its issue
+closes. The sit-rep (`/sitrep`) reads this section through
 `.agent/scripts/sitrep_checks.sh` and runs every check each time; this
 section holds no status and no dates, and results stay on the machine that
 ran them.
+
+**Paths.** Five paths run in parallel. In the owner's words (2026-11-10):
+"We can do stuff in parallel", and (2026-11-23) "having paths move
+independently so I can push one more as needed". When he asks for a sit-rep,
+he decides which to focus on. The order of work agreed on 2026-11-23: first
+finish what the design in [`docs/design.md`](design.md) already decided or
+proposed and did not build, which the lines below name; try a lighter level
+by hand before building one; and keep the parts that have no design yet as
+notes, listed as "Design later" in the deferral table.
+
+**Path 1, ROS 2 projects.** In the owner's words (2026-11-23): "supporting a
+ROS2 project like project11". The path's test is the acceptance case below.
+The same test shows whether this workspace can replace the old ROS workspace
+(`ros2_agent_workspace`), and it drives the manifest format; retiring the old
+workspace belongs to this path. The manifest tool and the workspace's
+manifest support have roadmaps of their own, in the pointer table at the end
+of this section.
 
 **Acceptance case.** Project11 is developed on a second machine against
 ROS 2 Rolling through this workspace. In the owner's words (2026-11-10):
 "I also want to move project11 to this workspace ... test on pickerel, the
 new desktop machine I have, and set it up to develop project11 against
-ROS2 rolling." "It got a fresh OS install with 26.04 and will
-have ROS installed as well as Claude Code so agents can run locally on
-pickerel ... just assume that will be the state the workspace can expect
-when we are ready to clone it there." It is done when the simulator works
-in Rolling: "a working simulator in Rolling" (2026-09-21).
-
-**Paths.** Three paths run in parallel. In the owner's words (2026-11-10):
-"We can do stuff in parallel", and "let's not wait on other stuff" for
-project11. When he asks for a sit-rep, he decides which to focus on.
-
-**Path 1, project11 on a second machine.** In the owner's words
-(2026-11-10): "I also want to move project11 to this workspace". Path 1
-work is an issue named in a Direction line below (in the line itself or
-its check). Work in a project11 package repository that no line names is
-not listed in this workspace's sit-rep.
-
-**Path 2, the workspace reflects the goals.** Implementing the missing
-pieces to make this workspace reflect the goals we set. Path 2 work is
-any other work that serves a goal in the README, other than Path 3 work.
-In the owner's words (2026-11-10):
-"the orchestrator skill which we are trialing and the use of the
-workspace for the agents I run in ~ as my overall work managers", and
-"follow up on the findings during the gz4d tests and Path 2 mentioned
-earlier to make sure the work we put it to design the workspace is fully
-implemented." The follow-ups he asked not to lose are the "Follow-up" rows
-of the deferral table: small tooling fixes (#323), the fixes
-from the first GeoZui4D onboarding run (#415), the loop defects seen on the
-GeoZui4D drives (#428) and the orchestrator skill's first updates from the
-dogfooding log (#431).
-Also under this path: audit trials, the instruction-file trim, the backlog
-sweep, the orchestrator trial, and his "overall work managers", whose
-design waits on the orchestrator design session deferral (#398).
-
-**Path 3, less waiting for the same care.** In the owner's words
-(2026-11-13): "We have a lot of safeguards to make sure we don't produce
-slop, but I fear we may be over cautious." and "We need to re-think the
-workflow to not depend on github and to be efficient with how we run tests
-and ci." Path 3 work removes a wait or a review round that does not find
-problems, and keeps the steps that do.
-
-**Format.** `sitrep_checks.sh` has the full grammar in its header.
-
-- Three tables, picked by their header: `| Line | Check |`,
-  `| Deferral | Revisit check |` and `| Sub-roadmap | Root |`. Any other
-  table here is ignored.
-- A `Sub-roadmap | Root` row points at the roadmap of a part with goals,
-  design and roadmap of its own (ADR-0022): the sub-roadmap file and the
-  directory its checks' paths are relative to, both relative to this
-  repository's root (an empty Root is `.`). The sit-rep follows each
-  pointer one level, reports each part's next step by the sub-roadmap's
-  path, and keeps a part's lines out of this roadmap's counts; a broken
-  pointer is reported, and a pointer inside a sub-roadmap is listed as not
-  followed. A prose link to a part's roadmap is for the reader; the table
-  row is what the sit-rep reads. A part's design is cited by its path,
-  `<path>/design.md#<section>`. A Markdown link resolves from the file
-  holding it; a citation in backticks or prose resolves from that file's
-  directory when the file is there, else from the repository root, so in
-  this file `manifest/design.md#<section>` names `docs/manifest/` either
-  way and `docs/design.md#<section>` the root's design. From a file whose
-  directory has a `docs/design.md` of its own, such as a part's
-  `tools/<t>/ROADMAP.md`, `docs/design.md#<section>` names that part's
-  design; `/docs/design.md#<section>` names the root's from any file.
-- A check starts with its kind: `file-exists <path>`,
-  `file-contains <path> <text>`, `adr-status <path> <word>` (the first line
-  under the file's `## Status` heading starts with that word),
-  `gh-issue <N> <open|closed>` (or
-  `gh-issue <owner/repo>#<N> <state>`), or `script` followed by exactly one of
-  `adapter --project <name> validate`, `user_tier_install.sh --check`,
-  `user_tier_install.sh --check --require`, `check_design_anchors.sh`. Paths
-  are relative to the repository root. Several checks in one cell are joined
-  with ` ; `. An empty cell is reported as `unchecked`.
-- A check cell is never just an issue number, and deferrals are never
-  checklist items: `update_roadmap.sh` marks both done when that issue
-  merges. Put issue numbers in the prose instead, written `(#N)`.
-- A deferral's check says when to look at it again, or, for one kept in
-  view, that its issue is still open; while the check is true the sit-rep
-  lists the deferral as due.
+ROS2 rolling." It is done when the simulator works in Rolling: "a working
+simulator in Rolling" (2026-09-21). It is the test of Path 1, not the
+direction of the whole workspace.
 
 | Line | Check |
 |------|-------|
@@ -104,19 +48,94 @@ problems, and keeps the steps that do.
 | The Rolling instance builds on the second machine, and a `/run-issue` run on a project11 package issue, started at the project root there, reaches the merge checkpoint (#433) | `gh-issue 433 closed` |
 | The simulator comes up from the Rolling manifest and a basic mission runs (rolker/unh_marine_autonomy#396) | `gh-issue rolker/unh_marine_autonomy#396 closed` |
 
+**Path 2, modular workflows.** In the owner's words (2026-11-23): "making the
+workflows modular to support various task types, not just coding issues".
+Three things a project or a piece of work can choose: the kind of work, how
+much checking it gets, and whether its records need a hosting service's
+issues and pull requests (#544). A lighter level keeps the organisation (a
+thread per piece of work, a branch per thread, the merge back) and drops
+checks; the default stays the full loop, and only the user lowers it. Field
+mode working from this workspace is the dated need: spring 2027. Kinds of
+work beyond coding issues have no design yet.
+
+| Line | Check |
+|------|-------|
+| A project chooses where its records live, and a session finds them through one lookup (#393) | `gh-issue 393 closed` |
+| The records of a design discussion do not derail the issue loop on the same issue | |
+| A lighter level is tried by hand on a low-stakes project, and what it must keep is written down | |
+| Field mode works from this workspace: work goes in with its review owed, against a remote that is not GitHub (#208, #209) | `gh-issue 208 closed ; gh-issue 209 closed` |
+
+**Path 3, less waiting for the same care.** In the owner's words
+(2026-11-13): "We have a lot of safeguards to make sure we don't produce
+slop, but I fear we may be over cautious." and "We need to re-think the
+workflow to not depend on github and to be efficient with how we run tests
+and ci." Path 3 work removes a wait or a review round that does not find
+problems, and keeps the steps that do. The wait in view (2026-11-23): "I do
+see a lot of merge once CI is green statuses while agents are working".
+
+| Line | Check |
+|------|-------|
+| A merge does not wait on CI that the change cannot affect (#550) | `gh-issue 550 closed` |
+| A review round that raises only suggestions goes to the merge question, not to another round | |
+| Defects found after a merge are counted, so it is known what a lighter level or a removed step costs | |
+
+**Path 4, kinds of projects and knowledge.** In the owner's words
+(2026-11-23): "supporting various project types that vary in scale and
+purposes in a modular fashion". A project type says how a project is
+fetched, built and tested. Knowledge is separate: what the work is about,
+organised, in his words, "in a way that is context efficient, yet accessible
+to project agents when needed", in three tiers: general knowledge for all
+agents, deeper topics that some agents get, and a project's own knowledge. A
+topic can serve projects of different kinds, so ROS 2 knowledge (#440) is a
+topic, not a part of the ROS project type. Knowledge has no design yet; a
+topic is built only after a small test with and without it shows it helps.
+
+| Line | Check |
+|------|-------|
+| A project says where it keeps its goals, design and roadmap (#551) | `gh-issue 551 closed` |
+| The design says how one project lives on two machines | |
+| The workspace is a registered project of its own (#295) | `gh-issue 295 closed` |
+
+**Path 5, top-level work organisation.** In the owner's words (2026-11-23):
+"support ~ as a sort of project representing my top level work
+organization". The home level holds work that fits no project and gives "a
+glimpse of what other agents are working on to keep a global big picture".
+It reads where the project sessions stand and asks one at his request; it
+does not direct them, and he keeps working with each project's agent
+directly. It has no design yet.
+
+**Across the paths.** The sit-rep reports each path on its own, with its
+lines in no fixed order, and a check tests the fact a line states where a
+fact can be checked. Until that is built, the sit-rep reads the tables above
+as one list and names the first line not yet true as the next step.
+
+| Line | Check |
+|------|-------|
+| The sit-rep reports each path on its own, and its marks for work in flight follow the paths as written here | |
+
+**Format.** `sitrep_checks.sh` has the full grammar in its header.
+
+- Three tables, picked by their header: `
+- A path's lines sit in a `| Line | Check |` table of their own under the
+  path's paragraph. A part still to be designed is a deferral row with an
+  empty check, so it is listed and never reported as due.
+
 | Deferral | Revisit check |
 |----------|---------------|
 | Follow-up: small tooling fixes (#323) | `gh-issue 323 open` |
 | Follow-up: fixes from the first GeoZui4D onboarding run (#415) | `gh-issue 415 open` |
 | Follow-up: loop defects seen on the GeoZui4D drives (#428) | `gh-issue 428 open` |
 | Follow-up: the orchestrator skill's first updates from the dogfooding log (#431) | `gh-issue 431 open` |
-| Audit trials (escape-rate count, review-round rule) | `gh-issue 429 closed` |
-| Instruction-file trim (#338), the backlog sweep, the workspace as a registered project (#295) | `gh-issue 430 closed` |
-| The orchestrator design session with the design for the home-directory work managers (#398); the fork cutover (#260 to #262) | `gh-issue rolker/unh_marine_autonomy#396 closed` |
+| Instruction-file trim (#338), the backlog sweep | `gh-issue 430 closed` |
+| The fork cutover (#260 to #262) | `gh-issue rolker/unh_marine_autonomy#396 closed` |
+| Design later: the home level (Path 5), with the orchestrator design session (#398) | `gh-issue rolker/unh_marine_autonomy#396 closed` |
+| Design later: kinds of work beyond coding issues (Path 2) | |
+| Design later: knowledge as a part of its own, in three tiers (Path 4) | |
 
 The parts with a roadmap of their own (ADR-0022): the manifest tool,
 whose checks are relative to its own directory, and the workspace's
-manifest support, whose checks are relative to this root.
+manifest support, whose checks are relative to this root. Both belong to
+Path 1.
 
 | Sub-roadmap | Root |
 |-------------|------|
