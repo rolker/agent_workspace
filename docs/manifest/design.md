@@ -328,8 +328,9 @@ result as an agent going through the adapter.
 
 ### What the tool has to give
 
-Some of what the adapter gives today is not in the tool's design yet. The adapter cannot
-become thin without it, and it is asked of the tool, not rebuilt in the adapter:
+What the adapter needs from the tool is asked of the tool, not rebuilt in the adapter. The
+status it reads is given now. The rest is what the removed manifest route gave and the tool's
+design does not give yet, so a root on the tool route goes without it until the tool does:
 
 - **A status a script can read.** The tool gives it now: `repos-manifest status --json`
   prints one document a script can read, which also gives the role and the distros the system
