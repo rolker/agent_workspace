@@ -333,3 +333,25 @@ Suites run (each on its own, after the last change):
 - `test_design_anchors.sh`: `test_design_anchors: 82 passed, 0 failed`
 - `run_script_tests.sh -j 4 --files <the 6 changed files>`: `run_script_tests: all 57 suites passed in 349s`
 - The full pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 14:29 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a5a07de4e76c3aa52, resume 2 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-585 at `a4c3cea7`
+**Base**: origin/main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — no must-fix findings
+
+Cross-model: skipped (round-3 convergence check, per handoff). Scope: the round 2 finding and the fix diff 41e5965b..a4c3cea7.
+
+Round 2 finding closed: every git call in `wt_main_root` runs through `_wt_git` (the four variables unset, as `_project_document_git` does) and the two registry calls in a subshell with them unset; the caller's `GIT_DIR` is unchanged on return (tested). `worktree_create.sh`, `worktree_list.sh` and `worktree_remove.sh` unset the four before their root line; no git call precedes it in any of the three (checked), so every later git call, the sourced helpers' and the adapter's included, acts on the directory it names. Right for a git hook: a hook's `GIT_DIR` names the hook's repository, and these scripts act on the workspace found from their location; a commit hook's `GIT_INDEX_FILE` reaching `git worktree add` would be worse than ignored. No caller in the repository sets one of the four for these scripts (grep; the two suites that set one run other tools). `worktree_enter.sh` left alone is safe: it is sourced, so an `unset` would change the caller's shell; its root comes from the helper, and its own git calls only read. Tests: with `GIT_DIR` exported to the main checkout's git dir and to an unrelated repository's, the copy makes, finds, lists and removes in the main checkout only, the unrelated repository's refs and worktrees are unchanged, and remove plain and `--force` of the nested path's issue exits non-zero with the real worktree there kept (folder, branch, git's entry). Design Table 1 `worktree_list.sh` 182 checked; design.md 1289 lines, as the row says.
+
+Run this round: shellcheck --severity=warning on the four changed scripts: clean; `test_worktree_main_root.sh` 245 passed, 0 failed; `test_worktree_remove.sh` 138 passed, 0 failed; `test_worktree_create.sh` PASS 112, FAIL 0.
+
+### Findings
+- [ ] No issues found. LGTM.
