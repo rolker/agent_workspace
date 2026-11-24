@@ -1398,3 +1398,26 @@ This answer starts part 2b-1: a manifest in a git repo, for `init` and `sync`, w
 Also in this part, on the owner's answer of 2026-11-24 at the merge of pull request 603 ("Merge, F1 goes into 498 (Recommended)"): the module docstring of `cli.py`, printed by `--help`, says every command reads a manifest; it is reworded to "Every command that reads a manifest ...", as the README and the design already say, since `build` works from the saved resolution.
 
 Host decisions on the plan's open questions, each as the review recommends and listed for the owner's veto: `status` reads a manifest recorded in a git repo as `sync` does, so it makes a network read for that form; git's error text is printed, masked like the tool's other URL output, with the "a branch or tag is meant" hint only when git says the ref was not found; the read is limited to 60 seconds when there is no terminal and to 1 MiB, as constants written in the design; `status --json` gives the manifest as an object for the git form and a string otherwise; a redirect is followed only within the URL's own scheme.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 14:15 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-498 at `cf54903a`
+
+Part 2b-1 only: a manifest in a git repo, for `init` and `sync`, with `status` and `show` (no argument) reading the recorded location afresh. Parts 2b-2 and 2b-3 are not built.
+
+- `58befa75`: `cli.py`'s docstring (printed by `--help`) says "Every command that reads a manifest ...", on the owner's decision at the merge of pull request 603.
+- `3f041a5a`: the reader. New `fetch.py` (bare shallow clone in `mkdtemp(prefix="repos-manifest-")`, removed in a `finally`; `--literal-pathspecs ls-tree` for exactly the path, link/submodule/directory refused by name, over 1 MiB refused before `cat-file blob`; `GIT_ALLOW_PROTOCOL` from the url's scheme; no terminal: own session, `GIT_TERMINAL_PROMPT=0`, 60 s for the whole read, then `killpg(SIGKILL)` and `wait`, the same on a stop signal; with a terminal: same group, no limit, end by pid; `heads/`/`tags/` checked against the clone's refs; the branch-or-tag hint only on git's C-locale "Remote branch ... not found"). New `location.py` (`GitLocation`, `check_git_location`, the one check through the manifest checker). `require_git` moved to new `gitenv.py`; `Refusal` moved beside `ManifestError` (re-exported from `system.py`). A git-read manifest with `base` is refused.
+- `37fbae57`: `init --manifest-path/--manifest-ref` (each once), the design's refusal row (a local path, absolute included, with either option; `--manifest-ref` without `--manifest-path`), vcs and git checked before the read; `config.yaml`'s mapping written and read by the same check; distro refusals name `--manifest-ref` for the git form.
+- `632575a6`: `sync`, `status`, `show` read it through `read_recorded_manifest`; `status` text and `--json` (object for the git form); masked label in messages and the resolved files' head comment.
+- `7989b1e6`: `fetch_from` applied to the manifest's own repo in `init` and every read of the recorded location.
+- `f8732974`: the adapter's URL line in `_rc_refuse_removed_source` gives the git-form `init` command, with a sentence for a 40-hex `source_ref`; suite assertions updated.
+- `cf54903a`: tool design, spec, README, tool roadmap check, `docs/manifest/design.md`, root `docs/design.md` and its change-log row (1286 lines); plan's open question 8 dropped, 7 marked settled. No line added to `docs/manifest/roadmap.md`.
+
+Suites run (worktree source on `PYTHONPATH`, the main checkout's venv):
+- tools/repos-manifest pytest, whole suite in two foreground halves (one run would pass the 10-minute tool limit): files 1-18 `1275 passed in 419.04s`; files 19-33 `837 passed in 310.76s`; nothing skipped (`-rs` listed none).
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: `=== Results: 1207 passed, 0 failed, 0 skipped ===`
+- `bash .agent/scripts/tests/test_design_anchors.sh`: `test_design_anchors: 82 passed, 0 failed`
+
+The full pre-commit pass over the branch was left to the host (each commit ran its hooks with `SKIP=validate-script-tests`).
