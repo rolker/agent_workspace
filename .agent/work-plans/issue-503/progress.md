@@ -1803,3 +1803,18 @@ The cold read's must-fix is fixed; I checked it in the code, not only in the Imp
 - [ ] (suggestion, Local Review @ `93975f8`) A repeated --distro or --role takes the last value in registration while `adapter setup` refuses duplicates; refuse duplicates in manifest mode — `.agent/scripts/register_project.sh:243`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 15:33 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (not a review finding: main moved under the pull request, which makes one of its messages false and gives it merge conflicts; /orchestrator lets the host answer address at findings)
+**After**: findings
+**Decision**: address
+
+Pull request 611 (issue 498 part 2b-1: the manifest tool reads a manifest from a file in a git repo) merged into main on 2026-11-24, after this pull request's reviews. Two things follow for pull request 610, and one fix pass handles both before the merge question is asked:
+
+- A trial merge of origin/main into this branch conflicts in `docs/design.md` and `docs/manifest/design.md` (both pull requests edited the same sections and each added a change-log row). Main is merged in and the conflicts resolved, keeping what both say.
+- This part refuses a manifest given as a URL or a file in a git repo with a message that says the manifest tool reads a manifest from the local disk only and that issue 498 will add the rest. That is now false: the tool reads the git form. The refusal stays (registration still takes a local file only in this part; handing the git form through is the small later change the plan names), but its message and the documents that repeat it say what is true now and what to do: set the root up with the tool's `init <repo url> --manifest-path <file>` and register it without `--manifest`.
+
+The ten suggestions of the Integrated Review at d092c02b stay open for the one follow-up issue; this pass does not touch them.
