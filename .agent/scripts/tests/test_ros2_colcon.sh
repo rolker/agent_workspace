@@ -2804,6 +2804,20 @@ test_source_without_tool_root_refused() {
     assert_contains "URL source without source_path: the file is manifest.yaml" \
         "give init the file manifest.yaml inside the clone" "$out"
     printf 'source=%s\n' "$sb/m.yaml" > "$sb/.agent/projects.d/tiered"
+    # The registry line's distro and role go into the init command, and
+    # the unset names them as fields to remove; without them, placeholders
+    # (the runs above) and no fields named.
+    assert_not_contains "no fields on the line: none named to remove" "from its line in .agent/projects.local" "$out"
+    sed -i 's|^tiered ros2_colcon projects/tiered$|tiered ros2_colcon projects/tiered distro=fakefox role=sim|' "$sb/.agent/projects.local"
+    rc=0; out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
+    assert_eq "distro and role on the line, setup: exit 1" "1" "$rc"
+    assert_contains "the line's distro and role in the init command" "init <manifest> --distro-dirs --distro fakefox --role sim;" "$out"
+    assert_contains "the line's fields named to remove" "unset tiered source source_ref source_path, and role= and distro= from its line in .agent/projects.local" "$out"
+    sed -i 's|^tiered ros2_colcon projects/tiered distro=fakefox role=sim$|tiered ros2_colcon projects/tiered distro=fakefox|' "$sb/.agent/projects.local"
+    out="$(run_adapter "$sb" setup 2>&1)" || true
+    assert_contains "distro only: the distro, and a placeholder role" "init <manifest> --distro-dirs --distro fakefox [--role <role>];" "$out"
+    assert_contains "distro only: distro= named to remove" "source_path, and distro= from its line" "$out"
+    sed -i 's|^tiered ros2_colcon projects/tiered distro=fakefox$|tiered ros2_colcon projects/tiered|' "$sb/.agent/projects.local"
     assert_eq "nothing fetched: curl not run" "false" "$([ -e "$sb/curl.log" ] && echo true || echo false)"
     assert_eq "fresh root: no configs/ made" "false" "$([ -e "$fresh/configs" ] && echo true || echo false)"
     # Verbs that never read the manifest are not refused.

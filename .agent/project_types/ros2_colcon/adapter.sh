@@ -622,18 +622,28 @@ _rc_route() {
 # sync, before anything is fetched. On the tool route the keys are
 # validate's to name (_rc_tool_validate: a second record).
 _rc_refuse_removed_source() {
-    local name root
+    local name root init line=""
     [ -n "${ACTIVE_PROJECT_SOURCE:-}" ] || return 0
     [ "$(_rc_route)" = tool ] && return 0
     name="$(_rc_name)"
     root="$(_rc_root)" || return 1
+    # The registry line's distro and role, when it has them, else
+    # placeholders; the line's fields are then a second record to remove.
+    init="$(_rc_resolver_bin) init <manifest> --distro-dirs --distro ${ACTIVE_PROJECT_DISTRO:-<distro>}"
+    if [ -n "${ACTIVE_PROJECT_ROLE:-}" ]; then
+        init="$init --role $ACTIVE_PROJECT_ROLE"
+    else
+        init="$init [--role <role>]"
+    fi
+    [ -n "${ACTIVE_PROJECT_ROLE:-}" ] && line="role="
+    [ -n "${ACTIVE_PROJECT_DISTRO:-}" ] && line="${line:+$line and }distro="
     echo "ERROR: project '$name' sets source in ${ACTIVE_PROJECT_FILE:-its settings file}, and $root holds no .repos-manifest/: source no longer selects a route (the route it selected is removed; a manifest in the new format is read only from a root the manifest tool set up)" >&2
-    echo "Set the root up with the manifest tool: in $root, run $(_rc_resolver_bin) init <manifest> --distro-dirs --distro <distro> [--role <role>]; the registered root then takes the tool route" >&2
+    echo "Set the root up with the manifest tool: in $root, run $init; the registered root then takes the tool route" >&2
     echo "The manifest must list its distros (a distros: key): init --distro-dirs refuses one that does not, and a root set up without --distro-dirs is refused by the adapter" >&2
     if [[ "$ACTIVE_PROJECT_SOURCE" =~ ^(https?|file):// ]]; then
         echo "init reads a file on this machine only: clone $ACTIVE_PROJECT_SOURCE at ${ACTIVE_PROJECT_SOURCE_REF:-<source_ref>} and give init the file ${ACTIVE_PROJECT_SOURCE_PATH:-manifest.yaml} inside the clone" >&2
     fi
-    echo "Then remove the old keys: .agent/scripts/project_setting.sh unset $name source source_ref source_path (and role= and distro= from its line in .agent/projects.local, if set)" >&2
+    echo "Then remove the old keys: .agent/scripts/project_setting.sh unset $name source source_ref source_path${line:+, and $line from its line in .agent/projects.local}" >&2
     return 1
 }
 
