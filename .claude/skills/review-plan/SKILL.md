@@ -418,13 +418,19 @@ The report above is this skill's product; this step records it and must
 never turn a finished review into a failed invocation. Append the report
 as the entry, through the shared persistence call with `--soft`. The block
 asks `issue_repo.sh` first and writes nothing for an issue that is not
-this checkout's (step 0 has already stopped such a review).:
+this checkout's (step 0 has already stopped such a review). The issue
+title goes in through a quoted heredoc, so a backtick or `$` in it is
+never run or expanded:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 "$WS_ROOT/.agent/scripts/issue_repo.sh" "<ref>" >/dev/null; _rc=$?; case "$_rc" in 0|4|5) ;; *) echo "issue_repo.sh exit $_rc: this block reads and writes no records; see the Repository by exit code table"; exit "$_rc" ;; esac
+ISSUE_TITLE=$(cat <<'TITLE_EOF'
+<issue title>
+TITLE_EOF
+)
 $WS_ROOT/.agent/scripts/review_progress.sh persist --issue "<issue>" \
-    --branch "<plan's branch>" --title "<issue title>" --strict --soft <<'ENTRY'
+    --branch "<plan's branch>" --title "$ISSUE_TITLE" --strict --soft <<'ENTRY'
 ## Plan Review
 ...the report exactly as produced in step 5 (it already carries
    **Status** / **When** / **By** / **Verdict** and the **Plan** field)...

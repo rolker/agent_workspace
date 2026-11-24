@@ -302,7 +302,8 @@ the issue's worktree still succeeds and just prints the notice.
 
 The block asks `issue_repo.sh` again first: the entry is written only for
 this checkout's issue (exit 0, or 4 and 5 for a bare number), and on any
-other exit the block writes nothing.
+other exit the block writes nothing. The issue title goes in through a
+quoted heredoc, so a backtick or `$` in it is never run or expanded.
 
 When step 7 posted nothing (exit 4 or 5 in step 1), there is no comment:
 the entry then holds the full review text the comment would have carried,
@@ -314,8 +315,12 @@ text it needs instead of the review (step 1).
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 "$WS_ROOT/.agent/scripts/issue_repo.sh" "<ref>" >/dev/null; _rc=$?; case "$_rc" in 0|4|5) ;; *) echo "issue_repo.sh exit $_rc: this block reads and writes no records; see the Repository by exit code table"; exit "$_rc" ;; esac
+ISSUE_TITLE=$(cat <<'TITLE_EOF'
+<issue title>
+TITLE_EOF
+)
 $WS_ROOT/.agent/scripts/review_progress.sh persist --issue "<N>" \
-    --branch "$(git branch --show-current)" --title "<issue title>" \
+    --branch "$(git branch --show-current)" --title "$ISSUE_TITLE" \
     --strict --soft <<'ENTRY'
 ## Issue Review
 **Status**: complete

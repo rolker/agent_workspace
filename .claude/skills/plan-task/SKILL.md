@@ -363,13 +363,19 @@ prints the "would have aborted" notice and commits only when
 strict (`--strict`, or the env var set to `1`) goes through
 `resolve_work_plans_dir()` and `progress_append.sh`. Echo the printed line
 in step 9's report. As in step 4, the block asks `issue_repo.sh` first and
-writes nothing for an issue that is not this checkout's.
+writes nothing for an issue that is not this checkout's. The issue title
+goes in through a quoted heredoc, so a backtick or `$` in it is never run
+or expanded.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 "$WS_ROOT/.agent/scripts/issue_repo.sh" "<ref>" >/dev/null; _rc=$?; case "$_rc" in 0|4|5) ;; *) echo "issue_repo.sh exit $_rc: this block reads and writes no records; see the Repository by exit code table"; exit "$_rc" ;; esac
+ISSUE_TITLE=$(cat <<'TITLE_EOF'
+<issue title>
+TITLE_EOF
+)
 $WS_ROOT/.agent/scripts/review_progress.sh persist --issue "<N>" --branch "$(git branch --show-current)" \
-    --title "<issue title>" [--strict] <<ENTRY
+    --title "$ISSUE_TITLE" [--strict] <<ENTRY
 ## Plan Authored
 **Status**: complete
 **When**: <YYYY-MM-DD HH:MM ±HH:MM>
@@ -397,7 +403,8 @@ repository, or `--no-pr`). The plan is committed locally on branch
 Otherwise, push the branch and create (or update) a draft PR with a `[PLAN]`
 title prefix and the plan as the body. The prefix prevents agents from
 confusing the PR number with the issue number. The repository is asked for
-again (a new shell).:
+again (a new shell). The issue title goes in through a quoted heredoc, so a
+backtick or `$` in it is never run or expanded.:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
@@ -406,8 +413,12 @@ echo "Repository: $_REPO"
 # Push current branch (name may vary: feature/issue-<N> or feature/ISSUE-<N>-<desc>)
 git push -u origin HEAD
 
-# The issue title step 1 read, written in literally (a new shell)
-ISSUE_TITLE="<issue title>"
+# The issue title step 1 read, written in literally (a new shell); the
+# quoted heredoc keeps a backtick or $ in it from running or expanding
+ISSUE_TITLE=$(cat <<'TITLE_EOF'
+<issue title>
+TITLE_EOF
+)
 # shellcheck source=../../../.agent/scripts/_resolve_work_plans_dir.sh
 source "$WS_ROOT/.agent/scripts/_resolve_work_plans_dir.sh"
 WORK_PLANS_DIR=$(resolve_work_plans_dir <N>) || exit 1
