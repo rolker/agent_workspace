@@ -75,3 +75,11 @@ The review's actions go to the plan. Host decisions on how the rule sits in the 
 - A must-fix is fixed by one fix pass. The fix is not sent to a second full review round; the cold read of the final diff and CI are what read it. A must-fix found by the cold read is fixed and then goes to him with the merge question.
 - A reviewer that fails once is not asked again that calendar day, and every checkpoint and hand-back that day names it as skipped with its first failure's reason.
 - The rule's scope is the manifest work only and it ends when the Rolling test of issue 436 passes; the rows it relaxes apply again from then.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-24 14:05 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-605/plan.md` at `00c110a7`
+
+Two rules rows (the lighter level; the one follow-up issue authorization), a per-checkpoint section in the rules file, and prose pointers in the orchestrator and run-issue skills; no script or step change. Answers the Issue Review's seven actions.
