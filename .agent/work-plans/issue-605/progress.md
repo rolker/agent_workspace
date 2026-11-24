@@ -176,3 +176,36 @@ The implementer applies F1 to F10 word for word from the Plan Review entry, in p
 - `test_package_issue_loop.sh`: test_package_issue_loop: 228 passed, 0 failed.
 - `test_dispatch_phase.sh`: test_dispatch_phase: 244 passed, 0 failed.
 - The full pre-commit pass was left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 14:10 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-605 at `917e5a33`
+**Base**: main
+**Depth**: Standard (reason: governance files changed: host_standing_rules.md and two skills; about 30 added lines, docs only)
+**Must-fix**: 2 | **Suggestions**: 3
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes (both fixes are exact wording; the issue is workspace work, so the lighter level does not apply to it)
+
+### Decision summary
+
+**What changed**: Two rows at the end of the standing rules table (the dated lighter review level for the manifest work, and the standing authorization for one follow-up issue per pull request), a new section saying what the host answers at each checkpoint under it, and one pointer in `/orchestrator` and two in `/run-issue`. Nothing existing was edited.
+
+**Reviews and outcomes**: Round 1, Ship: continue. 2 must-fix, 3 suggestions, all with replacement wording. Codex ran (5 findings: 1 kept as must-fix, 2 as suggestions, 2 dismissed). Gemini: skipped, failed earlier today ("empty response; 1 tool action(s) were auto-denied in headless mode (Bash)"). Claude adversarial pass done by the lead, not a separate subagent, in proportion to a 30-line docs change.
+
+**Open human calls**: None for this review. The host readings the plan review listed for the owner's veto still stand for his veto; must-fix 1 makes the file say which they are.
+
+**Verified**: every quoted sentence in both reason cells found verbatim in the issue 605 body (scripted substring check, 9 of 9); the diff removes no line (0 deleted lines in the three files); `dispatch_phase.sh next` read at the head: a `## Checkpoint` with `**After**: publish`, `**Decision**: publish` routes to `publish` with `--pr none` and `triage-reviews` with `--pr draft|open`, whatever entry precedes it (the Checkpoint block dispatches on the newest entry only; rows 2, 3 and 3a do not match a complete publish answer); `**After**: plan`, `**Decision**: proceed` routes to `implement` after any `## Plan Authored`; a changes-requested pre-push review at round 1 routes to `address-findings`, a fix `## Implementation` to `review-code`, a non-approved PR-mode `## Local Review` to `address-findings`, as the section says. A scratch-timeline run of `next` was denied by the permission system; the routing was checked by reading the script. Suites at the head: test_skill_paths 212 passed, 0 failed; test_package_issue_loop 228 passed, 0 failed; test_dispatch_phase 244 passed, 0 failed.
+
+**Recommendation**: needs-work (two wording fixes, then a short re-review)
+
+### Findings
+- [ ] (must-fix) Host readings are not marked as such: the section states the host-written `publish`/`plan` checkpoints, the calendar-day reset and the no-cold-read-on-a-no-code-pull-request rule in the rule's voice, and the 9a bullet attributes the last to him ("(the owner's "one Codex cold read on pull requests that change code")"). In the 9a bullet replace that parenthesis with "(the host's reading of his example "one Codex cold read on pull requests that change code"; see the paragraph below the list)", and add after the list, before "This is a first trial": "Three parts of this section are the host's reading, not the owner's words, accepted at issue 605's plan checkpoint and open to his veto: the host-written `publish` and `plan` checkpoints in place of a second review round or a second plan review; a reviewer's skip ending at the next calendar day; and no cold read, on a day Copilot is skipped, for a pull request that changes no code, read from his example "(That day: no Copilot and no Gemini, with one Codex cold read on pull requests that change code.)"." — `.agent/knowledge/host_standing_rules.md:53-63`
+- [ ] (must-fix) The one fix pass will fix the suggestions too: address-findings acts on every unchecked pre-push box, suggestions included (its step 2, "Pre-push actions *all* unchecked findings"), so with a mixed review the suggestions are changed in a pass no second round reads, and the `publish` checkpoint's "open suggestions" list is empty. Codex finding 2 (confirmed). In the `publish` bullet, after `reason "fix pass, no second round".` add: "The handoff of that fix pass names the must-fix boxes only and directs it to defer each suggestion box by its step 3.2, so the suggestions stay for the follow-up issue and the unreviewed change stays as small as the must-fix." — `.agent/knowledge/host_standing_rules.md:56`
+- [ ] (suggestion) The follow-up issue's timing and reuse: on a `findings` merge answer, 9a can route a new review back and ask the merge question again, so "on his `merge` the host opens the one follow-up issue" can run twice, and a resumed host has no place to find the first. Codex finding 3. In the `merge` bullet replace "On his `merge` the host opens the one follow-up issue (second row above), links it from the merge hand-back, and then merges as he said." with "On his `merge`, once step 9a has nothing left to route and just before `merge_pr.sh`, the host opens the one follow-up issue (second row above), names its number in a `## Checkpoint` body or the deferral note on the timeline so a resumed host finds it, adds to that issue instead of opening another if one is already named for this pull request, links it from the merge hand-back, and then merges as he said." — `.agent/knowledge/host_standing_rules.md:59`
+- [ ] (suggestion) A fix pass for a failed full pre-commit pass is not covered: after the host's `address` it writes an `## Implementation` that `next` sends to `review-code`, and neither case in the `publish` bullet names it. Add to the bullet's list of cases: "and the `## Implementation` of a fix pass for a failed full pre-commit pass (the host's `address` above), reason "full-pass fix, no second round", after the full pass is run again and passes" — `.agent/knowledge/host_standing_rules.md:56`
+- [ ] (suggestion) The skip's day has no stated clock and no shared record: a parallel issue's host cannot tell a skip another host started. Add to the Row A rule cell after "that calendar day": "(the host machine's local date; the first failure and its reason are taken from the outside-reviewer line of the timeline entry that recorded it)". Codex finding 5. — `.agent/knowledge/host_standing_rules.md:48`
+
+Codex findings dismissed: 1 (fix commits reach triage unpushed): run-issue step 10 already has the host push after every `## Implementation` written while a pull request exists, before the next `triage-reviews` dispatch, and a host-written checkpoint does not change that. 4 (no-code pull request has no recorded outcome for 9a): with no cold read dispatched 9a has nothing to route, so the merge answer stands by step 9a's own rule, and a resumed host reaches the same skip by the same rule; no loop.
