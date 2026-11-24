@@ -600,3 +600,23 @@ Scope: only how merge 7a29404e (origin/main after PR 567) was resolved, plus the
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-23 23:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a799f36118ba87898, resume 1 of 3)
+**Reviews-read**: none
+
+**PR**: #568 at `cfa1ee47`
+**Sources**: 2 (Local Review @ `cfa1ee47` (PR mode, merge-conflict re-review of 7a29404e, approved, 0 findings); CI rollup. No PR reviews or conversation comments; no Copilot review requested.)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Re-triage after the merge of origin/main (7a29404e, after PR 567) at the owner's checkpoint ("Resolve, then merge"). The only conflict, the `docs/design.md` change log, was resolved by keeping both sides' rows and adding one merge row (1272 lines, the merged file's `wc -l`). The Local Review at `cfa1ee47` verified the resolution, and the `sources` helper finds no open finding covering the head and no dropped entries. The previous Integrated Review (at `0b252b08`) closed every pre-push finding. CI at triage time: Validate Documentation and Validate Adapter Contract passed; Lint (pre-commit) and the repos-manifest tests (Python 3.10, 3.14) were pending.
+
+### Findings
+- No open findings.
+
+### False positives
+- None.
