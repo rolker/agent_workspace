@@ -241,8 +241,45 @@ Suites run (each on its own, final run after the last change to it):
 Specialists: static analysis (shellcheck --severity=warning on the 10 changed scripts: clean), governance, plan drift, Claude adversarial (all five touched suites re-run: 131/0, 112/0, 35/0, 181/0, 374/0), cross-model Gemini (ran, complete) and Codex (ran, complete).
 
 ### Findings
-- [ ] (must-fix) `wt_main_root` silently returns the linked worktree itself when git's `--path-format=absolute --git-dir`/`--git-common-dir` calls fail (git older than 2.31, or any failure after `--show-toplevel` succeeded): `_registry_main_checkout_status` then prints `<own>\t0`, the same answer as a real main checkout, and the marker file exists in the copy, so the old wrong root comes back with no ERROR line (nested create; remove against the worktree). Refuse instead: when the answer is `$own`, confirm with git that `$own`'s git dir equals its common dir and refuse on any failure; add a case with a git shim that fails those calls. Found by the Claude adversarial pass and Codex, each reproduced with a shim — `.agent/scripts/_worktree_helpers.sh:101` (via `_project_registry.sh:788`)
-- [ ] (suggestion) The rewritten call sites `source "$ROOT_DIR/.agent/scripts/_pr_base.sh"` and the `worktree_env` adapter call (the `--layer` path) have no test as a worktree's copy; only the main checkout's run covers them (`test_package_issue_loop.sh`, `test_ros2_colcon.sh`) — `.agent/scripts/worktree_create.sh:845,1087`
-- [ ] (suggestion) The `merge_pr.sh` self-removal case starts in the main checkout; the usual call is from inside the worktree (merge_pr.sh `cd`s out itself). Start it from `$wt` too — `.agent/scripts/tests/test_merge_pr.sh:901`
-- [ ] (suggestion) The sourced `worktree_enter.sh` refusal check drops stderr and reads only the last stdout line; assert stdout is exactly `survived rc=1` and stderr has `ERROR:` — `.agent/scripts/tests/test_worktree_main_root.sh:369`
-- [ ] (suggestion) design.md Table 1 cites `worktree_enter.sh` 142-176 for the `--type` derivation, true on main and now 146-180 after this change; refresh (the create, remove and list citations there were already off on main) — `docs/design.md:552`
+- [x] (must-fix) `wt_main_root` silently returns the linked worktree itself when git's `--path-format=absolute --git-dir`/`--git-common-dir` calls fail (git older than 2.31, or any failure after `--show-toplevel` succeeded): `_registry_main_checkout_status` then prints `<own>\t0`, the same answer as a real main checkout, and the marker file exists in the copy, so the old wrong root comes back with no ERROR line (nested create; remove against the worktree). Refuse instead: when the answer is `$own`, confirm with git that `$own`'s git dir equals its common dir and refuse on any failure; add a case with a git shim that fails those calls. Found by the Claude adversarial pass and Codex, each reproduced with a shim — `.agent/scripts/_worktree_helpers.sh:101` (via `_project_registry.sh:788`)
+- [x] (suggestion) The rewritten call sites `source "$ROOT_DIR/.agent/scripts/_pr_base.sh"` and the `worktree_env` adapter call (the `--layer` path) have no test as a worktree's copy; only the main checkout's run covers them (`test_package_issue_loop.sh`, `test_ros2_colcon.sh`) — `.agent/scripts/worktree_create.sh:845,1087`
+- [x] (suggestion) The `merge_pr.sh` self-removal case starts in the main checkout; the usual call is from inside the worktree (merge_pr.sh `cd`s out itself). Start it from `$wt` too — `.agent/scripts/tests/test_merge_pr.sh:901`
+- [x] (suggestion) The sourced `worktree_enter.sh` refusal check drops stderr and reads only the last stdout line; assert stdout is exactly `survived rc=1` and stderr has `ERROR:` — `.agent/scripts/tests/test_worktree_main_root.sh:369`
+- [x] (suggestion) design.md Table 1 cites `worktree_enter.sh` 142-176 for the `--type` derivation, true on main and now 146-180 after this change; refresh (the create, remove and list citations there were already off on main) — `docs/design.md:552`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 14:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-585 at `363b07b8`
+**Addressed**: Local Review (Pre-Push) at `00a0130c` (2026-11-24 13:51 -05:00)
+**Commits**: `eb6d309f` (F1), `d2d8cea9` (F4), `5106434f` (F3), `8a2b817d` (F5), `ab6e0871` (F2), `363b07b8` (F1 doc)
+
+### Actions
+- [x] F1 (must-fix): `wt_main_root` no longer takes the registry helper's "the folder itself" as "this is the main checkout". When that answer equals the folder, it asks git again with plain `rev-parse --git-dir` and `--git-common-dir` (git 2.5 on, relative answers made absolute from the folder, so CDPATH plays no part) and refuses, exit 1, nothing on stdout, one ERROR line, when a call fails ("cannot confirm that <own> is the main checkout of its repository (git: <git's first line>)"), when an answer is not a directory, or when the two differ ("<own> is a linked worktree (git dir X, common dir Y) whose main checkout could not be confirmed"). Could not tell is never yes. Plain calls rather than `--path-format=absolute`, so a git older than 2.31 still confirms a real main checkout. `_project_registry.sh` unchanged. Header comment and `script_reference.md` name the new refusal — `.agent/scripts/_worktree_helpers.sh:63`
+  - Tests (`test_worktree_main_root.sh`): a git shim first on the sandbox PATH for these runs only, two modes: "old" fails `rev-parse --git-dir/--git-common-dir` only with `--path-format=absolute`, "all" fails every such call (the fixture checks each mode fails exactly those calls). Red run before the fix: `194 tests, 45 failed` (helper printed the worktree; create made a worktree nested under the copy's worktree; enter printed the nested path and the sourced enter returned 0; list and remove ran). After: the helper refuses for the linked worktree's copy in both modes with the expected message (git's shim line quoted in "all"); the main checkout's copy is still accepted in "old" and refused in "all". Each of the four scripts as the worktree's copy refuses in both modes (`refusal_case`): create makes no worktree and no branch; enter `--print-path` and sourced refuse; list refuses; remove and `remove --force` refuse with a real linked worktree on the path the defect would act on (`<worktree>/worktrees/workspace/issue-workspace-8`), whose folder, branch and git entry survive.
+- [x] F2 (suggestion): new case in `test_ros2_colcon.sh` (`test_worktree_create_package_from_worktree_copy`): the existing package-worktree fixture with the scripts committed, `worktree_create.sh --layer l1 --package-repos pkg_a` run as a linked worktree's copy with that copy's own `_pr_base.sh` and `adapter` removed; asserts the package worktree lands under the registered project, `base=fakefox` from the pin (the main checkout's `_pr_base.sh`), `env.sh` written (the main checkout's adapter, `worktree_env`), and nothing made under the copy's worktree. A mutation check (pointing the source back at the copy's `_pr_base.sh`) was refused by the permission system and not run — `.agent/scripts/tests/test_ros2_colcon.sh`
+- [x] F3 (suggestion): the `merge_pr.sh` self-removal case runs twice, cwd the main checkout and cwd inside the worktree; both pass — `.agent/scripts/tests/test_merge_pr.sh:881`
+- [x] F4 (suggestion): the sourced `worktree_enter.sh` refusal asserts stdout is exactly `survived rc=1` and stderr has `ERROR:` — `.agent/scripts/tests/test_worktree_main_root.sh:369`
+- [x] F5 (suggestion): Table 1 citations this change moved: `worktree_enter.sh` 142-176 to 146-180, and `worktree_list.sh` 171 to 175 (171 was right on main, contrary to the review's note, and this change moved it); Change log row added (1289 lines) — `docs/design.md:552`
+
+Host directions followed (listed for the owner's veto): F1 fixed in `wt_main_root` only, `_project_registry.sh` untouched; F2 added as a short case because the existing fixture covered it; F5 corrects only citations this change moved.
+
+For the pull request text:
+- Table 1 citations already wrong on main, not fixed here: `worktree_create.sh` (`370-386` for the `--type` derivation, which on main is at 381-410; `427-431` for the `--layer`/`--package-repos` gating, on main at 419-452; `600-605`, `689-718`, `768-773`, `1294-1302` point at other code on main) and `worktree_remove.sh` `155-185` (on main the derivation and check are at 172-202). The `merge_pr.sh`, `dispatch_phase.sh`, `gh_create_pr.sh` and `_project_registry.sh` citations were not checked (this change does not touch those files).
+- Follow-up, not done here: `_registry_main_checkout_status` (`_project_registry.sh`) reports a failed git call as `<root>\t0`, the same as a main checkout; its other callers may want that failure reported as such (a third status) rather than each caller confirming it.
+
+Suites run (each on its own, after the last change):
+- `test_worktree_main_root.sh`: `test_worktree_main_root: 199 passed, 0 failed`
+- `test_merge_pr.sh`: `=== Results: 187 passed, 0 failed ===`
+- `test_worktree_create.sh`: `PASS: 112` / `FAIL: 0`
+- `test_worktree_remove.sh`: `test_worktree_remove: 138 passed, 0 failed`
+- `test_worktree_enter_stderr.sh`: `=== Results: 35 passed, 0 failed ===`
+- `test_project_registry.sh`: `=== Results: 425 passed, 0 failed ===`
+- `test_design_anchors.sh`: `test_design_anchors: 82 passed, 0 failed`
+- `test_skill_paths.sh`: `test_skill_paths: 212 passed, 0 failed`
+- `test_script_tests_hook_scope.sh`: `test_script_tests_hook_scope: 374 passed, 0 failed`
+- `test_ros2_colcon.sh`: `=== Results: 1209 passed, 0 failed, 0 skipped ===`
+- `run_script_tests.sh -j 4 --files <the 6 changed files>`: `run_script_tests: all 57 suites passed in 300s` (among them `test_ros2_colcon.sh`, `test_package_issue_loop.sh`, `test_worktree_create.sh`)
+- The full pass is left to the host.
