@@ -146,3 +146,23 @@ Implement the plan at fbbd8387 with these instructions, which answer the Plan Re
 - `.agent/scripts/tests/test_skill_paths.sh`: one `has` check pinning `headRefName,headRefOid,files,url`, the snapshot sentence, the never-body-or-comment sentence, the `pull/<N>/head` fetch and the `git show` read.
 - Checked by hand: the plan-file and Closes lookups run as written against merged PRs 602, 597, 572, 571, 570, 568, 567 (plan path or Closes line found where present; "Part of" bodies give no Closes line, so those PRs only work through their plan file).
 - Suite run: `bash .agent/scripts/tests/test_skill_paths.sh` → `test_skill_paths: 213 passed, 0 failed`. The full pre-commit pass and the other suites were left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 13:25 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-579 at `d4c93c8c`
+**Base**: origin/main
+**Depth**: Deep (reason: 266 changed lines counting the plan and progress files; a `.claude/skills/*/SKILL.md` override trigger alone makes it Standard, which dispatches the same specialists)
+**Must-fix**: 0 | **Suggestions**: 4
+**Round**: 1 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Checked: the three `gh` lines, the jq filter and the grep run as written on PRs 602 (no plan file, Closes 551), 600 (no plan file, Part of 582: stops, as written), 572 (one plan, Closes 563), 568 (one plan, Part of 551), 564 (none, Part of: stops), and 326 (two plan files 265 and 317, Closes 317: the match picks 317). `git fetch -q origin "pull/<N>/head"` + `git show <headRefOid>:./...` read the plan for 572 and 568, both merged with their branches deleted; `plan-sha --ref` works on the fetched oid. A scan of 120 PRs found no PR with one plan file of an issue other than the one it closes. `--issue` and file-path forms untouched; Step 5's `--plan`/`--ref` lines agree. `test_skill_paths.sh`: 213 passed, 0 failed; shellcheck clean. Cross-model: gemini ran (9 findings: 3 kept as suggestions, the "must-fix" ratings downgraded because each failure stops loudly; the rest dropped, one of them shown wrong by the passing test); codex failed (usage limit).
+
+### Findings
+- [ ] (suggestion) Closing-issue lookup: the grep misses `Closes: #N`, `Closed`/`Fix`/`Fixed`, `owner/repo#N`, has no word boundary, and `head -1` can take a `#N` quoted in the body's plan copy or drop a second closed issue; `gh pr view <N> --json closingIssuesReferences --jq '.closingIssuesReferences[].number'` is GitHub's own parse (checked: 602→551, 326→317, 572→563, 568/600→none), and `body` can then leave line 72 so the snapshot never enters the reviewer's context — `.claude/skills/review-plan/SKILL.md:72,78`
+- [ ] (suggestion) The plan-file filter is unanchored (`test("work-plans/issue-...")` also lists e.g. `tests/fixtures/work-plans/issue-1/plan.md`) while the read is the fixed `./.agent/work-plans/...` path; anchor it as `^\.agent/work-plans/issue-[0-9]+/plan[.]md$` so the list and the read name the same file — `.claude/skills/review-plan/SKILL.md:75`
+- [ ] (suggestion) No-plan-file case goes straight to the local `--issue` lookup; first try `git show <headRefOid>:./.agent/work-plans/issue-<issue>/plan.md` (PR 602: the plan of 551 is at its head, unchanged, committed by PR 568), so a checkout that is behind the PR does not quietly supply an older copy — `.claude/skills/review-plan/SKILL.md:96-101`
+- [ ] (suggestion) For issue 581's split: this block now has three `gh` calls (lines 72, 75, 78), not the two 581's plan names; say so in the PR description so the `-R` reaches the new one whichever merges second — `.claude/skills/review-plan/SKILL.md:75`
