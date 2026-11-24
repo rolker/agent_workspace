@@ -151,8 +151,10 @@ the rest of the run.
     `--dry-run`, stop here.
 
     Then make the `--set` list the real call will pass: at most one
-    `--set "build=<command>"` and one `--set "test=<command>"`, each one
-    quoted argument; `build=` and `test=` are the only keys it takes. A key
+    `--set 'build=<command>'` and one `--set 'test=<command>'`, each one
+    argument in single quotes (in double quotes a `` ` `` or `$` in the
+    command would run now; a `'` in it is written `'\''`); `build=` and
+    `test=` are the only keys it takes. A key
     goes on the list only when this first dry run lists it, a kept
     settings file has it, or the folder's type requires it and it has no
     command (below). Pass the detected ones too: without `--set`, the real
@@ -193,7 +195,7 @@ the rest of the run.
 
     ```bash
     WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-    "$WS_ROOT/.agent/scripts/register_session_root.sh" --dry-run --set "build=<command>" --set "test=<command>" 2>&1
+    "$WS_ROOT/.agent/scripts/register_session_root.sh" --dry-run --set 'build=<command>' --set 'test=<command>' 2>&1
     ```
 
     It checks the commands as the real call will. When it refuses (exit 1,
@@ -219,7 +221,7 @@ the rest of the run.
 
     ```bash
     WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-    "$WS_ROOT/.agent/scripts/register_session_root.sh" --set "build=<command>" --set "test=<command>" 2>&1
+    "$WS_ROOT/.agent/scripts/register_session_root.sh" --set 'build=<command>' --set 'test=<command>' 2>&1
     ```
 
     The text question shows everything that is written: the registry line,
@@ -309,7 +311,7 @@ A category 6 `error` means the registration does not work as it stands (a
 missing build or test command, the user tier out of date, a root that does
 not resolve). Name the fix the finding gives. For a `single_project`
 project, a command it lacks is a setting this session may store, after a
-yes (`project_setting.sh set <settings-name> build=<command>` or
+yes (`project_setting.sh set <settings-name> 'build=<command>'` or
 `test=none`). A `ros2_colcon` project has no `build` or `test` setting:
 colcon owns both, and `set` refuses them (the type's
 `$WS_ROOT/.agent/project_types/ros2_colcon/unused_settings` says why), so
@@ -442,10 +444,13 @@ commits after review the merge gate counts as bookkeeping.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-"$WS_ROOT/.agent/scripts/project_setting.sh" set <settings-name> "<key>=<value>"
+"$WS_ROOT/.agent/scripts/project_setting.sh" set <settings-name> '<key>=<value>'
 ```
 
-Quote `<key>=<value>` as one argument: a heading may hold spaces.
+Quote `<key>=<value>` as one argument in single quotes: a heading may hold
+spaces, and in double quotes a `` ` `` or `$` in it would make the shell
+run a command and store something else. A `'` in the value is written
+`'\''`.
 
 `set` refuses a value one of the readers cannot follow, and says why; show
 its message as printed. It takes only a path inside the project (no
@@ -568,7 +573,8 @@ file (a setting, a `.git/info/exclude` line).
 
 Fixes that touch no tracked file are made as soon as the user says yes:
 
-- a setting: `project_setting.sh set <settings-name> <key>=<value>`;
+- a setting: `project_setting.sh set <settings-name> '<key>=<value>'`,
+  quoted as in 3c;
 - the worktrees directory: add its line (the finding names it, e.g.
   `worktrees/`) to the file `git rev-parse --git-path info/exclude` prints,
   the same line `worktree_create.sh` adds when it creates the first

@@ -475,8 +475,8 @@ if [[ -f "$ONB" ]]; then
     # gap named.
     has "$ONB" "onboard-project: an unregistered folder is offered registration through register_session_root.sh" \
         '"$WS_ROOT/.agent/scripts/register_session_root.sh" --dry-run 2>&1' \
-        '"$WS_ROOT/.agent/scripts/register_session_root.sh" --dry-run --set "build=<command>" --set "test=<command>" 2>&1' \
-        '"$WS_ROOT/.agent/scripts/register_session_root.sh" --set "build=<command>" --set "test=<command>" 2>&1' \
+        '"$WS_ROOT/.agent/scripts/register_session_root.sh" --dry-run --set '"'"'build=<command>'"'"' --set '"'"'test=<command>'"'"' 2>&1' \
+        '"$WS_ROOT/.agent/scripts/register_session_root.sh" --set '"'"'build=<command>'"'"' --set '"'"'test=<command>'"'"' 2>&1' \
         'The note is never part of the value' \
         'no yes is asked on a refused list' \
         'Then ask one yes in text, for this write alone, on that second dry run' \
@@ -569,7 +569,9 @@ if [[ -f "$ONB" ]]; then
         '**c. Documents** (`goals`, `design`, `roadmap`)' \
         '"$WS_ROOT/.agent/scripts/project_setting.sh" doc <settings-name> goals' \
         '"$WS_ROOT/.agent/scripts/project_setting.sh" doc <settings-name> roadmap' \
-        '"$WS_ROOT/.agent/scripts/project_setting.sh" set <settings-name> "<key>=<value>"' \
+        '"$WS_ROOT/.agent/scripts/project_setting.sh" set <settings-name> '"'"'<key>=<value>'"'"'' \
+        'Quote `<key>=<value>` as one argument in single quotes' \
+        'A `'"'"'` in the value is written `'"'"'\'"'"''"'"'`.' \
         '**A file in the project**' '**`none`**' '**Decide later**: nothing stored'
     has "$ONB" "onboard-project: the setting's refusals are the readers' limits, said as printed" \
         'ASCII letters, digits, `.`, `_`, `-` and `/`' \
@@ -717,7 +719,8 @@ if [[ -f "$DD" ]]; then
     has "$DD" "design-discussion: a project's goals, design and roadmap come from the lookup; a fallback is asked about" \
         '"$WS_ROOT/.agent/scripts/project_setting.sh" doc <project> roadmap' \
         'It is a suggestion: ask whether it is the project'"'"'s roadmap (or design) before relying on it' \
-        '"$WS_ROOT/.agent/scripts/project_setting.sh" set <project> "<key>=<value>"' \
+        '"$WS_ROOT/.agent/scripts/project_setting.sh" set <project> '"'"'<key>=<value>'"'"'' \
+        'quoted as one argument in single quotes' \
         'as a write on its own yes' \
         'never as a fault of the project'
     if grep -qF 'settled for good by #551' "$DD"; then
