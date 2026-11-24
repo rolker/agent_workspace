@@ -379,6 +379,40 @@ class SessionTest(TempDirTest):
         self.assertEqual(prev.read_text(encoding="utf-8"), "round one\n", "renamed once only")
         self.assertIn("y", notes.read_text(encoding="utf-8"))
 
+    def test_failed_first_write_keeps_the_old_notes_in_place(self):
+        notes = self.dir / "plan.md.notes.md"
+        notes.write_text("round one\n", encoding="utf-8")
+        session = self.make()
+        session.review.set_whole("x")
+        with mock.patch("tempfile.mkstemp", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                session.save()
+        self.assertEqual(notes.read_text(encoding="utf-8"), "round one\n")
+        self.assertFalse((self.dir / "plan.md.notes.md.prev").exists())
+        session.save()  # a later write still rotates first
+        self.assertEqual(
+            (self.dir / "plan.md.notes.md.prev").read_text(encoding="utf-8"), "round one\n"
+        )
+
+    def test_failed_final_rename_restores_the_old_notes(self):
+        notes = self.dir / "plan.md.notes.md"
+        notes.write_text("round one\n", encoding="utf-8")
+        session = self.make()
+        real_replace = os.replace
+
+        def replace(src, dst):
+            if str(src).endswith(".tmp"):
+                raise OSError("rename refused")
+            real_replace(src, dst)
+
+        with mock.patch("os.replace", side_effect=replace):
+            with self.assertRaises(OSError):
+                session.save()
+        self.assertEqual(notes.read_text(encoding="utf-8"), "round one\n")
+        self.assertFalse((self.dir / "plan.md.notes.md.prev").exists())
+        leftovers = [p.name for p in self.dir.iterdir() if p.name.endswith(".tmp")]
+        self.assertEqual(leftovers, [])
+
     def test_notes_elsewhere_creates_folder_and_snapshot_beside_it(self):
         notes = self.dir / "reviews" / "plan.notes.md"
         session = self.make(notes=notes)

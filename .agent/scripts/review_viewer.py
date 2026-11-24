@@ -525,13 +525,21 @@ def parse_notes(text: str) -> Review:
     return review
 
 
-def atomic_write(path: Path, content: str) -> None:
-    """Write via a temp file in the same folder and rename over the target."""
+def atomic_write(
+    path: Path, content: str, before_replace: Optional[Callable[[], None]] = None
+) -> None:
+    """Write via a temp file in the same folder and rename over the target.
+
+    ``before_replace`` runs once the content is safely in the temp file, just
+    before the rename; if it raises, the target is left as it was.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(prefix="." + path.name + ".", suffix=".tmp", dir=str(path.parent))
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(content)
+        if before_replace is not None:
+            before_replace()
         os.replace(tmp, path)
     except BaseException:
         if os.path.exists(tmp):
@@ -543,7 +551,10 @@ class NotesWriter:  # pylint: disable=too-few-public-methods
     """Writes the notes file; the first write moves a previous one to ``.prev``.
 
     The rename happens at the first write, not at launch, so a window closed
-    or killed before any change leaves the old notes file where it was.
+    or killed before any change leaves the old notes file where it was. It
+    happens only once the new notes are written to a temp file, and is undone
+    if the final rename fails, so a failed first write leaves the old notes
+    file at the notes path rather than no file at all.
     """
 
     def __init__(self, path: Path):
@@ -552,11 +563,23 @@ class NotesWriter:  # pylint: disable=too-few-public-methods
         self._rotated = False
 
     def write(self, content: str) -> None:
-        if not self._rotated:
+        if self._rotated:
+            atomic_write(self.path, content)
+            return
+        moved = []
+
+        def rotate() -> None:
             if self.path.exists():
                 os.replace(self.path, self.prev_path)
-            self._rotated = True
-        atomic_write(self.path, content)
+                moved.append(True)
+
+        try:
+            atomic_write(self.path, content, before_replace=rotate)
+        except BaseException:
+            if moved and not self.path.exists():
+                os.replace(self.prev_path, self.path)  # put the old notes back
+            raise
+        self._rotated = True
 
 
 # ---------------------------------------------------------------------------
