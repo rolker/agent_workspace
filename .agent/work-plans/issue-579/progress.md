@@ -134,3 +134,15 @@ Implement the plan at fbbd8387 with these instructions, which answer the Plan Re
 - Finding 5: fetch with git fetch origin "pull/<pr>/head", which also works for a fork or a deleted branch, and change the Step 5 fetch the same way so the two agree.
 - Finding 6: the usage line (around line 44) says "read the plan file at a PR's head commit".
 - No -R is added here: naming the repository on the gh calls is issue 581's.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 13:19 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-579 at `30f3b337`
+
+- `.claude/skills/review-plan/SKILL.md`, step 1 "PR number" form: the body is called a snapshot, never the plan (nor a PR comment); `--json` gains `headRefOid`; a `gh pr view --json files --jq ... select(test(...))` line lists the plan files the PR changes (issue number `<issue>` from their `issue-<issue>` directory); the Closes line is read only for the none/many cases. One plan file: `git fetch -q origin "pull/<N>/head"` then `git show <headRefOid>:./.agent/work-plans/issue-<issue>/plan.md` from the repository's top folder. More than one: the one matching the closed issue, else stop and list them. None (e.g. a `--plan-file` draft): find it as the `--issue <issue>` form does (Step 5 then uses `--plan <path>`), else stop.
+- Same file: usage line now "read the plan file at a PR's head commit"; the Step 5 note's fetch is `pull/<N>/head` too. No `-R` added anywhere (issue 581's).
+- `.agent/scripts/tests/test_skill_paths.sh`: one `has` check pinning `headRefName,headRefOid,files,url`, the snapshot sentence, the never-body-or-comment sentence, the `pull/<N>/head` fetch and the `git show` read.
+- Checked by hand: the plan-file and Closes lookups run as written against merged PRs 602, 597, 572, 571, 570, 568, 567 (plan path or Closes line found where present; "Part of" bodies give no Closes line, so those PRs only work through their plan file).
+- Suite run: `bash .agent/scripts/tests/test_skill_paths.sh` → `test_skill_paths: 213 passed, 0 failed`. The full pre-commit pass and the other suites were left to the host.
