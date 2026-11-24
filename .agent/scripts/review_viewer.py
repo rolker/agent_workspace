@@ -208,14 +208,23 @@ ITALIC_RE = re.compile(
 SEPARATOR_CELL_RE = re.compile(r"^:?-+:?$")
 
 
+def _escaped(line: str, i: int) -> bool:
+    """Whether the character at ``i`` follows an odd run of backslashes."""
+    run = 0
+    while i - run - 1 >= 0 and line[i - run - 1] == "\\":
+        run += 1
+    return run % 2 == 1
+
+
 def _table_cells(line: str) -> Tuple[str, List[Tuple[int, str]]]:
     """Split a table row into its indent and (file column, text) cells.
 
-    Pipes escaped with a backslash stay inside their cell. Cell text is
-    stripped; its file column is where the stripped text starts.
+    A pipe after an odd number of backslashes is escaped and stays inside its
+    cell; after an even number (``\\\\|``, an escaped backslash) it splits.
+    Cell text is stripped; its file column is where the stripped text starts.
     """
     indent = line[: len(line) - len(line.lstrip())]
-    pipes = [i for i, ch in enumerate(line) if ch == "|" and (i == 0 or line[i - 1] != "\\")]
+    pipes = [i for i, ch in enumerate(line) if ch == "|" and not _escaped(line, i)]
     bounds = [len(indent) - 1] + pipes + [len(line)]
     segments = []
     for left, right in zip(bounds, bounds[1:]):

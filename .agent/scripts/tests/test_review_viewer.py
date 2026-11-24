@@ -168,6 +168,12 @@ class LightFormatTest(unittest.TestCase):
         fmt = rv.light_format("| a\\|b | c |\n| x | y |\n")
         self.assertEqual(fmt.lines, ["| a\\|b | c   |", "| x    | y   |"])
 
+    def test_pipe_after_escaped_backslash_splits(self):
+        fmt = rv.light_format("| a\\\\| b |\n| x | y |\n")
+        self.assertEqual(fmt.lines, ["| a\\\\ | b   |", "| x   | y   |"])
+        self.assertTrue(rv._escaped("a\\|", 2))  # pylint: disable=protected-access
+        self.assertFalse(rv._escaped("a\\\\|", 3))  # pylint: disable=protected-access
+
     def test_unchanged_lines_have_no_column_map(self):
         fmt = rv.light_format("plain\n| a | b |\n")
         self.assertIsNone(fmt.colmaps[0])
