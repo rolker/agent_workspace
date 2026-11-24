@@ -352,6 +352,10 @@ def passage_text(raw_text: str, fmt: Formatted, start: Index, end: Index) -> str
     if not raw:
         return ""
     (la, ca), (lb, cb) = start, end
+    # A selection ending at column 0 of a later line ends on the line before
+    # (as selection_to_range): drop that one empty last segment, and only it,
+    # so blank lines inside the range stay quoted.
+    ends_at_line_start = cb == 0 and la < lb <= len(raw)
     # Tk's last index ("end") sits one line past the text: clamp to the file.
     la = min(max(la, 1), len(raw))
     ra = fmt.to_raw_col(la, ca)
@@ -360,10 +364,11 @@ def passage_text(raw_text: str, fmt: Formatted, start: Index, end: Index) -> str
     else:
         rb = fmt.to_raw_col(lb, cb)
     if la == lb:
-        out = raw[la - 1][ra:rb]
-    else:
-        out = "\n".join([raw[la - 1][ra:]] + raw[la : lb - 1] + [raw[lb - 1][:rb]])
-    return out.rstrip("\n")
+        return raw[la - 1][ra:rb]
+    segments = [raw[la - 1][ra:]] + raw[la : lb - 1] + [raw[lb - 1][:rb]]
+    if ends_at_line_start:
+        segments.pop()
+    return "\n".join(segments)
 
 
 # ---------------------------------------------------------------------------

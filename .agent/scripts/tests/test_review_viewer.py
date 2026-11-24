@@ -170,6 +170,20 @@ class PassageTest(unittest.TestCase):
         passage = rv.passage_text(TABLE_DRAFT, fmt, (5, 0), (7, 0))
         self.assertEqual(passage, "| one | host |\n| two | owner |")
 
+    def test_trailing_blank_line_in_range_is_quoted(self):
+        """Lines 1-3 with blank line 3 quote three lines, not two."""
+        text = "a\nb\n\nc\n"
+        fmt = rv.light_format(text)
+        passage = rv.passage_text(text, fmt, (1, 0), (4, 0))
+        self.assertEqual(passage, "a\nb\n")
+        self.assertEqual(rv.selection_to_range((1, 0), (4, 0)), (1, 3))
+        self.assertEqual(len(passage.split("\n")), 3)
+
+    def test_selection_ending_mid_line_keeps_its_text(self):
+        text = "a\n\nbc\n"
+        fmt = rv.light_format(text)
+        self.assertEqual(rv.passage_text(text, fmt, (1, 0), (3, 1)), "a\n\nb")
+
     def test_selection_to_tk_end_is_clamped(self):
         text = "a\nbc\n"
         fmt = rv.light_format(text)
