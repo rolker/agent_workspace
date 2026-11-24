@@ -414,3 +414,13 @@ Pull request text checked against the branch (counts, the 100-failure red run, 2
 
 ### False positives
 - (Codex cold read, raised as must-fix, already ruled by the lead) A workspace worktree outside the main checkout's worktrees folder is refused when its copies run from inside it — a deliberate, clear refusal by the existing guard (one ERROR line, exit 1, nothing deleted), named in the pull request text; not an ordinary layout, since `worktree_create.sh` never makes one.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 14:39 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+The owner's answer in the dialog, to "How do you want pull request 609 merged, with F1 carried to a follow-up?": "Merge when CI is green (Recommended)". The option read: merge as soon as all checks pass, carrying F1; if CI is not green by about 14:55 nothing merges and it stays parked for the next session. He did not choose "Merge now, skip the CI wait", so no relaxing flag is passed to merge_pr.sh. F1 is the open suggestion of the Integrated Review at 610bdd96: no automated test runs the four scripts themselves from a workspace worktree made by hand outside the main checkout's worktrees folder; deferred to a follow-up. The dialog showed: the plan reviewed first; three pre-push rounds with two must-fix, both fixed; the Codex cold read approved with no must-fix; Gemini and Codex in rounds 1 and 2, Copilot not requested; the new suite of 245 checks committed failing first, and the green local full pass; CI with 2 of 5 checks passed and 3 running; about 25 other scripts with the same root line listed in the pull request text with no issue yet. The cold read ran for this pull request, so step 9a has nothing to route.
