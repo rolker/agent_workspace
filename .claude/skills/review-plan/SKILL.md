@@ -43,9 +43,17 @@ workspace session behaves exactly as it did before this idiom existed.
 
 - `<pr-number>` — read the plan from a draft PR (existing behavior)
 - `<path-to-plan.md>` — read the plan directly from a local file
-- `--issue <N>` — resolve to `$WS_ROOT/.agent/work-plans/issue-<N>/plan.md`
+- `--issue <N>` — resolve to `$WS_ROOT/.agent/work-plans/issue-<N>/plan.md`;
+  `--issue <owner/repo#N>` names an issue of another repository
 
 The file path and `--issue` forms enable offline plan review without a PR.
+
+A bare number is a pull request or issue of the repository of the checkout
+the skill is run in (the session's root). Every `gh` call names the
+repository with `-R "github.com/$_REPO"`, never the one `gh` would pick from
+the current directory; `$_REPO` comes from
+`$WS_ROOT/.agent/scripts/issue_repo.sh <ref>` (step 0), asked again at the
+head of every code block that needs it, because each block is a new shell.
 
 ## Overview
 
@@ -58,6 +66,38 @@ local file paths, or issue numbers.
 
 ## Steps
 
+### 0. Find the repository
+
+`<ref>` is what `issue_repo.sh` is given, the same in every block below:
+- `--issue <N>` or `--issue <owner/repo#N>` form: that reference, as given
+  (`<N>` in the steps below is its number);
+- file path form: the `<N>` of the path's `issue-<N>` directory;
+- PR number form: the `<N>` of the current branch's name when it is
+  `feature/issue-<N>` (or `feature/issue-<N>-<description>`), else the PR
+  number. A bare number means this checkout's repository either way; the
+  issue number matters only in a package worktree, whose manifest names
+  the issue's repository for that number.
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+_REPO=$("$WS_ROOT/.agent/scripts/issue_repo.sh" "<ref>") || { _rc=$?; echo "issue_repo.sh exit $_rc: this block makes no gh call; see the Repository by exit code table"; exit "$_rc"; }
+echo "Repository: $_REPO"
+```
+
+Show the `Repository:` line in the report. On a non-zero exit the block
+prints the exit code; do what this table says for that code.
+
+#### Repository by exit code
+
+| Exit | What this skill does |
+|---|---|
+| 0 | Proceeds. Every `gh pr` and `gh issue` call carries `-R "github.com/$_REPO"`, and the git-bug lookup uses `$_REPO`. |
+| 1 | Stops: the reference is neither `<N>` nor `owner/repo#N`. Show the usage. |
+| 2, 3 | Stops and shows the helper's message. It names the repository `gh` resolves here and this checkout's own (exit 2), or says this is no git repository (exit 3), and gives the `owner/repo#N` to pass or the `gh repo set-default` to run. |
+| 4 | An ordinary case: this checkout has no GitHub repository, so no `gh` call is made. The PR number form is unavailable (say so; use `--issue <N>` or the file path). With `--issue <N>` the plan is read from the branch (step 1), and step 2 skips the issue read: "Issue context unavailable", the review rests on the plan alone. |
+| 5 | `gh` had to be asked which repository it resolves here and could not answer (its message is shown). As for exit 4: no `gh` call, the plan from the branch, the review on the plan alone, saying which read failed. |
+| any other (127: the script is missing — a project session with no user tier, or an older workspace checkout) | Stops and shows the message on stderr. |
+
 ### 1. Read the plan
 
 Determine the input form and locate the plan file. Detection heuristic:
@@ -68,11 +108,14 @@ Determine the input form and locate the plan file. Detection heuristic:
 **PR number** (e.g., `/review-plan 127`):
 
 ```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+_REPO=$("$WS_ROOT/.agent/scripts/issue_repo.sh" "<ref>") || { _rc=$?; echo "issue_repo.sh exit $_rc: this block makes no gh call; see the Repository by exit code table"; exit "$_rc"; }
+echo "Repository: $_REPO"
 # PR metadata and body (plan is in the PR body)
-gh pr view <N> --json title,body,baseRefName,headRefName,files,url
+gh pr view <N> -R "github.com/$_REPO" --json title,body,baseRefName,headRefName,files,url
 
 # Get the linked issue
-gh pr view <N> --json body --jq '.body' | grep -o '#[0-9]*' | head -1
+gh pr view <N> -R "github.com/$_REPO" --json body --jq '.body' | grep -o '#[0-9]*' | head -1
 ```
 
 Find the plan file in the PR's changed files — it will be at
@@ -121,15 +164,22 @@ locations, stop and inform the user.
 
 ### 2. Read the issue and any review-issue comments
 
-Try git-bug first for offline-capable issue reading, then fall back to `gh`:
+Try git-bug first for offline-capable issue reading, then fall back to `gh`.
+The repository is asked for again (a new shell); on exit 4 or 5 in step 0,
+skip the block and go on with the plan alone (below). `<N>` is the issue
+number from step 1.
 
 ```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+_REPO=$("$WS_ROOT/.agent/scripts/issue_repo.sh" "<ref>") || { _rc=$?; echo "issue_repo.sh exit $_rc: this block makes no gh call; see the Repository by exit code table"; exit "$_rc"; }
+echo "Repository: $_REPO"
+ISSUE_NUM="<N>"
 # git-bug first (offline-capable) — provides title, body, and comments
 # Look up by GitHub URL metadata (git-bug human_id != GitHub issue number)
 ISSUE_TITLE=""
 ISSUE_BODY=""
 if command -v git-bug &>/dev/null && command -v jq &>/dev/null; then
-    _REPO_SLUG="<owner/repo>"  # resolve from git remote
+    _REPO_SLUG="$_REPO"  # from issue_repo.sh, above
     _GITHUB_URL="https://github.com/${_REPO_SLUG}/issues/${ISSUE_NUM}"
     _LIST_JSON=$(git bug bug -m "github-url=${_GITHUB_URL}" --format json 2>/dev/null || echo "")
     _BUG_ID=$(echo "$_LIST_JSON" | jq -r '.[0].human_id // empty' 2>/dev/null)
@@ -153,7 +203,7 @@ fi
 
 # Fall back to gh if git-bug didn't provide the data
 if [ -z "$ISSUE_TITLE" ] || [ -z "$ISSUE_BODY" ]; then
-    _GH_JSON=$(gh issue view "$ISSUE_NUM" --json title,body,labels,comments,url 2>/dev/null || echo "")
+    _GH_JSON=$(gh issue view "$ISSUE_NUM" -R "github.com/$_REPO" --json title,body,labels,comments,url 2>/dev/null || echo "")
     if [ -n "$_GH_JSON" ]; then
         [ -z "$ISSUE_TITLE" ] && ISSUE_TITLE=$(echo "$_GH_JSON" | jq -r '.title')
         [ -z "$ISSUE_BODY" ] && ISSUE_BODY=$(echo "$_GH_JSON" | jq -r '.body')
