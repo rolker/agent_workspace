@@ -497,3 +497,18 @@ None open.
 
 ### False positives
 None.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 09:20 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #572 at `2e15844`
+**Depth**: Deep (reason: cold read, cross-model only: codex, per handoff)
+**Must-fix**: 1 | **Suggestions**: 0
+
+Codex ran (EXIT=0), given the title, URL and diff only (work-plan files left out; no earlier review entry or finding read or passed). Its one finding was checked by the lead and reproduced against the PR head's checker: a Direction section with a fenced `**Acceptance case.** Example only.` under Path 1 and the real acceptance paragraph under Path 2 gives `--list-paths` `acceptance	Path 2, Two`, while step 5's awk extractor (unchanged from main) prints "Example only." plus the closing fence line. The report would say "The test of Path 2, Two: Example only." with no warning. Rated must-fix as a silent wrong result; the trigger (an `**Acceptance case.**` line in a fence, or continuing another paragraph, before the real one) is uncommon and the live roadmap has none, and the fix is mechanical: read the acceptance paragraph's text through the checker (as `--list-paths` already reads each group's paragraph), or make the extractor follow the checker's fence and paragraph-start rules, and add a test for the combination.
+
+### Findings
+- [ ] (must-fix) The acceptance case's path (`acceptance_path`, from the checker) and its text (`acceptance_first`, from step 5's own awk, which skips no fence and needs no paragraph start) can come from different paragraphs, so the report names the wrong text as a path's test; read both through the checker and test it — `.claude/skills/sitrep/SKILL.md:832` (paired at `:1194`)
