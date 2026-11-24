@@ -940,3 +940,13 @@ Scope: the round 2 findings and the fix commits 71898ea8 and 1e95b622, plus the 
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:02 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the round-3 pre-push review at 8d61bd06 approved with no findings, and the host's full pre-commit pass over the branch's files passed)
+**After**: publish
+**Decision**: publish
+
+Part 3 of 3: the removal of the earlier format's reader from `tools/repos-manifest`. The full pass ran with no SKIP over the files changed since origin/main and exited 0: every hook that applied passed (black, flake8, the design anchors and the file checks); the script-suite hook had no files to check, since this part changes no script under `.agent/scripts`, so the review-viewer suite of issue 598 did not run. The pull request says "Closes #569". Outside reviewers before the push: Codex ran in rounds 1 and 2 (one point dropped, one kept and fixed); Gemini failed in both (its headless run denied a tool call); round 3 had none, by the convergence-check rule.
