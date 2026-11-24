@@ -2338,7 +2338,13 @@ registry_stale_report() {
 #                      setup` when the hosting directory does not exist)
 #   run                'none', or the verbs (build test) register_project.sh
 #                      runs after the static gate
-_REGISTRATION_KEYS=" required_commands setup run "
+#   manifest           'none' (register_project.sh --manifest refuses the
+#                      type), or 'local-file' (the type's `adapter setup
+#                      --manifest <file> --distro <d> ...` sets a new root
+#                      up from a manifest file on the local disk; with
+#                      --manifest and no type given, register_project.sh
+#                      chooses the one type that says so)
+_REGISTRATION_KEYS=" required_commands setup run manifest "
 
 # Usage: f=$(registration_conf_path "$root" "$type")
 registration_conf_path() {
@@ -2353,6 +2359,11 @@ _registration_value_error() {
         setup)
             case "$value" in never|when-missing) return 0 ;; esac
             echo "setup must be 'never' or 'when-missing', got '$value'"
+            return 1
+            ;;
+        manifest)
+            case "$value" in none|local-file) return 0 ;; esac
+            echo "manifest must be 'none' or 'local-file', got '$value'"
             return 1
             ;;
         required_commands) allowed=" build test install " ;;
@@ -2387,7 +2398,7 @@ _registration_conf_parse() {
     local f="$1" root="${2:-}" ptype="${3:-}" raw line key value lineno=0 bad=0 seen=" " reason k known urc
     local -a out=()
     if [ ! -e "$f" ] && [ ! -L "$f" ]; then
-        echo "$f: missing (every project type needs one: required_commands, setup, run)" >&2
+        echo "$f: missing (every project type needs one: required_commands, setup, run, manifest)" >&2
         return 1
     fi
     if [ ! -f "$f" ] || [ ! -r "$f" ]; then
@@ -2944,4 +2955,30 @@ project_file_unset() {
     shift 2
     for k in "$@"; do args+=("-$k"); done
     project_file_set "$root" "$name" ${args[@]+"${args[@]}"}
+}
+
+# A url as it is printed, its user name and password replaced by ***
+# (https://user:token@host/p -> https://***@host/p): the text between the
+# first scheme:// and the last @ after it; an ssh url's bare user name
+# (ssh://git@host/...) is kept, and in a file:// url only the authority's
+# user:password is masked. Anything else (git@host:path, a local path) is
+# printed as given. A short form of the manifest tool's mask_url
+# (tools/repos-manifest/src/repos_manifest/masking.py), which is the
+# fuller one; only what is printed is masked, never the value passed on.
+# Usage: mask_url_userinfo <url>
+mask_url_userinfo() {
+    local url="$1" pre rest scheme info=""
+    [[ "$url" == *://* ]] || { printf '%s\n' "$url"; return 0; }
+    pre="${url%%://*}"; rest="${url#*://}"
+    [[ "$pre" =~ [A-Za-z][A-Za-z0-9+.-]*$ ]] || { printf '%s\n' "$url"; return 0; }
+    scheme="$(printf '%s' "${BASH_REMATCH[0]}" | tr '[:upper:]' '[:lower:]')"
+    if [ "$scheme" = file ]; then
+        [[ "${rest%%/*}" == *@* ]] && info="${rest%%/*}" && info="${info%@*}"
+        [[ "$info" == *:* ]] || info=""
+    else
+        [[ "$rest" == *@* ]] && info="${rest%@*}"
+        [[ "$scheme" == *ssh* && "$info" != *:* ]] && info=""
+    fi
+    if [ -z "$info" ] || [ "$info" = '***' ]; then printf '%s\n' "$url"; return 0; fi
+    printf '%s\n' "$pre://***@${rest:${#info}+1}"
 }

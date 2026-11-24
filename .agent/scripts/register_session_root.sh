@@ -11,9 +11,17 @@
 # Usage:
 #   register_session_root.sh [--dry-run] [--set build=<command>]
 #                            [--set test=<command>]
+#   register_session_root.sh [--dry-run] --manifest <file> --distro <d>
+#                            [--role <r>] [--with <group>]...
+#                            [--fetch-from <prefix>]
 #
 #   The folder is the current directory (its pwd -P form): there is no
-#   path argument, and no other option. --set takes only build= and test=,
+#   path argument, and no other option. --manifest, --distro, --role,
+#   --with and --fetch-from are passed to register_project.sh as given
+#   (issue 503 part 2): the folder, empty or holding only .claude/, is set
+#   up from the manifest file by the manifest tool's init and registered
+#   in one call; register_project.sh checks them and refuses what it
+#   refuses. --set takes only build= and test=,
 #   each at most once; register_project.sh validates the values. A key
 #   with no --set is detected from the folder's files at this run, or,
 #   when a settings file under the folder's name is kept, taken from that
@@ -40,7 +48,8 @@
 #     register_project.sh --name).
 # Exit 2: a usage error, or a registry that does not parse.
 #
-# Then: register_project.sh <folder> --skip-run [--dry-run] [--set ...],
+# Then: register_project.sh <folder> --skip-run [--dry-run] [--set ...]
+# [--manifest ... and its options],
 # from the main checkout of this script's own repository. The build and
 # test are not run (the status says so for a type whose registration would
 # run them; a type that runs neither ends a plain STATUS=registered), and
@@ -82,15 +91,21 @@ source "$SCRIPT_DIR/_project_registry.sh"
 
 usage() {
     echo "usage: register_session_root.sh [--dry-run] [--set build=<command>] [--set test=<command>]" >&2
+    echo "       register_session_root.sh [--dry-run] --manifest <file> --distro <d> [--role <r>] [--with <group>]... [--fetch-from <prefix>]" >&2
     exit 2
 }
 
 DRY_RUN=0
 SETS=()
 SEEN=" "
+MANIFEST_ARGS=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run) DRY_RUN=1; shift ;;
+        --manifest|--distro|--role|--with|--fetch-from)
+            [[ $# -ge 2 && -n "$2" ]] || usage
+            MANIFEST_ARGS+=("$1" "$2")
+            shift 2 ;;
         --set)
             [[ $# -ge 2 ]] || usage
             case "$2" in
@@ -108,6 +123,12 @@ while [[ $# -gt 0 ]]; do
         *) usage ;;
     esac
 done
+# The manifest options go with --manifest only (a --distro or --role alone
+# would write the registry line's fields, which this script never did).
+if [[ ${#MANIFEST_ARGS[@]} -gt 0 && " ${MANIFEST_ARGS[*]} " != *" --manifest "* ]]; then
+    echo "register_session_root: --distro, --role, --with and --fetch-from go with --manifest" >&2
+    exit 2
+fi
 
 refuse() {
     echo "register_session_root: refusing to register $HERE: $*" >&2
@@ -187,5 +208,5 @@ REGISTER="$WS_ROOT/.agent/scripts/register_project.sh"
 
 ARGS=("$HERE" --skip-run)
 [[ $DRY_RUN -eq 1 ]] && ARGS+=(--dry-run)
-ARGS+=(${SETS[@]+"${SETS[@]}"})
+ARGS+=(${SETS[@]+"${SETS[@]}"} ${MANIFEST_ARGS[@]+"${MANIFEST_ARGS[@]}"})
 exec "$REGISTER" "${ARGS[@]}"

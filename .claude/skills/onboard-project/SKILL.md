@@ -131,6 +131,13 @@ the rest of the run.
   folder makes its build command runnable by the workspace scripts, so the
   owner sees each registration call in full.
 
+  The script also takes `--manifest <file> --distro <distro> [--role
+  <role>] [--with <group>]... [--fetch-from <prefix>]`: an empty folder
+  (or one holding only `.claude/`) is then set up from that manifest file
+  by the manifest tool's `init` and registered in the same call. This
+  skill does not offer it yet: finding the manifest and asking before the
+  repos are fetched are a later step (issue 473).
+
   - **It refuses** (exit 1, nothing handed over: the folder is already
     registered, lies inside or over a registered root or the workspace, is
     not the top of its git repository, is a linked worktree, or its name is

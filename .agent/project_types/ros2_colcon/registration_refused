@@ -1,12 +1,13 @@
 # Settings-file keys a project of this type can never be registered with
 # (issue #569), one per line: the key, a blank, then the reason shown to
-# the user. register_project.sh refuses a --set of a key listed here
-# before it writes anything. The key stays accepted by
+# the user. register_project.sh refuses a key listed here, given with
+# --set or set by a settings file kept from an earlier registration
+# (--remove --keep-settings), before it writes anything. The key stays accepted by
 # `project_setting.sh set` on a registered project (its removal is a line
 # of docs/manifest/roadmap.md), where the adapter refuses it at use. Read
 # by registration_refused_setting in .agent/scripts/_project_registry.sh;
 # validate_adapter.sh checks every entry is a known key, listed once, with
 # a reason.
-source the manifest route it selected is removed, and the adapter refuses a root that sets it; a manifest in the new format is read from a root the manifest tool set up: make the directory, run the manifest tool's init in it (repos-manifest init <manifest> --distro-dirs --distro <distro> [--role <role>]), then register the directory without --set source=, source_ref= or source_path= (a URL source: docs/manifest/design.md, "A root that sets source")
-source_ref it is read with source only, whose manifest route is removed; the adapter refuses a root that sets it: make the directory, run the manifest tool's init in it (repos-manifest init <manifest> --distro-dirs --distro <distro> [--role <role>]), then register the directory without --set source=, source_ref= or source_path= (a URL source: docs/manifest/design.md, "A root that sets source")
-source_path it is read with source only, whose manifest route is removed; the adapter refuses a root that sets it: make the directory, run the manifest tool's init in it (repos-manifest init <manifest> --distro-dirs --distro <distro> [--role <role>]), then register the directory without --set source=, source_ref= or source_path= (a URL source: docs/manifest/design.md, "A root that sets source")
+source the manifest route it selected is removed, and the adapter refuses a root that sets it; a manifest in the new format is read from a root the manifest tool set up: register a new, empty directory from the manifest in one step, with no source, source_ref or source_path setting (register_project.sh <dir> --manifest <file> --distro <distro> [--role <role>], which runs the manifest tool's init in it; a URL source: docs/manifest/design.md, "A root that sets source")
+source_ref it is read with source only, whose manifest route is removed; the adapter refuses a root that sets it: register a new, empty directory from the manifest in one step, with no source, source_ref or source_path setting (register_project.sh <dir> --manifest <file> --distro <distro> [--role <role>], which runs the manifest tool's init in it; a URL source: docs/manifest/design.md, "A root that sets source")
+source_path it is read with source only, whose manifest route is removed; the adapter refuses a root that sets it: register a new, empty directory from the manifest in one step, with no source, source_ref or source_path setting (register_project.sh <dir> --manifest <file> --distro <distro> [--role <role>], which runs the manifest tool's init in it; a URL source: docs/manifest/design.md, "A root that sets source")

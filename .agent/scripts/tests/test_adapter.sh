@@ -441,12 +441,12 @@ test_validator_checks_registration_conf() {
     local sb out rc conf
     sb="$(make_sandbox)"
     conf="$sb/.agent/project_types/single_project/registration.conf"
-    printf '# comment\r\n\r\nrequired_commands=build test\r\nsetup=never\r\nrun=none\r\n' > "$conf"
+    printf '# comment\r\n\r\nrequired_commands=build test\r\nsetup=never\r\nrun=none\r\nmanifest=none\r\n' > "$conf"
     rc=0; out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
     assert_eq "a valid file (CRLF, comments, blanks, run=none): exit 0" "0" "$rc"
     assert_not_contains "a valid file: no complaint" "registration.conf is missing or invalid" "$out"
 
-    printf 'required_commands=build bootstrap\nsetup=sometimes\nsetup=never\nrun=\nextra=1\n' > "$conf"
+    printf 'required_commands=build bootstrap\nsetup=sometimes\nsetup=never\nrun=\nextra=1\nmanifest=url\n' > "$conf"
     rc=0; out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
     assert_eq "a bad file: exit 1" "1" "$rc"
     assert_contains "a bad file: flagged" "single_project: registration.conf is missing or invalid" "$out"
@@ -455,19 +455,21 @@ test_validator_checks_registration_conf() {
     assert_contains "duplicate key named" "line 3: 'setup' is set twice" "$out"
     assert_contains "empty value named" "line 4: empty value for 'run'" "$out"
     assert_contains "unknown key named" "line 5: unknown key 'extra'" "$out"
+    assert_contains "bad manifest value named" "line 6: manifest must be 'none' or 'local-file', got 'url'" "$out"
 
     printf 'required_commands=build\nsetup=never\n' > "$conf"
     rc=0; out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
     assert_eq "a missing key: exit 1" "1" "$rc"
     assert_contains "a missing key named" "'run' is not set" "$out"
+    assert_contains "a missing manifest key named" "'manifest' is not set" "$out"
 
-    printf 'required_commands=none\nsetup=never\nrun=install\n' > "$conf"
+    printf 'required_commands=none\nsetup=never\nrun=install\nmanifest=none\n' > "$conf"
     rc=0; out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
     assert_eq "run=install (registration never runs install): exit 1" "1" "$rc"
     assert_contains "run=install named" "run: 'install' is not one of: build test" "$out"
 
     printf 'test the type never reads it\n' > "$sb/.agent/project_types/single_project/unused_settings"
-    printf 'required_commands=build test\nsetup=never\nrun=build\n' > "$conf"
+    printf 'required_commands=build test\nsetup=never\nrun=build\nmanifest=none\n' > "$conf"
     rc=0; out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
     assert_eq "a required command the type never reads: exit 1" "1" "$rc"
     assert_contains "the contradiction named" "'test' is required, but the type's unused_settings says it never reads it" "$out"

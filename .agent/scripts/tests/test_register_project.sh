@@ -694,7 +694,7 @@ SRC_DIR="$SANDBOX/colcon/phi"
 out="$(reg "$WS" "$SRC_DIR" ros2_colcon --set "source=$SANDBOX/no/manifest.yaml")"; rc=$?
 check "refused: exit 1, STATUS=refused" [ "$rc" -eq 1 -a "$(status_of "$out")" = refused ]
 check "the refusal names the key, the type, the way on and the design's section" \
-    bash -c '[[ "$1" == *"--set source is refused for a project of type ros2_colcon: the manifest route it selected is removed"* && "$1" == *"make the directory, run the manifest tool'"'"'s init in it (repos-manifest init <manifest> --distro-dirs --distro <distro> [--role <role>]), then register the directory without --set source="* && "$1" == *"\"A root that sets source\""* ]]' _ "$out"
+    bash -c '[[ "$1" == *"--set source is refused for a project of type ros2_colcon: the manifest route it selected is removed"* && "$1" == *"register a new, empty directory from the manifest in one step, with no source, source_ref or source_path setting (register_project.sh <dir> --manifest <file> --distro <distro> [--role <role>], which runs the manifest tool'"'"'s init in it"* && "$1" == *"\"A root that sets source\""* ]]' _ "$out"
 check "NEXT= names the directory and registering it without the key" \
     bash -c '[[ "$1" == *$'"'"'\nNEXT=register '"'"'"$2"'"'"' without --set source, after the steps above'"'"'* ]]' _ "$out" "$SRC_DIR"
 check "setup never ran" bash -c '[[ "$1" != *"adapter --project phi setup"* ]]' _ "$out"
@@ -714,6 +714,260 @@ check "a dry run is refused the same way, and the directory that existed is left
     bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"--set source is refused for a project of type ros2_colcon"* ]] && [ -d "$3" ] && ! grep -q "^chi " "$4"' \
     _ "$rc" "$out" "$SANDBOX/colcon/chi" "$WS/.agent/projects.local"
 rmdir "$SANDBOX/colcon/chi"
+
+# ------------------------------------------- registration from a manifest ---
+# issue 503 part 2: --manifest hands the manifest's options to the type's
+# `adapter setup`, which runs the manifest tool's init in the root. A
+# workspace of its own, whose .venv/bin/repos-manifest is a stub tool:
+# it records where it ran and its arguments (MLOG), then, by STUB_INIT,
+# refuses with nothing made (early), makes .repos-manifest/ and fails
+# (made-fail), makes .repos-manifest/resolved/ with nothing resolved and
+# exits 0 (made: the gate's validate then refuses it), or sends TERM to
+# every adapter process above it before making anything (kill: the adapter
+# ends before its own cleanup, as on a signal).
+WSM="$(make_ws)"
+MLOG="$SANDBOX/mtool.log"
+mkdir -p "$WSM/.venv/bin"
+cat > "$WSM/.venv/bin/repos-manifest" <<EOF
+#!/usr/bin/env bash
+echo "INIT_IN:\$(pwd -P) ARGS:\$*" >> "$MLOG"
+case "\${STUB_INIT:-made}" in
+    early) echo "stub tool: refused, nothing set up" >&2; exit 1 ;;
+    made-fail) mkdir .repos-manifest; echo "stub tool: a clone failed" >&2; exit 1 ;;
+    made) mkdir -p .repos-manifest/resolved; exit 0 ;;
+    kill)
+        pids=""
+        p="\$PPID"
+        while [ -n "\$p" ] && [ "\$p" -gt 1 ]; do
+            case "\$(ps -o args= -p "\$p" 2>/dev/null)" in *"/.agent/scripts/adapter "*) pids="\$pids \$p" ;; esac
+            p="\$(ps -o ppid= -p "\$p" 2>/dev/null | tr -d ' ')"
+        done
+        # shellcheck disable=SC2086
+        kill -TERM \$pids
+        exit 1 ;;
+esac
+EOF
+chmod +x "$WSM/.venv/bin/repos-manifest"
+MD="$SANDBOX/manifests"
+mkdir -p "$MD"
+printf 'format: 1\ndistros: [fakefox]\nrepositories: {}\n' > "$MD/m.yaml"
+mreg() { : > "$MLOG"; reg "$WSM" "$@"; }
+# The next step that registers a root the tool has set up: the command as
+# given, with the manifest's options dropped (not a bare path, which would
+# drop --name, --set and the rest).
+MRERUN="re-run the same register_project.sh command without --manifest, --distro, --role, --with and --fetch-from"
+
+echo "TEST: --manifest: usage errors write nothing"
+MR1="$SANDBOX/mroots/one"
+for args in "--with g" "--fetch-from p" "--manifest $MD/m.yaml" "--manifest $MD/m.yaml --distro fakefox --no-setup" \
+            "--manifest $MD/m.yaml --manifest $MD/m.yaml --distro fakefox" "--manifest $MD/m.yaml --distro fakefox --fetch-from a --fetch-from b"; do
+    # shellcheck disable=SC2086  # each case is a word list
+    out="$(mreg "$MR1" $args)"; rc=$?
+    check "'$args': exit 2, nothing written, no tool run" \
+        bash -c '[ "$1" -eq 2 ] && [ ! -s "$2" ] && [ ! -e "$3" ] && ! grep -q "^one " "$4" 2>/dev/null' _ "$rc" "$MLOG" "$MR1" "$WSM/.agent/projects.local"
+done
+out="$(mreg "$MR1" --manifest "$MD/m.yaml")"
+check "--manifest without --distro names the reason" has "$out" "--manifest needs --distro"
+
+echo "TEST: --manifest --dry-run prints the init command line and writes nothing"
+out="$(cd "$MD" && : > "$MLOG" && HOME="$HOMEDIR" PATH="$STUB_BIN:$PATH" "$WSM/.agent/scripts/register_project.sh" "$MR1" --manifest m.yaml \
+    --distro fakefox --role dev --with g1 --with g2 --fetch-from git@example.invalid:field/ --dry-run 2>&1)"; rc=$?
+check "exit 0, STATUS=dry-run" [ "$rc" -eq 0 -a "$(status_of "$out")" = dry-run ]
+check "the type is the one whose registration.conf takes a manifest, and the line has no role= or distro=" \
+    bash -c '[[ "$1" == *"would add the registry line: one  ros2_colcon  $2"$'"'"'\n'"'"'* ]] && [[ "$1" != *"role=dev"* && "$1" != *"distro=fakefox"* ]]' _ "$out" "$MR1"
+check "the adapter's setup with the manifest made absolute" \
+    has "$out" "would run: adapter --project one setup --manifest $MD/m.yaml --distro fakefox --role dev --with g1 --with g2 --fetch-from git@example.invalid:field/ (from the manifest; $MR1 does not exist)"
+check "the init it runs, in the root, with --distro-dirs and --yes" \
+    has "$out" "    which runs: cd $MR1 && $WSM/.venv/bin/repos-manifest init $MD/m.yaml --distro-dirs --distro fakefox --role dev --with g1 --with g2 --fetch-from git@example.invalid:field/ --yes"
+check "nothing written, no directory, no tool run" bash -c 'nothing_written() { ! grep -q "^one " "$1" 2>/dev/null && [ ! -e "$2" ] && [ ! -e "$3" ]; }; nothing_written "$1" "$2" "$3" && [ ! -s "$4" ]' \
+    _ "$WSM/.agent/projects.local" "$(pfile "$WSM" one)" "$MR1" "$MLOG"
+
+echo "TEST: --manifest: a relative name that starts with '-' (./-m.yaml, -m.yaml), and one read with CDPATH exported, give the file's own absolute path"
+cp "$MD/m.yaml" "$MD/-m.yaml"
+mkdir -p "$MD/sub" "$SANDBOX/cdpath/sub"
+cp "$MD/m.yaml" "$MD/sub/m.yaml"
+for _case in "./-m.yaml|" "-m.yaml|" "sub/m.yaml|$SANDBOX/cdpath"; do
+    _rel="${_case%%|*}"; _cdp="${_case#*|}"
+    out="$(cd "$MD" && : > "$MLOG" && CDPATH="$_cdp" HOME="$HOMEDIR" PATH="$STUB_BIN:$PATH" "$WSM/.agent/scripts/register_project.sh" "$MR1" \
+        --manifest "$_rel" --distro fakefox --dry-run 2>&1)"; rc=$?
+    check "'$_rel'${_cdp:+ with CDPATH=$_cdp exported}: exit 0, the manifest named by its own absolute path, nothing run" \
+        bash -c '[ "$1" -eq 0 ] && [[ "$2" == *"would run: adapter --project one setup --manifest $3 --distro fakefox ("* && "$2" == *"init $3 --distro-dirs"* ]] && [ ! -s "$4" ] && [ ! -e "$5" ]' \
+        _ "$rc" "$out" "$MD/${_rel#./}" "$MLOG" "$MR1"
+done
+rm -rf "$MD/-m.yaml" "$MD/sub" "$SANDBOX/cdpath"
+
+echo "TEST: --manifest: a --fetch-from prefix's user name and password are masked where they are printed, and the tool is given the prefix as it was"
+MSECRET="https://user:secret@example.invalid/field/"
+out="$(mreg "$MR1" --manifest "$MD/m.yaml" --distro fakefox --fetch-from "$MSECRET" --dry-run)"; rc=$?
+check "dry run: exit 0, the prefix masked in the setup line and in the init line, the password nowhere in the output" \
+    bash -c '[ "$1" -eq 0 ] && [[ "$2" == *"setup --manifest $3 --distro fakefox --fetch-from https://***@example.invalid/field/ ("* && "$2" == *"--fetch-from https://***@example.invalid/field/ --yes"* && "$2" != *secret* ]]' \
+    _ "$rc" "$out" "$MD/m.yaml"
+MRF="$SANDBOX/mroots/fetch"
+out="$(export STUB_INIT=early; mreg "$MRF" --manifest "$MD/m.yaml" --distro fakefox --fetch-from "$MSECRET")"; rc=$?
+check "real run: the setup banner and the adapter's Running: line show the prefix masked, the password nowhere in the output" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"== adapter --project fetch setup --manifest $3 --distro fakefox --fetch-from https://***@example.invalid/field/ ("* && "$2" == *"Running: "*"--fetch-from https://***@example.invalid/field/ --yes"* && "$2" != *secret* ]]' \
+    _ "$rc" "$out" "$MD/m.yaml"
+check "real run: the tool was given the prefix unmasked" has "$(cat "$MLOG")" "--fetch-from $MSECRET --yes"
+
+echo "TEST: --manifest: a manifest URL's user name and password are masked in its refusal, a dry run too"
+for dry in "" --dry-run; do
+    for loc in "https://user:secret@example.invalid" "https://user:secret@example.invalid/field/m.yaml"; do
+        out="$(mreg "$SANDBOX/mroots/url" --manifest "$loc" --distro fakefox $dry)"; rc=$?
+        check "$loc ${dry:-(real run)}: refused with the URL masked, the password nowhere in the output, no tool run" \
+            bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"--manifest https://***@example.invalid"*": registration with --manifest takes a manifest file on the local disk"* && "$2" != *secret* ]] && [ ! -s "$3" ] && [ ! -e "$4" ]' \
+            _ "$rc" "$out" "$MLOG" "$SANDBOX/mroots/url"
+    done
+done
+
+echo "TEST: --manifest: each refusal comes before anything is written, a dry run too"
+mkdir -p "$SANDBOX/mroots/setup/.repos-manifest" "$SANDBOX/mroots/full" "$SANDBOX/mroots/afile"
+echo notes > "$SANDBOX/mroots/full/README"
+: > "$SANDBOX/mroots/notadir"
+for dry in "" --dry-run; do
+    out="$(mreg "$SANDBOX/mroots/setup" --manifest "$MD/m.yaml" --distro fakefox $dry)"; rc=$?
+    check "a root set up already ${dry:-(real run)}: refused as set up, naming the tool's sync and registering without --manifest, not as holding files" \
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"is set up already (it holds .repos-manifest/)"* && "$2" == *"cd $3 && "*"/repos-manifest sync --distro fakefox"* && "$2" == *"NEXT=register it: $4"* && "$2" != *"register_project.sh $3"* && "$2" != *"holds files already"* ]]' \
+        _ "$rc" "$out" "$SANDBOX/mroots/setup" "$MRERUN"
+    out="$(mreg "$SANDBOX/mroots/full" --manifest "$MD/m.yaml" --distro fakefox $dry)"; rc=$?
+    check "a root holding a file ${dry:-(real run)}: refused, left as it was" \
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"holds files already"* ]] && [ "$(ls -A "$3")" = README ]' _ "$rc" "$out" "$SANDBOX/mroots/full"
+    out="$(mreg "$SANDBOX/mroots/notadir" --manifest "$MD/m.yaml" --distro fakefox $dry)"; rc=$?
+    check "a root that is a file ${dry:-(real run)}: refused" bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"is there and is not a directory"* ]]' _ "$rc" "$out"
+    for loc in https://example.invalid/m.yaml git@example.invalid:owner/m.git; do
+        out="$(mreg "$SANDBOX/mroots/url" --manifest "$loc" --distro fakefox $dry)"; rc=$?
+        check "$loc ${dry:-(real run)}: refused naming init in the git form and registering without --manifest, nothing written" \
+            bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"--manifest $6: registration with --manifest takes a manifest file on the local disk"* && "$2" == *"For a manifest kept as a file in a git repo, set the root up with the manifest tool, which reads the file from the repo afresh at every sync: make the directory $3 and in it run "*"/repos-manifest init <repo url> --manifest-path <file in the repo> [--manifest-ref <branch or tag>] --distro-dirs --distro fakefox [--role <role>]; then $7"* && "$2" == *"A manifest at an http or https URL that is not a git repo is not read by the manifest tool: save it to the local disk and give --manifest that file"* && "$2" == *"NEXT=give --manifest a file on the local disk, or set the root up with the manifest tool'"'"'s init and register it without --manifest"* && "$2" != *"issue 498"* && "$2" != *"by hand"* ]] && [ ! -e "$3" ] && [ ! -s "$4" ] && ! grep -q "^url " "$5" 2>/dev/null' \
+            _ "$rc" "$out" "$SANDBOX/mroots/url" "$MLOG" "$WSM/.agent/projects.local" "$loc" "$MRERUN"
+    done
+    out="$(mreg "$SANDBOX/mroots/url" --manifest git@example.invalid:owner/m.git --distro fakefox --role sim --with extra --fetch-from "https://user:secret@example.invalid/field/" $dry)"; rc=$?
+    check "a git location with --role, --with and --fetch-from ${dry:-(real run)}: the init named carries them, the prefix masked, nothing written" \
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"--distro-dirs --distro fakefox --role sim --with extra --fetch-from https://***@example.invalid/field/; then "* && "$2" != *secret* ]] && [ ! -e "$3" ] && [ ! -s "$4" ]' \
+        _ "$rc" "$out" "$SANDBOX/mroots/url" "$MLOG"
+    out="$(mreg "$SANDBOX/mroots/url" --manifest "$MD" --distro fakefox $dry)"; rc=$?
+    check "a directory as the manifest ${dry:-(real run)}: refused, not a regular file" \
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"is not a regular file"* ]] && [ ! -e "$3" ]' _ "$rc" "$out" "$SANDBOX/mroots/url"
+    out="$(mreg "$SANDBOX/mroots/url" --manifest "$MD/none.yaml" --distro fakefox $dry)"; rc=$?
+    check "a missing manifest ${dry:-(real run)}: refused, no such file" \
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"$3: no such file"* ]] && [ ! -e "$4" ]' _ "$rc" "$out" "$MD/none.yaml" "$SANDBOX/mroots/url"
+    out="$(mreg "$SANDBOX/mroots/url" single_project --manifest "$MD/m.yaml" --distro fakefox $dry)"; rc=$?
+    check "a type whose registration.conf says manifest=none ${dry:-(real run)}: refused" \
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"a project of type single_project is not set up from a manifest (its registration.conf says manifest=none)"* ]] && [ ! -e "$3" ]' _ "$rc" "$out" "$SANDBOX/mroots/url"
+    out="$(mreg "$SANDBOX/mroots/url" --manifest "$MD/m.yaml" --distro fakefox --set bootstrap_url=https://example.invalid/b.yaml $dry)"; rc=$?
+    check "--set bootstrap_url ${dry:-(real run)}: refused before anything is written" \
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"--set bootstrap_url sets bootstrap_url, the bootstrap route'"'"'s setting"* && "$2" == *"NEXT=drop --set bootstrap_url"* ]] && [ ! -e "$3" ] && [ ! -s "$4" ] && [ ! -e "$5" ]' \
+        _ "$rc" "$out" "$SANDBOX/mroots/url" "$MLOG" "$(pfile "$WSM" url)"
+done
+# An argument that is an existing regular file is a file, whatever it looks like.
+printf 'format: 1\n' > "$SANDBOX/u@h:m.yaml"
+out="$(cd "$SANDBOX" && HOME="$HOMEDIR" "$WSM/.agent/scripts/register_project.sh" "$SANDBOX/mroots/url" --manifest u@h:m.yaml --distro fakefox --dry-run 2>&1)"; rc=$?
+check "an existing file named like user@host:path is taken as the file" \
+    bash -c '[ "$1" -eq 0 ] && [[ "$2" == *"init $3 --distro-dirs"* ]]' _ "$rc" "$out" "$(printf '%q' "$SANDBOX/u@h:m.yaml")"
+rm -f "$SANDBOX/u@h:m.yaml"
+
+echo "TEST: --manifest on a registered name or path is refused (adoption keeps the line)"
+mkdir -p "$SANDBOX/mroots/known"
+echo "known  ros2_colcon  $SANDBOX/mroots/known" >> "$WSM/.agent/projects.local"
+cp "$WSM/.agent/projects.local" "$SANDBOX/mreg.before"
+for target in known "$SANDBOX/mroots/known"; do
+    out="$(mreg "$target" --manifest "$MD/m.yaml" --distro fakefox)"; rc=$?
+    check "'$target': refused, the line kept, no tool run" \
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"is registered already"* && "$2" == *"NEXT=drop --manifest, --distro, --role, --with and --fetch-from, or give a new directory"* && "$2" == *"is registered by the same register_project.sh command without --manifest, --distro, --role, --with and --fetch-from)"* ]] && cmp -s "$3" "$4" && [ ! -s "$5" ]' \
+        _ "$rc" "$out" "$WSM/.agent/projects.local" "$SANDBOX/mreg.before" "$MLOG"
+done
+reg "$WSM" --remove known >/dev/null
+
+echo "TEST: a settings file kept from an earlier registration that sets source or bootstrap_url is refused before anything is written (issue 599)"
+mkdir -p "$WSM/.agent/projects.d"
+for dry in "" --dry-run; do
+    printf 'source=%s\n' "$MD/m.yaml" > "$(pfile "$WSM" kept)"
+    out="$(mreg "$SANDBOX/mroots/kept" --manifest "$MD/m.yaml" --distro fakefox $dry)"; rc=$?
+    check "source in a kept file, with --manifest ${dry:-(real run)}: refused, naming the file and the three lines, no line, no init" \
+        bash -c '[ "$1" -eq 1 ] && [ "$(sed -n "s/^STATUS=//p" <<< "$2" | tail -1)" = refused ] && [[ "$2" == *"the settings file $3, kept from an earlier registration, sets source, which is refused for a project of type ros2_colcon"* && "$2" == *"NEXT=remove the source, source_ref, source_path lines from $3 (or remove the file), then re-run"* ]] && ! grep -q "^kept " "$4" 2>/dev/null && [ ! -s "$5" ] && [ ! -e "$6" ]' \
+        _ "$rc" "$out" "$(pfile "$WSM" kept)" "$WSM/.agent/projects.local" "$MLOG" "$SANDBOX/mroots/kept"
+    check "the kept file is left as it was" [ "$(cat "$(pfile "$WSM" kept)")" = "source=$MD/m.yaml" ]
+    out="$(mreg "$SANDBOX/mroots/kept" ros2_colcon $dry)"; rc=$?
+    check "source in a kept file, without --manifest ${dry:-(real run)}: refused the same way, before any line or setup" \
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"kept from an earlier registration, sets source"* && "$2" != *"== adapter"* ]] && ! grep -q "^kept " "$3" 2>/dev/null' \
+        _ "$rc" "$out" "$WSM/.agent/projects.local"
+    printf 'bootstrap_url=https://example.invalid/b.yaml\n' > "$(pfile "$WSM" kept)"
+    out="$(mreg "$SANDBOX/mroots/kept" --manifest "$MD/m.yaml" --distro fakefox $dry)"; rc=$?
+    check "bootstrap_url in a kept file, with --manifest ${dry:-(real run)}: refused, naming the file" \
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"the settings file $3, kept from an earlier registration, sets bootstrap_url"* && "$2" == *"NEXT=remove the bootstrap_url line from $3 (or remove the file), then re-run"* ]] && ! grep -q "^kept " "$4" 2>/dev/null && [ ! -s "$5" ] && [ ! -e "$6" ]' \
+        _ "$rc" "$out" "$(pfile "$WSM" kept)" "$WSM/.agent/projects.local" "$MLOG" "$SANDBOX/mroots/kept"
+done
+rm -f "$(pfile "$WSM" kept)"
+
+echo "TEST: --distro or --role without --manifest on a root the manifest tool set up is refused before anything is written"
+for dry in "" --dry-run; do
+    for opt in "--distro fakefox" "--role dev"; do
+        # shellcheck disable=SC2086
+        out="$(mreg "$SANDBOX/mroots/setup" $opt $dry)"; rc=$?
+        check "'$opt' ${dry:-(real run)}: refused as a second record, nothing written" \
+            bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"a distro= or role= on the registry line is a second record that validate refuses"* && "$2" == *"NEXT=drop --distro and --role"* && "$2" != *"added the registry line"* ]] && ! grep -q "^setup " "$3" 2>/dev/null' \
+            _ "$rc" "$out" "$WSM/.agent/projects.local"
+    done
+done
+
+echo "TEST: --manifest: init refuses with nothing made: the directories setup made are removed, nothing is left"
+MRN="$SANDBOX/mroots/deep/er/two"
+out="$(export STUB_INIT=early; mreg "$MRN" --manifest "$MD/m.yaml" --distro fakefox --role dev --with g1 --with g2 --fetch-from git@example.invalid:field/)"; rc=$?
+check "exit 1, STATUS=refused" [ "$rc" -eq 1 -a "$(status_of "$out")" = refused ]
+check "init ran once, in the root, with the manifest made absolute, --distro-dirs, each option and --yes" \
+    [ "$(cat "$MLOG")" = "INIT_IN:$MRN ARGS:init $MD/m.yaml --distro-dirs --distro fakefox --role dev --with g1 --with g2 --fetch-from git@example.invalid:field/ --yes" ]
+check "the registry line written held no role= or distro=" \
+    has "$out" "added the registry line: two  ros2_colcon  $MRN"$'\n'
+check "no line, no settings file, no root, and the directories above it made for it are gone" \
+    bash -c '! grep -q "^two " "$1" && [ ! -e "$2" ] && [ ! -e "$3" ] && [ ! -e "$4" ] && [ -d "$5" ]' \
+    _ "$WSM/.agent/projects.local" "$(pfile "$WSM" two)" "$MRN" "$SANDBOX/mroots/deep" "$SANDBOX/mroots"
+check "no KEPT=, and no word of setup not being run again" bash -c '[[ "$1" != *KEPT=* && "$1" != *"not run again"* ]]' _ "$out"
+
+echo "TEST: --manifest: an empty existing directory is set up; init refusing leaves it, empty, never on KEPT="
+mkdir -p "$SANDBOX/mroots/empty"
+out="$(export STUB_INIT=early; mreg "$SANDBOX/mroots/empty" --manifest "$MD/m.yaml" --distro fakefox)"; rc=$?
+check "setup ran in it, refused, the directory left empty, no KEPT=" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"(from the manifest; $3 is empty)"* && "$2" != *KEPT=* && "$2" != *"not run again"* ]] && [ -d "$3" ] && [ -z "$(ls -A "$3")" ] && [ -s "$4" ]' \
+    _ "$rc" "$out" "$SANDBOX/mroots/empty" "$MLOG"
+
+echo "TEST: --manifest: init makes the system and fails: the new root is kept on KEPT=, the next step is the tool's sync, then registering without --manifest"
+MRK="$SANDBOX/mroots/kept2"
+out="$(export STUB_INIT=made-fail; mreg "$MRK" --manifest "$MD/m.yaml" --distro fakefox)"; rc=$?
+check "exit 1, STATUS=refused, KEPT= the root, which holds the system" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *$'"'"'\nKEPT='"'"'"$3"$'"'"'\n'"'"'* ]] && [ -d "$3/.repos-manifest" ]' _ "$rc" "$out" "$MRK"
+check "NEXT= names the tool's sync for the distro, then registering without --manifest, and that setup is not run again" \
+    has "$out" "NEXT=fix what the manifest tool reports; then cd $MRK && $WSM/.venv/bin/repos-manifest sync --distro fakefox when the sync did not finish, then $MRERUN (setup is not run again on the kept $MRK; remove it first to start over)"
+check "no line, no settings file" bash -c '! grep -q "^kept2 " "$1" && [ ! -e "$2" ]' _ "$WSM/.agent/projects.local" "$(pfile "$WSM" kept2)"
+
+echo "TEST: --manifest: init succeeds and the gate fails, in a directory that existed: never on KEPT=, named as holding what init left, the next step the tool's"
+mkdir -p "$SANDBOX/mroots/was"
+out="$(export STUB_INIT=made; mreg "$SANDBOX/mroots/was" --manifest "$MD/m.yaml" --distro fakefox)"; rc=$?
+check "exit 1, STATUS=refused, the gate failed" \
+    bash -c '[ "$1" -eq 1 ] && [ "$2" = refused ] && [[ "$3" == *"the static gate failed"* ]]' _ "$rc" "$(status_of "$out")" "$out"
+check "no KEPT=, no word of setup not being run again; the directory is named as holding what init left" \
+    bash -c '[[ "$1" != *KEPT=* && "$1" != *"not run again"* && "$1" == *"$2 existed before; it holds what init left"* ]]' _ "$out" "$SANDBOX/mroots/was"
+check "NEXT= names the tool's sync, then registering without --manifest" \
+    has "$out" "; then cd $SANDBOX/mroots/was && $WSM/.venv/bin/repos-manifest sync --distro fakefox when the sync did not finish, then $MRERUN"
+check "no line, no settings file" bash -c '! grep -q "^was " "$1" && [ ! -e "$2" ]' _ "$WSM/.agent/projects.local" "$(pfile "$WSM" was)"
+
+echo "TEST: --manifest: an unexpected stop after init set the root up: the next step is the tool's sync, then the same command without the manifest's options"
+cp "$WSM/.agent/scripts/register_project.sh" "$SANDBOX/register_project.sh.orig"
+sed -i 's|^# 2\. The static gate\.$|: "$REGISTER_TEST_UNSET_VARIABLE"\n&|' "$WSM/.agent/scripts/register_project.sh"
+check "the fault is in the sandbox copy, after setup" grep -q REGISTER_TEST_UNSET_VARIABLE "$WSM/.agent/scripts/register_project.sh"
+out="$(export STUB_INIT=made; mreg "$SANDBOX/mroots/unx" --manifest "$MD/m.yaml" --distro fakefox)"; rc=$?
+cp "$SANDBOX/register_project.sh.orig" "$WSM/.agent/scripts/register_project.sh"
+check "stopped unexpectedly; NEXT= the tool's sync, then the same command without the manifest's options, never a bare re-run" \
+    bash -c '[ "$1" -ne 0 ] && [[ "$2" == *"stopped unexpectedly"* && "$2" == *"NEXT=cd $4 && "*"sync --distro fakefox when the sync did not finish, then $3, and report the error above if it recurs"* && "$2" != *"or re-run register_project.sh"* ]]' \
+    _ "$rc" "$out" "$MRERUN" "$SANDBOX/mroots/unx"
+
+echo "TEST: --manifest: the adapter ended by TERM before init made anything: the rollback removes the root setup made"
+MRS="$SANDBOX/mroots/sig/three"
+out="$(export STUB_INIT=kill; mreg "$MRS" --manifest "$MD/m.yaml" --distro fakefox)"; rc=$?
+check "precondition: the stub tool ran" [ -s "$MLOG" ]
+check "exit 1, STATUS=refused, the adapter's setup failed" \
+    bash -c '[ "$1" -eq 1 ] && [ "$2" = refused ] && [[ "$3" == *"adapter setup failed"* ]]' _ "$rc" "$(status_of "$out")" "$out"
+check "no line, no settings file, no root and no directory above it made, no KEPT=" \
+    bash -c '! grep -q "^three " "$1" && [ ! -e "$2" ] && [ ! -e "$3" ] && [ ! -e "$4" ] && [[ "$5" != *KEPT=* ]]' \
+    _ "$WSM/.agent/projects.local" "$(pfile "$WSM" three)" "$MRS" "$SANDBOX/mroots/sig" "$out"
+check "the rollback said it removed the root" has "$out" "removed $MRS (empty, made by setup)"
 
 # The tool route's registration test below ("a root the manifest tool set
 # up") runs THIS checkout's tools/repos-manifest/src, by the first python
@@ -1170,6 +1424,27 @@ if [ -n "$MR_PY" ]; then
         out="$(reg "$WS" "$TR")"; rc=$?
         check "a clone missing: registration then passes" [ "$rc" -eq 0 -a "$(status_of "$out")" = registered ]
         out="$(reg "$WS" --remove treal)"
+        echo "TEST: registration from a manifest with the real tool: a new root set up by init and registered in one call, nothing about the manifest recorded"
+        TM="$TS/tman/mfnu"
+        # The real vcs: the suite's vcs stub (in STUB_BIN) clones nothing.
+        mkdir -p "$SANDBOX/bin-novcs"
+        ln -sf "$STUB" "$SANDBOX/bin-novcs/claude"
+        out="$(STUB_BIN="$SANDBOX/bin-novcs"; reg "$WS" "$TM" --manifest "$TS/mreal.manifest.yaml" --distro fakefox)"; rc=$?
+        check "exit 0, STATUS=registered, the gate's validate passed" \
+            bash -c '[ "$1" -eq 0 ] && [ "$2" = registered ] && [[ "$3" == *"OK: adapter validate passed"* ]]' _ "$rc" "$(status_of "$out")" "$out"
+        check "the line holds the name, the type and the path only" [ "$(line_of "$WS" mfnu)" = "mfnu  ros2_colcon  $TM" ]
+        check "no settings file" [ ! -e "$(pfile "$WS" mfnu)" ]
+        check "the tool set the root up with a directory per distro, its repos cloned" \
+            [ -f "$TM/.repos-manifest/resolved/fakefox/layers.txt" -a -d "$TM/fakefox/core/src/pkg_a/.git" -a -d "$TM/fakefox/src/pkg_u/.git" ]
+        out="$(cd "$WS" && "$WS/.agent/scripts/adapter" --project mfnu validate 2>&1)"; rc=$?
+        check "adapter validate passes on it" [ "$rc" -eq 0 ]
+        out="$(reg "$WS" --remove mfnu)"
+        TM2="$TS/tman/mfxi"
+        out="$(STUB_BIN="$SANDBOX/bin-novcs"; reg "$WS" "$TM2" --manifest "$TS/mreal.manifest.yaml" --distro otherfox)"; rc=$?
+        check "a distro the manifest does not list: refused by the tool's own message, rolled back" \
+            bash -c '[ "$1" -eq 1 ] && [ "$2" = refused ] && [[ "$3" == *"otherfox"* && "$3" == *"adapter setup failed"* ]]' _ "$rc" "$(status_of "$out")" "$out"
+        check "nothing left: no line, no settings file, no root, no KEPT=" \
+            bash -c '! grep -q "^mfxi " "$1" && [ ! -e "$2" ] && [ ! -e "$3" ] && [[ "$4" != *KEPT=* ]]' _ "$WS/.agent/projects.local" "$(pfile "$WS" mfxi)" "$TM2" "$out"
     else
         echo "  SKIPPED: vcs is not on PATH; the real tool's sync needs it"
     fi
