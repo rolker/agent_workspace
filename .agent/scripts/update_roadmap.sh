@@ -244,15 +244,18 @@ for rel_path in "${ROADMAP_CANDIDATES[@]}"; do
     # that is inside --root, so the link stays a link; one that leads
     # outside is edited as before (the copy replaces the link, the outside
     # file is untouched), with a warning unless the lookup gave one.
+    # (Its messages wait for the same-file guard below, so a link to a file
+    # already processed says nothing.)
+    _link_note=""
     if [[ -L "$roadmap" ]]; then
         _root_abs="$(cd "$ROOT_DIR" && pwd -P)"
         _real="$(readlink -f -- "$roadmap" 2>/dev/null)" || _real=""
         if [[ -n "$_real" && "$_real" == "$_root_abs/"* ]]; then
             roadmap="$_real"
-            echo "  ${rel_path} is a link: editing ${_real#"$_root_abs"/} through it" >&2
+            _link_note="  ${rel_path} is a link: editing ${_real#"$_root_abs"/} through it"
             rel_path="${_real#"$_root_abs"/}"
         elif [[ "$rel_path" != "$LOOKUP_FALLBACK" ]]; then
-            echo "  ⚠️  ${rel_path} leads outside $ROOT_DIR (${_real:-unresolved}); edited as before: the edited copy replaces the link" >&2
+            _link_note="  ⚠️  ${rel_path} leads outside $ROOT_DIR (${_real:-unresolved}); edited as before: the edited copy replaces the link"
         fi
     fi
     # On a case-insensitive filesystem docs/ROADMAP.md and docs/roadmap.md
@@ -263,6 +266,7 @@ for rel_path in "${ROADMAP_CANDIDATES[@]}"; do
     done
     $already && continue
     PROCESSED_ROADMAPS+=("$roadmap")
+    [[ -z "$_link_note" ]] || echo "$_link_note" >&2
 
     _try_table_format "$roadmap" "$rel_path"
     _try_checklist_format "$roadmap" "$rel_path"
