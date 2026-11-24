@@ -239,10 +239,12 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 ```
 
 Each line is a sub-roadmap's path relative to `<repo-dir>`; the part's
-design is the `design.md` beside it. A recorded `goals`, `design` or
-`roadmap` whose path (before any `#`) is one of those files is a finding:
-the same file is named as the root's document and as a part's. Recording
-another file, or removing the key, is the fix.
+design is the `design.md` beside it. A recorded `goals` or `design` whose
+path (before any `#`) is one of those files is a finding: the same file is
+named as the root's document and as a part's. Recording another file, or
+removing the key, is the fix. The roadmap case is not found here:
+`--list-pointers` leaves out a row that points at the root's own roadmap,
+and the sit-rep reports that row as `points at the root's own roadmap`.
 
 ### 4. Check agent guide quality
 
