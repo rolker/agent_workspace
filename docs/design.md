@@ -102,12 +102,12 @@ root and `.agent/knowledge/`).
 | Principles | How work is judged | [`docs/principles.md`](principles.md), applied through [`.agent/knowledge/principles_review_guide.md`](../.agent/knowledge/principles_review_guide.md) |
 | Design | How the parts fit today | This file, from `# The design` on |
 | Decisions | What was decided, why, and when | [`docs/decisions/`](decisions/) (ADRs), plus each issue's `progress.md`, or the anchor issue's comments for a design discussion's reasons (`/design-discussion`); history, never rewritten |
-| Direction | What is planned and in what order | [`docs/roadmap.md`](roadmap.md). Its `## Direction` section, at the top, holds the lines that must be true for the current acceptance case, each with a check, and the deferrals, each with a revisit check; the sit-rep (`/sitrep`) runs those checks through `sitrep_checks.sh`, names the first line not yet true as the next step, and also reports problems from the Decision register's Re-examined dates, the research digest's entry dates and the commits since `docs/design.md` last changed; in a workspace session it may start a due read-only check in the background. A `\| Sub-roadmap \| Root \|` table there points at a part's roadmap (below); the sit-rep follows each pointer one level and reports, in every run, each part's next step beside the root's, from the same saved rows. A Paths paragraph names the two paths the owner runs in parallel; the sit-rep marks each piece of work in flight with the path it serves and asks which to focus on, a choice that is not stored. A part is a third kind of focus: work that no root line names but a part's line does, by the rules a root line names work by (`(#N)` in its Line cell, a `gh-issue` check or an `adapter --project` check), is marked with the part's sub-roadmap path, which the closing question offers beside the Paths; a sub-roadmap's own Paths paragraphs are not read |
+| Direction | What is planned and in what order | [`docs/roadmap.md`](roadmap.md). Its `## Direction` section, at the top, holds five paths, each a paragraph; Paths 1 to 4 each have a table of the lines that must be true on that path, with a check per line (the acceptance case is the test of Path 1), Path 5 has none yet, and one more line sits under "Across the paths"; then the deferrals, each with a revisit check, left empty for a part still to be designed so it is listed and never due; the sit-rep (`/sitrep`) runs those checks through `sitrep_checks.sh`, reads the paths' line tables as one list and names the first line not yet true as the next step (reporting each path on its own is not built, #563), and also reports problems from the Decision register's Re-examined dates, the research digest's entry dates and the commits since `docs/design.md` last changed; in a workspace session it may start a due read-only check in the background. A `\| Sub-roadmap \| Root \|` table there points at a part's roadmap (below); the sit-rep follows each pointer one level and reports, in every run, each part's next step beside the root's, from the same saved rows. Paths paragraphs name the paths the owner runs in parallel, five since #560; the sit-rep marks each piece of work in flight with a path and asks which to focus on, a choice that is not stored. Until the sit-rep reports each path on its own (#563), its marks follow the three paths of before #560: it checks first whether a Direction line names the work, so work that any path's line names is marked Path 1; Path 3 is the mark for work whose issue review cites the safeguard goal, and Path 2 for other work that serves a goal; Paths 4 and 5 are never marked. A part is a third kind of focus: work that no root line names but a part's line does, by the rules a root line names work by (`(#N)` in its Line cell, a `gh-issue` check or an `adapter --project` check), is marked with the part's sub-roadmap path, which the closing question offers beside the Paths; a sub-roadmap's own Paths paragraphs are not read |
 | Measures | How anyone tells whether a change helped | A first form: the sit-rep's run record, one machine-local line per run, per root, with the counts of lines true and deferrals due, so the next run says what moved for that root |
 
 Two of the seven were gaps (`README.md`, "The long view": each project, and the workspace, says what
 healthy and the right direction mean and that it is known whether a change helped). Both are narrower
-now (#386), neither is closed. The Direction section says what must be true for one acceptance case,
+now (#386), neither is closed. The Direction section says what must be true on each of five paths (#560),
 not what healthy means for the workspace in general; the sit-rep's Problems section (dates and
 work since for the audit, research and the design document, judged each run with no stored threshold)
 is a first form of health signals. The run record counts lines true from
@@ -284,7 +284,10 @@ supersedes ADR-0016 decision 5: a session may register the folder it was started
   `registration_verify.sh` and `project_setting.sh` are promoted to the user tier for it.
 - Onboarding ends by offering `/agent-workspace:audit-project` (#332 D4), which also runs any time in a
   session at the project root and holds the hygiene checklist: pre-commit, CI, branch protection,
-  Copilot review, component labels, git-bug bridge and license headers. The items a fact makes moot are
+  independent review, component labels, git-bug bridge and license headers. Independent review is a
+  review by someone other than the author's own session: the review loop's cold read meets it, and
+  Copilot is one way, asked for by hand with `gh pr edit <N> --add-reviewer "@copilot"`; the
+  checklist never turns the automatic rule back on and finds nothing on a repository without it. The items a fact makes moot are
   reported skipped with the reason, never dropped; the facts are read by `project_integration_audit.sh
   --facts` (`github`, `issues`, `prs`, `windows`, `multi_component`, from the remote, `gh` and `uname`),
   which onboarding also reads to know whether the project uses issues. It is report-only and runs the
@@ -803,6 +806,22 @@ sessions walk the same order by hand, one `SKILL.md` at a time
   handoff, and the host pastes it into a new Agent call, in this process only. The sub-agent fetches its
   own inputs with `gh` and never pushes (ADR-0014; `dispatch_phase.sh` exit contract). Reviewers outside
   Claude run in parallel and synchronously through `cross_model_review.sh` (ADR-0015).
+- **Independent review: Gemini and Codex before the push, one cold read after it** (issue 452).
+  `review-code` step 5e has the reviewers outside Claude read the branch before publishing. Automatic
+  Copilot review is off on every repository (owner, 2026-11-23: the quota lasts a few days a month), so
+  after a push nothing is waited for unless the loop asked: `run-issue` step 9 dispatches
+  `triage-reviews` at once on the sources that exist. Before every merge (at the `merge` checkpoint, and
+  on a `findings` checkpoint answered `merge`), after the re-fetch for unread reviews, step 9a asks Copilot
+  once per pull request (`gh pr edit <M> --add-reviewer "@copilot"`) and waits once, about 900 s, or up
+  to the merge script's 1800 s while its check-run runs. When Copilot is not available (the request
+  fails, it posts a could-not-review notice, no answer comes in the bound, or a run resumes to find a
+  request unanswered), one PR-mode `review-code` reads the final diff with one cross-model reviewer
+  (Codex, else Gemini) and no earlier findings, and records "cold read, cross-model only" on its
+  `**Depth**` line. "Asked once" is read from GitHub's state for the pull request and from that entry
+  since the pull request's start (`review_progress.sh cold-read --pr <M>`, `pr_start.py`); nothing else is
+  stored. The cold read's `## Local Review` routes as any PR-mode review: approved to `triage-reviews`,
+  otherwise `address-findings`, the re-review, then triage. What the request does under exhausted quota
+  is not verified; every outcome that is not a review counts as not available.
 - **The host checks the exit, not the sub-agent's word.** `dispatch_phase.sh --check-exit` compares the
   count of entries of the phase's type before and after, and returns `OK`, `PARTIAL`, `FAILED` or
   `MISSING`; anything but `OK` goes to the `phase-failed` checkpoint: retry or stop, or take over, which
@@ -820,6 +839,18 @@ sessions walk the same order by hand, one `SKILL.md` at a time
   the standing rules in `.agent/knowledge/host_standing_rules.md`. An answer outside a checkpoint's
   fixed vocabulary routes to `unexpected`. No phase advances on its own judgment, and a host answer
   never lets the host do a phase's work (`review_loop_lifecycle.md`).
+- **A draft can be reviewed in a local window** (issue 545). A session that wants the owner's answer on
+  a draft (an issue, a plan, a comment) may launch `review_viewer.py <draft>` as a background command.
+  The owner selects passages and adds notes, adds one note on the whole draft, and records a decision:
+  `approve`, `changes requested`, or `none (notes only)` when he closes without one. The window closing
+  is the signal: the session then reads the notes file (`<draft>.notes.md` beside the draft, or the path
+  `--notes` names), where each note quotes its passage from the file with its line range. A second round
+  on the same notes path highlights the lines changed since the text the first round showed (a
+  `.reviewed` snapshot beside the notes file) and carries no notes over; the earlier notes file is kept
+  as `.prev`. Exit 2 means no window can open; the session then runs the same review in chat (the draft
+  with line numbers) and writes the same notes format. The decision reaches the timeline only through
+  the host's existing `## Checkpoint` entry; there is no new entry type (ADR-0013). No skill launches
+  it yet.
 - **One driver per issue.** There is no lock; a second driver or a hand edit shows only as an unexpected
   entry at the next check (ADR-0014).
 
@@ -861,8 +892,9 @@ Status: `decided`
   `.agent/work-plans/issue-N/` files and the roadmap. `_bookkeeping.sh` holds that one rule; the merge
   gate, the CI target and `review_progress.sh sources` all use it.
 - The script then waits for CI on the reviewed head, not on whatever the head has moved to. A review
-  check-run that is still running (Copilot's) holds the merge unless `--allow-pending-review` is passed;
-  its conclusion is never read as CI. A review state that could not be read holds it too: the script
+  check-run that is still running (Copilot's; with the automatic rule off, one the loop or a person
+  requested) holds the merge unless `--allow-pending-review` is passed; an absent or concluded one
+  (a failure or quota notice included) holds nothing, and its conclusion is never read as CI. A review state that could not be read holds it too: the script
   refuses at the CI grace deadline rather than merge past a review it never saw.
 - The gate enforces by default on workspace pull requests: a gap refuses with exit 1 and no entry.
   Project and package pull requests are report-only: the gap is printed and recorded as a
@@ -1160,6 +1192,11 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-21 | Instruction layers | The skill count is recounted to 24 (`ls -d .claude/skills/*/`): the line said 22 while 23 existed, and `design-discussion` is added (a skill, no new mechanism) | #370 | 1213 |
 | 2026-11-21 | Documentation layers | The Decisions row adds the anchor issue's comments as the home of a design discussion's reasons (`/design-discussion` posts each as a signed comment): an entry in the issue's `progress.md` would derail a later `/run-issue` on that issue, which reads its next phase from those entries (owner decision 2026-11-21; workflow kinds sharing that machinery go to #544) | #370 | 1214 |
 | 2026-11-23 | Registry and adapters | The tool route's `build` runs the manifest tool's `build` with the distro's environment sourced first, `test` gives colcon the resolved repos on disk, and `validate` reads the tool's `status --json` (issue 503 part 4); the sentence that said `build` and `test` are the colcon loop and `validate` checks the last resolve is replaced. Registry and adapters grows by 1 line; the mapping from `status` to `validate` lives in `docs/manifest/design.md` | #503 | 1216 |
+| 2026-11-23 | Documentation layers | The Direction row and the gaps paragraph follow the roadmap's new Direction section: five paths, Paths 1 to 4 with a line table each and one line across the paths, the acceptance case as the test of Path 1, parts with no design yet as deferral rows. Until #563 the sit-rep reads the tables as one list and marks work by the three earlier paths, checking first whether a line names it, so work any path's line names is marked Path 1 and Paths 4 and 5 are never marked (owner's design review, 2026-11-23) | #560 | 1217 |
+| 2026-11-23 | Review loop and timeline | Independent review bullet: Gemini and Codex before the push, one cold read after (Copilot asked once before every merge, after the re-fetch for unread reviews, and waited for once, else one cross-model `review-code` read recorded on its `**Depth**` line); no wait for a review the loop did not request, since automatic Copilot review is off everywhere | #452 | 1240 |
+| 2026-11-23 | Merge gate | The running review check-run that holds a merge is one the loop or a person requested; an absent or concluded one holds nothing | #452 | 1240 |
+| 2026-11-23 | Sessions and roots | The hygiene checklist's Copilot review item becomes independent review (a review by someone other than the author's own session; Copilot one way, asked by hand); no finding without the automatic rule | #452 | 1240 |
+| 2026-11-23 | Review loop and timeline | Local draft review bullet: `review_viewer.py` as a way the owner answers on a draft (notes file, decision, window close as the signal, changes since the last round from a `.reviewed` snapshot, exit 2 to a chat review in the same format; no new entry type). The section is past 60 lines: the mechanics stay in the script header and only how it fits the loop is here | #545 | 1253 |
 
 ## Glossary
 

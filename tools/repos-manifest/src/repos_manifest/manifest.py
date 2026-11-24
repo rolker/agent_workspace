@@ -202,6 +202,22 @@ def version_ref(version: str) -> Tuple[Optional[str], str]:
     return None, version
 
 
+def check_url(url, where: str, source: str) -> str:
+    """`url` checked by the rules a manifest's `url` is checked by (`_Checker.url`), for a url
+    that does not come from a manifest, such as one `fetch_from` builds: an error names
+    `source` and `where`. Returns the url."""
+    return _Checker(source).url(url, where)
+
+
+def url_path(url, where: str, source: str) -> str:
+    """The path of `url`, as the rules a manifest's `url` is checked by separate it from the
+    scheme, user, host and port (`_Checker.url_path`), with the url checked by them: what
+    follows the host (from its '/') in a url with `://`, what follows the host's ':' in the
+    `[user@]host:path` form, and the whole of a path on the local disk. Empty when a url with
+    `://` has nothing after its host."""
+    return _Checker(source).url_path(url, where)
+
+
 # A value of the wrong type is described by its kind, never shown: a url inside it would not
 # be masked.
 _type_name = type_name
@@ -285,6 +301,11 @@ class _Checker:
         return seen
 
     def url(self, value, where: str) -> str:
+        self.url_path(value, where)
+        return value
+
+    def url_path(self, value, where: str) -> str:
+        """Check `value` as a url (`url`) and return its path (`url_path` at module level)."""
         remember_url(value)  # before any message that quotes it
         url = self.not_an_option(self.string(value, where), where)
         if _TRANSPORT_FORM.match(url):
@@ -308,21 +329,26 @@ class _Checker:
                 # '[' or ']' after it is the path's business.
                 slash = rest.find("/")
             authority = rest if slash < 0 else rest[:slash]
+            # A file url's host is normally empty; any other's is a host git contacts.
             self.authority(
-                url, authority, _bracketed_host(authority), where, ssh=scheme == "ssh://"
+                url,
+                authority,
+                _bracketed_host(authority),
+                where,
+                host_required=scheme != "file://",
             )
-            return url
+            return "" if slash < 0 else rest[slash:]
         if "://" not in url and _colon_before_slash(url):
             # git's scp-like form, `[user@]host:path`: the host ends at the first ':' after it.
             brackets = self.ssh_address(url, url, where)
             sep = url.find(":", brackets[1] + 1 if brackets else 0)
             if sep <= 0 or sep == len(url) - 1:
                 raise self.error(where, f"{quoted_url(url)} is refused; {_URL_RULE}")
-            self.authority(url, url[:sep], brackets, where, ssh=True)
+            self.authority(url, url[:sep], brackets, where, host_required=True)
             if url[sep + 1] == "-":
                 # git refuses such a path ("strange pathname") rather than hand it to ssh.
                 raise self.error(where, f"{quoted_url(url)}: the path starts with '-'")
-            return url
+            return url[sep + 1 :]
         # No ':', or a '/' before the first ':': a path on the local disk.
         if url.startswith("/"):
             return url
@@ -353,12 +379,17 @@ class _Checker:
         brackets: Optional[Tuple[int, int]],
         where: str,
         *,
-        ssh: bool,
+        host_required: bool,
     ) -> None:
         """Check the user, host and port in `text`, the part of a url before the path, with
         `brackets` where the brackets of its host are: no '%' (git decodes it in a url with
         '://', so a '%2d' would be a '-'), and none starts with '-', where ssh would read it as
-        an option. In an address handed to ssh (`ssh`), the host is not empty."""
+        an option. With `host_required` (an https, http or ssh url, or the [user@]host:path
+        form; not a file url, whose host is normally empty), the host is not empty. With a url
+        such as 'https:///x.git', git takes the first part of the path as the host and
+        contacts it; the other https and http forms with an empty host git refuses itself.
+        The rule refuses them all, so that no url with an empty host reaches git. An ssh
+        address with an empty host would give ssh no host."""
         if "%" in text:
             raise self.error(
                 where, f"{quoted_url(url)}: a '%' in the user, host or port is refused"
@@ -387,7 +418,7 @@ class _Checker:
             user, _, host_port = text.rpartition("@")
             host, _, port = host_port.partition(":")
             parts = [("user", user), ("host", host), ("port", port)]
-        if ssh and not host:
+        if host_required and not host:
             raise self.error(where, f"{quoted_url(url)}: the host is empty")
         for part, value in parts:
             if value.startswith("-"):

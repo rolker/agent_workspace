@@ -874,7 +874,7 @@ They imported the skill **from us**. No action.
 | `tests/` directory for scripts | deferred | **Ported/Adapted** — we started this session (test_cross_model_review, test_resolve_work_plans_dir, test_merge_pr_root_resolution) |
 | `ci_workflow.yml` template | deferred | **Skip** — template targets ROS repos; the managed project isn't ROS |
 | `pre-commit-config.yaml` template | deferred | **Skip** — same reason |
-| `.github/copilot-instructions.md` adapter | deferred | **Skip** — we have Copilot review working via default behavior |
+| `.github/copilot-instructions.md` adapter | deferred | **Skip** — Copilot reviews here without it. (2026-11-23: automatic Copilot review is now off on every repository, owner's quota decision; the review loop asks Copilot once per pull request, issue 452) |
 
 ## CLI-first architecture note (2026-04-19 session)
 

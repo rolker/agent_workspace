@@ -17,11 +17,19 @@ import tempfile
 from pathlib import Path
 from typing import Callable, List, Optional, Sequence
 
-from . import selection
+from .fetch_from import FetchFrom, FetchFromError, check_prefix
 from .output import process_has_ended, signals_held
 from .show import render_body, render_head, shown_path
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
-from .sync import FINISH, Planned, closing, plan_distros, require_tools, sync_distros
+from .sync import (
+    FINISH,
+    Planned,
+    closing,
+    plan_distros,
+    require_tools,
+    resolve_for,
+    sync_distros,
+)
 from .yamlload import ManifestError
 from .system import (
     current_directory,
@@ -219,13 +227,16 @@ def run_init(
     distros: Sequence[str],
     distro_dirs: bool,
     yes: bool,
+    fetch_from: Optional[str] = None,
 ) -> int:
     """A stop signal at any point ends the run with one line, which says whether the system
-    was made."""
+    was made. `fetch_from` is the prefix of `--fetch-from`, when given."""
     made: List[bool] = []
     try:
         with signals_end_the_run():
-            return _init(manifest_location, role, groups, distros, distro_dirs, yes, made)
+            return _init(
+                manifest_location, role, groups, distros, distro_dirs, yes, made, fetch_from
+            )
     except Stopped as exc:
         then = FINISH if made else "nothing was created"
         return stop_exit(exc, f"stopped by {signal_name(exc)}; {then}")
@@ -239,6 +250,7 @@ def _init(
     distro_dirs: bool,
     yes: bool,
     made: List[bool],
+    fetch_from: Optional[str] = None,
 ) -> int:
     system = current_directory()
     distros = list(dict.fromkeys(distros))
@@ -255,6 +267,12 @@ def _init(
                 f"{len(distros)} distros given without --distro-dirs", "Add --distro-dirs"
             )
         refuse_case_twins(distros)
+        place = None
+        if fetch_from is not None:
+            try:
+                place = FetchFrom(check_prefix(fetch_from, "--fetch-from"))
+            except ManifestError as exc:
+                raise ManifestError(f"{exc}; nothing was set up") from None
         manifest = read_manifest(manifest_location, system)
         check_distros(manifest, distros, distro_dirs)
         layout = LAYOUT_DISTRO_DIRS if distro_dirs else LAYOUT_FLAT
@@ -264,10 +282,15 @@ def _init(
             groups=list(groups),
             layout=layout,
             distros=distros if manifest.distros is not None else None,
+            fetch_from=place,
         )
-        resolved_distros = [
-            selection.resolve(manifest, role, distro, groups) for distro in config.distro_keys
-        ]
+        try:
+            resolved_distros = [
+                resolve_for(manifest, config, distro, "--fetch-from")
+                for distro in config.distro_keys
+            ]
+        except FetchFromError as exc:
+            raise ManifestError(f"{exc}; nothing was set up") from None
         try:
             plan = plan_distros(resolved_distros)
         except ManifestError as exc:

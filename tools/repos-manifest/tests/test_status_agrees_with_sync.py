@@ -51,6 +51,12 @@ DIFFER = {
     # `status` answers from the old url's refs, where the branch is not behind; `sync` repoints
     # origin to the new url, fetches from it and fast-forwards to the commit it has ahead.
     "a url changed": "updated",
+    # `status` cannot know offline whether the place `fetch_from` names holds the commits made
+    # here; `sync` fetches from it, finds it does not, and leaves origin and the repo as they
+    # are. Named apart from "commits only here", which has no `fetch_from`.
+    "fetch_from set, commits only here": "left alone",
+    # As "a url changed, probe remote taken": no check is made while that name is taken.
+    "fetch_from set, probe remote taken": "left alone",
 }
 
 # Cases whose text is not checked against `sync`, and why: the ones `status` cannot know
@@ -61,6 +67,19 @@ CLAIMS_DIFFER = {
     # `status` reads the local tag as origin's, so it says `sync` would try to move there;
     # `sync` asks origin, which lacks it, and fails.
     "a local tag origin lacks",
+}
+
+# One claim of one case that `sync` answers otherwise than the claim's own outcome, and why:
+# (case, claim pattern) -> the outcomes and the pattern `sync`'s output then holds. The case's
+# other sentences are checked as usual.
+CLAIM_DIFFERS = {
+    # `status` says `sync` tries to repoint origin to the place (it does, with a fetch from it
+    # first); offline it cannot know the place lacks the commit made here, so `sync`'s refusal
+    # to repoint, not a repoint, follows.
+    ("fetch_from set, commits only here", r"sync tries to repoint origin to it"): (
+        {"left alone"},
+        r"url changed to \S+ but \d+ local commits? \(branch main\) (is|are) not on it",
+    ),
 }
 
 # Each sentence of `status`'s text that says what `sync` does, as a pattern, with the outcome
@@ -102,6 +121,15 @@ CLAIMS = [
     (r"sync does not move it", {"left alone", "up to date"}, r""),
     (r"sync does not follow it", {"left alone"}, r"; not followed"),
     (r"sync tries to repoint origin to it", None, r"origin repointed from"),
+    # `status` cannot ask the place whether it has the commits made here, so it names both of
+    # what `sync` may do: repoint, or leave the repo with its refusal to repoint.
+    (
+        r"if it has them, sync repoints origin to it, and if not, sync leaves the repo as it is"
+        r" until they are pushed there",
+        {"left alone", "updated", "up to date"},
+        r"origin repointed from|url changed to \S+ but \d+ local commits? \(branch main\)"
+        r" (is|are) not on it",
+    ),
     (r"sync leaves origin as it is", None, r"left as set"),
     (r"sync clones it", {"cloned"}, r""),
     (r"sync does not update a repo through a link", {"left alone"}, r"through a link"),
@@ -178,6 +206,7 @@ def test_status_agrees_with_what_sync_then_does(vcs, tmp_path, capsys, name, opt
     if name in CLAIMS_DIFFER:
         return
     for said, then, shown in claims:
+        then, shown = CLAIM_DIFFERS.get((name, said), (then, shown))
         if then is not None:
             assert outcome in then, (name, said, outcome, out)
         assert re.search(shown, out), (name, said, shown, out)

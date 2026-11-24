@@ -34,7 +34,8 @@ are relative to the tool's own directory.
 | `init` and `sync` set up and update a system directory, and `sync` leaves local work alone | `file-exists src/repos_manifest/update.py` |
 | `build` builds the layers in order and writes one setup file | `file-exists src/repos_manifest/build.py` |
 | `status` shows what differs from the manifest | `file-exists src/repos_manifest/status.py` |
-| A machine can fetch every repo from another place: a developer's forks where they exist, or a private server for a field machine | |
+| A field machine fetches every repo from one prefix on a private server (`fetch_from` with fallback off) | `file-exists src/repos_manifest/fetch_from.py` |
+| A developer's machine fetches each repo from their fork where it exists, and from the published repo otherwise (`fetch_from` with fallback on) | |
 | A manifest can be read from a private git server | |
 | `sync` adds the extra remotes a machine names to every clone | |
 | A system set up with a directory per distro holds more than one distro, and gains another later without moving the first | |

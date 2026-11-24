@@ -135,7 +135,7 @@ def test_cli_show_prints_and_writes_nothing(tmp_path, capsys, monkeypatch):
     assert main(["show", "m.yaml", "--role", "robot", "--distro", "jazzy"]) == 0
     out = capsys.readouterr().out
     assert out.startswith(
-        "manifest  m.yaml\nrole      robot    groups on: (none)    distro: jazzy\n"
+        "manifest    m.yaml\nrole        robot    groups on: (none)    distro: jazzy\n"
     )
     assert "  a   main   https://example.org/a.git\n" in out
     assert out.endswith("left out\n  s   group sim is off\n")

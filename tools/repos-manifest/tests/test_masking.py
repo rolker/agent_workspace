@@ -435,3 +435,42 @@ def test_the_earlier_format_prints_no_url_in_a_key(tmp_path, capsys, extra):
     text = _command_output(capsys, tmp_path, *argv)
     assert "ERROR" in text, text
     assert "aliceQ" not in text and "pw zQ" not in text, text
+
+
+# A published url from which `fetch_from` takes no repo name: the name comes from the path
+# alone, so none of these gives one, and the refusal names the url masked.
+NO_NAME_FORMS = {
+    "no path": "https://{info}@127.0.0.1:9/",
+    "no path, no slash": "https://{info}@127.0.0.1:9",
+    "colon in the last part": "https://{info}@127.0.0.1:9/o/foo:bar.git",
+    "empty name": "https://{info}@127.0.0.1:9/o/.git",
+}
+
+
+# Not a '%' in the user information: the manifest refuses it before `fetch_from` is reached.
+@pytest.mark.parametrize("user, password", [p for p in AWKWARD[:3] + ESCAPED if "%" not in p[1]])
+@pytest.mark.parametrize("form", list(NO_NAME_FORMS))
+def test_a_url_fetch_from_takes_no_name_from_prints_no_password(
+    vcs, tmp_path, capsys, user, password, form
+):
+    url = NO_NAME_FORMS[form].format(info=f"{user}:{password}")
+    data = {"format": 1, "repositories": {"a": {"type": "git", "url": url, "version": "main"}}}
+    manifest = tmp_path / "m.manifest.yaml"
+    manifest.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    (tmp_path / "fresh").mkdir()
+    texts = {
+        "init": _command_output(
+            capsys, tmp_path / "fresh", "init", manifest, "--fetch-from", "/srv/place/", "--yes"
+        )
+    }
+    sys_dir, good, _, _ = _system(tmp_path / "s")
+    rewrite_manifest(good, lambda d: d["repositories"]["a"].update(url=url))
+    config = sys_dir / ".repos-manifest/config.yaml"
+    config.write_text(config.read_text() + "fetch_from:\n  prefix: /srv/place/\n")
+    for command in ("sync", "status", "show"):
+        texts[command] = _command_output(capsys, sys_dir, command)
+    for command, text in texts.items():
+        assert "gives no name to put after the prefix" in text, f"{command}:\n{text}"
+        assert "https://***@127.0.0.1:9" in text, f"{command}:\n{text}"
+        for word in _forbidden(user, password):
+            assert word not in text, f"{command} printed {word!r}:\n{text}"

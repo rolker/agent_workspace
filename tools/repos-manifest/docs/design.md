@@ -84,7 +84,7 @@ remotes:
 | `groups` | Optional. Extra groups to switch on, on top of the role. |
 | `layout` | `flat`, or `distro-dirs` for a directory per distro: the system directory's layout, unrelated to `resolve --layout`. Chosen at `init` and not changed afterwards. See "More than one distro". |
 | `distros` | The distros of this system, each with its settings. The same shape for one distro or several. Absent when the manifest has no distros. See "More than one distro". Not read in this part: a distro's settings; each distro's entry is empty. |
-| `fetch_from` | Optional. Another place to clone the repos from. See "Where repos are fetched from". Not read in this part. |
+| `fetch_from` | Optional. Another place to clone the repos from: `prefix`, and `fallback`, false when it is missing. See "Where repos are fetched from". Not read in this part: `fallback: true`, which is refused with an error naming the file. |
 | `remotes` | Optional. Extra remotes to add to every clone. See "Extra remotes". Not read in this part. |
 
 `role`, `groups`, `layout` and `distros` are facts about the machine, which is why they are
@@ -297,14 +297,16 @@ distros:
         layer: core     # _unnamed for the unnamed layer
         version: rolling  # the manifest's version; null when it names none
         commit: 3f2a9c...
-        url: https://github.com/CCOMJHC/project11.git  # the manifest's url, when recorded
+        url: https://github.com/CCOMJHC/project11.git  # the url sync wants, when recorded
         moving: {from: 3f2a9c..., to: 81bd04...}  # only while sync moves the repo
 ```
 
 It is made at the first clone and written whole, by one rename, after each repo is cloned,
 followed or moved, and when the url of a repo left as it is is recorded. A write that fails ends
 the run with a message that the clone is in place, or that the repo may have been changed, and
-is not recorded, naming the file and the reason. `url` and `moving` are optional: a record
+is not recorded, naming the file and the reason. `url` is the url `sync` wants for the repo:
+the manifest's, or, with `fetch_from`, the one built from its prefix; for a repo whose `origin`
+a person set, it is still that url, not the clone's `origin`. `url` and `moving` are optional: a record
 without `url` (one written before urls were recorded) reads as no url recorded. One without
 exactly this shape (`format: 1`, each repo with `layer`, `version` and `commit`, optionally
 `url` and `moving` with `from` and `to`, and no other key) is an error that names it and says
@@ -427,7 +429,7 @@ parent next to it in the same repo reads the parent from the local disk too.
 
 | Command | What it does |
 |---|---|
-| `init` | Records the manifest, role and distros in a new system directory, then syncs. With `--distro-dirs` each distro gets a directory of its own, and distros can be added later. Without it the system holds one distro, or none, and cannot gain another. Refuses a directory that is already set up, or one inside a system. |
+| `init` | Records the manifest, role and distros, and with `--fetch-from` the place every repo is fetched from, in a new system directory, then syncs. With `--distro-dirs` each distro gets a directory of its own, and distros can be added later. Without it the system holds one distro, or none, and cannot gain another. Refuses a directory that is already set up, or one inside a system. |
 | `add-distro` | Adds a distro to a system set up with `--distro-dirs`, then syncs it. |
 | `show` | Prints what a manifest comes to for a role and distro, without cloning the system's repos or writing anything. |
 | `resolve` | Writes the `.repos` files for the role and distro. |
@@ -486,9 +488,9 @@ a person to read, before any of the system's repos is cloned:
 ```
 $ repos-manifest show project11.manifest.yaml --role robot --with echoboat-hardware --distro jazzy
 
-manifest  project11.manifest.yaml
-base      https://github.com/example/system.git  jazzy  system.manifest.yaml
-role      robot    groups on: echoboat-hardware    distro: jazzy
+manifest    project11.manifest.yaml
+base        https://github.com/example/system.git  jazzy  system.manifest.yaml
+role        robot    groups on: echoboat-hardware    distro: jazzy
 
 underlay
   geographic_info       ros2    https://github.com/ros-geographic-info/geographic_info.git
@@ -509,8 +511,12 @@ For each repo it shows the layer, the version and the URL it will be fetched fro
 user name and password masked as "sync" describes. A repo with no version shows
 `(its default branch)`. It says which manifest an entry came from when that is not the first
 in the chain, the manifest the chain's reading starts from. The manifest an entry came from is
-the one that gave the URL printed: the one where its key first appears, or the last manifest in
-the order of reading that changed its `url`, as one that points a repo at a fork does. A later
+the one that gave the repo's published URL: the one where its key first appears, or the last
+manifest in the order of reading that changed its `url`, as one that points a repo at a fork
+does. Without `fetch_from` that is the URL printed. With `fetch_from` in a system's
+`config.yaml`, the URL printed is built from its prefix and the repo's name in that published
+URL, and a `fetch from` line under the `manifest` and `base` lines names the prefix, its user
+name and password masked, so that a reader can tell why the URLs differ from the manifest's. A later
 manifest that changes the entry's other keys, its `version` or its `type`, or that repeats its
 `url` unchanged, does not change that, so the version printed may come from a later manifest
 than the one named.
@@ -540,8 +546,9 @@ would both leave out is listed with the group. A manifest with no roles prints `
 the role, and the unnamed first layer prints as `(unnamed layer)`.
 
 With no manifest given, `show` must be run inside a system directory: it uses what
-`config.yaml` records and that distro's manifest. Showing the effect of `fetch_from` there is
-planned, not built: today it prints the manifest's own URLs.
+`config.yaml` records and that distro's manifest, and, with `fetch_from` in `config.yaml`, the
+URLs built from its prefix. A manifest given on the command line is shown with its own URLs:
+`fetch_from` is a fact about a machine, not about a manifest.
 `--role` and `--with` are refused there, since the system records them; giving the manifest
 tries another role. Outside a system directory, a manifest is given; without one, `show`
 refuses and names the current directory, printed on one line as a path is above.
@@ -571,7 +578,10 @@ groups, and writes into `.repos-manifest/resolved/`:
 Each file starts with `#` comment lines that say which manifest, role, distro and extra groups
 it came from. The manifest is named as it was given, not as a resolved path. After it comes
 one `# base:` line for each manifest it builds on, in the order they were read, each named by
-its path after links are followed. A reader of the two lists skips lines that start with `#`.
+its path after links are followed. In a system with `fetch_from`, a last `# fetch from:` line
+names its prefix, the user name and password masked, since the files then hold the URLs built
+from it, not the ones `repos-manifest resolve` gives for the same manifest; `resolve` reads no
+`config.yaml` and never writes the line. A reader of the two lists skips lines that start with `#`.
 
 Outside a system directory the same files go to the directory given with `--out`:
 
@@ -819,7 +829,7 @@ local branch, `HEAD`, index or work-tree file changes before then.
    `sync` never deepens a clone. A branch `origin` has deleted is an error that says so and
    names the remote-tracking ref left here. A version that is none of these, or both a branch and a tag on `origin`, is an error
    that another sync will not change; when `origin` was set by hand the message says so and gives the command
-   that sets it to the manifest's url.
+   that sets it to the url `sync` wants (the manifest's, or the one `fetch_from` builds).
 9. On a branch with commits not on `origin`: left as it is (above). The count is of the commits
    reachable from `HEAD` and from no remote-tracking ref of `origin`. After an upstream
    force-push the old upstream commits count, so such a repo is left as it is too. A
@@ -844,7 +854,7 @@ local branch, `HEAD`, index or work-tree file changes before then.
     its record is behind (the manifest changed to the version a person had already put it on,
     or a person fast-forwarded it), the record is brought up to date and one line names the
     repo and says so (`core/src/a: already on rolling; record updated (was jazzy)`); a record
-    that gains only the manifest's url says nothing.
+    that gains only the url `sync` wants says nothing.
 11. On the recorded version, which the manifest has changed (on the recorded branch, or
     detached at the recorded commit): moved to the new version. A branch not yet local is
     made with `git switch -c <version> --no-track <origin's commit>`, which does all of it or
@@ -861,7 +871,7 @@ local branch, `HEAD`, index or work-tree file changes before then.
     version) is a repo a person has moved: left as it is and reported.
 
 A repo left as it is does not change the exit status, apart from the layer rule above; its
-record is unchanged, except that the manifest's url is recorded when it is not yet, and a repo
+record is unchanged, except that the url `sync` wants is recorded when it is not yet, and a repo
 moved by hand to the layer the manifest now gives it has that layer recorded, by whichever rule
 its turn ends, and a `moving` line that no longer describes it is removed (below). `status`
 is the check a script reads.
@@ -970,12 +980,15 @@ is and reported, never switched. When `origin` deletes the old branch, the recor
 branch that is gone, and the repo is an error whose message gives that `set-head` command.
 
 The url rule. `W` is the clone's `origin` url as written in its configuration (before any
-`insteadOf` rewrite), `U` the manifest's url, and `R` the one recorded; urls are compared after
+`insteadOf` rewrite), `U` the url `sync` wants (the manifest's url, or, with `fetch_from`, the
+one built from its prefix; see "Where repos are fetched from"), and `R` the url `sync`
+recorded; urls are compared after
 one trailing `/` and one trailing `.git` are taken off, as git hosting reads `x` and `x.git` as
 one repository; so local paths `/srv/robot` and `/srv/robot.git` are read as one too.
 
 - `W` is `U`: nothing to do.
-- `W` is `R` and the manifest now names another `U`: the manifest moved the repo. `sync` fetches
+- `W` is `R` and `sync` now wants another `U`: the manifest moved the repo, or `fetch_from` was
+  set, changed or removed. `sync` fetches
   `U`, with `--no-tags --no-prune --no-recurse-submodules`, into refs of its own
   (`refs/remotes/repos-manifest-probe/`, removed afterwards, and at
   every later check if a run was killed) and repoints `origin` to `U` only when every local
@@ -985,13 +998,27 @@ one repository; so local paths `/srv/robot` and `/srv/robot.git` are read as one
   `repos-manifest-probe`, the name `sync` keeps for this check, there is no check: `origin`
   stays, the repo is left as it is and reported with the command that renames that remote,
   and that remote's refs are never removed. The old url is not kept as another
-  remote; the report prints it.
-- Anything else, `R` missing included, is an `origin` a person set (ssh for pushing, a fork):
-  it is left as set, the repo is updated from it, `U` is recorded, and a line on every run says
-  so, with the command that sets the manifest's url. An `origin` a person set is never
-  repointed. A record with no url yet (a system made before the record held urls) is given the
-  manifest's url at the next sync when `W` is `U`; a later change of the url in the manifest
-  then repoints a clone whose `origin` still has the url recorded.
+  remote; the report prints it. With `fetch_from`, a repo left as it is for its commits gets the
+  two ways on in the same line: push them to the place first (the `git push` command for each
+  branch that holds them, which names it in full, `refs/heads/<b>:refs/heads/<b>`, so a tag of
+  the same name cannot make it ambiguous, and for each detached `HEAD` that holds them its
+  commit to a new branch named by a placeholder, `NEW_BRANCH`, or `NEW_BRANCH_1`, `NEW_BRANCH_2`
+  and so on for several, an upper-case word a shell reads as a word, which the line says is to
+  be replaced by a new branch's name and names the work tree each is for), then
+  sync again; or point `origin` at the place by hand (the `set-url` command). Where the place's
+  url is shown masked, the line says the whole url is the one `fetch_from` builds for the repo,
+  as the `set-url` command does. A probe fetch that fails, with
+  or without `fetch_from`, says "the url to fetch from changed to `U`, and fetching from it
+  failed (origin stays `W`)".
+- Anything else is an `origin` a person set (ssh for pushing, a fork): it is left as set, the
+  repo is updated from it, `U` is recorded, and a line on every run says so, with the command
+  that sets `U`. An `origin` a person set is never repointed. A record with no url yet (a
+  system made before the record held urls) counts as recording the manifest's url when
+  `fetch_from` is set: a clone whose `origin` is still the manifest's url is repointed to the
+  place by the case above. Without `fetch_from`, a record with no url and a `W` that is not `U`
+  is an `origin` a person set; one is given `U` at the next sync when `W` is `U`, and a later
+  change of the url in the manifest then repoints a clone whose `origin` still has the url
+  recorded.
 
 In the first and last case `U` is recorded when the repo's record is next written, which, for
 a repo that is recorded, is in the same run unless the fetch or the version lookup fails. After
@@ -1081,8 +1108,9 @@ A `set-url` command whose url is masked says so, and that the url to give it is 
 as the manifest gives it. The urls are written in full where they are kept: the resolved
 files, `state.yaml` and the clone's configuration.
 
-A person who fetches over https and pushes over ssh sets `remote.origin.pushurl`, or
-`url.<base>.pushInsteadOf`, and keeps `origin`'s url the manifest's.
+A person who fetches over https and pushes over ssh keeps `origin`'s url the manifest's and
+sets git's own url rewriting, as "Fetching over https and pushing over ssh" under "Where repos
+are fetched from" shows; `fetch_from` is for a machine that fetches from another place.
 
 A distro's lock: `sync`, and `init` for its first sync, hold the distro's lock (the file `build`
 holds, "build") from before the distro's resolved files are written to the end of its repos;
@@ -1649,10 +1677,20 @@ than one, or a place that is not a git clone with a commit) and for a link at th
 `status` does not look into. As `sync` does, `status` registers every url it reads (each repo's url
 in the manifest, each recorded url, each `origin`) before it prints anything, so the user name and
 password of each is masked wherever it appears, in the JSON, in the lines a person reads and in error
-texts, and the manifest's location is masked too. When it is not the manifest's url the text says which: it is the url recorded,
+texts, and the manifest's location is masked too; with `fetch_from`, each url built from its prefix and the
+manifest's url are registered both. When `origin` is not the url `sync` wants the text says which: it is the url recorded,
 so `sync` tries to repoint it (fetching from the new url first, and leaving `origin` and the repo as
 they are when that fetch fails or a local commit is not on the new url), or `sync` leaves it because a
-remote named `repos-manifest-probe` is set here; or it was set by hand and is left. A repo can be expected and have
+remote named `repos-manifest-probe` is set here; or it was set by hand and is left. With `fetch_from` the text
+names the url built from its prefix ("fetch_from now names ...", or "fetch_from names ... (the
+manifest says ...)" for an `origin` set by hand); an `origin` that is that url already has no note.
+When `sync` would repoint `origin` to that url and the branch has commits not on `origin`,
+`status`, which asks no other place, does not know whether that url has them: the text says
+that `sync` repoints `origin` if it has them and leaves the repo as it is until they are pushed
+there if not, and the `git push` command it gives pushes them to that url, the step `sync`'s
+refusal to repoint names, not to `origin`.
+In the JSON `url` is the manifest's url, with `fetch_from` too, and `fetched_from` the clone's
+`origin`; the url built from the prefix is only in the text. A repo can be expected and have
 changes and unpushed commits at once, as `sync` leaves such a repo as it is; the state is the
 version, the facts are separate.
 
@@ -1747,7 +1785,9 @@ having to say so:
 
 `fetch_from` in `config.yaml` covers both. It names a place by a URL prefix. For each repo,
 the tools build another URL from the prefix, the repo's name (the last part of its published
-URL, without a `.git` ending) and `.git`.
+URL's path, without a `.git` ending) and `.git`: with the prefix `git@git.example.org:field/`, the
+repo published as `https://github.com/example/unh_marine_autonomy.git` is fetched from
+`git@git.example.org:field/unh_marine_autonomy.git`, whatever owner the published URL names.
 
 ```yaml
 # a field machine: everything comes from the private server
@@ -1765,6 +1805,7 @@ fetch_from:
 
 With `fallback: false`, every repo is cloned from the other place, and a repo that is missing
 there is an error. A field machine never reaches for the public host without being told to.
+A missing `fallback` is false.
 
 With `fallback: true`, a repo is cloned from the other place if it exists there and has the
 version the manifest names, where it names one, and from the published URL otherwise.
@@ -1775,30 +1816,147 @@ The repo is cloned with the place it came from as `origin`. When that is not the
 URL, and `fallback` is true, the published repo is added as a remote named `upstream`.
 
 Because only the repo's name is kept, repos from different owners all land side by side at
-the other place. Two repos in a manifest with the same name and different owners cannot both
-be fetched this way, and `resolve` says so.
+the other place. Two repos with the same name and different owners cannot both be fetched this
+way, whether one distro selects both or each of two distros of a system with a directory per
+distro selects one: across every distro the system is set up for, `init`, `sync`, `status` and
+`show` in a system, the commands that read `config.yaml`, say so and name the two repos and
+their distros, and `sync` changes nothing of a distro that has either. `resolve` reads no
+`config.yaml` and does not check it. One repo listed twice with one URL, or selected by several
+distros, is fine. The published URLs are compared as written, after one trailing `/` and one
+trailing `.git` are taken off, as `sync` compares URLs: one repo spelled two ways, over ssh in
+one distro and over https in another, is refused as two repos, and two local paths that differ
+only by a `.git` ending, `/srv/tools` and `/srv/tools.git`, count as one repo though they may be
+two. Telling repos apart by what they hold rather than by how their URLs are spelled is planned
+with `fallback: true`. A name that could not follow a prefix (one that is not letters, digits, `.`, `_` and
+`-` starting with a letter or a digit) is refused the same way.
+
+The name is read from the URL's path only, separated from the scheme, user, host and port by
+the URL rule a manifest's URL passes: after the host in a URL with `://`, after the host's `:`
+in the `[user@]host:path` form, and the whole of a local path. A URL with nothing after its
+host (`https://host/`, `https://host:8443/`) names no repo, and a last part of `.git` leaves
+an empty name; both are refused the same way, with the URL masked, so a name is never read
+out of a host, a port or a password. The name is the whole last part of the path, as git reads
+it: in `/srv/team:tools.git` and `https://host/o/foo:bar.git` it is `team:tools` and
+`foo:bar`, which hold a `:` and so break the name rule above and are refused. Taking what
+follows the `:` instead would fetch `tools` or `bar` from the place, another repo. An https or
+http URL with a `?` or a `#` is refused the same way, not cut: the server reads the query, which
+can change which repo it gives, so no name read from such a URL is trusted
+(`https://host/o/real.git?x=/other` would otherwise give `other`). In ssh, `[user@]host:path`
+and file URLs and local paths git reads `?` and `#` as part of the path, and so does the name:
+`ssh://git@host/o/x?y/tools.git` gives `tools`.
+
+The prefix ends in `/`, or in `:` in the `[user@]host:` form only, with nothing after the host
+(`git@git.example.org:`; an `https://host:` would read the repo's name as a port, and in
+`/srv/mirror:`, `git@host:field:` and `user:pass@host:` the URL rule reads a path before the
+`:`, so the repo's name would not be the whole path). A prefix ending in `/` puts the repo's
+name in the URL's path: `https://`, `http://` and `file://` alone have no host, so the name
+would be read as the host, and are refused; so are `https:///`, `https://@/` and
+`http://:80/`, since the URL rule refuses an https or http URL whose host is empty. It holds
+no `?` or `#`, so a repo's name is always in the path, never in a query or a fragment. With a
+repo's name after it, it is a URL a manifest may name (the rule under "Reading a manifest
+before using it" in the specification: https, http, ssh, file, the `[user@]host:path` form or
+an absolute path), and it holds no control or invisible character; every URL built from it is
+checked the same way.
+A prefix that breaks a rule is an error that names `config.yaml`, or `--fetch-from`. A user
+name and password in the prefix are masked in every message and in `status --json`, and
+written in full where URLs are kept, as for a manifest URL that holds them: the resolved files,
+`state.yaml` and the clone's `origin`. A credential belongs in a credential helper or an ssh
+key, not in the prefix.
 
 The rule applies to every repo the manifest resolves to, whichever manifest in the chain its
 URL came from, to the repo that holds the manifest, and to a parent manifest that is named
-as a file in a git repo. `status` shows where each repo was
-fetched from.
+as a file in a git repo; the last two wait until a manifest is read from git ("What is built").
+`status` shows where each repo was fetched from.
 
 A machine that should run exactly what is published leaves `fetch_from` unset.
-
-When the place a repo comes from changes for a repo that is already cloned, because a fork
-appeared or `fetch_from` was edited, `sync` changes the clone's remotes to match. It does
-not clone again, and the working files and local branches stay as they are.
-
-When the manifest itself gives a cloned repo another url, the url rule under "sync" applies:
-`origin` is repointed only when it still has the url `sync` recorded and every local branch is
-on the new one, and an `origin` a person set is left as set. To push over ssh while fetching
-from the url the manifest names, set `remote.origin.pushurl`, or `url.<base>.pushInsteadOf`.
 
 With `fallback: true`, the fork is where the repo is fetched from, so its branches have to
 be kept up to date by their owner. That suits a fork that carries a developer's own line of
 work. For a fork that exists only to send a change back, an extra remote is the better fit:
 the clone keeps following the published repo, and the change is pushed to the fork by name.
 See "Extra remotes".
+
+### Setting it on a field machine
+
+A new system gets the setting from `init`:
+
+```
+repos-manifest init <the published manifest> --role robot --distro jazzy \
+    --fetch-from git@git.example.org:field/
+```
+
+The prefix, and the URL built for each repo, are checked before anything is created. Every
+repo is cloned from the place, `origin` is that URL, and `state.yaml` records it.
+
+A system set up before has the setting added by editing its `.repos-manifest/config.yaml`; no
+command changes it. This is for a system directory `init` set up, with its
+`.repos-manifest/`; a checkout made another way (`vcs import` of `.repos` files kept by hand)
+has no record of what `sync` put there, and the way in is `init` in a new directory. When the
+system was set up from a copy of the manifest kept by hand with the private server's URLs, the
+same edit points `manifest:` at the published manifest, which retires the copy. The two changes
+are made in one edit: with `manifest:` switched first and no `fetch_from`, the next `sync`
+repoints every clone to the published place whenever that place can be reached. Then run
+`status`, before `sync`: it reads only and fetches nothing, and with the prefix right it names
+no repoint for a clone whose `origin` is the server's URL already. A line that says `sync`
+tries to repoint `origin` means the prefix, or a repo's name on the server, differs from that
+clone's `origin`.
+
+The next `sync` acts on each clone by the url rule under "sync", with the URL built from the
+prefix as the URL it wants:
+
+- `origin` is that URL already: nothing to do; the record gets it at its next write.
+- `origin` is the URL recorded (the manifest's, for a system made without `fetch_from`, or a
+  record made before records held URLs whose `origin` is the manifest's URL): `sync` fetches
+  from the place first and repoints `origin` when every local branch and the `HEAD` of every
+  work tree is there. Uncommitted changes do not stop the repoint, which touches no file; the
+  repo is then left as it is for its changes. With commits the place lacks, `origin` stays and
+  the repo is left as it is, on every run until they are pushed to the place, with the two
+  ways on (push them there, or point `origin` at it by hand). Nothing is cloned again, and no
+  working file or local branch is changed.
+- The place cannot be reached, the key is locked, or the repo is not there (a repo whose name
+  on the server differs from its published name gets a URL that is not there): the fetch
+  fails, `origin` stays, and the repo fails, or is skipped when optional. Nothing falls back
+  to the published URL.
+- `origin` is some other URL a person set: left as set, and followed, with a line on every run.
+
+When `fetch_from` is changed to another prefix, the same rule moves each clone from the old
+place to the new one; when it is removed, back to the published URLs, with the same refusal
+for commits the published repo lacks, so work that is only at the place is never left behind
+silently.
+
+URLs are compared as text, after one trailing `/` and one trailing `.git` are taken off. The same
+server spelled two ways, `git@git.example.org:field/x.git` and
+`ssh://git@git.example.org/field/x.git`, is two URLs to this version: a clean clone whose
+`origin` and record have the other spelling is repointed once, harmlessly; one with commits not
+pushed is left alone on every run with the url rule's line, though the repo is the same; and an
+`origin` set by hand in the other spelling is left as set on every run. Spell the prefix the way
+the clones' `origin` URLs are spelled.
+
+### Fetching over https and pushing over ssh
+
+A machine that fetches what the manifest publishes over https and pushes over ssh, such as a
+developer's, does not need `fetch_from`: `origin` stays the manifest's URL and git's own URL
+rewriting changes what git uses. Set once, for every clone:
+
+```
+git config --global url."git@github.com:".pushInsteadOf "https://github.com/"
+```
+
+sends every push to a `https://github.com/` URL over ssh, while fetches stay on https. For an
+owner whose repos are private, `insteadOf` rewrites fetches too:
+
+```
+git config --global url."git@github.com:example/".insteadOf "https://github.com/example/"
+```
+
+Neither changes the URL written in a clone's configuration, which is what the url rule compares,
+so `sync` and `status` read such a clone as following the manifest. `remote.origin.pushurl` does
+the same for one clone. `fetch_from` is for a machine that fetches every repo from another place,
+which a rewrite per owner would only approximate.
+
+When the manifest itself gives a cloned repo another url, the url rule under "sync" applies in
+the same way: `origin` is repointed only when it still has the url `sync` recorded and every
+local branch is on the new one, and an `origin` a person set is left as set.
 
 ## Extra remotes
 
@@ -2065,8 +2223,15 @@ done. The cases where the two read a repo differently, because `sync` fetches fi
 "status".
 
 `show` is built for a manifest given as a path on the local disk, and with no manifest inside
-a system directory, as "show" describes. It prints a manifest's own URLs, since fetching from
-another place is not built.
+a system directory, as "show" describes, with the URLs `fetch_from` builds in a system that sets
+it.
+
+Fetching every repo from another place is built with `fallback: false`, as "Where repos are
+fetched from" describes: `fetch_from` in `config.yaml`, `init --fetch-from`, and `init`, `sync`,
+`status` and `show` acting on the URLs built from the prefix through one step of resolving,
+with `sync`'s url rule moving the `origin` of clones that are there. Not built yet:
+`fallback: true` (refused where `config.yaml` is read), the `upstream` remote, and reading the
+manifest's own repo and a parent manifest from the other place.
 
 `build` is built as "build" describes, for one distro at a time, stopping at the first layer
 that fails unless `--keep-going` is given. It reads the resolved files `sync` wrote and needs `colcon` on `PATH` or beside the
@@ -2075,7 +2240,7 @@ Python running it.
 Not built yet: step 1 of "sync" (the manifest's own clone), the rebase of a repo with commits
 not on `origin`, `local_manifest`, the git and URL forms of a manifest's location with `--manifest-ref` and
 `--manifest-path`, arguments after `--` for `init` and `sync`, `add-distro`, `freeze`,
-fetching from another place and extra remotes.
+`fetch_from` with `fallback: true` and extra remotes.
 
 ## Open questions
 

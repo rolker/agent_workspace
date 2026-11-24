@@ -4,8 +4,8 @@
 # guards the skill set itself: the declared session_scope list, the
 # replacement of the old what-next skill by the sit-rep (#389), and the
 # orchestrator skill, the host's standing rules, the run-issue
-# checkpoint text they rely on, and the workspace roadmap's three Paths
-# paragraphs (#321, #477) with Path 3's marker phrase, and the
+# checkpoint text they rely on, and the workspace roadmap's five Paths
+# paragraphs (#321, #477, #560) with Path 3's marker phrase, and the
 # onboard-project and audit-project rules the owner gave (#332).
 #
 # A skill whose SKILL.md declares `session_scope: project` or `both` can run
@@ -590,10 +590,24 @@ if [[ -f "$AUD" ]]; then
         '"$WS_ROOT/.agent/scripts/project_integration_audit.sh" --facts --format text [--instance <settings-name>]' \
         '| `github` |' '| `issues` |' '| `prs` |' '| `windows` |' '| `multi_component` |'
     has "$AUD" "audit-project: the seven checklist items with their fix approaches" \
-        '**Pre-commit config**' '**CI workflow**' '**Branch protection**' '**Copilot auto-review**' \
+        '**Pre-commit config**' '**CI workflow**' '**Branch protection**' '**Independent review**' \
         '**Component labels**' '**git-bug bridge**' '**License headers**' \
         'gh label create "component:<name>"' 'git bug bridge new' \
         'with no dependency on workspace scripts or paths'
+    # issue 452: the independent-review item needs no automatic Copilot rule,
+    # never turns it back on, and gives the hand request.
+    has "$AUD" "audit-project: independent review is met without the automatic Copilot rule, which is never re-enabled" \
+        'a review by someone other than the author'"'"'s own session' \
+        'its absence is no finding' 'Never turn the automatic Copilot rule back on' \
+        'gh pr edit <N> --add-reviewer "@copilot"' \
+        '**Informational**: no check here can fail' \
+        'in place (informational): pull requests merge through the review loop'"'"'s cold read' \
+        'component labels and independent review as `not checked: github=unknown'
+    if grep -qF 'Copilot auto-review' "$AUD"; then
+        fail "audit-project still has the Copilot auto-review item (issue 452)"
+    else
+        pass "audit-project no longer has the Copilot auto-review item"
+    fi
     has "$AUD" "audit-project: the facts table names what each fact makes moot, reported as skipped" \
         'skipped: no remote on github.com (github=no)' \
         'as gh decides: `gh repo view --json nameWithOwner`, run in the repository with `GH_HOST=github.com`' \
@@ -892,26 +906,64 @@ PYRULES
     fi
 fi
 
-# --- The workspace roadmap's three paths (#321, #477): the paragraphs sit
-# in the Direction section, as prose, with no table row between them (a
-# Path column or table there would change sitrep_checks.sh's grammar).
-# This reads the workspace's own roadmap only; a project's roadmap may
-# have any number of Paths paragraphs, or none.
+# --- The workspace roadmap's five paths (#321, #477, #560): the paragraphs
+# sit in the Direction section, as prose, Path 1 to Path 5 in order, each
+# read as the sit-rep reads it (step 3: the paragraph up to a blank line,
+# its number, bold name and first sentence). A path's lines may follow its
+# paragraph in a `| Line | Check |` table of their own, after a blank line;
+# any other table among the paths (a Path column, say) would change
+# sitrep_checks.sh's grammar, and a table row inside a paragraph would be
+# read as part of it. The paths run up to the **Format.** paragraph. This
+# reads the workspace's own roadmap only; a project's roadmap may have any
+# number of Paths paragraphs, or none.
 ROADMAP="$WS_ROOT/docs/roadmap.md"
-paths_out="$(awk '
-    /^## / { sec = ($0 == "## Direction"); next }
-    !sec { next }
-    /^\*\*Path 1,/ { p1 = 1; inpaths = 1 }
-    /^\*\*Path 2,/ { p2 = 1 }
-    /^\*\*Path 3,/ { p3 = 1; last = 1 }
-    inpaths && /^[[:space:]]*\|/ { print "table row between the Paths paragraphs: " $0 }
-    last && /^[[:space:]]*$/ { inpaths = 0; last = 0 }
-    END { if (!p1) print "no **Path 1, paragraph in ## Direction"
-          if (!p2) print "no **Path 2, paragraph in ## Direction"
-          if (!p3) print "no **Path 3, paragraph in ## Direction" }
-' "$ROADMAP" 2>&1)"
+paths_out="$(python3 - "$ROADMAP" <<'PYPATHS' 2>&1
+import re, sys
+try:
+    lines = open(sys.argv[1]).read().split("\n")
+except OSError:
+    print("docs/roadmap.md is missing"); sys.exit()
+def cells(row):
+    return [c.strip() for c in row.strip().strip("|").split("|")]
+sec = inpaths = table = False
+para = None; paras = []
+for l in lines + [""]:
+    if l.startswith("## "):
+        sec = l.strip() == "## Direction"; continue
+    if not sec:
+        continue
+    if not l.strip():
+        if para is not None:
+            paras.append(para); para = None
+        table = False; continue
+    if re.match(r"\*\*Path \d+", l):
+        inpaths = True; para = l; continue
+    if l.startswith("**Format.**"):
+        inpaths = False
+    if inpaths and l.lstrip().startswith("|"):
+        if para is not None:
+            print("table row inside a Path paragraph: " + l[:80])
+        elif not table:
+            table = True
+            if cells(l)[:2] != ["Line", "Check"] or len(cells(l)) != 2:
+                print("a table other than | Line | Check | among the Paths: " + l[:80])
+        continue
+    if para is not None:
+        para += " " + l
+nums = []
+for p in paras:
+    m = re.match(r"\*\*(Path (\d+))[,.:]?\s*(.*?)\.?\*\*\s*(.*)", p.strip())
+    first = re.match(r"(.+?\.\x22?)(?:\s|$)", m.group(4)) if m else None
+    if not m or not m.group(3) or not first:
+        print("a Path paragraph the sit-rep cannot read (number, bold name, first sentence): " + p[:80])
+        continue
+    nums.append(int(m.group(2)))
+if nums != [1, 2, 3, 4, 5]:
+    print("Path paragraphs in ## Direction are %s, not Path 1 to Path 5 in order" % nums)
+PYPATHS
+)"
 if [[ -f "$ROADMAP" && -z "$paths_out" ]]; then
-    pass "roadmap: Path 1, Path 2 and Path 3 paragraphs in ## Direction, no table row between them"
+    pass "roadmap: Path 1 to Path 5 paragraphs in ## Direction, readable by the sit-rep, only | Line | Check | tables among them"
 else
     fail "roadmap paths: ${paths_out:-docs/roadmap.md is missing}"
 fi

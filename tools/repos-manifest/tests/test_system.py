@@ -100,7 +100,28 @@ def test_config_is_written_and_read_back(tmp_path):
             "manifest: https://example.org/m.yaml\nlayout: flat\n",
             "`manifest` is a URL, not a path; this version reads a manifest given as a path only",
         ),
-        ("manifest: m.yaml\nlayout: flat\nfetch_from: x\n", "`fetch_from` is not read by this"),
+        ("manifest: m.yaml\nlayout: flat\nfetch_from: x\n", "`fetch_from` is a string, not a"),
+        (
+            "manifest: m.yaml\nlayout: flat\nfetch_from: [git@gitcloud:field/]\n",
+            "`fetch_from` is a list, not a mapping",
+        ),
+        ("manifest: m.yaml\nlayout: flat\nfetch_from: {}\n", "`fetch_from` has no `prefix`"),
+        (
+            "manifest: m.yaml\nlayout: flat\nfetch_from: {prefix: /srv/, mirror: x}\n",
+            "`fetch_from.mirror` is not read by this version",
+        ),
+        (
+            "manifest: m.yaml\nlayout: flat\nfetch_from: {prefix: /srv/, fallback: true}\n",
+            "`fetch_from.fallback` is true; this version fetches from the place named or fails",
+        ),
+        (
+            "manifest: m.yaml\nlayout: flat\nfetch_from: {prefix: /srv/, fallback: 'no'}\n",
+            "`fetch_from.fallback` is a string, not true or false",
+        ),
+        (
+            "manifest: m.yaml\nlayout: flat\nfetch_from: {prefix: 3}\n",
+            "`fetch_from.prefix` is a number, not a url prefix",
+        ),
         ("manifest: m.yaml\nlayout: flat\nlocal_manifest: a\n", "`local_manifest` is not read"),
         ("manifest: m.yaml\nlayout: flat\nremotes: {a: b}\n", "`remotes` is not read by this"),
         ("manifest: m.yaml\nrole:\nlayout: flat\n", "`role` is empty, not a name"),
