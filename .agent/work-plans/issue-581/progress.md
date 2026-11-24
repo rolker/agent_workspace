@@ -91,3 +91,53 @@ The owner started this drive with "start those 3" (2026-11-24). Instructions for
 **Plan**: `.agent/work-plans/issue-581/plan.md` at `9c23aa90`
 
 One new script, issue_repo.sh (exit 0 repo printed; 1 bad ref; 2 gh differs from origin; 3 not git; 4 no GitHub remote, ordinary; 5 gh cannot answer), built on extract_gh_slug; the three skills set the repository from it and add -R to every gh issue/pr call. Tested in a two-repository sandbox with a stub gh; skill text pinned in test_skill_paths.sh.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-24 13:19 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #581 — review-issue: make owning-repo resolution cwd-independent (defer follow-up from #473)
+**Plan**: `$WS_ROOT/.agent/work-plans/issue-581/plan.md` at `9c23aa90`
+**Branch**: `feature/issue-581`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Three skills, one script, its suite, two knowledge docs: one pull request, as the checkpoint set it. |
+| Issue alignment | Needs work | Serves: "Quality of the work: `docs/design.md#review-loop-and-timeline`" (README `### Quality of the work` and the design heading both exist). The upstream case is covered; the issue's own acceptance test (a bare `/review-issue <N>` run from the other root's checkout) is not met for a bare number and the plan does not say how that box is answered (finding 4). Offline use that works today breaks (finding 1). |
+| File targeting | Good | Every bare `gh issue`/`gh pr` line in the three skills is listed (checked: review-issue 90, 244; plan-task 91, 182, 201, 347, 356, 359; review-plan 72, 75, 156) and the three `_REPO_SLUG` placeholders. `dispatch_phase.sh` may need a line (finding 2). |
+| Consequences | Needs work | The package-worktree agreement with `dispatch_phase.sh` is missed (finding 2); the shell-state gap for `$_REPO` (finding 3); follow-up and parity notes (finding 10). No existing `test_skill_paths.sh` pin on these lines breaks (checked). |
+| Principle alignment | Concern | "A safeguard has to earn its cost": as written, the safeguard stops an ordinary offline run that works today and costs a network call in the single-remote case where gh can name nothing but origin (finding 1). |
+| ADR compliance | Needs work | ADR-0012: the helper and `resolve_issue_dir` can disagree in a package checkout (finding 2). ADR-0010: no new git-bug path should be added (issue 547, git-bug "is not staying"; finding 5). ADR-0016: `$WS_ROOT` use is right; rc 127 unhandled (finding 7). |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Principle alignment — high]** Exit 5 makes all three skills stop whenever `gh` cannot answer. Today `/review-plan --issue <N>` (its Usage: "enable offline plan review without a PR") and `/plan-task <N> --no-pr` (its Usage: "Useful when working offline") work offline. That is a broken ordinary case, not a clear refusal of an unusual one. The plan also asks `gh repo view` (an API call) in the ordinary case where the answer cannot differ. Decide locally first: origin's slug from `extract_gh_slug`; no `GH_REPO` in the environment; no other github.com remote; no `remote.*.gh-resolved` naming another repository. Then gh can pick only origin, so print it and exit 0 with no gh call. Ask gh only when another GitHub remote or an explicit default exists, and keep exit 5 for that unusual case. In the wiring, review-plan on exit 5 goes on with plan content only, as its step 2 already allows ("Issue context unavailable"). Add tests: an offline single-remote case gives `own/alpha` and an empty gh log.
+2. **[ADR compliance / Consequences — high]** In a package worktree the helper and `dispatch_phase.sh` can disagree. The dispatched task line holds the bare number (`skill_task_line` gets `$issue`, not `$ref`), and the handoff carries no qualified ref. `resolve_issue_dir` checks gh against the manifest header's `owner/repo`; the helper checks gh against origin. Take a checkout whose origin is a fork and whose issue is the upstream repository's (header `up/pkg#N`, gh resolves `up/pkg` through the `upstream` remote). Dispatch passes, and the helper refuses with exit 2. The fix the helper prints (`gh repo set-default <origin>`) then makes dispatch refuse the next phase: a deadlock. Fix, keeping dispatch as it is: for a bare number in a checkout under a `.worktree-repos` manifest whose header `issue=` ends in `#<N>`, the helper takes the header's `owner/repo` as the expected repository (the source dispatch checks; `_worktree_helpers.sh` already reads that field) and compares gh with it. The other fix is to put the qualified ref on these three skills' task lines in `skill_task_line`. Add a manifest sandbox case for either.
+3. **[Approach — medium]** `_REPO` is set in step 1's block, but each Bash call starts a new shell (the skills' own "Workspace root" section says so). Step 7's `gh issue comment -R "$_REPO"`, plan-task step 8 and review-plan step 2 run in later calls and get `-R ""`. Say how each later block gets the repository. Either rerun the helper at the head of every block that calls gh (cheap only with finding 1's local path), or have the agent write the printed repository literally. Pin whichever is chosen.
+4. **[Issue alignment — medium]** The issue's test scenario is `/review-issue <N>` from the project's checkout for a workspace issue, and the reverse, "resolve correctly without manual cd". With a bare number it still reads project X's issue N, passes the helper (gh = origin), and posts the comment on X. The plan answers this with the qualified ref, the printed `Repository:` line and the session-root rule (a bare number means the session root's repository). It should say so, run the scenario with `owner/repo#N` from the other repository, and report each acceptance box in the pull request. The "Overview precondition paragraph" box was never ported here, so it is retired, not done.
+5. **[ADR compliance — low]** On exit 4 the wiring "reads the issue from git-bug by the id the owner gives". That is a new git-bug path while issue 547 is about dropping git-bug. Ask the owner for the issue text, or where the project keeps its issues, in hosting-service-neutral words. Also cover the other exit-4 effects. plan-task: the worktree type comes from the session's root; the plan template's `## Issue` line has no GitHub URL; the draft PR is skipped as with `--no-pr`. review-issue: step 8's "The posted comment **is** the entry" needs a no-comment wording.
+6. **[Approach — low]** A multi-repository project's root folder is not a git repository, and a standalone run there is the Path 1 case the triage kept this issue for. A bare number there gives exit 3, which is right, but the plan gives the exit 3 message no next step. It should name `owner/repo#N`, as exits 2 and 5 do.
+7. **[ADR compliance — low]** The wiring handles exits 0 to 5 only. Exit 127 is what a project session with no user tier gets, since `$WS_ROOT` is `.` there and the script is missing; an older workspace checkout gets it too. Add "any other non-zero: stop and show stderr".
+8. **[Consequences — low]** plan-task line 182 (`gh issue view <N> --json url` to pick the worktree type) is inline code in prose, outside any fenced block, so the planned pin does not see it. With the helper the type is a local comparison of `$_REPO` with the workspace origin's slug, with no gh call. Reword the line and pin it.
+9. **[Prior art — low]** `project_integration_audit.sh` already runs `GH_HOST=github.com GH_PROMPT_DISABLED=1 gh repo view --json nameWithOwner --jq .nameWithOwner </dev/null`. Take the `GH_HOST` pin and the closed stdin. Test `GH_REPO` set in the environment, which overrides gh's remote choice. `gh_create_issue.sh` has a similar repository safeguard; name it in Prior Art.
+10. **[Consequences — low]** The deferred skills (address-findings, triage-reviews, review-code) should get a follow-up issue, offered to the host, not only a line in the pull request. `docs/fork_parity.md` row 2 lists these three skills for the package-repository loop: check whether its Notes need a line.
+
+### Summary
+
+The helper is the right shape and covers the upstream case, but its exit-5 rule breaks offline review-plan and plan-task runs that work today. In a package worktree it can also refuse what `dispatch_phase.sh` approved, and the helper's printed fix then deadlocks dispatch. Both have a small fix that keeps the scope (a local first decision; the manifest header as the expected repository), but the decision table and tests change, so the plan needs one revision. Findings 3 and 4 belong in that revision; 5 to 10 the implementer can take.
+
+### Recommended Actions
+
+- [ ] Decide the repository locally when gh can only pick origin (no other github.com remote, no `gh-resolved` elsewhere, no `GH_REPO`), with no gh call; keep exit 5 for the multi-remote case only; review-plan goes on with plan content on exit 5; add offline tests
+- [ ] In a package checkout, take the expected repository from the `.worktree-repos` header (as `resolve_issue_dir` does), or put the qualified ref on the three skills' dispatched task lines; add a manifest sandbox case
+- [ ] Say how later Bash blocks get `$_REPO` (rerun the helper, or the literal), and pin it
+- [ ] State how the issue's acceptance test is answered (qualified ref, printed repository, session-root rule), run it with `owner/repo#N`, and report each acceptance box
+- [ ] Exit 4: ask the owner for the issue text (no new git-bug path); cover plan-task's type, plan URL and draft PR, and review-issue step 8's wording
+- [ ] Exit 3 message names `owner/repo#N`; any other non-zero exit stops the skill and shows stderr
+- [ ] Reword and pin plan-task line 182; take `GH_HOST`, closed stdin and a `GH_REPO` case from `project_integration_audit.sh`
+- [ ] Offer a follow-up issue for the other skills; check `docs/fork_parity.md` row 2
