@@ -27,7 +27,7 @@ import yaml
 
 from .base import load_manifest, parse_git_manifest
 from .fetch import read_git_file
-from .fetch_from import FetchFrom, check_prefix
+from .fetch_from import FetchFrom, check_prefix, manifest_location
 from .gitenv import Env
 from .location import GitLocation, Location, check_git_location
 from .manifest import UNNAMED_LAYER, Manifest
@@ -806,6 +806,11 @@ def read_manifest(
 
 def read_recorded_manifest(system: Path, config: Config, env: Optional[Env] = None) -> Manifest:
     """The manifest `config.yaml` records, read as every distro of the system reads it: a path
-    taken from the system directory, or a file in a git repo, read afresh. `env` is the run's
-    git environment, when the caller has it."""
-    return read_manifest(config.manifest, system, env=env)
+    taken from the system directory, or a file in a git repo, read afresh, from the repo of its
+    name at `fetch_from`'s place when the system sets one. `env` is the run's git environment,
+    when the caller has it."""
+    location = config.manifest
+    if isinstance(location, GitLocation) and config.fetch_from is not None:
+        named = f"`fetch_from` in {system / SYSTEM_DIR / CONFIG_FILE}"
+        location = manifest_location(location, config.fetch_from.prefix, named)
+    return read_manifest(location, system, env=env)

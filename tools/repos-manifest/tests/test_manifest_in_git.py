@@ -177,6 +177,55 @@ def test_a_credential_in_the_manifests_url_is_kept_in_config_and_masked_everywhe
     assert url in config  # kept in full where urls are kept
 
 
+def test_fetch_from_reads_the_manifest_from_its_repo_at_the_place(
+    remotes, tmp_path, system, capsys
+):
+    """A field machine: the published url of the manifest's repo cannot be reached, and the
+    place `--fetch-from` names serves it, with every repo."""
+    mirror = tmp_path / "mirror"
+    mirror.mkdir()
+    published = tmp_path / "published"  # never made: the public host is out of reach
+    data = {
+        "format": 1,
+        "distros": ["jazzy"],
+        "repositories": {
+            key: repo(f"file://{published / key}.git", "jazzy") for key in ("a", "sys")
+        },
+    }
+    holder = manifest_repo(mirror, data, name="sys.git")
+    git("branch", "jazzy", cwd=holder)
+    shutil.copytree(remotes / "a", mirror / "a.git")
+    url = f"file://{published}/sys.git"
+    argv = ["init", url, "--manifest-path", "sys/m.yaml", "--distro", "jazzy"]
+    assert run(system, *argv, "--fetch-from", f"file://{mirror}/", "--yes") == 0
+    out = capsys.readouterr().out
+    assert out.startswith(
+        f"manifest    file://{mirror}/sys.git (fetch_from, for {url})  (its default branch)"
+        "  sys/m.yaml\n"
+    )
+    assert (system / "src" / "a").is_dir() and (system / "src" / "sys").is_dir()
+    recorded = yaml.safe_load((system / ".repos-manifest/config.yaml").read_text())
+    assert recorded["manifest"] == {"url": url, "path": "sys/m.yaml"}  # the published one
+    assert recorded["fetch_from"]["prefix"] == f"file://{mirror}/"
+    # Every later read is from the place too.
+    data["repositories"]["b"] = repo(f"file://{published}/b.git", "jazzy")
+    publish(holder, data)
+    shutil.copytree(remotes / "b", mirror / "b.git")
+    assert run(system, "sync") == 0
+    assert (system / "src" / "b").is_dir()
+    assert run(system, "status") == 0
+    assert run(system, "show") == 0
+
+
+def test_fetch_from_that_gives_the_manifests_repo_no_name_is_refused(tmp_path, system, capsys):
+    argv = ["init", "file:///srv/.git", "--manifest-path", "m.yaml", "--fetch-from", "file:///x/"]
+    assert run(system, *argv, "--yes") == 1
+    err = capsys.readouterr().err
+    assert "--fetch-from: the manifest's repo 'file:///srv/.git' gives no name" in err
+    assert "nothing was set up" in err
+    assert list(system.iterdir()) == []
+
+
 @pytest.fixture
 def refused(system, capsys):
     """`init` in `system` with `argv` is refused with `expect` in its message, and changes

@@ -16,8 +16,10 @@ from repos_manifest.fetch_from import (
     apply,
     check_prefix,
     effective_url,
+    manifest_location,
     repo_name,
 )
+from repos_manifest.location import GitLocation
 from repos_manifest.output import head_comment, output_files
 from repos_manifest.selection import Layer, Resolved, Selected
 from repos_manifest.system import Config, config_text, read_config
@@ -548,3 +550,30 @@ def test_one_published_repo_in_two_distros_is_fetched_from_the_place(vcs, tmp_pa
     for distro in ("one", "two"):
         origin = git("remote", "get-url", "origin", cwd=system / distro / "src/a").strip()
         assert origin == str(place)
+
+
+def test_the_manifests_own_repo_is_read_from_the_place():
+    published = GitLocation("https://github.com/example/system.git", "jazzy", "sys/m.yaml")
+    at_place = manifest_location(published, FIELD, "--fetch-from")
+    assert at_place == GitLocation(
+        "git@gitcloud:field/system.git", "jazzy", "sys/m.yaml", published.url
+    )
+    assert at_place.label() == (
+        "git@gitcloud:field/system.git (fetch_from, for https://github.com/example/system.git)"
+        "  jazzy  sys/m.yaml"
+    )
+
+
+@pytest.mark.parametrize(
+    "url,why",
+    [
+        ("https://github.com/example/.git", "its last path part is '.git'"),
+        ("https://github.com/example/x.git?y", "an http or https url with a '?' or a '#'"),
+        ("https://github.com/", "it has no path after its host"),
+    ],
+)
+def test_a_manifests_repo_that_gives_no_name_is_refused(url, why):
+    with pytest.raises(FetchFromError) as raised:
+        manifest_location(GitLocation(url, None, "m.yaml"), FIELD, "--fetch-from")
+    said = str(raised.value)
+    assert said.startswith("--fetch-from: the manifest's repo ") and why in said, said

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Callable, List, Optional, Sequence, Tuple
 
 from .fetch_from import FetchFrom, FetchFromError, check_prefix
+from .fetch_from import manifest_location as fetch_from_manifest
 from .location import GitLocation, Location, check_git_location, is_path
 from .output import process_has_ended, signals_held
 from .show import render_body, render_head, shown_path
@@ -348,7 +349,13 @@ def _init(
         if git_form:
             # git reads the manifest, so the tools are checked before the read.
             env = require_tools()
-            manifest = read_manifest(location, system, env=env)
+            read_from = location
+            if place is not None:
+                try:
+                    read_from = fetch_from_manifest(location, place.prefix, "--fetch-from")
+                except FetchFromError as exc:
+                    raise ManifestError(f"{exc}; nothing was set up") from None
+            manifest = read_manifest(read_from, system, env=env)
         else:
             manifest = read_manifest(location, system)
         check_distros(manifest, distros, distro_dirs, git_form)
