@@ -679,22 +679,48 @@ else
     echo "  SKIP: curl is not available (the bootstrap fetch needs it)"
 fi
 
-# ------------------------------------------------ source (#436) ---
-echo "TEST: --set source=... does not choose the type: without the type ros2_colcon it is refused, naming it"
+# ----------------------------------------------------------- source ---
+echo "TEST: --set source=... does not choose the type: without the type ros2_colcon it is refused, naming the manifest tool"
 SRC_DIR="$SANDBOX/colcon/upsilon"
 out="$(reg "$WS" "$SRC_DIR" --set "source=$SANDBOX/no/manifest.yaml")"; rc=$?
 check "detected as single_project, refused: exit not 0" [ "$rc" -ne 0 ]
-check "the refusal says why and names the type ros2_colcon" \
-    bash -c '[[ "$1" == *"nothing resolves a source for it"* && "$1" == *"register it as type ros2_colcon"* ]]' _ "$out"
+check "the refusal says why and names the manifest tool's init" \
+    bash -c '[[ "$1" == *"nothing resolves a source for it"* && "$1" == *"gets its manifest from the manifest tool'"'"'s init"* ]]' _ "$out"
 check "no registry line, no settings file" \
     bash -c '! grep -q "^upsilon " "$1" && [ ! -e "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" upsilon)"
 
-echo "TEST: ros2_colcon from a source (#436): registration runs setup from the manifest, and the gate passes"
-# The resolver is THIS checkout's tools/repos-manifest/src, run by the first
-# python that imports it and yaml (the main checkout's venv, else python3);
-# with none it is a failure where the resolver is meant to be present (a
-# repos-manifest on PATH, the main checkout's .venv/bin/repos-manifest, or CI),
-# a loud skip elsewhere.
+echo "TEST: --set source, source_ref or source_path with the type ros2_colcon is refused before anything is written, naming the manifest tool's init (issue 569)"
+SRC_DIR="$SANDBOX/colcon/phi"
+out="$(reg "$WS" "$SRC_DIR" ros2_colcon --set "source=$SANDBOX/no/manifest.yaml")"; rc=$?
+check "refused: exit 1, STATUS=refused" [ "$rc" -eq 1 -a "$(status_of "$out")" = refused ]
+check "the refusal names the key, the type, the way on and the design's section" \
+    bash -c '[[ "$1" == *"--set source is refused for a project of type ros2_colcon: the manifest route it selected is removed"* && "$1" == *"make the directory, run the manifest tool'"'"'s init in it (repos-manifest init <manifest> --distro-dirs --distro <distro> [--role <role>]), then register the directory without --set source="* && "$1" == *"\"A root that sets source\""* ]]' _ "$out"
+check "NEXT= names the directory and registering it without the key" \
+    bash -c '[[ "$1" == *$'"'"'\nNEXT=register '"'"'"$2"'"'"' without --set source, after the steps above'"'"'* ]]' _ "$out" "$SRC_DIR"
+check "setup never ran" bash -c '[[ "$1" != *"adapter --project phi setup"* ]]' _ "$out"
+check "no registry line, no settings file" \
+    bash -c '! grep -q "^phi " "$1" && [ ! -e "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" phi)"
+check "no directory made, and none named on KEPT=" \
+    bash -c '[ ! -e "$1" ] && [[ "$2" != *KEPT=* ]]' _ "$SRC_DIR" "$out"
+for _k in source_ref=v1 source_path=m.yaml; do
+    out="$(reg "$WS" "$SRC_DIR" ros2_colcon --set "$_k")"; rc=$?
+    check "--set ${_k%%=*} alone: refused through the type's list, nothing written" \
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"--set ${4%%=*} is refused for a project of type ros2_colcon"* ]] && ! grep -q "^phi " "$3" && [ ! -e "$5" ] && [ ! -e "$6" ]' \
+        _ "$rc" "$out" "$WS/.agent/projects.local" "$_k" "$(pfile "$WS" phi)" "$SRC_DIR"
+done
+mkdir -p "$SANDBOX/colcon/chi"
+out="$(reg "$WS" "$SANDBOX/colcon/chi" ros2_colcon --set "source=$SANDBOX/no/manifest.yaml" --dry-run)"; rc=$?
+check "a dry run is refused the same way, and the directory that existed is left" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"--set source is refused for a project of type ros2_colcon"* ]] && [ -d "$3" ] && ! grep -q "^chi " "$4"' \
+    _ "$rc" "$out" "$SANDBOX/colcon/chi" "$WS/.agent/projects.local"
+rmdir "$SANDBOX/colcon/chi"
+
+# The tool route's registration test below ("a root the manifest tool set
+# up") runs THIS checkout's tools/repos-manifest/src, by the first python
+# that imports it and yaml (the main checkout's venv, else python3); with
+# none it is a failure where the resolver is meant to be present (a
+# repos-manifest on PATH, the main checkout's .venv/bin/repos-manifest, or
+# CI), a loud skip elsewhere.
 MR_SRC="$REAL_ROOT/tools/repos-manifest/src"
 MR_PY=""
 _common="$(git -C "$REAL_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
@@ -711,27 +737,6 @@ if [ -n "$MR_PY" ]; then
     # python3 beside the tool, as in the venv make install-repos-manifest
     # makes: the tool route's validate reads status's document with it.
     ln -sf "$MR_PY" "$WS/.venv/bin/python3"
-    MW="$SANDBOX/mwork/tau"
-    mkdir -p "$MW"
-    gitq init --quiet --bare -b main "$SANDBOX/mremote/tau.git"
-    gitq -C "$MW" init --quiet -b main
-    printf 'layers:\n  - core\nrepos:\n  core:\n    pkg_a:\n      url: file:///nonexistent/pkg_a.git\n      ref: main\nroles:\n  dev: {}\n' > "$MW/manifest.yaml"
-    gitq -C "$MW" add -A
-    gitq -C "$MW" commit --quiet -m init
-    gitq -C "$MW" push --quiet "$SANDBOX/mremote/tau.git" main
-    TAU="$SANDBOX/colcon/tau"
-    out="$(VCS_MKDIRS=1 reg "$WS" "$TAU" ros2_colcon --role dev --distro fakefox \
-        --set "source=file://$SANDBOX/mremote/tau.git" --set source_ref=main)"; rc=$?
-    check "exit 0, STATUS=registered" [ "$rc" -eq 0 -a "$(status_of "$out")" = registered ]
-    check "setup ran and resolved from the source" \
-        bash -c '[[ "$1" == *"== adapter --project tau setup"* && "$1" == *"source: resolved role '"'"'dev'"'"' distro '"'"'fakefox'"'"'"* ]]' _ "$out"
-    check "the static gate passed, adapter validate included" bash -c '[[ "$1" == *"OK: adapter validate passed"* && "$1" == *"VERIFY=pass"* ]]' _ "$out"
-    check "the registry line carries role and distro" bash -c 'grep -qE "^tau .*role=dev.*distro=fakefox|^tau .*distro=fakefox.*role=dev" "$1"' _ "$WS/.agent/projects.local"
-    check "the settings file holds the source" \
-        [ "$(cat "$(pfile "$WS" tau)")" = "source=file://$SANDBOX/mremote/tau.git"$'\n'"source_ref=main" ]
-    check "the generated directory is in the root, and no temporary fetch is kept" \
-        bash -c '[ -L "$1/configs/manifest-resolved" ] && ! ls -d "$1"/configs/manifest-resolved.gen-*.src >/dev/null 2>&1 && [ -d "$1/layers/main/core_ws/src/pkg_a" ]' _ "$TAU"
-    out="$(reg "$WS" --remove tau)"
 else
     if command -v repos-manifest >/dev/null 2>&1 || [ -n "${CI:-}" ] \
         || { [ -n "$_common" ] && [ -x "${_common%/.git}/.venv/bin/repos-manifest" ]; }; then
