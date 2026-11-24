@@ -661,7 +661,9 @@ class ViewerApp:  # pragma: no cover - needs a display; smoke-tested under xvfb
             st.tag_add(tag, f"{line}.{a}", f"{line}.{b}")
         for line in sorted(self.session.changed):
             st.tag_add("changed", f"{line}.0", f"{line}.0 lineend")
-        for tag in ("changed", "noted", "flash"):
+        # Tags configured after the widget was made sit above "sel"; the
+        # selection must stay visible over every one of them, so it goes last.
+        for tag in ("changed", "noted", "flash", "sel"):
             st.tag_raise(tag)
         st.configure(state=tk.DISABLED)
 
