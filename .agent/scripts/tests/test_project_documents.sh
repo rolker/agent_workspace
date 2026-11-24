@@ -190,6 +190,13 @@ mkdir -p "$R/candin/docs"
 printf '# Roadmap\n\n- [ ] Candin item (#7)\n' > "$R/candin/docs/roadmap.md"
 ln -s docs/roadmap.md "$R/candin/ROADMAP.md"
 commit_all "$R/candin"
+# candplan: no settings; ROADMAP.md is a link to notes/plan.md, which is
+# no fixed roadmap path.
+mkroot candplan
+mkdir -p "$R/candplan/notes"
+printf '# Plan\n\n- [ ] Candplan item (#7)\n' > "$R/candplan/notes/plan.md"
+ln -s notes/plan.md "$R/candplan/ROADMAP.md"
+commit_all "$R/candplan"
 
 cat > "$WSC/.agent/projects.local" <<REG
 keyed    single_project  $R/keyed
@@ -212,6 +219,7 @@ ptr      single_project  $R/ptr
 globr    single_project  $R/globr
 dangl    single_project  $R/dangl
 candin   single_project  $R/candin
+candplan single_project  $R/candplan
 REG
 
 PS() { (cd "$WSC" && bash "$S/project_setting.sh" "$@"); }
@@ -356,6 +364,11 @@ check "a roadmap setting that is a dangling link: exit 2" test "$rc" -eq 2
 [[ "$out" == *"resolves to no file"* ]] && pass "the dangling link is named" || fail "dangl: '$out'"
 out="$(PS doc dangl design 2>&1)"; rc=$?
 check "an unset key whose candidate is a dangling link: passed over (exit 1)" test "$rc" -eq 1
+out="$( (source "$S/_project_registry.sh"
+         project_document_path() { printf 'warning: a%sb\nfallback x\n' "$W"; }
+         for W in ZZ '*' '*' '?'; do project_document_query project_document_path; done) 2>&1)"
+check "a warning holding * or ? is matched literally: each distinct one once ($out)" \
+    test "$(tr '\n' ' ' <<< "$out")" = "warning: aZZb warning: a*b warning: a?b "
 check "the candidates split on blanks whatever the caller's IFS" \
     test "$( (source "$S/_project_registry.sh"; IFS=,; project_document_candidates roadmap) | wc -l)" -eq 3
 
@@ -444,6 +457,12 @@ out="$(bash "$UR" --issue 7 --root "$R/candin" 2>/dev/null)"
 check "unset: a candidate linked inside the root is edited through the link" test "$out" = "$R/candin/docs/roadmap.md"
 check "the link stays a link" test -L "$R/candin/ROADMAP.md"
 grep -qF -- '- [x] Candin item (#7)' "$R/candin/docs/roadmap.md" && pass "its target is ticked" || fail "candin not ticked"
+out="$(bash "$UR" --issue 7 --root "$R/candplan" 2>"$SB/err")"
+check "unset: a candidate linked to a path that is not a fixed roadmap path is reported under its own name" test "$out" = "$R/candplan/ROADMAP.md"
+check "as on main, the edited copy replaces the link" test ! -L "$R/candplan/ROADMAP.md"
+grep -qF -- '- [x] Candplan item (#7)' "$R/candplan/ROADMAP.md" && pass "the copy is ticked" || fail "candplan copy not ticked"
+grep -qF -- '- [ ] Candplan item (#7)' "$R/candplan/notes/plan.md" && pass "the link's target is not edited" || fail "candplan target ticked"
+grep -q 'not a fixed roadmap path' "$SB/err" && pass "and says so" || fail "candplan message: '$(cat "$SB/err")'"
 g -C "$WSC" checkout -q -- docs/roadmap.md
 
 echo "TEST: check_design_anchors.sh reads the design setting"

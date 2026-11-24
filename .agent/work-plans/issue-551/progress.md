@@ -458,7 +458,7 @@ Round-2 findings, checked against the host decisions:
 Merge: script_reference.md keeps main's #452 rows and this branch's #551 rows; the change log keeps both sides' rows with their own counts and adds a merge row with the merged file's count (1258 = `wc -l docs/design.md`). Right: it follows the same pattern as the three earlier merge rows (2026-11-13 twice, 2026-11-18 for #488) and keeps old rows true. 7763df53's `ROOT_READERS` entry matches what the suite copies.
 
 ### Findings
-- [ ] (suggestion) An in-root symlinked candidate (key unset) is now edited through the link and reported under the target's path; when the target is not one of the fixed three (e.g. `ROADMAP.md -> notes/plan.md`), merge_pr.sh commits a path the bookkeeping list does not name, so the review goes stale; on main the link was replaced by `ROADMAP.md`, which is bookkeeping. Edit through only when the target is a fixed candidate, else as on main — `update_roadmap.sh` candidate loop
+- [x] (suggestion) An in-root symlinked candidate (key unset) is now edited through the link and reported under the target's path; when the target is not one of the fixed three (e.g. `ROADMAP.md -> notes/plan.md`), merge_pr.sh commits a path the bookkeeping list does not name, so the review goes stale; on main the link was replaced by `ROADMAP.md`, which is bookkeeping. Edit through only when the target is a fixed candidate, else as on main — `update_roadmap.sh` candidate loop
 - [ ] (suggestion) `project_document_query`'s once-per-shell check uses the warning text unquoted as a `case` pattern, so a warning holding `*`, `?` or `[` (a path) may print twice; quote `"$line"` in the pattern — `_project_registry.sh` `project_document_query`
 
 ## Checkpoint

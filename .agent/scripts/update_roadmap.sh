@@ -21,10 +21,11 @@
 #     every one of the candidates docs/roadmap.md, docs/ROADMAP.md,
 #     ROADMAP.md that exists (a path that is the same file as one already
 #     processed -- case-insensitive filesystems -- is skipped). A candidate
-#     that is a symbolic link to a file inside --root is edited through the
-#     link (the link stays); one that leads outside --root is handled as
+#     that is a symbolic link to another candidate path is edited through
+#     the link (the link stays); one that leads anywhere else is handled as
 #     before the setting existed (the edited copy replaces the link; the
-#     file outside is not touched), with a warning;
+#     target is not touched), with a message (a warning when it leads
+#     outside --root);
 #   - another key's bad line in the settings file: a warning, then the
 #     roadmap key from its own line if valid, else the candidates;
 #   - whether the key is set cannot be told (the registry cannot be parsed,
@@ -228,6 +229,10 @@ else
     echo "  ⚠️  _project_registry.sh could not be loaded next to update_roadmap.sh; using the candidate roadmap files" >&2
 fi
 
+# The fixed candidates, whatever the setting chose: a link edited through
+# must lead to one of them.
+ROADMAP_CANDIDATES_ALL=("ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md")
+
 # --- Discover and process roadmap files ---
 # Check every chosen location; try both formats against each file.
 PROCESSED_ROADMAPS=()
@@ -241,19 +246,27 @@ for rel_path in "${ROADMAP_CANDIDATES[@]}"; do
     rel_path="$(real_case_relpath "$ROOT_DIR" "$rel_path")"
     roadmap="$ROOT_DIR/$rel_path"
     # A candidate that is a symbolic link: edit the file it leads to when
-    # that is inside --root, so the link stays a link; one that leads
-    # outside is edited as before (the copy replaces the link, the outside
-    # file is untouched), with a warning unless the lookup gave one.
-    # (Its messages wait for the same-file guard below, so a link to a file
-    # already processed says nothing.)
+    # that is one of the fixed roadmap paths inside --root (the candidates,
+    # which the merge gate counts as bookkeeping), so the link stays a link.
+    # Any other target is edited as before (the copy replaces the link, the
+    # target is untouched): reporting the target would hand merge_pr.sh a
+    # path the bookkeeping list does not name. One that leads outside gets a
+    # warning unless the lookup gave one. (Messages wait for the same-file
+    # guard below, so a link to a file already processed says nothing.)
     _link_note=""
     if [[ -L "$roadmap" ]]; then
         _root_abs="$(cd "$ROOT_DIR" && pwd -P)"
         _real="$(readlink -f -- "$roadmap" 2>/dev/null)" || _real=""
-        if [[ -n "$_real" && "$_real" == "$_root_abs/"* ]]; then
+        _fixed=false
+        for _c in "${ROADMAP_CANDIDATES_ALL[@]}"; do
+            [[ -n "$_real" && "$_real" == "$_root_abs/$_c" ]] && _fixed=true
+        done
+        if $_fixed; then
             roadmap="$_real"
             _link_note="  ${rel_path} is a link: editing ${_real#"$_root_abs"/} through it"
             rel_path="${_real#"$_root_abs"/}"
+        elif [[ -n "$_real" && "$_real" == "$_root_abs/"* ]]; then
+            _link_note="  ${rel_path} is a link to ${_real#"$_root_abs"/}, not a fixed roadmap path; edited as before: the edited copy replaces the link"
         elif [[ "$rel_path" != "$LOOKUP_FALLBACK" ]]; then
             _link_note="  ⚠️  ${rel_path} leads outside $ROOT_DIR (${_real:-unresolved}); edited as before: the edited copy replaces the link"
         fi
