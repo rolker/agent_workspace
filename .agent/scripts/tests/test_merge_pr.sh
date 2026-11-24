@@ -878,9 +878,12 @@ test_legacy_workspace_pr_regression() {
         "$(git -C "$sb" show-ref --verify --quiet refs/heads/feature/issue-999 && echo true || echo false)"
 }
 
+# <cwd>: "main" (the main checkout) or "worktree" (inside the PR's worktree
+# itself, the usual call; merge_pr.sh cds to its root before removing it).
 test_worktree_copy_removes_its_own_worktree() {
-    echo "TEST: merge_pr.sh run as the copy inside the PR's worktree, cwd the main checkout, removes that worktree (issue 585)"
-    local sb out rc=0 wt ws_remote
+    local where="$1"
+    echo "TEST: merge_pr.sh run as the copy inside the PR's worktree, cwd the $where, removes that worktree (issue 585)"
+    local sb out rc=0 wt ws_remote cwd
     sb="$(make_merge_sandbox)"
     ws_remote="$(git -C "$sb" remote get-url origin)"
     # The scripts committed, so the worktree carries its own copy, as a real
@@ -898,7 +901,9 @@ test_worktree_copy_removes_its_own_worktree() {
         return
     fi
 
-    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" \
+    cwd="$sb"
+    [ "$where" = worktree ] && cwd="$wt"
+    out="$(cd "$cwd" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" \
         MERGE_PR_CI_POLL_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=5 \
         "$wt/.agent/scripts/merge_pr.sh" --pr 998 --no-wait --no-roadmap-update --report-only 2>&1)" || rc=$?
     assert_eq "exit 0" "0" "$rc"
@@ -1065,7 +1070,8 @@ test_failed_worktree_removal_marks_cleanup_incomplete
 test_kept_worktree_banner
 test_orphaned_local_branch_swept_on_final_merge
 test_legacy_workspace_pr_regression
-test_worktree_copy_removes_its_own_worktree
+test_worktree_copy_removes_its_own_worktree main
+test_worktree_copy_removes_its_own_worktree worktree
 test_unregistered_project_checkout_not_used
 test_registered_project_root_pr_regression
 test_ambiguous_project_root_type_project_fails_fast
