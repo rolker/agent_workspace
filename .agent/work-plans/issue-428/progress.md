@@ -1280,3 +1280,13 @@ Summary: no must-fix. Each of the four suggestions was checked by running `extra
 - [x] (suggestion, Local Review (Pre-Push) @ `be996b08`, covers `95e6593c` via bookkeeping) S4, valid and addressed: the old loose pattern remains in `gh_create_pr.sh`, `gh_create_issue.sh`, `pr_status.sh`, `git_bug_setup.sh` and `_project_registry.sh`, and `worktree_enter.sh` (unchanged by this pull request) still looks up a project worktree's bare issue in the workspace repository first. These are outside issue 428's item 4, which names `extract_gh_slug` only. The finding asked for them to be named in the pull request text or a follow-up issue; the pull request 570 body names all six under "Not in this issue's scope" (checked). No follow-up issue exists yet; because this pull request closes issue 428, opening one before the merge is the owner's call — `.agent/scripts/worktree_enter.sh:323`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 08:57 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (address is the one answer the host may give at findings; merging with boxes open is the owner's alone, and he is away while the loop runs)
+**After**: findings
+**Decision**: address
+
+The Integrated Review at a0cfd6a7 left three valid suggestions open, each a small fix: S1 (a crafted user part with ? or #, and a repository named . or .., are accepted; fix in both parsers, _issue_helpers.sh and sitrep_root.sh), S2 (the test-fixture local-path form accepts any absolute path ending /github.com/<owner>/<repo>; narrow it to the test sandboxes' fake_remotes/github.com/ folders), S3 (an owner name with _ gives no slug and worktree_create.sh then says the origin is hosted elsewhere, which is untrue). Reason for fixing now rather than asking: a cold read of the final diff comes before the merge question in any case, so a fix round now adds little wait, and the three fixes are a few regex lines with test rows. Issue 563's branch also edits sitrep_root.sh and its suite: the S1 and S3 edits there stay to the slug pattern and its test rows.
