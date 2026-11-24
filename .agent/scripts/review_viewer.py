@@ -84,6 +84,27 @@ from typing import Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 DECISIONS = ("approve", "changes requested", "none (notes only)")
 
+NOTES_FORMAT = """\
+Notes file format (default <draft>.notes.md beside the draft):
+
+    # Review notes: <draft file name>
+
+    Written <local time with offset>
+
+    **Decision**: approve | changes requested | none (notes only)
+
+    ## Note on the whole draft
+
+    <note>
+
+    ## Note <n> (lines <a>-<b>)
+
+    > <passage, quoted from the draft file>
+
+    <note>
+
+No **Decision** line means none was recorded."""
+
 CHAT_FALLBACK = """\
 Exit code 2 means no window can open here (no display, no tkinter, or the
 display refused the connection). Run the same review in chat instead: show the
@@ -1024,7 +1045,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = _Parser(
         prog="review_viewer.py",
         description="Review a draft in a local window and leave line-anchored notes.",
-        epilog=CHAT_FALLBACK,
+        epilog=NOTES_FORMAT + "\n\n" + CHAT_FALLBACK,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("draft", type=Path, help="the draft to review (Markdown or text)")

@@ -548,6 +548,19 @@ class CliTest(TempDirTest):
         self.assertEqual(result.returncode, 0)
         self.assertIn("cat -n", result.stdout)
 
+    def test_help_shows_the_notes_format(self):
+        """The chat fallback says "the format above": --help must show it."""
+        out = self.run_cli(["--help"], {}).stdout
+        for needle in (
+            "# Review notes:",
+            "**Decision**: approve",
+            "## Note on the whole draft",
+            "## Note <n> (lines <a>-<b>)",
+            "> <passage",
+        ):
+            self.assertIn(needle, out)
+        self.assertLess(out.index("## Note <n>"), out.index("format above"))
+
 
 class FakeRoot:  # pylint: disable=too-few-public-methods
     def __init__(self):
