@@ -24,6 +24,11 @@
 #     worktree_remove.sh a real worktree sits on the path it would act on
 #     and survives (directory, branch and git's entry); worktree_enter.sh
 #     sourced returns 1 and the caller's shell survives
+#   - git cannot name the git dirs (a git shim first on PATH fails
+#     `rev-parse --git-dir/--git-common-dir`, only with --path-format=absolute
+#     or always): the helper refuses for a linked worktree's copy (and for
+#     the main checkout's when it cannot tell), and each of the four scripts
+#     as that copy refuses and acts on nothing, as above
 # Everything runs in one sandbox (mktemp) with the real scripts copied in
 # and committed, HOME set inside it, gh and git-bug stubbed to fail.
 # Run: bash .agent/scripts/tests/test_worktree_main_root.sh
@@ -121,15 +126,16 @@ run_script() {  # <cwd> <script> <args...>
     shift 2
     ef="$SANDBOX/stderr.$$"
     RC=0
-    OUT="$(cd "$cwd" && PATH="$WS/stubbin:$PATH" "$script" "$@" 2>"$ef")" || RC=$?
+    OUT="$(cd "$cwd" && PATH="${SHIM_PATH:+$SHIM_PATH:}$WS/stubbin:$PATH" "$script" "$@" 2>"$ef")" || RC=$?
     ERR="$(cat "$ef")"
 }
 
 # wt_main_root from the copy in <scripts_dir>, cwd <cwd>; sets OUT, ERR, RC.
+# SHIM_PATH, when set, goes first on PATH (a git shim, below).
 run_helper() {  # <cwd> <scripts_dir>
     local ef="$SANDBOX/stderr.$$"
     RC=0
-    OUT="$(cd "$1" && bash -c 'source "$1/_worktree_helpers.sh" && wt_main_root "$1" test.sh' _ "$2" 2>"$ef")" || RC=$?
+    OUT="$(cd "$1" && PATH="${SHIM_PATH:+$SHIM_PATH:}$PATH" bash -c 'source "$1/_worktree_helpers.sh" && wt_main_root "$1" test.sh' _ "$2" 2>"$ef")" || RC=$?
     ERR="$(cat "$ef")"
 }
 
@@ -366,7 +372,7 @@ refusal_case() {  # <label> <own checkout> <repo holding the target> <target wor
     check_refused "$label, enter --print-path"
 
     RC=0
-    OUT="$(cd "$own" && PATH="$WS/stubbin:$PATH" bash -c 'source "$1" --issue "$2" --type workspace; echo "survived rc=$?"' _ "$s/worktree_enter.sh" "$issue" 2>/dev/null)" || RC=$?
+    OUT="$(cd "$own" && PATH="${SHIM_PATH:+$SHIM_PATH:}$WS/stubbin:$PATH" bash -c 'source "$1" --issue "$2" --type workspace; echo "survived rc=$?"' _ "$s/worktree_enter.sh" "$issue" 2>/dev/null)" || RC=$?
     check_eq "$label, enter sourced: returns 1, the caller's shell survives" "survived rc=1" "$(tail -n1 <<<"$OUT")"
 
     run_script "$own" "$s/worktree_list.sh"
@@ -386,6 +392,86 @@ refusal_case() {  # <label> <own checkout> <repo holding the target> <target wor
 refusal_case "not a git checkout" "$NOGIT" "$WS" "$NOGIT/worktrees/workspace/issue-workspace-3" 3 feature/nogit-3
 refusal_case "plain directory inside another repository" "$PLAIN" "$WS" "$PLAIN/worktrees/workspace/issue-workspace-3" 3 feature/plain-3
 refusal_case "--separate-git-dir linked worktree" "$SEP3" "$SEP" "$SEP4" 4 feature/issue-4
+
+# ============================== git cannot name the git dirs ===
+# When `git rev-parse --path-format=absolute --git-dir/--git-common-dir`
+# fails (git older than 2.31, or any failure after --show-toplevel worked),
+# the registry helper answers with the folder itself, as for a main
+# checkout. wt_main_root must not take that as the main checkout: it asks
+# git again and refuses when it cannot confirm. A git shim, first on PATH
+# for these runs only, fails exactly those calls: mode "old" only with
+# --path-format=absolute (the plain calls answer), mode "all" every
+# rev-parse for --git-dir or --git-common-dir.
+echo "TEST: git cannot name the git dirs: the copy in a linked worktree refuses, nothing is acted on"
+
+REAL_GIT="$(command -v git)"
+make_git_shim() {  # <dir> <mode: old|all>
+    mkdir -p "$1"
+    cat > "$1/git" <<EOF
+#!/usr/bin/env bash
+rp=0 dir=0 pf=0
+for a in "\$@"; do
+    case "\$a" in
+        rev-parse) rp=1 ;;
+        --git-dir|--git-common-dir) dir=1 ;;
+        --path-format=absolute) pf=1 ;;
+    esac
+done
+if [ "\$rp" = 1 ] && [ "\$dir" = 1 ] && { [ "$2" = all ] || [ "\$pf" = 1 ]; }; then
+    echo "fatal: git shim refused: rev-parse \$*" >&2
+    exit 128
+fi
+exec "$REAL_GIT" "\$@"
+EOF
+    chmod +x "$1/git"
+}
+SHIM_OLD="$SANDBOX/gitshim-old"
+SHIM_ALL="$SANDBOX/gitshim-all"
+make_git_shim "$SHIM_OLD" old
+make_git_shim "$SHIM_ALL" all
+
+# A linked worktree of the workspace, and under it a real linked worktree
+# on the path a remove would act on if the copy took its own worktree as
+# the root (the defect: worktrees/workspace/issue-workspace-8 there).
+W7="$WS/worktrees/workspace/issue-workspace-7"
+gitq -C "$WS" worktree add -q -b feature/issue-7 "$W7" main
+mkdir -p "$W7/worktrees/workspace"
+W7N8="$W7/worktrees/workspace/issue-workspace-8"
+gitq -C "$WS" worktree add -q -b feature/shim-8 "$W7N8" main
+if [ ! -x "$W7/.agent/scripts/worktree_remove.sh" ] || [ ! -d "$W7N8/.agent/scripts" ]; then
+    echo "FATAL: the git shim fixture was not made"
+    exit 1
+fi
+if PATH="$SHIM_ALL:$PATH" git -C "$W7" rev-parse --git-dir >/dev/null 2>&1 \
+   || PATH="$SHIM_OLD:$PATH" git -C "$W7" rev-parse --path-format=absolute --git-common-dir >/dev/null 2>&1 \
+   || ! PATH="$SHIM_OLD:$PATH" git -C "$W7" rev-parse --git-common-dir >/dev/null 2>&1 \
+   || ! PATH="$SHIM_ALL:$PATH" git -C "$W7" rev-parse --show-toplevel >/dev/null 2>&1; then
+    echo "FATAL: the git shims do not fail exactly the calls they are for"
+    exit 1
+fi
+
+SHIM_PATH="$SHIM_OLD"
+run_helper "$W7" "$W7/.agent/scripts"
+check_refused "shim old, linked worktree copy"
+check_has "shim old, linked worktree copy: says the main checkout could not be confirmed" "whose main checkout could not be confirmed" "$ERR"
+check_has "shim old, linked worktree copy: names the worktree" "$W7" "$ERR"
+run_helper "$WS" "$WS/.agent/scripts"
+check_eq "shim old, main checkout copy: still prints the main checkout" "$WS" "$OUT"
+check_eq "shim old, main checkout copy: exit 0, stderr empty" "0:" "$RC:$ERR"
+refusal_case "shim old (no --path-format)" "$W7" "$WS" "$W7N8" 8 feature/shim-8
+
+SHIM_PATH="$SHIM_ALL"
+run_helper "$W7" "$W7/.agent/scripts"
+check_refused "shim all, linked worktree copy"
+check_has "shim all, linked worktree copy: says it cannot confirm" "cannot confirm that $W7 is the main checkout" "$ERR"
+check_has "shim all, linked worktree copy: carries git's own line" "git shim refused" "$ERR"
+run_helper "$WS" "$WS/.agent/scripts"
+check_refused "shim all, main checkout copy (could not tell is not yes)"
+check_has "shim all, main checkout copy: carries git's own line" "git shim refused" "$ERR"
+refusal_case "shim all (git dirs unknown)" "$W7" "$WS" "$W7N8" 8 feature/shim-8
+unset SHIM_PATH
+
+check "after the shim cases: the worktree the copy runs from is intact" git_lists "$WS" "$W7"
 
 # A project worktree is untouched by every refusal above.
 check "a project worktree is untouched by the refusals" test -f "$PWT/README.md"

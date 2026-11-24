@@ -55,13 +55,16 @@ is_allowed_skill() {
 #     directory inside another repository, which must not borrow it);
 #   - is a linked worktree whose main checkout git does not name (one of a
 #     checkout made with `git clone --separate-git-dir`);
+#   - is taken for its own main checkout, but git cannot confirm it (its
+#     git dir and common dir cannot be read, or differ), git's own error
+#     line quoted when there is one;
 #   - has a main checkout that holds no .agent/scripts/_worktree_helpers.sh
 #     (not a workspace checkout).
 # The caller stops on a refusal before any git write, cd or delete; there
 # is no fallback to the copy's own checkout and no override.
 # Usage: ROOT_DIR="$(wt_main_root "$SCRIPT_DIR" worktree_list.sh)" || exit 1
 wt_main_root() {
-    local script_dir="$1" name="${2:-worktree script}" own top err main
+    local script_dir="$1" name="${2:-worktree script}" own top err main gitdir common
     # The logical grandparent of the scripts directory, then made physical:
     # `cd -P <dir>/../..` would resolve a symlinked .agent/scripts first
     # and land beside the link's target instead.
@@ -85,6 +88,35 @@ wt_main_root() {
     fi
     main="$(registry_main_checkout "$own")"
     main="$(cd "$main" 2>/dev/null && pwd -P)" || main=""
+    # registry_main_checkout answers with the folder itself both for a main
+    # checkout and when a git call inside it failed (git older than 2.31
+    # has no --path-format, or any failure after --show-toplevel), so that
+    # answer is confirmed here: <own> is the main checkout only when its git
+    # dir is its common dir. Plain --git-dir/--git-common-dir (git 2.5 on),
+    # resolved from <own>, so an older git still confirms a main checkout.
+    # Could not tell is a refusal, never a yes.
+    if [ -n "$main" ] && [ "$main" = "$own" ]; then
+        if ! gitdir="$(git -C "$own" rev-parse --git-dir 2>/dev/null)" \
+           || ! common="$(git -C "$own" rev-parse --git-common-dir 2>/dev/null)"; then
+            err="$( { git -C "$own" rev-parse --git-dir >/dev/null && git -C "$own" rev-parse --git-common-dir >/dev/null; } 2>&1 | head -n1)"
+            echo "ERROR: $name: cannot confirm that $own is the main checkout of its repository (git: ${err:-no message}), so the workspace root is unknown; run the copy in the workspace's main checkout." >&2
+            return 1
+        fi
+        # A relative answer is relative to <own> (git -C); made absolute
+        # first, so CDPATH plays no part.
+        [[ "$gitdir" == /* ]] || gitdir="$own/$gitdir"
+        [[ "$common" == /* ]] || common="$own/$common"
+        gitdir="$(cd "$gitdir" 2>/dev/null && pwd -P)" || gitdir=""
+        common="$(cd "$common" 2>/dev/null && pwd -P)" || common=""
+        if [ -z "$gitdir" ] || [ -z "$common" ]; then
+            echo "ERROR: $name: cannot confirm that $own is the main checkout of its repository (git names a git dir or common dir that is not a directory), so the workspace root is unknown; run the copy in the workspace's main checkout." >&2
+            return 1
+        fi
+        if [ "$gitdir" != "$common" ]; then
+            echo "ERROR: $name: $own is a linked worktree (git dir $gitdir, common dir $common) whose main checkout could not be confirmed, so the workspace root is unknown; run the copy in the workspace's main checkout." >&2
+            return 1
+        fi
+    fi
     if [ -z "$main" ] || [ ! -f "$main/.agent/scripts/_worktree_helpers.sh" ]; then
         echo "ERROR: $name: the main checkout of $own (${main:-unknown}) holds no .agent/scripts/_worktree_helpers.sh, so it is not a workspace checkout; run the copy in the workspace's main checkout." >&2
         return 1
