@@ -184,8 +184,9 @@ pretending the timeline is empty.
 the history of the repository it runs in (hence: run it from the PR's
 worktree): the review must be an ancestor of the head, and their tree diff
 may touch only this issue's work-plan directory, `ROADMAP.md`,
-`docs/ROADMAP.md`, or `docs/roadmap.md` — the merge gate's shared rule
-(`_bookkeeping.sh`). So the loop's own `## Checkpoint` / review commits no
+`docs/ROADMAP.md`, `docs/roadmap.md`, or the file the project's `roadmap`
+setting names (in a checkout of the project root's own repository) — the
+merge gate's shared rule (`_bookkeeping.sh`). So the loop's own `## Checkpoint` / review commits no
 longer age a review out. The issue number comes from the canonical
 `--progress` path (one ending `/.agent/work-plans/issue-<N>/progress.md`); the file may
 be stored outside the target repository. Nothing is fetched.

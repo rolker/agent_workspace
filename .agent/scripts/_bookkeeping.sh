@@ -36,8 +36,10 @@ fi
 # BOOKKEEPING_ROADMAP_PATHS, plus the file the project's `roadmap` setting
 # names (project_document_for_dir, the same lookup update_roadmap.sh uses)
 # with every character but letters, digits and . _ / - escaped, so it
-# matches only itself (a value may hold ( ) | ! @ +, which extglob reads)
-# -- when <wt> is the top of a checkout of the project root's own
+# matches only itself (the setting holds no other character today, refused
+# at set and at lookup by _project_document_value_error; the escape keeps
+# the literal match safe should the allowed characters ever widen to ones
+# extglob reads) -- when <wt> is the top of a checkout of the project root's own
 # repository (the root itself, or a worktree of it: only there is the
 # root-relative path also the path git diffs). Nothing is added for any
 # other checkout -- the workspace (unregistered), a package repository of

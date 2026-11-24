@@ -202,8 +202,9 @@ Assess each dimension and assign a verdict (**Good** / **Needs work** / **Concer
   workspace, the goal is a section name under
   `$WS_ROOT/README.md#workspace-goals` and the design section is cited by
   its anchor, as `docs/design.md#<section>`; for a project, the project's
-  own goals and design document, or "none" (a project is not asked to
-  keep either).
+  own goals and design document, found where `project_setting.sh doc
+  <name> goals|design` says it keeps them (never a guessed path), or
+  "none" (a project is not asked to keep either).
   Work inside a part that has its own design (ADR-0022) names the root
   goal it serves and may also name the part's own goal, citing the part's
   design section as `<path>/design.md#<section>`, `<path>` being the
