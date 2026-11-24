@@ -280,3 +280,14 @@ Frozen five-path text (feature/issue-560 at f3fe8604, now merged as 9a8c1eaf): P
 - Path rows are inserted in one pass after the scan (group_rows), not patched back by index; same output.
 - Step 3 decides "written as paths" from step 1's rows when given (a path row present), else from the prose; the plan did not say.
 - Mark for a pull request with no worktree: path name read from step 1's printed rows (N1).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 08:22 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (first retry of this phase; the pass did not fail, it stopped at 14:55 for the owner's 15:00 shutdown with its remaining items listed)
+**After**: phase-failed
+**Decision**: retry
+**Phase**: implement
+
+The owner asked for this drive today: "/orchestrator 563 and 428". The newest Implementation entry is partial because of the shutdown, not a defect. The retry finishes its "Remains, in plan order" list (items 1 to 4), under the same instructions as the plan checkpoint of 2026-11-23 14:29 (N1 to N6, M4, M5).
