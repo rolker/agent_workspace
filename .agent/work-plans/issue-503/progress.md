@@ -1723,3 +1723,20 @@ Lighter review level (owner, 2026-11-24): one round; the open suggestions below 
 - [ ] (suggestion, Local Review @ `bb91e0b3`) Minor: unquoted `$TOOL_BIN`/`$M_DISTRO` in NEXT lines, `${SETUP_ARGS[*]}` in the dry run, an empty kept `bootstrap_url=` refused though the adapter would not refuse it — `.agent/scripts/register_project.sh:824`, `:1087`, `:846`
 
 ### False positives
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 14:52 -05:00
+**By**: claude-code (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #610 at `93975f8`
+**Depth**: Deep (reason: cold read, cross-model only: codex, per handoff; 1702 changed lines across 19 files)
+**Must-fix**: 1 | **Suggestions**: 2
+
+Codex (EXIT=0, AGENT_TIMEOUT=3000) read the whole diff: the prompt held all 17 non-work-plan files with no truncation, and `.agent/work-plans/` (plan.md, progress.md) was left out. Codex raised 5 points. 3 are kept; 2 were already known (both go to the planned follow-up issue): the rollback judging ownership of the root and parent directories at check time (Codex 2), and the `--manifest` check in `register_session_root.sh` reading a flattened argument list (Codex 4).
+
+### Findings
+- [ ] (must-fix) The refusal of a URL or git-location manifest prints `--manifest $MANIFEST` as given, so a credential-bearing URL (https://user:token@host/...) shows its user name and token on stderr, dry run included; mask it with mask_url_userinfo as the fix pass did for --fetch-from. The adapter's own "Running:" line prints a manifest given directly to `adapter setup` the same way. — `.agent/scripts/register_project.sh:845`, `.agent/project_types/ros2_colcon/adapter.sh:1366`
+- [ ] (suggestion) A relative --manifest given straight to `adapter setup` is made absolute only when it exists in the caller's directory; otherwise it is passed relative and the tool reads it from the root, so a mistyped path can pick a same-named file there. Registration does not hit this (it passes the checked absolute M_ABS). Refuse a relative path that is not an existing file. — `.agent/project_types/ros2_colcon/adapter.sh:1343`
+- [ ] (suggestion) A repeated --distro or --role is silently resolved to the last value (shared parser, line 243) and now feeds init in manifest mode, while `adapter setup` refuses both duplicates; refuse duplicates in manifest mode so both entry points agree. — `.agent/scripts/register_project.sh:243`
