@@ -183,12 +183,60 @@ as reference, check what exists in `<repo-dir>`:
 |---|---|---|
 | `.agents/README.md` | Present / Missing | ... |
 | `PRINCIPLES.md` / `docs/principles.md` | Present / Missing | ... |
-| `ARCHITECTURE.md` / `docs/design.md` | Present / Missing | ... |
+| Goals (`goals` setting) | Present / Not kept / Missing | ... |
+| Design (`design` setting, else `docs/design.md`; `ARCHITECTURE.md`) | Present / Not kept / Missing | ... |
+| Roadmap (`roadmap` setting, else `docs/roadmap.md`, `docs/ROADMAP.md`, `ROADMAP.md`) | Present / Not kept / Missing | ... |
 | `docs/decisions/` | Present / Missing (N ADRs) | ... |
 | `.agents/workspace-context/` | Present / Missing | ... |
 
 This is a **coverage report**, not a mandate — not every repo needs full
 governance. But missing items should be noted.
+
+**Goals, design and roadmap** are found where the project's settings say,
+through the one lookup every reader uses, never by guessing a path:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/project_setting.sh" doc <settings-name> goals
+"$WS_ROOT/.agent/scripts/project_setting.sh" doc <settings-name> design
+"$WS_ROOT/.agent/scripts/project_setting.sh" doc <settings-name> roadmap
+"$WS_ROOT/.agent/scripts/project_setting.sh" get <settings-name> <goals|design|roadmap>
+```
+
+`doc` prints one line, or nothing with the reason on stderr; `get` prints
+the stored value, or exits 1 when the key is not stored. Each row's status:
+
+- `set <path>[#<heading>]`: **Present** (recorded), the path in the row.
+  Check that git tracks it, `git -C <repo-dir> ls-files --error-unmatch --
+  <path>`: an untracked file is a finding (only this checkout has it, so a
+  worktree or another clone finds nothing there).
+- `fallback <path>`: **Present** (not recorded; the readers' fixed list
+  finds it).
+- `none`: **Not kept** (`<key>=none`, the project's answer); no finding.
+- nothing, key not stored: **Missing** (not recorded, and the fixed list
+  finds nothing; goals has no fixed list). For design, an `ARCHITECTURE.md`
+  the project has is **Present** under that name: say that the workspace's
+  design checks read it only once it is recorded, `design=ARCHITECTURE.md`.
+- nothing, key stored (`get` prints it), exit 1: a finding: the file the
+  setting names is missing.
+- nothing, exit 2: a finding: the setting cannot be used; give the reason
+  as printed (a path outside the project, a roadmap that is a symbolic link
+  or reached through one, ...).
+
+A setting names the root's own documents; a part's documents are named
+only by the root roadmap's `| Sub-roadmap | Root |` table (ADR-0022). When
+the roadmap is Present, list that table's sub-roadmaps:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root <repo-dir> --roadmap <repo-dir>/<roadmap path> --list-pointers
+```
+
+Each line is a sub-roadmap's path relative to `<repo-dir>`; the part's
+design is the `design.md` beside it. A recorded `goals`, `design` or
+`roadmap` whose path (before any `#`) is one of those files is a finding:
+the same file is named as the root's document and as a part's. Recording
+another file, or removing the key, is the fix.
 
 ### 4. Check agent guide quality
 
@@ -352,6 +400,7 @@ each finding in categories 1 and 3 to 6 names its fix.
 |---|---|
 | `.agents/README.md` | Present / Missing |
 | `PRINCIPLES.md` / `docs/principles.md` | Present / Missing |
+| Goals, Design, Roadmap | Present (`<path>`, recorded / not recorded) / Not kept / Missing |
 | ... | ... |
 
 ### Agent Guide
@@ -409,7 +458,8 @@ resolved".
 
 **Queue in the roadmap.** Queued items become rows of the same
 `## Onboarding` section `onboard-project` writes, in the project's roadmap
-(an existing `docs/roadmap.md` or `ROADMAP.md`, else a new
+as `onboard-project` step 3c defines it (the file the `roadmap` setting
+names, else the first of the fixed list that exists, else a new
 `docs/roadmap.md`); a section already there gains rows:
 
 ```markdown
@@ -427,7 +477,9 @@ Each queued row is its own yes. When the project uses issues (`issues=yes`),
 each row gets its issue; with `issues=no` the cell says `none`; when the
 fact is `unknown`, ask. Writing the section is itself a write: it waits for
 the same yes and rides in the same batched pull request as the fix-now
-items.
+items. With `roadmap=none`, or a roadmap setting the lookup refuses (step
+3), there is no roadmap to queue in: say so, and offer open issue or skip
+instead.
 
 **A project that takes no footprint.** Read its `instructions` setting:
 
