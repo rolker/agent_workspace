@@ -460,3 +460,16 @@ Merge: script_reference.md keeps main's #452 rows and this branch's #551 rows; t
 ### Findings
 - [ ] (suggestion) An in-root symlinked candidate (key unset) is now edited through the link and reported under the target's path; when the target is not one of the fixed three (e.g. `ROADMAP.md -> notes/plan.md`), merge_pr.sh commits a path the bookkeeping list does not name, so the review goes stale; on main the link was replaced by `ROADMAP.md`, which is bookkeeping. Edit through only when the target is a fixed candidate, else as on main — `update_roadmap.sh` candidate loop
 - [ ] (suggestion) `project_document_query`'s once-per-shell check uses the warning text unquoted as a `case` pattern, so a warning holding `*`, `?` or `[` (a path) may print twice; quote `"$line"` in the pattern — `_project_registry.sh` `project_document_query`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 22:05 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (round 3 approved, but suggestion 1 is a failure mode that blocks a merge silently; fixing it before publish is cheaper than after)
+**After**: publish
+**Decision**: address
+
+Address both round-3 suggestions before publish:
+- Suggestion 1: with the key unset, `update_roadmap.sh` edits through a symlinked fallback roadmap only when the link's target is one of the fixed bookkeeping roadmap paths; otherwise it behaves as on main (the edited copy replaces the link, which counts as bookkeeping) and says so. A test with `ROADMAP.md -> notes/plan.md`.
+- Suggestion 2: quote the warning text in `project_document_query`'s `case` match; a test with a warning holding `*`.
+The full pre-commit pass has not run yet; it runs when publish is raised again.
