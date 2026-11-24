@@ -1118,6 +1118,67 @@ else
     fail "multi-repository root outside git, bare --issue: rc=$RC, worktree [$(ls -A "$W10" 2>/dev/null | tr '\n' ' ')] out=${OUT:0:600}"
 fi
 
+echo
+echo "=== A project with no GitHub origin: a bare --issue is not looked up, not even in the workspace's repository (issue 428) ==="
+# From the workspace folder, whose origin is on GitHub. gh, stubbed, records
+# every call and answers any repository or number: an issue with a title,
+# and "a pull request" for any number (as a workspace pull request with the
+# same number would). The project's origin is on another host (scp form,
+# which once gave a garbage slug), or it has none. Neither is looked up: no
+# `issue view`, no `pr view`, the worktree is made and a note says why.
+# GIT_SSH_COMMAND=false fails the other host's fetch at once (no network);
+# --allow-unverified-branch lets creation go on without origin's answer.
+SB428="$SANDBOX/ws428"
+make_ws_repo "$SB428"
+gitq -C "$SB428" remote add origin https://github.com/ws-owner/ws.git
+GH_LOG428="$SANDBOX/gh428.log"
+cat > "$SB428/stubbin/gh" <<GH428_EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$GH_LOG428"
+case "\$1 \$2" in
+    "issue view") echo "A workspace issue||GH_SEP||OPEN"; exit 0 ;;
+    "pr view") echo "OPEN"; exit 0 ;;
+esac
+exit 1
+GH428_EOF
+chmod +x "$SB428/stubbin/gh"
+for kind in elsewhere no-origin; do
+    P428="$(mktemp -d -p "$SANDBOX")/proj"
+    gitq init -q -b main "$P428"
+    gitq -C "$P428" commit -q --allow-empty -m "init"
+    if [[ "$kind" == elsewhere ]]; then
+        gitq -C "$P428" remote add origin git@gitlab.com:acme/w.git
+        note="Issue #81 not looked up: issue titles are read from GitHub, and this project's origin is hosted elsewhere."
+    else
+        note="Issue #81 not looked up: issue titles are read from GitHub, and this project has no origin."
+    fi
+    printf 'p428%s single_project %s\n' "${kind//-/_}" "$P428" >> "$SB428/.agent/projects.local"
+    rm -f "$GH_LOG428"
+    OUT="$(cd "$SB428" && PATH="$SB428/stubbin:$PATH" GIT_SSH_COMMAND=false "$SB428/.agent/scripts/worktree_create.sh" \
+        --issue 81 --type project --project "p428${kind//-/_}" --allow-unverified-branch 2>&1)"
+    RC=$?
+    if [[ "$RC" -eq 0 ]] && ! grep -qE '^(issue|pr) view' "$GH_LOG428" 2>/dev/null \
+          && [[ "$OUT" == *"$note"* && "$OUT" != *"offline or issue does not exist"* \
+          && "$OUT" != *"A workspace issue"* && "$OUT" != *"is a pull request"* ]] \
+          && git -C "$P428" show-ref --verify --quiet refs/heads/feature/issue-81; then
+        pass "project origin $kind, bare --issue from the workspace folder: not looked up, no issue or pr view, made, the note printed"
+    else
+        fail "project origin $kind, bare --issue: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG428" 2>/dev/null)] out=${OUT:0:800}"
+    fi
+done
+# Unchanged for the workspace type: the workspace's own repository is looked
+# up and checked (the stub says the number is a pull request, so creation
+# is refused: the check ran).
+rm -f "$GH_LOG428"
+OUT="$(cd "$SB428" && PATH="$SB428/stubbin:$PATH" "$SB428/.agent/scripts/worktree_create.sh" --issue 82 --type workspace 2>&1)"
+RC=$?
+if [[ "$RC" -ne 0 ]] && grep -q '^issue view 82 --repo ws-owner/ws' "$GH_LOG428" \
+      && grep -q '^pr view 82 --repo ws-owner/ws' "$GH_LOG428" && [[ "$OUT" == *"#82 is a pull request, not an issue."* ]]; then
+    pass "workspace type, bare --issue: looked up and checked in the workspace's repository, as before"
+else
+    fail "workspace type, bare --issue: rc=$RC gh calls=[$(tr '\n' ';' < "$GH_LOG428" 2>/dev/null)] out=${OUT:0:800}"
+fi
+
 # A gh stub that records each call in <log> and fails `issue view` (so
 # the title is the generic "Issue #<N>"). `pr list` finds no PR, `pr
 # create` prints a URL and saves its --body-file to <log>.body, and `pr
