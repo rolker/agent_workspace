@@ -282,31 +282,6 @@ def test_no_command_prints_a_password_in_any_url(vcs, tmp_path, capsys, user, pa
             assert word not in text, f"{command} printed {word!r}:\n{text}"
 
 
-@pytest.mark.parametrize("user, password", ESCAPED)
-def test_an_extends_url_of_the_earlier_format_prints_no_password(tmp_path, capsys, user, password):
-    url = f"https://{user}:{password}@127.0.0.1:9/base.git"
-    leaf = tmp_path / "leaf.yaml"
-    leaf.write_text(
-        yaml.safe_dump(
-            {
-                "extends": {"path": "manifest.yaml", "url": url, "ref": "main"},
-                "layers": ["core"],
-                "roles": {"dev": {}},
-            },
-            allow_unicode=True,
-        ),
-        encoding="utf-8",
-    )
-    for argv in (
-        ["resolve", "--manifest", leaf, "--out", tmp_path / "o"],
-        ["validate", "--manifest", leaf],
-    ):
-        argv += ["--role", "dev", "--distro", "jazzy", "--cache-dir", tmp_path / "c"]
-        text = _command_output(capsys, tmp_path, *argv)
-        for word in _forbidden(user, password):
-            assert word not in text, f"{argv[0]} printed {word!r}:\n{text}"
-
-
 @pytest.mark.parametrize(
     "url, shown",
     [

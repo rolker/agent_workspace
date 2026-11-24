@@ -768,18 +768,6 @@ def test_sigterm_during_the_swap_says_the_output_was_replaced(
 # --- The CLI ---------------------------------------------------------------------------------
 
 
-def test_layout_is_not_taken_for_this_format_yet(manifest, tmp_path, capsys):
-    flags = ("--role", "robot", "--distro", "jazzy", "--layout", "manifest-dir")
-    assert _resolve(manifest, tmp_path / "out", *flags) == 1
-    assert "--layout manifest-dir is not available yet" in capsys.readouterr().err
-
-
-def test_cache_dir_is_not_taken_for_this_format(manifest, tmp_path, capsys):
-    flags = ("--role", "robot", "--distro", "jazzy", "--cache-dir", str(tmp_path / "c"))
-    assert _resolve(manifest, tmp_path / "out", *flags) == 1
-    assert "--cache-dir is for a manifest in the earlier format" in capsys.readouterr().err
-
-
 def test_resolve_prints_what_it_wrote(manifest, tmp_path, capsys):
     out = tmp_path / "out"
     assert _resolve(manifest, out, "--role", "robot", "--distro", "jazzy") == 0
@@ -804,24 +792,8 @@ def test_validate_refuses_what_resolve_refuses(tmp_path, capsys):
     assert "group 'simulation' is not in the top-level `groups:` list" in capsys.readouterr().err
 
 
-def test_a_file_that_does_not_parse_goes_to_the_earlier_reader(tmp_path, capsys):
-    path = tmp_path / "m.yaml"
-    path.write_text("repositories: [\n")
-    argv = ["--role", "r", "--distro", "d"]
-    assert _resolve(path, tmp_path / "out", *argv) == 1
-    assert capsys.readouterr().err == f"ERROR: {path}: invalid YAML at line 2, column 1\n"
-
-
-def test_a_missing_file_goes_to_the_earlier_reader(tmp_path, capsys):
-    path = tmp_path / "missing.yaml"
-    assert _resolve(path, tmp_path / "out", "--role", "r", "--distro", "d") == 1
-    assert capsys.readouterr().err == f"ERROR: manifest not found: {path}\n"
-
-
 @pytest.mark.parametrize("command", ["resolve", "validate"])
-def test_a_file_that_does_not_parse_without_role_and_distro_reports_the_parse_error(
-    command, tmp_path, capsys
-):
+def test_a_file_that_does_not_parse_reports_the_parse_error(command, tmp_path, capsys):
     path = tmp_path / "m.yaml"
     path.write_text("repositories: [\n")
     argv = [command, "--manifest", str(path)]
@@ -830,15 +802,8 @@ def test_a_file_that_does_not_parse_without_role_and_distro_reports_the_parse_er
 
 
 @pytest.mark.parametrize("command", ["resolve", "validate"])
-def test_a_missing_file_without_role_and_distro_reports_it_missing(command, tmp_path, capsys):
+def test_a_missing_file_is_reported_missing(command, tmp_path, capsys):
     path = tmp_path / "missing.yaml"
     argv = [command, "--manifest", str(path)]
     assert main(argv + (["--out", str(tmp_path / "out")] if command == "resolve" else [])) == 1
     assert capsys.readouterr().err == f"ERROR: {path}: not found\n"
-
-
-def test_the_earlier_format_still_needs_role_and_distro(fixtures_dir, tmp_path, capsys):
-    with pytest.raises(SystemExit) as excinfo:
-        _resolve(fixtures_dir / "p11" / "manifest.yaml", tmp_path / "out", "--role", "dev")
-    assert excinfo.value.code == 2
-    assert "the following arguments are required: --distro" in capsys.readouterr().err

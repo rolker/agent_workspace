@@ -2,11 +2,8 @@ import os
 import shutil
 import subprocess
 import sys
-from pathlib import Path
 
 import pytest
-
-FIXTURES = Path(__file__).parent / "fixtures"
 
 # The directory of the Python running the tests is appended to PATH, so a `vcs` installed with
 # the test extra is found when its environment is not activated; a `vcs` already on PATH wins.
@@ -39,11 +36,6 @@ def pytest_configure(config):
 
 def pytest_report_header(config):
     return [_vcs_line(), _colcon_line()]
-
-
-@pytest.fixture
-def fixtures_dir() -> Path:
-    return FIXTURES
 
 
 @pytest.fixture

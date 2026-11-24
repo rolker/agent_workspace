@@ -756,3 +756,317 @@ Scope: the merge of origin/main (pull request 568, issue 551) into the branch. C
 "Merge (Recommended)"
 
 Asked at the merge checkpoint for pull request 597 (part 2 of 3: the cut of the adapter's manifest route) after the Integrated Review at d53f7f7f with nothing open (its one box, a "No open findings." line, was ticked by the host as a placeholder, not a finding). The dialog gave: main merged into the branch and the two document conflicts resolved, with no code changed; the re-review of that merge approved with no findings; all 10 CI checks passing on the pushed head aa47b9cd, the pull request mergeable and main unmoved since; the three low cold-read findings still deferred to issue 599 as he chose; the outside reviewers (Codex in pre-push rounds 1 and 2 and as the cold read, Gemini failed in rounds 1 and 2, Copilot requested and not available for lack of quota, none on the re-review of the merge); and that the issue stays open with part 3 next. The other choices offered were hold and stop.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 12:10 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan checkpoint after a merge, under run-issue step 13's conditions: the plan is unchanged since its last review, 6530c842 reviewed at 99202142, and it names a part not yet delivered)
+**After**: plan
+**Decision**: proceed
+
+Pull request 597 (part 2 of 3, the cut of the adapter's manifest route) merged on 2026-11-24. The issue is still open because part 3 is to come. Delivered: part 1 (pull request 571) and part 2 (pull request 597). Not delivered: part 3, the removal of the old reader from `tools/repos-manifest`, which closes the issue. The third Plan Review found part 3 sound enough to follow part 2 and left no finding on it. The owner chose on 2026-11-24 that part 3 comes next ("Part 3 first"). The implement handoff tells the implementer that part 2 as merged differs from the plan's text in places (the fix rounds added the `registration_refused` list, rewrote the refusal message and added the section "A root that sets `source`" to `docs/manifest/design.md`), so every file and line the plan names for part 3 is re-read from this branch.
+
+## Implementation
+**Status**: partial
+**When**: 2026-11-24 12:33 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-569 at `c59fc837`
+
+Part 3 of 3 (remove the reader). Status is partial only because the CI job rename the coordinator relayed mid-pass (owner's words as relayed: "yes, rename the CI job") was denied by this session's permission classifier when I tried to edit `.github/workflows/validate.yml`; it was not attempted another way and is left to the host. Everything the plan's part 3 lists is done.
+
+- `6d1ae05b` code and tests: deleted `schema.py`, `merge.py`, `selectors.py`, `validate.py`, `emit.py`, `extends.py` (grep: nothing kept imported them; no entry point, Makefile, CI step or `.agent/` script or stub uses them or `resolve --layout`/`--cache-dir`). `cli.py`: old `cmd_resolve`/`cmd_validate` halves, `_load_merged`, `_require_old_flags`, `--layout`, `--cache-dir` and their refusals removed; `ManifestError` from `yamlload`. `manifest.py`: `has_repositories_key` and `read_problem` removed; the earlier-format refusal now ends "…the format of the specification, docs/spec.md". `__init__.py`, `pyproject.toml` description and `yamlload.py` docstring no longer say prototype or two readers. Tests deleted: `test_extends`, `test_extends_safety`, `test_acceptance_p11`, `test_schema`, `test_selectors`, `test_validate`, `test_layout`, `test_untrusted_input`, `fixtures/p11/manifest.yaml` (`p11/expected` kept), and the old cases in `test_cli`, `test_output`, `test_masking`; `fixtures_dir` fixture dropped (no user left). Ported: the CLI backstop test (patches `cli.read_manifest`, resolve and validate; show has its own OSError report), and the YAML-loader checks the new reader had no test for (fixed messages for invalid YAML and constructor failures, integer too large and the 64-bit bound, aliases, deep nesting, repeated top-level key, not UTF-8, read as UTF-8 whatever the locale, unreadable file, symlink loop) into `test_manifest_reading.py`. `test_base_reading` uses an inline earlier-format manifest; `test_url_messages` checks `manifest.py` only. New: `test_a_manifest_in_the_earlier_format_is_refused_naming_the_format` (resolve, show, validate; two shapes; exit 1, exact message, nothing written) and `test_the_options_of_the_earlier_format_are_not_accepted` (exit 2).
+- `c59fc837` documents: `docs/prototype.md` deleted, `test_documents.py` exclusion dropped; tool README, spec, design updated; root `docs/fork_parity.md` re-pointed to the project11 fixture in the spec's format.
+- Tool roadmap lines now true by reading (text and empty check cells left alone): "The prototype's reader and `docs/prototype.md` are removed" and "The resolver no longer has the package dependency section, roles defined by starting packages, or the cache of parents kept between runs".
+- Re-grep (`prototype|manifest-dir|earlier format|resolve_chain` over tools/repos-manifest, .agent, docs, work-plans aside): the remaining "earlier format" hits are the refusal and its tests and docs (current behaviour); tool roadmap line 29 (the line itself); root `docs/roadmap.md` row 4 "resolver prototype landed on PR #268" (history); `.agent/knowledge/host_standing_rules.md:29` (unrelated); `test_cli.py` `--layout manifest-dir` (the not-accepted test). Outside that grep: `.github/workflows/validate.yml:67` "(#267 prototype)" (the denied rename).
+
+Suites run: `pytest tools/repos-manifest/tests` (worktree source, main checkout venv): "1988 passed in 728.75s", no skips; `test_ros2_colcon.sh`: "Results: 1203 passed, 0 failed, 0 skipped"; `test_register_project.sh`: "225 passed, 0 failed"; `test_register_session_root.sh`: "72 passed, 0 failed". Pre-commit hooks ran on the touched files at each commit (SKIP=validate-script-tests). The full pass is left to the host.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 12:39 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: phase-failed
+**Decision**: retry
+**Phase**: implement
+
+"Leave it out (Recommended)"
+
+Part 3's implement pass wrote its entry partial (db392799) for one reason: the rename of the CI job in `.github/workflows/validate.yml`, which the owner had approved mid-pass ("yes, rename the CI job"), was denied by the session's permission check when the background agent tried the edit (reason given: "Undermining Oversight"). The agent tried no other way, and the host did not make the edit on its behalf. Everything else in part 3 is done and committed (6d1ae05b, c59fc837). Shown this, with the one-line edit quoted, the owner chose to leave the rename out of this part and have a small issue opened for it, which is #601. The other choices offered were that he make the edit himself, or that the host make it as a takeover of the step.
+
+So the retry changes no code: it writes the pass's entry again as complete, with the rename named as left out on the owner's decision and tracked in #601, and the workflow file untouched.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 12:40 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-569 at `2064f7e4`
+
+Part 3 of 3 (remove the reader), complete. This entry replaces the partial one above (db392799) and restates what part 3 changed in full.
+
+- `6d1ae05b` code and tests: deleted `schema.py`, `merge.py`, `selectors.py`, `validate.py`, `emit.py`, `extends.py` (grep: nothing kept imported them; no entry point, Makefile, CI step or `.agent/` script or stub uses them or `resolve --layout`/`--cache-dir`). `cli.py`: old `cmd_resolve`/`cmd_validate` halves, `_load_merged`, `_require_old_flags`, `--layout`, `--cache-dir` and their refusals removed; `ManifestError` from `yamlload`. `manifest.py`: `has_repositories_key` and `read_problem` removed; the earlier-format refusal now ends "…the format of the specification, docs/spec.md". `__init__.py`, `pyproject.toml` description and `yamlload.py` docstring no longer say prototype or two readers. Tests deleted: `test_extends`, `test_extends_safety`, `test_acceptance_p11`, `test_schema`, `test_selectors`, `test_validate`, `test_layout`, `test_untrusted_input`, `fixtures/p11/manifest.yaml` (`p11/expected` kept), and the old cases in `test_cli`, `test_output`, `test_masking`; `fixtures_dir` fixture dropped (no user left). Ported: the CLI backstop test (patches `cli.read_manifest`, resolve and validate; show has its own OSError report), and the YAML-loader checks the new reader had no test for (fixed messages for invalid YAML and constructor failures, integer too large and the 64-bit bound, aliases, deep nesting, repeated top-level key, not UTF-8, read as UTF-8 whatever the locale, unreadable file, symlink loop) into `test_manifest_reading.py`. `test_base_reading` uses an inline earlier-format manifest; `test_url_messages` checks `manifest.py` only. New: `test_a_manifest_in_the_earlier_format_is_refused_naming_the_format` (resolve, show, validate; two shapes; exit 1, exact message, nothing written) and `test_the_options_of_the_earlier_format_are_not_accepted` (exit 2).
+- `c59fc837` documents: `docs/prototype.md` deleted, `test_documents.py` exclusion dropped; tool README, spec, design updated; root `docs/fork_parity.md` re-pointed to the project11 fixture in the spec's format.
+- `2064f7e4` (this pass) `docs/fork_parity.md`, the first blocker paragraph: "the ros2_colcon adapter calls nothing in `tools/repos-manifest/`. Needs the manifest placed in a project11 repository and the adapter wired to the resolver." now reads "the ros2_colcon adapter calls the manifest tool only for a root the tool set up (its tool route, issue 503), which `p11-rolling` is not. Needs the manifest placed in a project11 repository and a project11 root set up by the tool." (checked against `.agent/project_types/ros2_colcon/adapter.sh`, whose tool route runs the installed `repos-manifest` for sync, status and build). Table row 1's note already said this and is unchanged.
+- Tool roadmap lines now true by reading (text and empty check cells left alone): "The prototype's reader and `docs/prototype.md` are removed" and "The resolver no longer has the package dependency section, roles defined by starting packages, or the cache of parents kept between runs".
+- Re-grep (`manifest-dir|prototype` over tools/repos-manifest, .agent, docs, work-plans aside; rerun this pass, same files as the first pass found): tool roadmap line 29 (the line itself); root `docs/roadmap.md` row 4 "resolver prototype landed on PR #268" (history); `.agent/knowledge/host_standing_rules.md:29` (unrelated); `test_cli.py` `--layout manifest-dir` (the not-accepted test). The first pass's wider grep also found "earlier format" hits that are the refusal and its tests and docs (current behaviour). Outside that grep: `.github/workflows/validate.yml:67` "(#267 prototype)".
+
+Suites, run on `c59fc837` by the first pass (worktree source, main checkout venv): `pytest tools/repos-manifest/tests`: "1988 passed in 728.75s", no skips; `test_ros2_colcon.sh`: "Results: 1203 passed, 0 failed, 0 skipped"; `test_register_project.sh`: "225 passed, 0 failed"; `test_register_session_root.sh`: "72 passed, 0 failed". This pass changed one document only and ran `pytest tools/repos-manifest/tests/test_documents.py`: "11 passed in 0.01s". Pre-commit hooks ran on the touched files at each commit (SKIP=validate-script-tests); the full pass is left to the host.
+
+The rename of the CI job in `.github/workflows/validate.yml` is left out of this part. The owner first approved it mid-pass, the session's permission check denied the edit, and on 2026-11-24 the owner decided to leave it out ("Leave it out (Recommended)"); it is tracked in issue 601. The workflow file is untouched on this branch.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 12:44 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-569 at `85fd5b9e`
+**Base**: origin/main
+**Depth**: Deep (reason: 34 files, +350 -4755; removal of a reader that guarded untrusted manifest input)
+**Must-fix**: 0 | **Suggestions**: 4
+**Round**: 1 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Part 3 of 3 (remove the earlier format's reader). Checked: (a) every `repos_manifest` module imports from this branch's source; `--help` of the tool and of `resolve`, `validate`, `show`, `init`, `sync`, `status`, `build` works, and `resolve`/`validate` no longer list `--layout`/`--cache-dir`; nothing in `src`, `pyproject.toml`, the Makefile's install target, `validate.yml`'s steps or `.agent/` (adapter tool route: `init`, `sync`, `status --json`, `build`; the `test_ros2_colcon.sh`, `test_register_project.sh`, `test_register_session_root.sh` callers and its `.venv/bin/repos-manifest` stub) uses removed code or options; repo-wide grep for the deleted modules, `prototype.md`, `fixtures/p11/manifest`, `manifest-dir`, `cache-dir`, `resolve_chain` finds only the roadmap line and the not-accepted test. (b) Each promise of the spec's "Reading a manifest before using it" has a kept test against the new reader (safe loading, aliases, repeated keys, constructor failures, integer bound, nesting depth, containment, `-` values, transports incl. `ext::`, invisible characters, base cycles, a base in a git repo refused); what has no replacement (dependency check, `manifest-dir` layout, name length caps) belonged to the removed reader only. (c) Refusal run by hand in a scratch directory: `resolve`, `show`, `validate`, `init` exit 1 with one line naming the format and the keys, nothing written; `sync`, `status`, `show` on a system whose recorded manifest was rewritten in the earlier format exit 1 with the same message, `config.yaml` unchanged; a `base:` naming an earlier-format manifest is refused naming the parent. (d) README, spec, design and root `docs/fork_parity.md` match the code. Static: flake8 on the changed Python files, only E203 (Black-compatible, ignored). Tests: 8 files (`test_cli`, `test_project11`, `test_base_reading`, `test_manifest_reading`, `test_masking`, `test_output`, `test_url_messages`, `test_documents`) 668 passed; the full suite was not rerun (the implementer's run on c59fc837: 1988 passed). Cross-model: Codex completed (one finding, dropped: a degenerate earlier-format file with only `layers:`/`roles:` and no repos gets the new reader's own error rather than the earlier-format message); Gemini failed (empty response, a headless Bash call auto-denied).
+
+### Findings
+- [x] (suggestion) The earlier-format refusal is tested for `resolve`, `show`, `validate` only; add cases for `init` (nothing written in the directory) and `sync`/`status` on a system whose recorded manifest is in the earlier format — `tools/repos-manifest/tests/test_cli.py:39`
+- [x] (suggestion) `packages:`, the fourth key in `_EARLIER_FORMAT_KEYS`, is in no test; add it to the CLI or `test_base_reading.py:279` parametrization — `tools/repos-manifest/src/repos_manifest/manifest.py:34`
+- [x] (suggestion) The test comment says a manifest "with no `repositories:` or `base:` key" is refused; the code checks only for a missing `repositories:` (a `base:` plus `repos:` manifest is refused too) — `tools/repos-manifest/tests/test_cli.py:46`
+- [x] (suggestion) The rewritten package description and module docstring still name "agent_workspace issue #267"; the tool's own text is not to mention the workspace — `tools/repos-manifest/pyproject.toml:8`, `tools/repos-manifest/src/repos_manifest/__init__.py:6`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 12:45 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the pre-push review at 935189b7 approved with four suggestions, each a few lines; fixing them now is cheaper than carrying them open to the findings checkpoint)
+**After**: publish
+**Decision**: address
+
+All four suggestions of part 3's round-1 review are fixed before the push: tests of the earlier-format refusal for `init`, `sync` and `status`; a test for the `packages:` key; the test comment that misstates when a manifest is refused; and the package description and module docstring that still name the workspace's issue. The host's full pre-commit pass was not run on this head, since the fix pass changes it. Outside reviewers on round 1: Codex ran, one edge-case point, dropped by the reviewer (a file with only `layers:` or `roles:` gets the new reader's own error); Gemini failed (its headless run denied a tool call).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 12:48 -05:00
+**By**: claude-code (claude-opus-5-5)
+
+**Branch**: feature/issue-569 at `707033b7`
+**Addressed**: Local Review (Pre-Push) at `85fd5b9e` (2026-11-24 12:44 -05:00)
+**Commits**: 0ef6f8f5, 745899c9, 1aef015d, 707033b7
+
+### Actions
+- [x] Earlier-format refusal tested beyond resolve/show/validate: `init` exits 1 with the exact one-line message and changes nothing (`test_init_refusals.py`, via `refused`); `sync` and `status` on a system whose recorded manifest is now in the earlier format exit 1 with the message and change nothing (`test_cli.py`). A `base:` pointing at an earlier-format manifest was already covered (`test_base_reading.py` `test_a_parent_in_the_earlier_format_is_refused`); it now checks the whole message — `tools/repos-manifest/tests/test_cli.py:39`
+- [x] `packages:` tested: the CLI refusal (resolve/show/validate) and the parent-refusal test are parametrized over `_EARLIER_FORMAT_KEYS` itself, so a fifth key cannot be added untested — `tools/repos-manifest/src/repos_manifest/manifest.py:34`
+- [x] Test comment now says what `Reader.part` does (no `repositories:` plus an earlier-format key, with or without `base:`); a `base:` + `repos:` manifest added to the cases — `tools/repos-manifest/tests/test_cli.py:46`
+- [x] Package description and module docstring reworded to say what the tool is, without the workspace's issues #267/#497 or its `tools/` path. Other workspace mentions in `tools/repos-manifest`, not rewritten by this branch and left unchanged: `docs/design.md:954` (the workspace makes linked work trees), `docs/design.md:1730-1731` (the workspace's `validate` runs `status --json`, its issue 503), `tests/test_documents.py` (checks the documents do not name the workspace's adapter). Other "workspace" hits are colcon workspaces — `tools/repos-manifest/pyproject.toml:8`, `tools/repos-manifest/src/repos_manifest/__init__.py:6`
+
+### Checks
+- pytest (worktree src on PYTHONPATH, main .venv): `tests/test_cli.py tests/test_init_refusals.py tests/test_base_reading.py tests/test_documents.py` — 150 passed in 3.76s
+- flake8 clean on the changed files; black ran in the commit hooks. Full pre-commit pass and the whole tool suite left to the host / CI.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 12:59 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-569 at `dcf2eb42`
+**Base**: origin/main
+**Depth**: Deep (reason: whole-branch classification, 37 files, +554 -4756; fix-round re-review of round 1's four suggestions)
+**Must-fix**: 0 | **Suggestions**: 2
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Part 3 of 3, round 2: the fixes 0ef6f8f5, 745899c9, 1aef015d, 707033b7 for round 1's four suggestions. All four hold as fixed. Checked against the code: the `sync`/`status` test overwrites the very manifest `init` recorded (`make_system` writes `sys.manifest.yaml`, `config.yaml` names `../sys.manifest.yaml`), compares the exact refusal line, and `snapshot(tmp_path)` covers the whole tree (remotes, system, manifest); the `init` test's `refused()` snapshots the whole parent directory and the exact stderr is compared; the parametrized cases' expected `named` strings follow the tuple's order as `manifest.py:412-416` writes them; the rewritten comment matches `Manifest.part` (refused when `repositories:` is missing and any `_EARLIER_FORMAT_KEYS` key is there; the `base:` case passes with `base.yaml` absent, so the base is not read). The new description and docstring are true: nothing outside `tools/repos-manifest/` imports the package's modules (the three `.agent/scripts/tests/*.sh` callers run `python -m repos_manifest.cli` or check `repos_manifest.__file__`). Tests: `test_cli.py`, `test_base_reading.py`, `test_init_refusals.py` 139 passed (worktree `src` on `PYTHONPATH`, main checkout's `.venv`). flake8 (max-line-length 100, E203/W503 ignored) clean on the changed files. A mutation run (refusal switched off in a scratch copy) was denied by the permission system and not run. Outside reviewers: Codex completed, two points: the degenerate `layers:`/`roles:`-only file (dropped again, as in round 1) and the README sentence below (kept); Gemini failed (headless run auto-denied a tool call). Claude adversarial subagent: no must-fix; the `packages:` point below kept; a point that "for ROS 2 projects" narrows the description dropped (the tool is built for them; the text is not false).
+
+### Findings
+- [x] (suggestion) `packages:` is tested only through `_EARLIER_FORMAT_KEYS` imported from the code under test, so removing it from the tuple fails no test; add one literal `packages:` case or assert the tuple's four keys — `tools/repos-manifest/tests/test_cli.py:77`
+- [x] (suggestion) "Every command reads a manifest" is not true of `build`, which reads the saved resolution (`cmd_build` calls `run_build` only); say "every command that reads a manifest" — `tools/repos-manifest/README.md:214`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:00 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 2 at e0f68dcc approved with two suggestions, each one line; left open they would reach the owner at the findings checkpoint for no gain)
+**After**: publish
+**Decision**: address
+
+Both round-2 suggestions are fixed before the push: a literal check that `packages:` (and each of the four keys of the earlier format) is refused, so removing a key from the tuple fails a test; and the README sentence "Every command reads a manifest", which is not true of `build`. Outside reviewers on round 2: Codex ran, and the README point is its; Gemini failed (its headless run denied a tool call).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 13:20 -05:00
+**By**: claude-code (claude-sonnet-5-5)
+
+**Branch**: feature/issue-569 at `1e95b622`
+**Addressed**: Local Review (Pre-Push) at `dcf2eb42` (2026-11-24 12:59 -05:00)
+**Commits**: 71898ea8, 1e95b622
+
+### Actions
+- [x] `packages:` literal coverage: new test_the_earlier_format_keys_are_the_four_the_format_had asserts the tuple equals {repos, extends, optional_layers, packages} — `tools/repos-manifest/tests/test_cli.py:77`
+- [x] "Every command reads a manifest" now "Every command that reads a manifest reads it only in the format of ..."; same claim fixed in `tools/repos-manifest/docs/design.md:2175` (spec.md has none) — `tools/repos-manifest/README.md:214`
+
+Checks: pytest test_cli.py + test_documents.py: 60 passed. Full pre-commit pass left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 13:02 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-569 at `6badb9a1`
+**Base**: main
+**Depth**: Standard (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — no must-fix findings; both round 2 suggestions fixed and confirmed against the code
+
+Scope: the round 2 findings and the fix commits 71898ea8 and 1e95b622, plus the merge 6badb9a1. Cross-model: skipped (round-3 convergence check, per handoff).
+
+- 71898ea8: the new test asserts `_EARLIER_FORMAT_KEYS` equals the literal set `repos`, `extends`, `optional_layers`, `packages` with length 4; it matches `manifest.py:34`, so dropping or renaming a key now fails a test.
+- 1e95b622: checked every command in `cli.py`. `resolve`, `validate` and `show` call `read_manifest`; `init` (`init.py:276`), `sync` (`sync.py:751`) and `status` (through `sync.resolve_all`) read the recorded manifest; `cmd_build` calls only `run_build`, and `build.py` imports no manifest reader. So `build` is the one command that reads none, and the README and `docs/design.md` sentences are right to single it out.
+- The merge left this branch's files intact: `git diff 991c469d 6badb9a1 -- tools/repos-manifest docs/fork_parity.md` is empty.
+- `PYTHONPATH=tools/repos-manifest/src .venv/bin/python -m pytest tools/repos-manifest/tests/test_cli.py tools/repos-manifest/tests/test_documents.py`: 60 passed.
+
+### Decision summary
+
+**What changed**: Part 3 of 3 of issue 569 removes the earlier (prototype) format's reader from `tools/repos-manifest`: its reader modules, the `--layout` and `--cache-dir` options that served it, and `prototype.md`. A manifest in the earlier format (`repos:` by layer, `extends:`, `optional_layers:`, `packages:`) is now refused with a message that names that format. Tests of the removed reader were removed; the ones still meaningful were ported to the new format, and tests were added for the refusal (each earlier-format key, for `resolve`, `show` and `validate`) and for the exact set of earlier-format keys. The README, the tool's `docs/design.md` and `docs/fork_parity.md` now say every command that reads a manifest reads only the specification's format, and that `build` works from the saved resolution.
+
+**Reviews and outcomes**: Round 1 approved with 4 suggestions, all fixed. Round 2 approved with 2 suggestions, both fixed (71898ea8, 1e95b622). Round 3 (this convergence check, no cross-model reviewers per handoff) approved with no findings; Ship: recommended. Codex ran in rounds 1 and 2; Gemini failed in both on a headless tool denial.
+
+**Open human calls**: None on this branch. The CI job rename is issue 601; the old `source` settings findings are issue 599.
+
+**Verified**: Implementer's full tool suite on c59fc837: 1988 passed. `test_ros2_colcon.sh`: 1203 passed, 0 failed, 0 skipped. `test_register_project.sh`: 225 passed. Fix rounds ran `test_cli.py` and `test_documents.py`. This round, at 6badb9a1: `test_cli.py` and `test_documents.py` with `tools/repos-manifest/src` on `PYTHONPATH`: 60 passed. Also checked: `cli.py`, `init.py`, `sync.py`, `status.py` and `build.py` confirm `build` is the only command that reads no manifest, and the origin/main merge changed nothing under `tools/repos-manifest` or `docs/fork_parity.md`.
+
+**Recommendation**: merge.
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:02 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the round-3 pre-push review at 8d61bd06 approved with no findings, and the host's full pre-commit pass over the branch's files passed)
+**After**: publish
+**Decision**: publish
+
+Part 3 of 3: the removal of the earlier format's reader from `tools/repos-manifest`. The full pass ran with no SKIP over the files changed since origin/main and exited 0: every hook that applied passed (black, flake8, the design anchors and the file checks); the script-suite hook had no files to check, since this part changes no script under `.agent/scripts`, so the review-viewer suite of issue 598 did not run. The pull request says "Closes #569". Outside reviewers before the push: Codex ran in rounds 1 and 2 (one point dropped, one kept and fixed); Gemini failed in both (its headless run denied a tool call); round 3 had none, by the convergence-check rule.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 13:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: 6044708190
+
+**PR**: #603 at `7de6d536`
+**Sources**: 3 (Local Review (Pre-Push) rounds 1-3 of part 3, the last @ `6badb9a1` covering `7de6d536` via bookkeeping, approved with no findings; Copilot @ `7de6d536`, a could-not-review notice; CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Part 3 of 3 of issue 569. The pre-push rounds 1 and 2 raised six suggestions, all ticked as fixed on the timeline; round 3 checked those fixes against the code and found nothing. `review_progress.sh sources` at this head returns no open local findings and no dropped entries. Copilot's only review (6044708190, at the head) says "Copilot was unable to review this pull request because the user who requested the review has insufficient remaining quota."; it holds no findings for that reason, and its `copilot-pull-request-reviewer` check-run concluded failure as that notice, not as a failure of the change. No human reviews, inline comments or conversation comments. CI after about 5 minutes of polling: Validate Adapter Contract and Validate Documentation pass (both runs); still pending in both runs: Lint (pre-commit), repos-manifest tests (#267 prototype) (Python 3.10) and (Python 3.14). No failure so far.
+
+### Findings
+- [x] No issues found. LGTM.
+
+### False positives
+
+## Local Review
+**Status**: failed
+**When**: 2026-11-24 13:10 -05:00
+**By**: claude-code (claude-opus-5-5)
+**Verdict**: none (the outside read did not run)
+
+**PR**: #603 at `7de6d53`
+**Depth**: Deep (reason: large diff, +578 -4756 in 35 files; the one outside read the host asked for, by Codex, failed)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Codex did not finish its review. `cross_model_review.sh --pr 603 --agents codex` (AGENT_TIMEOUT=3000) ended with EXIT=1 after about 72,000 tokens. Codex's error was: "ERROR: You've hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/settings/usage to purchase more credits or try again at 1:28 PM." Codex returned no findings. The lead did not do its own read in place of Codex's, so this entry is not a cold read. Whether Codex read the whole diff is unknown, because it stopped before it reported anything.
+
+The prompt given to Codex held 34 of the PR's 35 files. The one left out was `.agent/work-plans/issue-569/progress.md`, so the script did leave `.agent/work-plans/` out as it should.
+
+### Findings
+- [ ] Cold read not done: Codex hit its usage limit. Retry the cold read with Gemini, or with Codex after its limit resets.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:10 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (a failed phase with a cause outside the change; /orchestrator lets the host answer retry, and run-issue step 9a says the retry names Gemini when Codex was the agent that failed)
+**After**: phase-failed
+**Decision**: retry
+**Phase**: review-code
+
+The cold read of pull request 603 (part 3 of 3) failed at cdc4b964 because Codex hit its usage limit, in its words: "ERROR: You've hit your usage limit. ... try again at 1:28 PM." Nothing was read and no findings were produced; the reviewer did not put its own read in its place. Copilot had already refused for lack of quota (review 6044708190). The retry is the cold read again, with the cold-read task line and Gemini as the one agent. Gemini's headless run failed in every pre-push round today (it denied a tool call and returned nothing), so this retry may fail the same way; this is the host's first retry of this phase.
+
+## Local Review
+**Status**: failed
+**When**: 2026-11-24 13:11 -05:00
+**By**: Claude Code (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #603 at `7de6d536`
+**Depth**: Deep (reason: about 5,300 lines changed in 35 files; the planned cross-model read did not run)
+**Must-fix**: 0 | **Suggestions**: 0
+
+The planned outside read (Gemini, retry after Codex's usage limit) did not run, so this is not a cold read and no findings were produced; the lead did not substitute its own read.
+
+- Gemini (`cross_model_review.sh --pr 603 --agents gemini --repo rolker/agent_workspace`, EXIT=1): "agy review failed: empty response; 1 tool action(s) were auto-denied in headless mode (Bash). The reviewer works from the embedded diff only; it must not call any tools (file reads and shell commands are both denied headlessly)." agy stderr: "jetski: no output produced — a tool required the "command" permission that headless mode cannot prompt for, so it was auto-denied."
+- No supported no-tools option exists in the script or its config: the gemini prompt already carries the "Do not call any tools" section (`cross_model_review.sh`, "Tool Use"), and `_agy_review.sh` exposes only the binary, prompt, findings file and print timeout. The only remedies agy names (a settings.json allow-rule, `--dangerously-skip-permissions`) are permission changes, so no second Gemini attempt was made.
+- Codex: not re-run. Its earlier attempt today failed on its usage limit (it said to try again at 1:28 PM), and the clock was 13:11, before the 13:30 retry point the handoff set.
+
+### Findings
+- [ ] Cold read not done: re-run `/review-code 603 (cold read, cross-model only: codex; ...)` once Codex's usage limit has reset
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:11 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (a failed phase with a cause outside the change; this is the host's second retry of this phase in a row, the last /orchestrator allows before the answer is the owner's)
+**After**: phase-failed
+**Decision**: retry
+**Phase**: review-code
+
+The cold read of pull request 603 failed a second time, at 3b3ed1a8, with Gemini as the agent: "agy review failed: empty response; 1 tool action(s) were auto-denied in headless mode (Bash)". The script has no supported way to run it without tools, and the only fixes its error names change permissions, so the reviewer tried neither. Codex was not re-run then, since its usage limit had not reset ("try again at 1:28 PM"). This retry is the cold read once more with Codex, dispatched after 13:28 local time. If it fails too, no cold read is possible today, and the merge question goes to the owner with that said.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 13:40 -05:00
+**By**: Claude Code (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #603 at `7de6d53`
+**Depth**: Deep (reason: cold read, cross-model only: codex, per handoff)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Codex ran (`cross_model_review.sh --pr 603 --agents codex`, AGENT_TIMEOUT=3000, EXIT=0) and read the whole diff: the prompt held 34 of the pull request's 35 files, the one left out being `.agent/work-plans/issue-569/progress.md`; no truncation. It raised two points. Dropped: a file with only `layers:` or `roles:` and no `repositories:` gets the new reader's own error rather than the earlier-format message (known and decided). Kept: the one below, checked against the code: `build` reads the resolved files `sync` wrote (`build.py`, "Nothing is resolved again"), not a manifest, and the docstring is the `--help` description (`description=__doc__`).
+
+### Findings
+- [ ] (suggestion) The new CLI module docstring "Every command reads a manifest in the format of docs/spec.md" is not true of `build`, which reads `sync`'s resolved files; it is shown by `--help`. Scope it to the commands that read a manifest — `tools/repos-manifest/src/repos_manifest/cli.py:6`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 13:35 -05:00
+**By**: claude-code (claude-sonnet-5-5)
+**Reviews-read**: 6044708190
+
+**PR**: #603 at `7de6d53`
+**Sources**: 3 (Local Review @ `7de6d53` Codex cold read, approved; CI rollup; Copilot @ `7de6d53` could-not-review notice, no findings). The two earlier failed Local Review entries (Codex usage limit, Gemini tool denial) are records of a read that did not happen and are not sources.
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+### Findings
+- [x] (suggestion, Local Review @ `7de6d53`) The module docstring in `tools/repos-manifest/src/repos_manifest/cli.py` (line 6, printed by `--help`) says "Every command reads a manifest in the format of docs/spec.md", but `build` works from its own saved resolution (`build.py`: "Nothing is resolved again"); reword it as "Every command that reads a manifest ...", as already done in the README and the tool's design — `tools/repos-manifest/src/repos_manifest/cli.py` (deferred: owner, 2026-11-24, at the findings checkpoint: Merge, F1 goes into 498; fixed in the first part of issue 498)
+
+### False positives
+- (Copilot @ `7de6d53`) The `copilot-pull-request-reviewer` check-run reports failure — it is the reviewer's quota notice, not a failure of the change; the 10 other checks (lint, documentation, adapter contract, tests on Python 3.10 and 3.14) pass on the head.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:36 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+"Merge, F1 goes into 498 (Recommended)"
+
+Asked at the findings checkpoint for pull request 603 (part 3 of 3: the removal of the earlier format's reader from the tool; it closes the issue) after the Integrated Review at ad3a88df, which holds one open suggestion from the Codex cold read. The dialog showed it verbatim (F1: the module docstring in `cli.py`, printed by `--help`, says every command reads a manifest, which is not true of `build`), with: what the pull request removes; three pre-push rounds and the cold read's approval; all 10 CI checks passing on head 7de6d536, mergeable, main unmoved; the outside reviewers (Codex in rounds 1 and 2 and as the cold read on its third attempt, Gemini failed every time on its headless tool denial, Copilot requested and not available for lack of quota); and that the CI job rename is issue 601. His answer defers F1 to the first part of issue 498, which edits the same file next. The other choices offered were to fix F1 first and to stop.
