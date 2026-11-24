@@ -44,12 +44,15 @@ workspace session behaves exactly as it did before this idiom existed.
 - `<pr-number>` — read the plan from a draft PR (existing behavior)
 - `<path-to-plan.md>` — read the plan directly from a local file
 - `--issue <N>` — resolve to `$WS_ROOT/.agent/work-plans/issue-<N>/plan.md`;
-  `--issue <owner/repo#N>` names an issue of another repository
+  `--issue <owner/repo#N>` names this checkout's repository explicitly
 
 The file path and `--issue` forms enable offline plan review without a PR.
 
 A bare number is a pull request or issue of the repository of the checkout
-the skill is run in (the session's root). Every `gh` call names the
+the skill is run in (the session's root). An issue of another repository
+is reviewed from a checkout of that repository (the session-root rule):
+`issue_repo.sh` refuses it here (exit 6) before any plan or record is read
+or written. Every `gh` call names the
 repository with `-R "github.com/$_REPO"`, never the one `gh` would pick from
 the current directory; `$_REPO` comes from
 `$WS_ROOT/.agent/scripts/issue_repo.sh <ref>` (step 0), asked again at the
@@ -93,9 +96,10 @@ prints the exit code; do what this table says for that code.
 |---|---|
 | 0 | Proceeds. Every `gh pr` and `gh issue` call carries `-R "github.com/$_REPO"`, and the git-bug lookup uses `$_REPO`. |
 | 1 | Stops: the reference is neither `<N>` nor `owner/repo#N`. Show the usage. |
-| 2, 3 | Stops and shows the helper's message. It names the repository `gh` resolves here and this checkout's own (exit 2), or says this is no git repository (exit 3), and gives the `owner/repo#N` to pass or the `gh repo set-default` to run. |
-| 4 | An ordinary case: this checkout has no GitHub repository, so no `gh` call is made. The PR number form is unavailable (say so; use `--issue <N>` or the file path). With `--issue <N>` the plan is read from the branch (step 1), and step 2 skips the issue read: "Issue context unavailable", the review rests on the plan alone. |
+| 2, 3 | Stops and shows the helper's message. Exit 2 names the repository `gh` resolves here and this checkout's own, and gives this checkout's `owner/repo#N` to pass, the `gh repo set-default` to run or `GH_REPO` to unset. Exit 3 says this folder is no checkout to work an issue from (no git repository, a package worktree's top folder, or a package worktree whose issue checkout cannot be found) and where to run from. |
+| 4 | An ordinary case: this checkout has no GitHub repository, so no `gh` call is made. The PR number form is unavailable (say so; use `--issue <N>` or the file path). With `--issue <N>` the plan is read from the branch (step 1), and step 2 skips the issue read: "Issue context unavailable", the review rests on the plan alone. An origin through an SSH host alias (`git@<alias>:owner/repo.git`) or `ssh.github.com:443` lands here too although `gh` resolves it: `owner/repo#N` names the repository explicitly (the helper confirms it with `gh`). |
 | 5 | `gh` had to be asked which repository it resolves here and could not answer (its message is shown). As for exit 4: no `gh` call, the plan from the branch, the review on the plan alone, saying which read failed. |
+| 6 | Stops before any plan or record is read or written: `owner/repo#N` names another repository than this checkout's (or one the helper could not confirm as it). Show the helper's message; the plan is reviewed from a checkout of the named repository. |
 | any other (127: the script is missing — a project session with no user tier, or an older workspace checkout) | Stops and shows the message on stderr. |
 
 ### 1. Read the plan
@@ -136,10 +140,12 @@ check the workspace worktree (`worktrees/workspace/issue-workspace-<N>/`)
 first, then every registered project's worktree dir (a project's worktrees
 live under its own root, issue #265). Enumerate every root's worktree dir
 with the shared helper, the same way the worktree scripts do, rather than
-deriving a glob:
+deriving a glob. The block asks `issue_repo.sh` first and looks for no
+plan when the issue is not this checkout's:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/issue_repo.sh" "<ref>" >/dev/null; _rc=$?; case "$_rc" in 0|4|5) ;; *) echo "issue_repo.sh exit $_rc: this block reads and writes no records; see the Repository by exit code table"; exit "$_rc" ;; esac
 # The repository this phase runs in first …
 plan="$(git rev-parse --show-toplevel)/.agent/work-plans/issue-<N>/plan.md"
 if [ -f "$plan" ]; then echo "$plan"; else
@@ -410,10 +416,13 @@ Plan looks solid. Ready for implementation.
 
 The report above is this skill's product; this step records it and must
 never turn a finished review into a failed invocation. Append the report
-as the entry, through the shared persistence call with `--soft`:
+as the entry, through the shared persistence call with `--soft`. The block
+asks `issue_repo.sh` first and writes nothing for an issue that is not
+this checkout's (step 0 has already stopped such a review).:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/issue_repo.sh" "<ref>" >/dev/null; _rc=$?; case "$_rc" in 0|4|5) ;; *) echo "issue_repo.sh exit $_rc: this block reads and writes no records; see the Repository by exit code table"; exit "$_rc" ;; esac
 $WS_ROOT/.agent/scripts/review_progress.sh persist --issue "<issue>" \
     --branch "<plan's branch>" --title "<issue title>" --strict --soft <<'ENTRY'
 ## Plan Review

@@ -41,9 +41,11 @@ workspace session behaves exactly as it did before this idiom existed.
 ```
 
 A bare number `<N>` is issue N of the repository of the checkout the skill
-is run in (the session's root). An issue of another repository is written
-`owner/repo#N`. Below, `<ref>` is the reference as given and `<N>` its
-number.
+is run in (the session's root). `owner/repo#N` names that repository
+explicitly. An issue of another repository is reviewed from a checkout of
+that repository (the session-root rule): `issue_repo.sh` refuses it here
+(exit 6) before anything is read, recorded or posted. Below, `<ref>` is the
+reference as given and `<N>` its number.
 
 ## Overview
 
@@ -82,9 +84,10 @@ is posted. On a non-zero exit the block prints the exit code and makes no
 |---|---|
 | 0 | Proceeds. Every `gh issue` call carries `-R "github.com/$_REPO"`, and the git-bug lookup uses `$_REPO`. |
 | 1 | Stops: the reference is neither `<N>` nor `owner/repo#N`. Show the usage. |
-| 2, 3 | Stops and shows the helper's message. It names the repository `gh` resolves here and this checkout's own (exit 2), or says this is no git repository (exit 3), and gives the `owner/repo#N` to pass or the `gh repo set-default` to run. Nothing is read or posted. |
-| 4 | An ordinary case: this checkout has no GitHub repository, so no `gh` call is made and the git-bug lookup (by GitHub URL) is skipped. Ask the owner for the issue's text, or where the project keeps its issues. Run steps 2-6 on that text; step 7 posts nothing; step 8 records the review with no posted comment. |
+| 2, 3 | Stops and shows the helper's message. Exit 2 names the repository `gh` resolves here and this checkout's own, and gives this checkout's `owner/repo#N` to pass, the `gh repo set-default` to run or `GH_REPO` to unset. Exit 3 says this folder is no checkout to work an issue from (no git repository, a package worktree's top folder, or a package worktree whose issue checkout cannot be found) and where to run from. Nothing is read or posted. |
+| 4 | An ordinary case: this checkout has no GitHub repository, so no `gh` call is made and the git-bug lookup (by GitHub URL) is skipped. Ask the owner for the issue's text, or where the project keeps its issues. Run steps 2-6 on that text; step 7 posts nothing; step 8 records the review with no posted comment. An origin through an SSH host alias (`git@<alias>:owner/repo.git`) or `ssh.github.com:443` lands here too although `gh` resolves it: `owner/repo#N` names the repository explicitly (the helper confirms it with `gh`). |
 | 5 | `gh` had to be asked which repository it resolves here and could not answer (its message is shown). Say which read failed, then as for exit 4: ask the owner for the issue's text, post nothing, record the review with no posted comment. |
+| 6 | Stops before anything is read, recorded or posted: `owner/repo#N` names another repository than this checkout's (or one the helper could not confirm as it). Show the helper's message; the review is run from a checkout of the named repository. |
 | any other (127: the script is missing — a project session with no user tier, or an older workspace checkout) | Stops and shows the message on stderr. |
 
 **A dispatched phase cannot ask the owner.** When this skill runs from a
@@ -297,6 +300,10 @@ shape `review-plan`'s step 6 gives `## Plan Review`). Append it through
 the shared persistence call with `--soft`, so a review run by hand outside
 the issue's worktree still succeeds and just prints the notice.
 
+The block asks `issue_repo.sh` again first: the entry is written only for
+this checkout's issue (exit 0, or 4 and 5 for a bare number), and on any
+other exit the block writes nothing.
+
 When step 7 posted nothing (exit 4 or 5 in step 1), there is no comment:
 the entry then holds the full review text the comment would have carried,
 in the same place, and the line after `**Issue**` says
@@ -306,6 +313,7 @@ text it needs instead of the review (step 1).
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/issue_repo.sh" "<ref>" >/dev/null; _rc=$?; case "$_rc" in 0|4|5) ;; *) echo "issue_repo.sh exit $_rc: this block reads and writes no records; see the Repository by exit code table"; exit "$_rc" ;; esac
 $WS_ROOT/.agent/scripts/review_progress.sh persist --issue "<N>" \
     --branch "$(git branch --show-current)" --title "<issue title>" \
     --strict --soft <<'ENTRY'

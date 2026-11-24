@@ -1250,9 +1250,62 @@ has "$SKILLS/review-issue/SKILL.md" "review-issue: step 8 records a review with 
     'When step 7 posted nothing (exit 4 or 5 in step 1)' 'No comment was posted: <the reason, from step 1>.'
 has "$SKILLS/review-plan/SKILL.md" "review-plan: step 0 finds the repository; exit 4 and 5 review the plan alone" \
     '### 0. Find the repository' 'Issue context unavailable' 'the review rests on the plan alone'
+# The session-root rule (issue 581, round 1): an issue's local records are
+# read or written only when issue_repo.sh says the issue is this
+# checkout's. Each fenced block that persists an entry, resolves the
+# work-plans directory or looks for an issue's plan asks the helper first,
+# with the guard above (exit 0 only) or the records guard (exit 0, or 4 and
+# 5, which only a bare number gives), so a qualified ref naming another
+# repository (exit 6) stops the block before the record is touched.
+REC_GUARD='"$WS_ROOT/.agent/scripts/issue_repo.sh" "<ref>" >/dev/null; _rc=$?; case "$_rc" in 0|4|5) ;; *) echo "issue_repo.sh exit $_rc: this block reads and writes no records; see the Repository by exit code table"; exit "$_rc" ;; esac'
+# records_blocks_guarded <file>: one line per fault, then "blocks=<n>".
+records_blocks_guarded() {
+    awk -v g1="$REPO_GUARD" -v g2="$REC_GUARD" '
+        /^[[:space:]]*```/ {
+            if (!inb) { inb = 1; start = NR; guard = 0; ws = 0; hit = 0 }
+            else {
+                if (hit) blocks++
+                inb = 0
+            }
+            next
+        }
+        !inb || hit { next }
+        index($0, "WS_ROOT=\"$(cat ~/.claude/agent-workspace-root") && !guard { ws = 1 }
+        ($0 == g1 || $0 == g2) && ws { guard = 1 }
+        /review_progress\.sh persist|resolve_work_plans_dir <N>|work-plans\/issue-<N>\/plan\.md"/ && $0 !~ /^[[:space:]]*#/ {
+            hit = 1
+            if (!guard) print "block at line " start ": records touched at line " NR " before an issue_repo.sh guard"
+        }
+        END { print "blocks=" blocks + 0 }
+    ' "$1"
+}
+for name in review-issue plan-task review-plan; do
+    f="$SKILLS/$name/SKILL.md"
+    [[ -f "$f" ]] || continue
+    out="$(records_blocks_guarded "$f")"
+    nblocks="${out##*blocks=}"
+    faults="$(grep -v '^blocks=' <<< "$out" || true)"
+    if [[ -z "$faults" && "$nblocks" -gt 0 ]]; then
+        pass "$name: each of its $nblocks records blocks asks issue_repo.sh before touching a record"
+    else
+        fail "$name: records blocks without an issue_repo.sh guard (blocks=$nblocks):"
+        printf '%s\n' "${faults:-no records block found}" | head -n5 | sed 's/^/        /'
+    fi
+    has "$f" "$name: exit 6 (another repository's issue) stops the skill" \
+        '| 6 | Stops before' 'names another repository than this checkout'"'"'s' \
+        'from a checkout of that repository (the session-root rule)'
+    has "$f" "$name: the exit-4 row names the SSH host alias case" \
+        'An origin through an SSH host alias (`git@<alias>:owner/repo.git`) or `ssh.github.com:443` lands here too although `gh` resolves it: `owner/repo#N` names the repository explicitly'
+done
 # The pin itself catches a block that lost its guard or a gh line that lost
 # its -R (a mutation of review-issue's text).
 MUT="$(mktemp)"
+grep -vxF -- "$REC_GUARD" "$SKILLS/review-issue/SKILL.md" > "$MUT"
+if grep -q 'before an issue_repo.sh guard' <<< "$(records_blocks_guarded "$MUT")"; then
+    pass "the records-block pin fails a block whose records guard was removed"
+else
+    fail "the records-block pin did not notice a block whose records guard was removed"
+fi
 awk -v guard="$REPO_GUARD" '$0 == guard { if (++k == 2) next } { print }' \
     "$SKILLS/review-issue/SKILL.md" > "$MUT"
 if grep -q 'no issue_repo.sh guard line' <<< "$(gh_blocks_named "$MUT")"; then

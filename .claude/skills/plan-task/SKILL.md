@@ -44,12 +44,15 @@ workspace session behaves exactly as it did before this idiom existed.
   locally. Useful when working offline or when a PR isn't needed yet.
 
 A bare number `<N>` is issue N of the repository of the checkout the skill
-is run in (the session's root). An issue of another repository is written
-`owner/repo#N`. Below, `<ref>` is the reference as given and `<N>` its
-number. Every `gh` call names the repository with `-R "github.com/$_REPO"`,
-never the one `gh` would pick from the current directory; `$_REPO` comes
-from `$WS_ROOT/.agent/scripts/issue_repo.sh <ref>`, asked again at the head
-of every code block that needs it, because each block is a new shell.
+is run in (the session's root). `owner/repo#N` names that repository
+explicitly. An issue of another repository is planned from a checkout of
+that repository (the session-root rule): `issue_repo.sh` refuses it here
+(exit 6) before any record is read or written. Below, `<ref>` is the
+reference as given and `<N>` its number. Every `gh` call names the
+repository with `-R "github.com/$_REPO"`, never the one `gh` would pick
+from the current directory; `$_REPO` comes from
+`$WS_ROOT/.agent/scripts/issue_repo.sh <ref>`, asked again at the head of
+every code block that needs it, because each block is a new shell.
 
 ## Overview
 
@@ -77,9 +80,10 @@ code and makes no `gh` call; do what this table says for that code.
 |---|---|
 | 0 | Proceeds. Every `gh issue` and `gh pr` call carries `-R "github.com/$_REPO"`, the git-bug lookup uses `$_REPO`, and step 4's type comes from comparing `$_REPO` with the workspace's repository. |
 | 1 | Stops: the reference is neither `<N>` nor `owner/repo#N`. Show the usage. |
-| 2, 3 | Stops and shows the helper's message. It names the repository `gh` resolves here and this checkout's own (exit 2), or says this is no git repository (exit 3), and gives the `owner/repo#N` to pass or the `gh repo set-default` to run. |
-| 4 | An ordinary case: this checkout has no GitHub repository, so no `gh` call is made and the git-bug lookup (by GitHub URL) is skipped. Ask the owner for the issue's text. Step 4's worktree type is the session's root (`workspace` in a workspace session, `project` in a project session); the plan's `## Issue` line is the reference as given, with no URL; step 8 (draft PR) is skipped, as with `--no-pr`, and the report says why. |
+| 2, 3 | Stops and shows the helper's message. Exit 2 names the repository `gh` resolves here and this checkout's own, and gives this checkout's `owner/repo#N` to pass, the `gh repo set-default` to run or `GH_REPO` to unset. Exit 3 says this folder is no checkout to work an issue from (no git repository, a package worktree's top folder, or a package worktree whose issue checkout cannot be found) and where to run from. |
+| 4 | An ordinary case: this checkout has no GitHub repository, so no `gh` call is made and the git-bug lookup (by GitHub URL) is skipped. Ask the owner for the issue's text. Step 4's worktree type is the session's root (`workspace` in a workspace session, `project` in a project session); the plan's `## Issue` line is the reference as given, with no URL; step 8 (draft PR) is skipped, as with `--no-pr`, and the report says why. An origin through an SSH host alias (`git@<alias>:owner/repo.git`) or `ssh.github.com:443` lands here too although `gh` resolves it: `owner/repo#N` names the repository explicitly (the helper confirms it with `gh`). |
 | 5 | `gh` had to be asked which repository it resolves here and could not answer (its message is shown). Say which read failed, then as for exit 4: the issue's text from the owner, the type from the session's root, no URL, no draft PR. |
+| 6 | Stops before any record is read or written and before anything is pushed or posted: `owner/repo#N` names another repository than this checkout's (or one the helper could not confirm as it). Show the helper's message; the plan is made from a checkout of the named repository. |
 | any other (127: the script is missing — a project session with no user tier, or an older workspace checkout) | Stops and shows the message on stderr. |
 
 **A dispatched phase cannot ask the owner.** When this skill runs from a
@@ -179,12 +183,16 @@ Read relevant files to understand the current state:
 ### 4. Ensure correct worktree (hard check)
 
 Before writing or committing the plan, resolve the work-plans directory
-using the shared helper. It refuses to return a path when you're outside
-the matching worktree — this is deliberate (issue #147): silent writes
-into the main tree were stranding per-issue artifacts on no branch.
+using the shared helper. The block asks `issue_repo.sh` first: records are
+resolved only for this checkout's issue (exit 0, or 4 and 5 for a bare
+number), and on any other exit the block stops. The resolver refuses to
+return a path when you're outside the matching worktree — this is
+deliberate (issue #147): silent writes into the main tree were stranding
+per-issue artifacts on no branch.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/issue_repo.sh" "<ref>" >/dev/null; _rc=$?; case "$_rc" in 0|4|5) ;; *) echo "issue_repo.sh exit $_rc: this block reads and writes no records; see the Repository by exit code table"; exit "$_rc" ;; esac
 # shellcheck source=../../../.agent/scripts/_resolve_work_plans_dir.sh
 source $WS_ROOT/.agent/scripts/_resolve_work_plans_dir.sh
 WORK_PLANS_DIR=$(resolve_work_plans_dir <N>) || {
@@ -354,10 +362,12 @@ prints the "would have aborted" notice and commits only when
 `WORKTREE_ISSUE` names another issue or `WORK_PLANS_DIR_OVERRIDE` is set;
 strict (`--strict`, or the env var set to `1`) goes through
 `resolve_work_plans_dir()` and `progress_append.sh`. Echo the printed line
-in step 9's report.
+in step 9's report. As in step 4, the block asks `issue_repo.sh` first and
+writes nothing for an issue that is not this checkout's.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/issue_repo.sh" "<ref>" >/dev/null; _rc=$?; case "$_rc" in 0|4|5) ;; *) echo "issue_repo.sh exit $_rc: this block reads and writes no records; see the Repository by exit code table"; exit "$_rc" ;; esac
 $WS_ROOT/.agent/scripts/review_progress.sh persist --issue "<N>" --branch "$(git branch --show-current)" \
     --title "<issue title>" [--strict] <<ENTRY
 ## Plan Authored
@@ -387,7 +397,7 @@ repository, or `--no-pr`). The plan is committed locally on branch
 Otherwise, push the branch and create (or update) a draft PR with a `[PLAN]`
 title prefix and the plan as the body. The prefix prevents agents from
 confusing the PR number with the issue number. The repository is asked for
-again (a new shell):
+again (a new shell).:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"

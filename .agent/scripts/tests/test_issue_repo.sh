@@ -5,7 +5,10 @@
 #
 # Each case checks stdout, the exit code and the gh call log, against the
 # contract table in the script's header:
-#   - a qualified owner/repo#N is printed as given, with no git and no gh;
+#   - a qualified owner/repo#N is printed as given only when owner/repo is
+#     this checkout's repository (no gh call); another repository, or none,
+#     is refused (exit 6: the session-root rule), and an origin no local
+#     rule reads as GitHub (an SSH host alias) is confirmed with gh once;
 #   - a bare number in a checkout whose only GitHub remote is origin, with
 #     no gh default and no GH_REPO, is decided with no gh call (offline);
 #   - another GitHub remote (upstream), a gh default or GH_REPO makes it ask
@@ -16,15 +19,19 @@
 #     checkout's own origin decides; the top folder is exit 3 naming the
 #     header's owner/repo#N;
 #   - gh missing, failing or silent when it must be asked: exit 5;
-#   - no git repository: exit 3; no GitHub remote: exit 4; a bad ref: 1.
+#   - a package worktree's top folder (whatever its header), and a matching
+#     header whose issue checkout cannot be found: exit 3;
+#   - no git repository: exit 3; no GitHub remote: exit 4; a bad ref
+#     (leading zeros included): 1.
 #
 # Hermetic: one mktemp -d sandbox with its own HOME and git config;
 # remotes are only URLs (nothing is fetched), local ones of the form
 # <sandbox>/fake_remotes/github.com/<owner>/<repo>.git, the only local form
 # extract_gh_slug reads as a GitHub repository; a stub gh on the PATH
 # answers `gh repo view` the way real gh picks a remote (GH_REPO, a remote
-# with gh-resolved=base, upstream, github, origin) and logs every call. No
-# network, no real repository touched.
+# with gh-resolved=base, upstream, github, origin; the SSH host alias
+# github-work read as github.com, as gh reads ~/.ssh/config) and logs every
+# call. No network, no real repository touched.
 #
 # Run: bash .agent/scripts/tests/test_issue_repo.sh
 
@@ -78,7 +85,12 @@ if [ -z "$pick" ]; then
     done
 fi
 [ -n "$pick" ] || { echo "no git remotes found" >&2; exit 1; }
-url=$(git remote get-url "$pick"); nwo="${url#*github.com[:/]}"; echo "${nwo%.git}"
+url=$(git remote get-url "$pick")
+case "$url" in
+    git@github-work:*) nwo="${url#*:}" ;;
+    *) nwo="${url#*github.com[:/]}" ;;
+esac
+echo "${nwo%.git}"
 EOF
 chmod +x "$STUB/gh"
 STUB_PATH="$STUB:$PATH"
@@ -110,6 +122,8 @@ NOREM="$SANDBOX/norem";  mkrepo "$NOREM"
 GITLAB="$SANDBOX/gitlab"; mkrepo "$GITLAB" "origin=git@gitlab.com:o/r.git"
 GLUP="$SANDBOX/glup";    mkrepo "$GLUP" "origin=git@gitlab.com:o/r.git" "upstream=$(fr own/glup)"
 PLAIN="$SANDBOX/plain";  mkdir -p "$PLAIN"
+ALIAS="$SANDBOX/alias";  mkrepo "$ALIAS" "origin=git@github-work:own/alias.git"
+CHARS="$SANDBOX/chars";  mkrepo "$CHARS" "origin=$(fr Own-x_1/re_po.x-1)"
 
 # Package worktree PW for up/pkg#7: the issue checkout src/pkg (origin the
 # fork fork/pkg, upstream up/pkg) and a sibling src/sib (origin own/sib).
@@ -141,6 +155,16 @@ PW5="$SANDBOX/pw5"
 mkdir -p "$PW5/src"
 printf '# project=p issue=7 layer=main\n%s\tsrc/q\tfeature/issue-7\n' "$(fr own/q)" > "$PW5/.worktree-repos"
 mkrepo "$PW5/src/q" "origin=$(fr own/q)"
+# PW6 for up/pkg#7 whose manifest puts no entry on feature/issue-7: the
+# issue checkout cannot be found (issue_checkout_of refuses).
+PW6="$SANDBOX/pw6"
+mkdir -p "$PW6/src"
+printf '# project=p issue=up/pkg#7 layer=main\n%s\tsrc/pkg\tfeature/other\n' "$(fr up/pkg)" > "$PW6/.worktree-repos"
+mkrepo "$PW6/src/pkg" "origin=$(fr up/pkg)"
+# PWH5: a bare issue=7 header, its top folder inside another repository.
+PWH5="$HOSTREPO/wt5"
+mkdir -p "$PWH5/src"
+cp "$PW5/.worktree-repos" "$PWH5/.worktree-repos"
 
 # --- the runner ------------------------------------------------------------
 # run <dir> <path> [VAR=value...] -- <args...>: sets OUT, ERR, RC; the gh log
@@ -180,12 +204,54 @@ err_lacks() {  # <label> <fixed text>
 
 PINNED="repo view --json nameWithOwner --jq .nameWithOwner | cwd=%s GH_HOST=github.com GH_PROMPT_DISABLED=1"
 
-echo "=== case 1: a qualified ref, any cwd, no git, no gh ==="
-run "$ALPHA" "$BARE" -- "own/beta#7";  expect "own/beta#7 from alpha" "own/beta" 0 0
-run "$BETA" "$BARE" -- "own/beta#7";   expect "own/beta#7 from beta" "own/beta" 0 0
-run "$PLAIN" "$BARE" -- "own/beta#7";  expect "own/beta#7 from a folder in no git repository" "own/beta" 0 0
-run "$PW" "$BARE" -- "up/pkg#7";       expect "up/pkg#7 from a package worktree's top folder" "up/pkg" 0 0
-run "$PLAIN" "$BARE" -- "Own.x/re_po-1#12"; expect "owner and repo characters as parse_issue_ref allows them" "Own.x/re_po-1" 0 0
+echo "=== case 1: a qualified ref names this checkout's repository, or is refused ==="
+run "$BETA" "$NOGH" -- "own/beta#7";   expect "own/beta#7 from beta (upstream other/beta): this checkout's, no gh call" "own/beta" 0 0
+run "$ALPHA" "$NOGH" -- "OWN/Alpha#7"; expect "case ignored, printed as given" "OWN/Alpha" 0 0
+run "$CHARS" "$NOGH" -- "Own-x_1/re_po.x-1#12"; expect "owner and repo characters a GitHub repository may hold" "Own-x_1/re_po.x-1" 0 0
+run "$ALPHA" "$STUB_PATH" -- "own/beta#7"
+expect "own/beta#7 from alpha: another repository's issue, refused (exit 6), no gh call" "" 6 0
+err_has "foreign ref: names both repositories and where to run from" "own/beta#7" "own/alpha" "run this from a checkout of own/beta"
+run "$BETA" "$STUB_PATH" -- "other/beta#7"
+expect "other/beta#7 from beta, whose upstream it is: refused, no gh call" "" 6 0
+run "$PLAIN" "$STUB_PATH" -- "own/beta#7"
+expect "own/beta#7 from a folder in no git repository: exit 3, no gh call" "" 3 0
+err_has "qualified ref, no git: says where to run from" "Run from a checkout of own/beta"
+run "$PW" "$STUB_PATH" -- "up/pkg#7"
+expect "up/pkg#7 from a package worktree's top folder: exit 3, no gh call" "" 3 0
+err_has "qualified ref, top folder: names the issue checkout" "$PW/src/pkg"
+run "$PW/src/pkg" "$NOGH" -- "up/pkg#7"
+expect "up/pkg#7 in its issue checkout (origin the fork): the header's repository, no gh call" "up/pkg" 0 0
+run "$PW/src/pkg" "$STUB_PATH" -- "fork/pkg#7"
+expect "fork/pkg#7 in up/pkg#7's issue checkout: refused" "" 6 0
+err_has "fork ref in the issue checkout: says the header decides" "up/pkg's (from the package worktree's manifest)"
+run "$PW/src/pkg" "$NOGH" -- "fork/pkg#9"
+expect "fork/pkg#9 there (another number: the header is ignored, origin decides)" "fork/pkg" 0 0
+run "$PW/src/sib" "$STUB_PATH" -- "up/pkg#7"
+expect "up/pkg#7 in the sibling checkout: refused" "" 6 0
+run "$PW/src/sib" "$NOGH" -- "own/sib#7"
+expect "own/sib#7 in the sibling checkout: its own" "own/sib" 0 0
+echo "--- an origin no local rule reads as GitHub: gh confirms a qualified ref ---"
+run "$ALIAS" "$STUB_PATH" -- 7
+expect "SSH host alias origin, bare 7: exit 4, no gh call" "" 4 0
+err_has "exit 4 names the SSH alias case and the qualified form" "SSH host alias" "ssh.github.com:443" "pass owner/repo#7"
+run "$ALIAS" "$STUB_PATH" -- "own/alias#7"
+expect "SSH host alias origin, own/alias#7: gh confirms it" "own/alias" 0 1
+if [[ "$(head -n1 "$GH_LOG")" == "$(printf "$PINNED" "$ALIAS") stdin="* ]]; then
+    pass "alias: gh asked once, the pinned invocation in the checkout"
+else
+    fail "alias: unexpected gh call: $(head -n1 "$GH_LOG")"
+fi
+run "$ALIAS" "$STUB_PATH" -- "own/other#7"
+expect "SSH host alias origin, another repository: refused" "" 6 1
+err_has "alias, another repository: names what gh resolves" "gh, run here, resolves own/alias"
+run "$ALIAS" "$NOGH" -- "own/alias#7"
+expect "SSH host alias origin, no gh: cannot be confirmed, refused" "" 6 0
+err_has "alias, no gh: says why" "gh is not installed"
+run "$NOREM" "$STUB_PATH" GH_REPO=own/x -- "own/x#7"
+expect "no remote, GH_REPO naming the ref: GH_REPO is no fact about the checkout, refused" "" 6 1
+if grep -qF 'GH_REPO' <<< "$(cat "$GH_LOG")"; then fail "GH_REPO reached gh"; else pass "GH_REPO unset for the confirming call"; fi
+run "$GITLAB" "$STUB_PATH" -- "o/r#7"
+expect "origin on another host: a qualified ref is refused" "" 6 1
 
 echo "=== case 2: origin is the only GitHub remote: decided locally ==="
 run "$ALPHA" "$STUB_PATH" -- 7;  expect "alpha, bare 7: origin, no gh call" "own/alpha" 0 0
@@ -196,7 +262,8 @@ run "$SAME" "$NOGH" -- 7;        expect "another remote naming the same reposito
 echo "=== cases 3 and 4: gh asked when the local facts leave a choice ==="
 run "$BETA" "$STUB_PATH" -- 7
 expect "beta (upstream other/beta): gh names upstream, refused" "" 2 1
-err_has "beta: names both repositories and the fixes" "own/beta" "other/beta" "gh repo set-default own/beta" "other/beta#7"
+err_has "beta: names both repositories and the fixes" "own/beta" "other/beta" "gh repo set-default own/beta" "pass own/beta#7" "a checkout of other/beta"
+err_lacks "beta: never advises passing the other repository's ref" "pass other/beta#7"
 err_lacks "beta: never advises a default toward upstream" "set-default other/beta"
 if [[ "$(head -n1 "$GH_LOG")" == "$(printf "$PINNED" "$BETA") stdin="* ]]; then
     pass "beta: gh asked once, the pinned invocation in the checkout (GH_HOST, no prompt)"
@@ -215,7 +282,7 @@ run "$ALPHA" "$STUB_PATH" -- 7; expect "a gh-resolved setting alone makes it ask
 git -C "$ALPHA" config --unset remote.origin.gh-resolved
 run "$ALPHA" "$STUB_PATH" GH_REPO=own/other -- 7
 expect "GH_REPO naming another repository: refused" "" 2 1
-err_has "GH_REPO: the message says gh used GH_REPO" "GH_REPO" "own/other" "own/alpha" "own/other#7"
+err_has "GH_REPO: the message says gh used GH_REPO" "GH_REPO" "own/other" "own/alpha" "Unset GH_REPO" "own/alpha#7"
 err_lacks "GH_REPO: no set-default advice" "set-default"
 run "$ALPHA" "$STUB_PATH" GH_REPO=own/alpha -- 7
 expect "GH_REPO naming origin's repository: gh asked, origin" "own/alpha" 0 1
@@ -231,6 +298,10 @@ expect "issue checkout where gh names the fork: refused" "" 2 1
 err_has "fork default: names the header and offers its default" "up/pkg#7" "gh repo set-default up/pkg" "fork/pkg"
 err_lacks "fork default: never offers the fork as the default" "set-default fork/pkg"
 git -C "$PW/src/pkg" config --unset remote.origin.gh-resolved
+run "$PW/src/pkg" "$STUB_PATH" GH_REPO=fork/pkg -- 7
+expect "issue checkout with GH_REPO naming the fork: refused" "" 2 1
+err_has "GH_REPO in the issue checkout: says to unset it" "Unset GH_REPO" "up/pkg#7"
+err_lacks "GH_REPO in the issue checkout: no set-default advice, which GH_REPO overrides" "set-default"
 run "$PW3/src/pkg" "$NOGH" -- 8
 expect "issue checkout whose origin is the header's repository: no gh call" "up/pkg" 0 0
 mkdir -p "$PW/src/pkg/deep/er"
@@ -254,6 +325,22 @@ expect "top folder inside another git repository: exit 3, no gh call" "" 3 0
 err_has "top folder in another repository: names the header's ref" "up/pkg#7"
 run "$PWH/src/pkg" "$STUB_PATH" -- 7
 expect "issue checkout under a top folder inside another repository" "up/pkg" 0 1
+run "$PWH" "$STUB_PATH" -- 9
+expect "top folder inside another repository, another number: still exit 3, not the host's origin" "" 3 0
+err_has "top folder, another number: names the worktree's issue" "The worktree is for up/pkg#7"
+run "$PWH5" "$STUB_PATH" -- 7
+expect "top folder inside another repository, bare issue=7 header: exit 3, not the host's origin" "" 3 0
+mkdir -p "$PWH/src/notrepo"
+run "$PWH/src/notrepo" "$STUB_PATH" -- 7
+expect "a folder of the worktree that is no checkout: exit 3" "" 3 0
+run "$PW" "$STUB_PATH" -- 9
+expect "top folder (no git), another number: exit 3" "" 3 0
+# S1: a matching header whose issue checkout cannot be found.
+run "$PW6/src/pkg" "$STUB_PATH" -- 7
+expect "a matching header with no entry on feature/issue-7: exit 3, as the dispatcher refuses" "" 3 0
+err_has "no issue checkout: quotes issue_checkout_of and names the branch" "its issue checkout cannot be found" "feature/issue-7"
+run "$PW6/src/pkg" "$NOGH" -- 8
+expect "the same checkout, another number: the header is ignored, origin decides" "up/pkg" 0 0
 # Headers that do not count.
 run "$PW4/src/q" "$NOGH" -- 9
 expect "a header naming another number is ignored: origin, no gh call" "own/q" 0 0
@@ -283,7 +370,7 @@ err_has "no gh in the package checkout: names the header's ref" "up/pkg#7"
 echo "=== case 9: not inside a git repository ==="
 run "$PLAIN" "$STUB_PATH" -- 7
 expect "folder in no git repository: exit 3, no gh call" "" 3 0
-err_has "no git: names the qualified form" "owner/repo#7"
+err_has "no git: says where to run from" "Run from the checkout of the repository that owns issue 7"
 
 echo "=== case 10: no GitHub repository ==="
 run "$NOREM" "$STUB_PATH" -- 7;  expect "no remote at all: exit 4, no gh call" "" 4 0
@@ -291,12 +378,14 @@ err_has "no remote: a note, not an error" "no gh call will be made"
 run "$GITLAB" "$STUB_PATH" -- 7; expect "origin on another host: exit 4, no gh call" "" 4 0
 
 echo "=== case 11: bad ref ==="
-for bad in abc o/r 'o/r#' '' '#7' 'o/r#7x' 'a/b/c#7'; do
+for bad in abc o/r 'o/r#' '' '#7' 'o/r#7x' 'a/b/c#7' 0 007 'own/alpha#07' 'own/alpha#0'; do
     run "$ALPHA" "$STUB_PATH" -- "$bad"
     expect "bad ref '$bad': exit 1" "" 1 0
 done
 run "$ALPHA" "$STUB_PATH" --
 expect "no argument: exit 1" "" 1 0
+run "$ALPHA" "$STUB_PATH" -- 008
+err_has "leading zeros: says why" "without leading zeros"
 run "$ALPHA" "$STUB_PATH" -- 7 8
 expect "two arguments: exit 1" "" 1 0
 
