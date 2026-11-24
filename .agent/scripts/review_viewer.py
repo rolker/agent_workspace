@@ -851,32 +851,50 @@ class ViewerApp:  # pragma: no cover - needs a display; smoke-tested under xvfb
         self.status.set(message)
         return True
 
+    def _run_dialog(self, dialog) -> None:
+        """Show a dialog and wait until it closes; the caller is inside _modal().
+
+        A minimised main window is restored first: a transient dialog does not
+        map while its master is iconified, and waiting for it would hang. A
+        grab that fails (another application holds one, or the dialog is
+        already gone) is skipped, and the dialog still works without it.
+        """
+        try:
+            if self.root.state() == "iconic":
+                self.root.deiconify()
+            dialog.wait_visibility()
+            dialog.grab_set()
+        except self.tk.TclError:
+            pass
+        if dialog.winfo_exists():
+            self.root.wait_window(dialog)
+
     def _ask_text(self, title: str, prompt: str, initial: str = "") -> Optional[str]:
         tk = self.tk
-        dialog = tk.Toplevel(self.root)
-        dialog.title(title)
-        dialog.transient(self.root)
-        tk.Label(dialog, text=prompt + "  (Ctrl+Enter to save)", anchor="w").pack(fill=tk.X)
-        box = tk.Text(dialog, width=70, height=8, wrap=tk.WORD, font=self.fonts["base"])
-        box.insert("1.0", initial)
-        box.pack(fill=tk.BOTH, expand=True, padx=6, pady=4)
-        result: Dict[str, Optional[str]] = {"value": None}
-
-        def ok(_event=None):
-            result["value"] = box.get("1.0", "end-1c")
-            dialog.destroy()
-            return "break"
-
-        row = tk.Frame(dialog)
-        tk.Button(row, text="Save", command=ok).pack(side=tk.LEFT, padx=4, pady=4)
-        tk.Button(row, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=4)
-        row.pack()
-        box.bind("<Control-Return>", ok)
-        box.focus_set()
-        dialog.wait_visibility()
-        dialog.grab_set()
+        # Inside _modal() from the start: building and showing the dialog runs
+        # the event loop, and a close then must not open a second one.
         with self._modal():
-            self.root.wait_window(dialog)
+            dialog = tk.Toplevel(self.root)
+            dialog.title(title)
+            dialog.transient(self.root)
+            tk.Label(dialog, text=prompt + "  (Ctrl+Enter to save)", anchor="w").pack(fill=tk.X)
+            box = tk.Text(dialog, width=70, height=8, wrap=tk.WORD, font=self.fonts["base"])
+            box.insert("1.0", initial)
+            box.pack(fill=tk.BOTH, expand=True, padx=6, pady=4)
+            result: Dict[str, Optional[str]] = {"value": None}
+
+            def ok(_event=None):
+                result["value"] = box.get("1.0", "end-1c")
+                dialog.destroy()
+                return "break"
+
+            row = tk.Frame(dialog)
+            tk.Button(row, text="Save", command=ok).pack(side=tk.LEFT, padx=4, pady=4)
+            tk.Button(row, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=4)
+            row.pack()
+            box.bind("<Control-Return>", ok)
+            box.focus_set()
+            self._run_dialog(dialog)
         return result["value"]
 
     # -- actions ----------------------------------------------------------
@@ -967,30 +985,30 @@ class ViewerApp:  # pragma: no cover - needs a display; smoke-tested under xvfb
 
     def _ask_decision(self) -> Optional[str]:
         tk = self.tk
-        dialog = tk.Toplevel(self.root)
-        dialog.title("Close without a decision?")
-        dialog.transient(self.root)
-        tk.Label(dialog, text="No decision recorded. Close with:", padx=12, pady=8).pack()
-        choice: Dict[str, Optional[str]] = {"value": None}
-
-        def pick(value: str) -> None:
-            choice["value"] = value
-            dialog.destroy()
-
-        row = tk.Frame(dialog)
-        for label, value in (
-            ("Approve", "approve"),
-            ("Changes requested", "changes requested"),
-            ("Just close (notes only)", "none (notes only)"),
-        ):
-            tk.Button(row, text=label, command=lambda v=value: pick(v)).pack(
-                side=tk.LEFT, padx=4, pady=8
-            )
-        row.pack(padx=8)
-        dialog.wait_visibility()
-        dialog.grab_set()
+        # Inside _modal() from the start: building and showing the dialog runs
+        # the event loop, and a close then must not open a second one.
         with self._modal():
-            self.root.wait_window(dialog)
+            dialog = tk.Toplevel(self.root)
+            dialog.title("Close without a decision?")
+            dialog.transient(self.root)
+            tk.Label(dialog, text="No decision recorded. Close with:", padx=12, pady=8).pack()
+            choice: Dict[str, Optional[str]] = {"value": None}
+
+            def pick(value: str) -> None:
+                choice["value"] = value
+                dialog.destroy()
+
+            row = tk.Frame(dialog)
+            for label, value in (
+                ("Approve", "approve"),
+                ("Changes requested", "changes requested"),
+                ("Just close (notes only)", "none (notes only)"),
+            ):
+                tk.Button(row, text=label, command=lambda v=value: pick(v)).pack(
+                    side=tk.LEFT, padx=4, pady=8
+                )
+            row.pack(padx=8)
+            self._run_dialog(dialog)
         return choice["value"]
 
     def on_close(self) -> None:

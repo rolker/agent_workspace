@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tkinter
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -565,9 +566,30 @@ class CliTest(TempDirTest):
 class FakeRoot:  # pylint: disable=too-few-public-methods
     def __init__(self):
         self.destroyed = False
+        self.window_state = "normal"
+        self.deiconify = mock.Mock()
+        self.wait_window = mock.Mock()
+
+    def state(self):
+        return self.window_state
 
     def destroy(self):
         self.destroyed = True
+
+
+class FakeWidget:  # pylint: disable=too-few-public-methods
+    """Any widget: every method is a no-op returning itself, unless set."""
+
+    def __init__(self, *_args, **_kwargs):
+        self.calls = []
+
+    def __getattr__(self, name):
+        def method(*args, **kwargs):
+            self.calls.append(name)
+            hook = getattr(type(self), "on_" + name, None)
+            return hook(self, *args, **kwargs) if hook else self
+
+        return method
 
 
 class FakeVar:  # pylint: disable=too-few-public-methods
@@ -622,6 +644,54 @@ class CloseAndErrorTest(TempDirTest):
         self.assertEqual(app._modal_depth, 0)  # pylint: disable=protected-access
         self.close(app, True)
         self.assertTrue(app.root.destroyed)
+
+    def fake_tk(self, dialog_cls):
+        made = []
+
+        def toplevel(*_a, **_k):
+            made.append(dialog_cls())
+            return made[-1]
+
+        fake = mock.Mock()
+        fake.TclError = tkinter.TclError
+        fake.Toplevel = toplevel
+        fake.Label = fake.Frame = fake.Button = FakeWidget
+        return fake, made
+
+    def test_close_during_dialog_startup_opens_no_second_dialog(self):
+        """A close while the decision dialog is still mapping is ignored."""
+        app = self.app()
+        app.session.review.decision = None
+
+        class Dialog(FakeWidget):
+            def on_wait_visibility(self):
+                app.on_close()  # the nested event loop delivers a second close
+
+            def on_winfo_exists(self):
+                return False
+
+        app.tk, made = self.fake_tk(Dialog)
+        app.on_close()
+        self.assertEqual(len(made), 1, "only one decision dialog")
+        self.assertFalse(app.root.destroyed)
+        self.assertEqual(app._modal_depth, 0)  # pylint: disable=protected-access
+
+    def test_failed_grab_still_waits_for_the_dialog(self):
+        app = self.app()
+
+        class Dialog(FakeWidget):
+            def on_grab_set(self):
+                raise tkinter.TclError("grab failed: another application has grab")
+
+            def on_winfo_exists(self):
+                return True
+
+        app.tk, _ = self.fake_tk(Dialog)
+        app.root.window_state = "iconic"
+        dialog = Dialog()
+        app._run_dialog(dialog)  # pylint: disable=protected-access
+        app.root.deiconify.assert_called_once()
+        app.root.wait_window.assert_called_once_with(dialog)
 
     def test_failed_save_keeps_window_open_with_status(self):
         app = self.app(OSError("No space left on device"))
