@@ -258,3 +258,19 @@ Suites run: `bash .agent/scripts/tests/test_skill_paths.sh`: test_skill_paths: 2
 - [x] (suggestion) A run that opens the follow-up issue and stops before recording its number leaves a resumed host to open a duplicate. Codex finding 2. In the `merge` bullet, after "if one is already named for this pull request" add ", and before opening one looks for an open issue that names this pull request (`gh issue list --search`), in case an earlier run opened it and stopped before recording it". — `.agent/knowledge/host_standing_rules.md:59`
 
 Codex findings dismissed: 3 (the no-code cold-read skip has no completion record): the same point as round 1's dismissed Codex 4; a resumed host reaches the same skip by the same rule on the same day, and on a later day the full 9a applies, which is the rule. 4 (a skip recorded in one issue's timeline is not visible to another session): true of any host-session fact, and the row names where the first failure is read; a shared record is a mechanism change outside this issue. 5 (the host `proceed` after a revised plan lets unreviewed plan changes through): it is one of the three host readings the section already marks as open to the owner's veto.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 14:16 -05:00
+**By**: claude-code (claude-sonnet-5-5)
+
+**Branch**: feature/issue-605 at `626e5fe1`
+**Addressed**: Local Review (Pre-Push) at `e48147fe` (2026-11-24 14:14 -05:00)
+**Commits**: `626e5fe1`
+
+### Actions
+- [x] must-fix: "that fix pass" now "the one fix pass for a must-fix" — `.agent/knowledge/host_standing_rules.md:56`
+- [x] must-fix: publish bullet lists the suggestions with text and `file:line`, open or deferred; the false "stay open through triage" replaced by the entry's wording. Gap closed: the `findings` bullet now says the suggestions are listed from the `publish` checkpoint's body, and the `merge` bullet opens the follow-up issue with the suggestions from that body — `.agent/knowledge/host_standing_rules.md:56-59`
+- [x] suggestion: `merge` bullet looks for an open issue naming the pull request (`gh issue list --search`) before opening one — `.agent/knowledge/host_standing_rules.md:59`
+
+Suite: `bash .agent/scripts/tests/test_skill_paths.sh` gave `test_skill_paths: 213 passed, 0 failed`. The full pre-commit pass is left to the host.
