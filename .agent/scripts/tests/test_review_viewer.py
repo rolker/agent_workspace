@@ -439,8 +439,15 @@ class DisplayCheckTest(unittest.TestCase):
         raise ImportError("No module named '_tkinter'")
 
     def test_no_display_vars(self):
-        reason = rv.check_display({}, self.ok)
+        reason = rv.check_display({}, self.ok, "linux")
         self.assertIn("no display", reason)
+
+    def test_native_tk_platforms_skip_the_env_test(self):
+        for platform in ("darwin", "win32"):
+            with self.subTest(platform=platform):
+                self.assertIsNone(rv.check_display({}, self.ok, platform))
+                reason = rv.check_display({}, self.missing, platform)
+                self.assertIn("tkinter is not available", reason)
 
     def test_x11(self):
         self.assertIsNone(rv.check_display({"DISPLAY": ":0"}, self.ok))

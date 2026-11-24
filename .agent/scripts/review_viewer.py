@@ -96,14 +96,23 @@ range, and write the notes file in the format above yourself, with the
 # ---------------------------------------------------------------------------
 
 
-def check_display(env: Mapping[str, str], import_tk: Callable[[], object]) -> Optional[str]:
+# Platforms whose Tk draws natively, needing neither DISPLAY nor WAYLAND_DISPLAY.
+NATIVE_TK_PLATFORMS = ("darwin", "win32")
+
+
+def check_display(
+    env: Mapping[str, str], import_tk: Callable[[], object], platform: str = sys.platform
+) -> Optional[str]:
     """Return None if a window may open, else a one-line reason.
 
     ``import_tk`` imports tkinter (raises ImportError when it is missing).
-    A display that is set but unreachable is caught later, when ``Tk()``
-    raises ``TclError``.
+    The DISPLAY / WAYLAND_DISPLAY test applies only where Tk uses X11 (not
+    macOS or native Windows). A display that is set but unreachable, or no
+    window system at all on those two, is caught later, when ``Tk()`` raises
+    ``TclError``.
     """
-    if not env.get("DISPLAY") and not env.get("WAYLAND_DISPLAY"):
+    needs_env = platform not in NATIVE_TK_PLATFORMS
+    if needs_env and not env.get("DISPLAY") and not env.get("WAYLAND_DISPLAY"):
         return "no display (neither DISPLAY nor WAYLAND_DISPLAY is set)"
     try:
         import_tk()
