@@ -2018,6 +2018,20 @@ RC=0; S="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/root" --list-paths 2
 RC=0; bash "$SITREP" --root "$SB/root" --list-paths --summary >/dev/null 2>&1 || RC=$?
 [[ $RC -eq 2 ]] && pass "(paths) --list-paths with --summary is a usage error" || fail "(paths) list-paths --summary rc=$RC"
 
+echo "TEST: what cannot be read as a group is a format row, never dropped unseen"
+run_rm "$(printf '%s\n' '## Direction' '' '**Path 1, One.** a' '' '| Line | Check |' '|---|---|' "| A | $T |" '' \
+    '**Path 1, Again.** b' '' '**Path 3, Never' 'closes here.' '' '| Line | Check |' '|---|---|' "| B | $T |" '' \
+    '**Across the paths, shared.** c' '' '| Line | Check |' '|---|---|' "| C | $T |")"
+want="$(printf '%s\n' $'path\tPath 1, One\ttrue' $'line\tA\ttrue' $'path\tPath 1, Again\ttrue' \
+    $'format\t(path number 1 is used twice: Path 1, Again; the summary\'s P1 counts are not told apart)\tunchecked' \
+    $'format\t(a bold **Path 3, Never closes here. at a paragraph\'s start never closes: it opens no group)\tunchecked' \
+    $'line\tB\ttrue' $'path\tAcross the paths\ttrue' \
+    $'format\t(the Across paragraph\'s bold text is not just "Across the paths": Across the paths, shared)\tunchecked' \
+    $'line\tC\ttrue')"
+[[ $RC -eq 0 && "$(cut -f1-3 <<< "$OUT")" == "$want" ]] \
+    && pass "(paths) a path number used twice, a bold Path span that never closes, and words after Across the paths are format rows; Across keeps its name" \
+    || fail "(paths) edges rc=$RC '$OUT'"
+
 echo "TEST: no path paragraph: rows, summary and next steps as before paths were read"
 run_rm "$(printf '%s\n' '## Direction' '' '**Across the paths.** Alone, it opens nothing.' '' \
     '| Line | Check |' '|---|---|' "| A | $T |" "| B | $F |" '' '**Path:** not a path either.')"

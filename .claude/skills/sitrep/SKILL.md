@@ -145,8 +145,9 @@ trap - INT TERM
 ```
 
 Rows are `kind`, `item`, `result`, `check`, `date`, TAB-separated. Kinds:
-`line`, `deferral`, `format` (a checklist item in the section, which breaks
-the section's rules; report it), `section` (nothing to check, and why: no
+`line`, `deferral`, `format` (a checklist item in the section, or a path
+paragraph the checker cannot read as one, which break the section's
+rules; report it), `section` (nothing to check, and why: no
 roadmap file, a roadmap that could not be read, no Direction section, or a
 section with no table), and `path`. When the root's Direction section is
 written as paths (a paragraph opening with a bold `Path <n>`), the rows
@@ -1190,8 +1191,10 @@ follows one level.
 
 <What moved: compare the summary with the last run record's, in words,
 e.g. "steps done: 3 of 6 on 2026-10-10, 4 of 6 now", per path when both
-records carry the same path labels ("Path 2: 0 of 4 on 2026-11-20, 1 of
-4 now"); "first run" when there is no earlier line.>
+records carry the same path labels and neither repeats a label (a
+path number used twice, a `format` row under Problems: then the totals
+only) ("Path 2: 0 of 4 on 2026-11-20, 1 of 4 now"); "first run" when
+there is no earlier line.>
 
 <acceptance_rest, when not empty>
 

@@ -147,6 +147,13 @@
 #     group above it.
 #   - Line rows above the first path or Across paragraph are a group of
 #     their own, `no path`.
+#   - What would open a group but cannot be read as one is a `format` row,
+#     `unchecked`, never a silent drop or a guess: a bold `Path <n>` or
+#     `Across the paths` span at a paragraph's start that never closes
+#     (the paragraph opens no group); bold text that goes on after
+#     `Across the paths` (the group is still `Across the paths`); a path
+#     number used twice (both paths are read, the row follows the second;
+#     the summary's two `P<n>` counts are not told apart).
 # Only `line` rows are counted for a group; deferral, format and part rows
 # keep their places and belong to none. A section with no path paragraph
 # has no groups at all, whatever else it holds (an Across paragraph alone
@@ -848,7 +855,7 @@ scan_roadmap() {
                 in_fence=false
             fi
             prev_table_line=false; table=none; prev_para=false
-            open_ok=true; bold_on=false
+            open_ok=true; bold_unclosed
             continue
         fi
         [ "$in_fence" = true ] && continue
@@ -868,7 +875,7 @@ scan_roadmap() {
         fi
         if [[ "$raw" =~ ^[[:space:]]*\| ]]; then
             prev_para=false
-            open_ok=true; bold_on=false
+            open_ok=true; bold_unclosed
             if [ "$prev_table_line" = false ]; then
                 split_row "$raw"
                 table=other
@@ -960,7 +967,7 @@ scan_roadmap() {
             # A path or Across paragraph (Paths in the header). A bold
             # span still open goes on through paragraph text only.
             if [ "$bold_on" = true ]; then
-                if [ "$prev_para" = true ]; then bold+=" $(trim "$raw")"; else bold_on=false; fi
+                if [ "$prev_para" = true ]; then bold+=" $(trim "$raw")"; else bold_unclosed; fi
             elif [ "$open_ok" = true ] && [ "$prev_para" = true ] && [[ "$raw" == '**'* ]]; then
                 bold="${raw:2}"; bold_on=true; bold_at="${#ROWS[@]}"
             fi
@@ -980,7 +987,23 @@ scan_roadmap() {
             emit "${kpre}format" "$ipre${BASH_REMATCH[1]}" unchecked ""
         fi
     done < "$file"
+    bold_unclosed
     SCAN_ROWS=$(( ${#ROWS[@]} - start_rows - nested + pointers ))
+}
+
+# bold_unclosed: ends a bold span still open at a paragraph's start (the
+# caller's bold_on and bold). One that would have named a path or Across
+# but never closed opens no group: a format row says so, so the path is
+# never dropped unseen.
+bold_unclosed() {
+    local t
+    local -a w
+    [ "$bold_on" = true ] || return 0
+    bold_on=false
+    read -ra w <<< "$bold"
+    t="${w[*]-}"
+    [[ "$t" =~ ^Path\ [0-9]+ ]] || [[ "$t" == "Across the paths"* ]] || return 0
+    emit format "(a bold **${w[*]:0:6} at a paragraph's start never closes: it opens no group)" unchecked ""
 }
 
 # path_mark <bold text> <row index>: when the bold text at a paragraph's
@@ -995,7 +1018,11 @@ path_mark() {
     if [[ "$t" =~ ^Path\ [0-9]+ ]]; then
         GMARKS+=("$2"$'\t'path$'\t'"$t")
     elif [[ "$t" == "Across the paths"* ]]; then
-        GMARKS+=("$2"$'\t'across$'\t'"$t")
+        # The group is `Across the paths` whatever follows; more words are
+        # shown, never taken into its name.
+        GMARKS+=("$2"$'\t'across$'\t'"Across the paths")
+        [ "$t" = "Across the paths" ] \
+            || emit format "(the Across paragraph's bold text is not just \"Across the paths\": $t)" unchecked ""
     fi
 }
 
@@ -1003,8 +1030,9 @@ path_mark() {
 # root's rows only; it runs before anything else is added). Nothing when
 # no path paragraph was found: an Across paragraph alone opens no group.
 group_rows() {
-    local m i k n="${#ROWS[@]}" lo hi c first=-1 has_path=false
+    local m i k n="${#ROWS[@]}" lo hi c pn first=-1 has_path=false
     local -a at=() kind=() name=() cnt=() out=()
+    local -A seen=()
     for m in ${GMARKS[@]+"${GMARKS[@]}"}; do
         at+=("${m%%$'\t'*}"); m="${m#*$'\t'}"
         kind+=("${m%%$'\t'*}"); name+=("${m#*$'\t'}")
@@ -1030,6 +1058,14 @@ group_rows() {
             elif [ "${kind[k]}" = path ]; then m=$'unchecked\tno lines (no design yet)'
             else m=$'unchecked\tno lines'; fi
             out+=("path"$'\t'"${name[k]//$'\t'/ }"$'\t'"$m"$'\t'"$TODAY")
+            # Two paths with one number share a summary label (P<n>): shown,
+            # never told apart by guessing.
+            if [ "${kind[k]}" = path ] && [[ "${name[k]}" =~ ^Path\ ([0-9]+) ]]; then
+                pn="${BASH_REMATCH[1]}"
+                [ -z "${seen[$pn]:-}" ] \
+                    || out+=("format"$'\t'"(path number $pn is used twice: ${name[k]//$'\t'/ }; the summary's P$pn counts are not told apart)"$'\t'"unchecked"$'\t'"none"$'\t'"$TODAY")
+                seen[$pn]=1
+            fi
             k=$((k + 1))
         done
         [ "$i" -eq "$n" ] || out+=("${ROWS[i]}")
