@@ -81,6 +81,8 @@ else waits for the owner, written `**Decided-by**: owner`.
 | `phase-failed` | `retry` | `takeover` |
 | `unexpected` | only when the state is one of the other checkpoints under a name the table missed: that checkpoint's `**After**` and an allowed token; or the newest entry is a `restart` checkpoint (recipe (a); its comment is checked for first and, when not there, still waits for his yes) | otherwise |
 
+While the manifest work's dated lighter review level is in force (until the Rolling test of issue 436 (the second-machine test on the new manifest) passes, checked as issue 436 closed as completed), what the host answers at these checkpoints is read with `host_standing_rules.md`, `## Manifest work: the lighter review level`; the table above is unchanged; under it the host also appends a `publish` or `plan` checkpoint that `next` did not raise, in the cases that section names.
+
 A host answer that repeats does not loop without the owner: after two
 host `retry` answers in a row for the same phase, two host `revise`
 answers at `plan` in a row, two host `address` answers at `rounds` in
