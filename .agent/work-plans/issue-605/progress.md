@@ -315,3 +315,19 @@ All three round-2 findings are answered with the entry's words. "The handoff of 
 **Decision**: publish
 
 The full pass ran with no SKIP over the files changed since origin/main and exited 0; every hook that applied passed, the script-suite hook included. One suggestion stays open and goes to the owner with the merge question: the duplicate guard in the `merge` bullet searches for an open issue that names the pull request, but nothing requires the follow-up issue's body to name it, and the bullet does not say to reuse and record an issue the search finds. Outside reviewers before the push: Codex ran in rounds 1 and 2 and found one must-fix point in each; Gemini was skipped all day, having failed on its headless tool denial; round 3 had none, by the convergence-check rule.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 14:25 -05:00
+**By**: claude-code (claude-sonnet-5-5)
+**Reviews-read**: 6045836937
+
+**PR**: #607 at `c1c72e5`
+**Sources**: 3 (Local Review (Pre-Push) @ `cd252df` (covers head via bookkeeping), Copilot review 6045836937 (could not review: insufficient quota; no findings), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending (Lint (pre-commit), repos-manifest tests (Python 3.10), repos-manifest tests (Python 3.14), Validate Documentation (one of its two runs); Validate Adapter Contract passed; the copilot-pull-request-reviewer check-run concluded failure, which is its could-not-review notice, not a CI failure of the change)
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) @ `cd252df`) The `merge` bullet's duplicate-issue guard searches for "an open issue that names this pull request", but nothing requires the follow-up issue's body to name the pull request, so the search can come back empty after the crash it guards against; and the bullet does not say to reuse and record an issue the search finds. Valid on reading line 59: the bullet says "adds to that issue ... if one is already named" but not that the issue body names the pull request, and the search result's use is left implicit. Wording: "opens the one follow-up issue (second row above), its body naming this pull request, ..." and "..., in case an earlier run opened it and stopped before recording it (if found, it is that issue)". — `.agent/knowledge/host_standing_rules.md:59`
+
+### False positives
