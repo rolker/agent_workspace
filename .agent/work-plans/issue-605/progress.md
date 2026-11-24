@@ -59,3 +59,19 @@ issue: 605
 - [ ] Resolve the follow-up-issue authorization (see Principle Alignment) in the rule text, quoting the owner's "yes" of 2026-11-24 as the source.
 - [ ] Say the reviewer-skip line names each skipped reviewer at every checkpoint, and that the skip lasts for that calendar day only, so the next day starts with all reviewers again.
 - [ ] Make the roadmap fit explicit: the roadmap's trial line says "low-stakes project", while this is the workspace's own tool; note the difference in the rule's scope so the result is read as input to Path 3, not as that line being true.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:56 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the Issue Review at 1124d80b finds the issue well scoped with seven actions for the plan and no question for the owner, provided the plan settles the follow-up issue from his quoted words)
+**After**: issue-actions
+**Decision**: proceed
+
+The review's actions go to the plan. Host decisions on how the rule sits in the loop as built, for the owner's veto, each read from what he approved on 2026-11-24 ("One plan review and one code review round per pull request. Must-fix findings get fixed; suggestions go into a single follow-up issue instead of another round."; "Skip a reviewer for the day after its first failure, and say so."; his answer "yes"):
+
+- At a pre-push review with suggestions only, the host answers `publish`, not `address`. The suggestions stay open through triage and reach him at the `findings` checkpoint, which is asked together with the merge question; `merge` there stays his answer alone, as today.
+- On his `merge` answer the host opens one follow-up issue holding that pull request's deferred suggestions and ticks them as deferred. His "yes" to "suggestions go into a single follow-up issue" is the standing authorization for that one issue per pull request, within the rule's scope and until it ends; no other new issue is covered.
+- A must-fix is fixed by one fix pass. The fix is not sent to a second full review round; the cold read of the final diff and CI are what read it. A must-fix found by the cold read is fixed and then goes to him with the merge question.
+- A reviewer that fails once is not asked again that calendar day, and every checkpoint and hand-back that day names it as skipped with its first failure's reason.
+- The rule's scope is the manifest work only and it ends when the Rolling test of issue 436 passes; the rows it relaxes apply again from then.
