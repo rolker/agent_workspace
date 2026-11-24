@@ -741,3 +741,19 @@ Triage after the cold read's fixes (deaa41d7, ff2eae97). The `sources` helper fi
 **Decision**: merge
 
 The owner's answer in the dialog, to "Merge pull request 568 now and carry F1 into part 2 of the same issue?": "Merge, carry F1 (Recommended)". F1 is the open suggestion of the Integrated Review at b523c1bc: the comment on bookkeeping_roadmap_paths in .agent/scripts/_bookkeeping.sh (lines 38-39) says a roadmap value "may hold ( ) | ! @ +", which is untrue since deaa41d7; a comment-only reword, deferred to part 2's pull request on this issue. The dialog showed: the merge answered on 2026-11-23 never landed and the branch then conflicted with main; main merged in today with two documentation conflicts resolved and tests that no reader added by pull request 572 bypasses the lookup; the Codex cold read's must-fix and suggestion, both fixed, and the convergence check that approved them; Copilot not requested because this session's permission check refuses the request command; the new limit on the characters a document path may hold; CI with all 10 checks passed on 7277fdb5; no hosted review or comment; mergeable, clean. The cold read ran for this pull request (cold_read=yes), so step 9a has nothing to route.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 11:35 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (run-issue step 13's conditions hold: plan.md is at 7ab07af2, the commit the newest Plan Review names, and the plan names Part 2, the skills, which is not delivered)
+**After**: plan
+**Decision**: proceed
+
+The owner asked for this drive today: "Can you orchestrate Q1 and Q4?", Q1 being part 2 of this issue. Pull request 568 (Part 1: the settings, the lookup, the script readers) merged today; the issue stays open because Part 2 (the question in the onboard-project and design-discussion skills) is still to come, and its pull request is the one that says Closes #551. The worktree and branch were recreated from main at d2f489ff.
+
+Instructions that bind the implementer (host decisions, listed for the owner's veto):
+- Implement Part 2 only, as the plan gives it.
+- Part 1 changed after the plan was reviewed, and the skill text must match what merged: a goals, design or roadmap path may hold only ASCII letters, digits, ".", "_", "-" and "/" (refused otherwise, at set time and at lookup), and a roadmap setting that is the design's file through a symbolic link is refused. The question the skills ask, and what they do with an answer the setting refuses, follow the merged project_setting.sh, not the plan's older wording; say in the entry where the two differ.
+- Carry the suggestion the owner deferred to this pull request on 2026-11-24 ("Merge, carry F1"): the comment on bookkeeping_roadmap_paths in .agent/scripts/_bookkeeping.sh says a roadmap value "may hold ( ) | ! @ +", which is untrue since those characters are refused; reword the comment only, no code change.
+- Main has moved since the plan (the sit-rep skill was rewritten by pull request 572; onboarding ran on a second machine): read the two skills as they are on this branch before editing.
