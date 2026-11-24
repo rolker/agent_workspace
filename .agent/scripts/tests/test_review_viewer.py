@@ -13,6 +13,7 @@ or via the .agent/scripts/tests/test_review_viewer.sh wrapper.
 """
 
 import datetime
+import io
 import os
 import shutil
 import subprocess
@@ -20,6 +21,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SCRIPTS = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SCRIPTS))
@@ -419,11 +421,102 @@ class CliTest(TempDirTest):
         self.assertIn("cat -n", result.stdout)
 
 
+class FakeRoot:  # pylint: disable=too-few-public-methods
+    def __init__(self):
+        self.destroyed = False
+
+    def destroy(self):
+        self.destroyed = True
+
+
+class FakeVar:  # pylint: disable=too-few-public-methods
+    def __init__(self):
+        self.value = ""
+
+    def set(self, value):
+        self.value = value
+
+
+class CloseAndErrorTest(TempDirTest):
+    """The window's close and error paths, on an app built without a display."""
+
+    def app(self, finish_error=None):
+        draft = self.dir / "plan.md"
+        draft.write_text("hello\n", encoding="utf-8")
+        session = rv.Session(draft, Path(str(draft) + ".notes.md"))
+        if finish_error is not None:
+
+            def fail(_decision):
+                raise finish_error
+
+            session.finish = fail
+        app = rv.ViewerApp.__new__(rv.ViewerApp)
+        app.root, app.status, app.session = FakeRoot(), FakeVar(), session
+        app.failed, app._closing = None, False  # pylint: disable=protected-access
+        session.review.decide("approve")
+        return app
+
+    def close(self, app, answer):
+        with mock.patch("tkinter.messagebox.askyesno", return_value=answer) as ask:
+            with mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+                app.on_close()
+        return ask, err.getvalue()
+
+    def test_close_saves_and_destroys(self):
+        app = self.app()
+        ask, _ = self.close(app, False)
+        ask.assert_not_called()
+        self.assertTrue(app.root.destroyed)
+        self.assertIsNone(app.failed)
+        self.assertTrue((self.dir / "plan.md.reviewed").exists())
+
+    def test_failed_save_keeps_window_open_with_status(self):
+        app = self.app(OSError("No space left on device"))
+        ask, err = self.close(app, False)
+        ask.assert_called_once()
+        self.assertFalse(app.root.destroyed)
+        self.assertIn("NOT SAVED on close: No space left on device", app.status.value)
+        self.assertIsNone(app.failed)
+        self.assertEqual(err, "")
+        self.assertFalse(app._closing)  # pylint: disable=protected-access
+
+    def test_failed_save_close_anyway_marks_failure(self):
+        app = self.app(OSError("read-only file system"))
+        _, err = self.close(app, True)
+        self.assertTrue(app.root.destroyed)
+        self.assertIn("could not save on close", app.failed)
+        self.assertIn("read-only file system", err)
+
+    def callback_error(self, app):
+        err = io.StringIO()
+        try:
+            raise KeyError("boom")
+        except KeyError:
+            with mock.patch("sys.stderr", err):
+                app._callback_error(*sys.exc_info())  # pylint: disable=protected-access
+        return err.getvalue()
+
+    def test_callback_error_marks_failure_and_keeps_window(self):
+        app = self.app()
+        err = self.callback_error(app)
+        self.assertIn("Traceback", err)
+        self.assertIn("internal error: KeyError", app.failed)
+        self.assertIn("INTERNAL ERROR", app.status.value)
+        self.assertFalse(app.root.destroyed)
+
+    def test_callback_error_while_closing_destroys(self):
+        app = self.app()
+        app._closing = True  # pylint: disable=protected-access
+        self.callback_error(app)
+        self.assertTrue(app.root.destroyed)
+
+
 SMOKE = """\
 import sys, tkinter
 sys.path.insert(0, sys.argv[1])
 import review_viewer as rv
 from pathlib import Path
+from unittest import mock
 session = rv.Session(Path(sys.argv[2]), Path(sys.argv[2] + ".notes.md"))
 root = tkinter.Tk()
 app = rv.ViewerApp(root, session)

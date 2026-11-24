@@ -53,8 +53,14 @@ highlights the added or changed lines (a deleted run marks the line after it).
 ``--previous FILE`` diffs against FILE instead. No notes are carried over.
 
 Exit codes: 0 the window closed (read the notes file for the decision);
-1 a usage error (missing draft or ``--previous`` file, unreadable text);
+1 an error, said on stderr: a usage error before any window (missing draft
+or ``--previous`` file, unreadable text), or the window failed (an internal
+error in the window, with its traceback, or a save on close that failed and
+the owner chose to close anyway; the notes file may lack the decision);
 2 no display or no tkinter (one line on stderr, no traceback).
+
+A save that fails on close keeps the window open with the error in its
+status line; closing again retries, and the owner may close anyway.
 """
 
 import argparse
@@ -65,6 +71,7 @@ import os
 import re
 import sys
 import tempfile
+import traceback
 from pathlib import Path
 from typing import Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
@@ -581,6 +588,7 @@ class Session:
 # ---------------------------------------------------------------------------
 
 
+# pylint: disable-next=too-many-instance-attributes
 class ViewerApp:  # pragma: no cover - needs a display; smoke-tested under xvfb
     def __init__(self, root, session: Session):
         # pylint: disable=import-outside-toplevel
@@ -591,6 +599,10 @@ class ViewerApp:  # pragma: no cover - needs a display; smoke-tested under xvfb
         self.tk = tk
         self.root = root
         self.session = session
+        # Set when the window failed; main() then exits 1, not 0.
+        self.failed: Optional[str] = None
+        self._closing = False
+        root.report_callback_exception = self._callback_error
         root.title(f"Review: {session.draft.name}")
         root.geometry("1200x800")
 
@@ -668,6 +680,22 @@ class ViewerApp:  # pragma: no cover - needs a display; smoke-tested under xvfb
         st.configure(state=tk.DISABLED)
 
     # -- helpers ----------------------------------------------------------
+
+    def _callback_error(self, exc_type, exc, tb) -> None:
+        """An exception in a Tk callback: report it and make the exit non-zero.
+
+        Tk's default prints the traceback and carries on, so the run would
+        still exit 0. The window stays open (the notes so far may be saved),
+        unless the error came while closing, which would otherwise trap the
+        owner in a window that cannot close.
+        """
+        traceback.print_exception(exc_type, exc, tb, file=sys.stderr)
+        self.failed = f"internal error: {exc_type.__name__}: {one_line(str(exc))}"
+        print(f"review_viewer: {self.failed}", file=sys.stderr)
+        if self._closing:
+            self.root.destroy()
+            return
+        self.status.set(f"INTERNAL ERROR ({self.failed}); the viewer exits with an error.")
 
     def _refresh(self) -> None:
         review = self.session.review
@@ -840,11 +868,32 @@ class ViewerApp:  # pragma: no cover - needs a display; smoke-tested under xvfb
         decision = self.session.review.decision or self._ask_decision()
         if decision is None:  # the dialog was dismissed: keep reviewing
             return
+        self._closing = True
         try:
             self.session.finish(decision)
         except OSError as exc:
-            print(f"review_viewer: could not save on close: {one_line(str(exc))}", file=sys.stderr)
+            self._closing = False
+            self._close_failed(one_line(str(exc)))
+            return
         self.root.destroy()
+
+    def _close_failed(self, reason: str) -> None:
+        """A save on close failed: keep the window open unless the owner insists."""
+        from tkinter import messagebox  # pylint: disable=import-outside-toplevel
+
+        self.status.set(f"NOT SAVED on close: {reason}. Close again to retry.")
+        give_up = messagebox.askyesno(
+            "Notes not saved",
+            f"Could not save on close:\n{reason}\n\n"
+            "Close anyway? The notes file may not hold the decision, "
+            "and the viewer exits with an error.",
+            default="no",
+            parent=self.root,
+        )
+        if give_up:
+            self.failed = f"could not save on close: {reason}"
+            print(f"review_viewer: {self.failed}", file=sys.stderr)
+            self.root.destroy()
 
 
 # ---------------------------------------------------------------------------
@@ -902,9 +951,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             file=sys.stderr,
         )
         return 2
-    ViewerApp(root, session)
+    app = ViewerApp(root, session)
     root.mainloop()
-    return 0
+    return 1 if app.failed else 0
 
 
 if __name__ == "__main__":
