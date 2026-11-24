@@ -511,3 +511,13 @@ Cross-model: skipped (round-4 convergence check, per handoff). Scope: the fix di
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 19:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (round-4 pre-push review approved with nothing open; the host's full pre-commit pass passed, exit 0, every suite)
+**After**: publish
+**Decision**: publish
+
+The previous full pass failed (test_script_tests_hook_scope.sh); its fix was reviewed in round 4 and this pass, on the head to be pushed, passed. Pushing and opening the pull request.
