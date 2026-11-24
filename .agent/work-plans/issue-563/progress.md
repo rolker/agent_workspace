@@ -547,3 +547,30 @@ Codex ran (EXIT=0), given the title, URL and diff only (work-plan files left out
 - test_design_anchors.sh: "test_design_anchors: 82 passed, 0 failed"
 - test_update_roadmap.sh: "test_update_roadmap:16 passed, 0 failed"
 - CI checks the push; the host owns it.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 09:37 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #572 at `4c765965`
+**Depth**: Deep (reason: whole-PR fix-round re-review, 12 files +1872/-254, skill and script changes; no round-3 or cold-read words in the handoff)
+**Must-fix**: 1 | **Suggestions**: 6
+
+Scope: the whole PR, with the fix 74f9d149 (and the merge of main 870aa475) read closely. Specialists: static analysis (shellcheck not installed, not run; `bash -n` clean on the five changed scripts), governance and plan drift (lead; no drift: the fix extends `--list-paths`, script_reference.md updated in step), Claude adversarial (fresh; no findings in 74f9d149; nine fixture roadmaps; test_sitrep_checks 299/0, test_sitrep_root 69/0, test_skill_paths 199/0), cross-model Gemini (EXIT=0, 4 must-fix and 3 suggestions claimed) and Codex (EXIT=0, 1 must-fix).
+
+Cold read's must-fix: closed. On the live roadmap the checker's acceptance text matches main's awk reader byte for byte (group Path 1, ROS 2 projects); the new tests cover a fenced and a continuing Acceptance line ahead of the real one; text from a followed part cannot leak (`--list-paths` exits before pointers are followed). The PR text's "The checker is the only reader of the roadmap's structure" is true of the branch: every `$roadmap` in SKILL.md only becomes `--roadmap` for the checker, and sitrep_root.sh only locates the file.
+
+The must-fix is outside the fix diff and is in kind on main ("Running: nothing advances it."), but the bullet that states it is new in this PR, and the live roadmap's Path 1 holds a line naming rolker/unh_marine_autonomy#396, so it is reachable on the ordinary path. Gemini and Codex found it independently.
+
+False positive: Gemini's "step 5's jq fails silently without jq" (step 3's worktree block on main already needs jq, so such a machine fails there first, loudly).
+
+### Findings
+- [ ] (must-fix) "No branch or pull request for the next step of:" claims absence where step 5 did not look: the pull-request list failed (`pull_requests=not looked up`), the root has no pull-request source (contradicts SKILL.md:1287, "no line says anything about pull requests"), or the next line names another repository's issue (step 5 looks up bare `#N` only, so a project worktree marked with that path can sit right above the bullet); name a group there only when step 5 looked, else say why it was not looked up — `.claude/skills/sitrep/SKILL.md:1134` (rule at `:1264`)
+- [ ] (suggestion) The only two literal TAB characters in the file sit in the `grep -q "^path<TAB>"` / `"^group<TAB>"` patterns; an agent retyping the block with spaces silently gets haspaths=no; use `$'^path\t'` / `$'^group\t'` — `.claude/skills/sitrep/SKILL.md:341`, `:345`
+- [ ] (suggestion) A path or Acceptance paragraph whose text starts on the line after the bold gets a leading space (`group<TAB>Path 1, One<TAB> First sentence here.`, reproduced); step 5 strips it, step 3's `path` line does not; use `${GTEXT[-1]:+ }` / `${ACC_TEXT:+ }` — `.agent/scripts/sitrep_checks.sh:990`
+- [ ] (suggestion) Prose says that with no rows `--list-paths` "prints nothing" for a section with no path paragraph; it now prints an `acceptance` line there (the code's `^group` test is right) — `.claude/skills/sitrep/SKILL.md:508`
+- [ ] (suggestion) The PR body says `--list-paths` prints "the group the acceptance case sits under"; it now prints the acceptance text as well, and step 5 reads it — PR 572 description
+- [ ] (suggestion) An unclosed `**Across the paths` bold above Path 1 gives its format row after the `path` row of Path 1, not at its place (reproduced) — `.agent/scripts/sitrep_checks.sh:1035`
+- [ ] (suggestion) A pull request with no worktree reads "path unknown (no worktree, timeline not read)" even when step 1 printed no rows, where the reason is that the steps were not checked — `.claude/skills/sitrep/SKILL.md:1306`
