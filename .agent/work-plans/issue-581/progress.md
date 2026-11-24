@@ -67,3 +67,19 @@ issue: 581
 - [ ] Cover all three skills in this one pull request (review-issue lines 65-90 and 244; plan-task 67, 91, 182, 201, 347-359; review-plan 72-75, 132, 156), and note that the issue title names review-issue only
 - [ ] Keep the file split with issue 579: this issue touches only review-plan step 2 (the issue read, lines ~122-160) and the two `gh pr view` lines 72 and 75 in step 1; 579 owns the rest of step 1 and steps 5-6; land 579 first or have 579 leave lines 72-75 alone
 - [ ] Test from a second repository with an `upstream` remote, and say in the pull request which cases were run
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:13 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review confirms the defect; covering review-issue, plan-task and review-plan is the scope the owner accepted at the triage: "issue review (and plan-task, review-plan) can act on the wrong repository"; its actions are directions for the plan)
+**After**: issue-actions
+**Decision**: proceed
+
+The owner started this drive with "start those 3" (2026-11-24). Instructions for the plan (host decisions, listed for the owner's veto):
+- Scope: the three skills in one pull request, although the title names review-issue only: every gh issue and gh pr call in them names the repository, and the _REPO_SLUG placeholder an agent fills in by hand is replaced by a value a script decides.
+- One helper that takes <N> or <owner/repo#N> and prints the owning owner/repo, or refuses with a clear message when it cannot tell or when what gh would resolve in this directory differs from the checkout's own origin (the upstream-over-origin case). Build it on what exists: extract_gh_slug in _issue_helpers.sh (only a github.com remote names a GitHub repository, merged today) and the check dispatch_phase.sh already makes for package worktrees; do not write a second parser.
+- A project with no GitHub remote is an ordinary case, not an error: the skills must say what they do then (the issue is read from git-bug or given by the owner), and the helper's refusal must not block it.
+- The references in the issue's text to #445, #470, #473 and #260 were written in the old repository and are not this repository's issues.
+- Issue 579 is driven at the same time and rewrites review-plan step 1 (lines 70 to 79: it reads the plan file at the pull request's head, not the body). In that step this plan only adds the repository to the two gh pr view calls; everything else there is 579's. Whichever of the two merges second takes main in first.
+- Tests: the helper from a second sandbox repository with an upstream remote, and the skill text pinned in test_skill_paths.sh. Say which cases were run.
