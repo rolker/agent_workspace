@@ -3,7 +3,7 @@ and validate checks a manifest; show prints what a manifest comes to for a machi
 sync set up a system directory and clone its repos; build builds its layers with colcon and
 writes its setup.bash.
 
-Every command reads a manifest in the format of docs/spec.md.
+Every command that reads a manifest reads it in the format of docs/spec.md.
 """
 
 from __future__ import annotations
