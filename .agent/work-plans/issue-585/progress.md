@@ -424,3 +424,18 @@ Pull request text checked against the branch (counts, the 100-failure red run, 2
 **Decision**: merge
 
 The owner's answer in the dialog, to "How do you want pull request 609 merged, with F1 carried to a follow-up?": "Merge when CI is green (Recommended)". The option read: merge as soon as all checks pass, carrying F1; if CI is not green by about 14:55 nothing merges and it stays parked for the next session. He did not choose "Merge now, skip the CI wait", so no relaxing flag is passed to merge_pr.sh. F1 is the open suggestion of the Integrated Review at 610bdd96: no automated test runs the four scripts themselves from a workspace worktree made by hand outside the main checkout's worktrees folder; deferred to a follow-up. The dialog showed: the plan reviewed first; three pre-push rounds with two must-fix, both fixed; the Codex cold read approved with no must-fix; Gemini and Codex in rounds 1 and 2, Copilot not requested; the new suite of 245 checks committed failing first, and the green local full pass; CI with 2 of 5 checks passed and 3 running; about 25 other scripts with the same root line listed in the pull request text with no issue yet. The cold read ran for this pull request, so step 9a has nothing to route.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 14:51 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the owner's merge answer was "Merge when CI is green", with "if CI is not green by about 14:55, nothing merges and it stays parked"; CI is not green, so nothing merges, and address is the one answer the host may give at findings)
+**After**: findings
+**Decision**: address
+
+CI failed on the pushed head 95cc2606: the check "Lint (pre-commit)" failed in both runs, in the script test hook, 1 suite of 57:
+
+    --- run_script_tests: test_worktree_main_root.sh FAILED, exit 1
+    FAIL: git fails: carries git's own line, naming the missing git dir: want [<sandbox>/no-such-gitdir] in [ERROR: test.sh: <sandbox>/...
+
+Every other case of that suite passed there, and the other four checks passed. The same suite passes on this machine (245 passed, 0 failed) and passed in the host's full pre-commit pass, so the case depends on the wording of git's own error line, which differs with the git version on the CI runner. The finding for the fix pass: the case "git fails: carries git's own line" must not depend on one git version's wording. Read the failing job's log for the line git printed there (gh run view 45471664824 --job 138720936298 --log-failed), then assert what holds on every version (the refusal quotes a non-empty line from git; exit 1; nothing on stdout), or make the helper's message carry what the test needs without relying on git's text. Then check the rest of the suite for other assertions on git's wording. The owner's deferred box (the missing end-to-end test of the outside-worktree refusal) stays deferred. After the fix: push, the PR-mode re-review, triage, CI, and the merge question to the owner again; his answer of today does not carry over.
