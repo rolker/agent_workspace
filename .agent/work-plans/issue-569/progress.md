@@ -198,3 +198,16 @@ The revision fixes everything the first review raised, and the adapter and modul
 This answer starts part 1 only: the one row of the tool's roadmap, which the review found stands alone. The seven findings of the second Plan Review are all about parts 2 and 3. They are not dropped: after part 1 merges, the plan checkpoint that follows is answered revise, the plan takes all seven in, and it is reviewed again before part 2 is implemented.
 
 Host decision on the review's open question, for the owner's veto: `ros2_colcon/unused_settings` does not gain `source`, `source_ref` and `source_path` in this issue. The workspace-side roadmap has its own line for removing those keys, and the tool route's validate already names leftover ones; the revised plan says so.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 09:10 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-569 at `30b56f4d`
+
+Part 1 of 3: the tool roadmap row only.
+
+- `tools/repos-manifest/docs/roadmap.md` line 29: the row "The first resolver that reads the new format comes with a note on moving from the prototype's format, command and output layout" is replaced by "The prototype's reader and `docs/prototype.md` are removed". The check cell stays empty (sitrep_checks has no absence check), as the plan says.
+- Nothing else reads the old row's text: a grep across the repo (tests included, work plans aside) for its words found only the roadmap itself.
+- `sitrep_checks.sh --root <worktree>` reads the new row as `subline` of `tools/repos-manifest/docs/roadmap.md`, `unchecked`, check `none`; no `format` row is printed.
+- Suites: `pytest tools/repos-manifest/tests/test_documents.py`: 11 passed. No script under `.agent/scripts/` changed, so no script suite applies. Pre-commit hooks on the commit passed (validate-script-tests skipped per #465). The full pass is left to the host.
