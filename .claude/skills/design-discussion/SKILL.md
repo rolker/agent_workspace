@@ -147,6 +147,10 @@ session.
       missing (exit 1), or a recorded value the lookup refuses (exit 2). Say so, with the
       reason. For goals, offer the goals the project's own design or README names; else
       ask where they are.
+    - nothing, exit 2 with the reason `the registry <file> has errors`: the registry
+      itself is broken, not this setting. Nothing, exit 3: no project is registered under
+      that name. Neither is about the document: show the message, offer to record
+      nothing, and have the registry (from a workspace session) or the name fixed first.
 
     When the user names or confirms a place that is not recorded, offer to record it,
     `"$WS_ROOT/.agent/scripts/project_setting.sh" set <project> '<key>=<value>'` (the

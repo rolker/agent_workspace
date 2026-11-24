@@ -723,6 +723,9 @@ if [[ -f "$DD" ]]; then
         'quoted as one argument in single quotes' \
         'as a write on its own yes' \
         'never as a fault of the project'
+    has "$DD" "design-discussion: a broken registry or an unknown project is not a refused setting" \
+        'nothing, exit 2 with the reason `the registry <file> has errors`' \
+        'Nothing, exit 3: no project is registered under that name'
     if grep -qF 'settled for good by #551' "$DD"; then
         fail "design-discussion still says where a project keeps its documents is unsettled"
     else
@@ -742,6 +745,10 @@ if [[ -f "$BS" ]]; then
         '"$WS_ROOT/.agent/scripts/project_setting.sh" doc <name> design' \
         '"$WS_ROOT/.agent/scripts/project_setting.sh" doc <name> roadmap' \
         'never a path this skill decides'
+    has "$BS" "brainstorm: a broken registry or an unknown project is not read as a missing document" \
+        'Exit 2 with the reason `the registry <file> has errors`' \
+        'and exit 3 (no project registered under `<name>`)' \
+        'read no `ARCHITECTURE.md` in their place'
     if grep -qF '`docs/roadmap.md`, else `ROADMAP.md`' "$BS"; then
         fail "brainstorm still decides a project's roadmap as docs/roadmap.md, else ROADMAP.md"
     else

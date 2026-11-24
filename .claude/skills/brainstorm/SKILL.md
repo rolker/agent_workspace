@@ -96,6 +96,10 @@ only when the topic is about a project):
   stderr, when there is nothing to read: list that document as absent with
   the reason. When `design` gives nothing and `get <name> design` stores
   nothing, an `ARCHITECTURE.md` the project has is read as its design.
+  Exit 2 with the reason `the registry <file> has errors` (the registry is
+  broken, not a setting) and exit 3 (no project registered under `<name>`)
+  are not about the documents: list all three as unknown with the message,
+  and read no `ARCHITECTURE.md` in their place.
 
 **A part** (ADR-0022): when the topic is about a part of the workspace or a
 project, also read the part's own `design.md`: the `design.md` in the same
