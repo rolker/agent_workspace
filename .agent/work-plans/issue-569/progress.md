@@ -595,3 +595,24 @@ Asked at the publish checkpoint for part 2 (the cut of the adapter's manifest ro
 - `test_review_viewer.sh`, 1 of 90 tests: `test_unsearchable_notes_folder_exits_1_one_line` fails with "AssertionError: 2 != 1 : review_viewer: cannot open a window (couldn't connect to display \":0\")".
 
 The host told him it fails the same way on main, that this branch does not touch the review viewer, that the session has no local display (DISPLAY is an ssh-forwarded `localhost:11.0`), and that CI passed this suite on pull request 571. The host did not answer address itself, because the fix would be to an unrelated test. His answer: push part 2, let CI be the check on it, and open a separate issue for the review-viewer test. The other choices offered were to fix it in this branch, to publish with no issue, and to stop.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 11:13 -05:00
+**By**: claude-code (claude-opus-5-5)
+**Reviews-read**: 6042973987
+
+**PR**: #597 at `860476c`
+**Sources**: 3 (Local Review (Pre-Push) round 4 @ `860476c` via the timeline, no open findings; Copilot @ `860476c`, review 6042973987, which says it "was unable to review this pull request because the user who requested the review has insufficient remaining quota", so it holds no findings; CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+
+None. `review_progress.sh sources` at `860476c` returned no open local findings and no dropped entries; no inline or conversation comments on the pull request.
+
+### False positives
+
+None.
+
+CI after waiting about 3 minutes: Validate Adapter Contract and Validate Documentation passed (both runs); Lint (pre-commit) and repos-manifest tests (Python 3.10, 3.14) were still pending in both runs. No failures seen. The copilot-pull-request-reviewer check-run belongs to the could-not-review notice, not to the change.
