@@ -427,7 +427,7 @@ Run: test_ros2_colcon.sh 1154 passed 0 failed 0 skipped; test_register_project.s
 - [x] (suggestion) The refusal's way on does not fit two old `source` setups: `repos-manifest init` takes a local path only, so a URL `source` needs "clone at `source_ref`, pass the file at `source_path`"; a manifest with no `distros:` cannot use `--distro-dirs` and the adapter refuses the flat layout — say so in the message (Codex) — `.agent/project_types/ros2_colcon/adapter.sh:628`
 - [x] (suggestion) "Some of what the adapter gives today is not in the tool's design yet" is stale: the lock, fetch limits and kept directory are now what the removed route gave — `docs/manifest/design.md:331`
 - [x] (suggestion) `test_tool_route_order` runs only env and validate with `source` set on a tool root; add a `setup` (and `sync`) call before the settings file is replaced — `.agent/scripts/tests/test_ros2_colcon.sh:2718`
-- [ ] (suggestion) No test that `register_project.sh <new path> ros2_colcon --set source=...` (the formerly documented way) is refused at setup with the new message and rolled back — `.agent/scripts/tests/test_register_project.sh`
+- [x] (suggestion) No test that `register_project.sh <new path> ros2_colcon --set source=...` (the formerly documented way) is refused at setup with the new message and rolled back — `.agent/scripts/tests/test_register_project.sh`
 
 ## Checkpoint
 **Status**: complete

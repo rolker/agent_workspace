@@ -689,6 +689,17 @@ check "the refusal says why and names the manifest tool's init" \
 check "no registry line, no settings file" \
     bash -c '! grep -q "^upsilon " "$1" && [ ! -e "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" upsilon)"
 
+echo "TEST: --set source=... with the type ros2_colcon on a new path: setup refuses it (the route source selected is removed), and the registration is rolled back (issue 569)"
+SRC_DIR="$SANDBOX/colcon/phi"
+out="$(reg "$WS" "$SRC_DIR" ros2_colcon --set "source=$SANDBOX/no/manifest.yaml")"; rc=$?
+check "setup ran and was refused: exit 1, STATUS=refused" [ "$rc" -eq 1 -a "$(status_of "$out")" = refused ]
+check "setup's refusal names the removed route, the manifest tool's init and the unset" \
+    bash -c '[[ "$1" == *"== adapter --project phi setup"* && "$1" == *"source no longer selects a route"* && "$1" == *"init <manifest> --distro-dirs --distro <distro>"* && "$1" == *"project_setting.sh unset phi source source_ref source_path"* ]]' _ "$out"
+check "no registry line, no settings file" \
+    bash -c '! grep -q "^phi " "$1" && [ ! -e "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" phi)"
+check "no directory left, and none named on KEPT=" \
+    bash -c '[ ! -e "$1" ] && [[ "$2" != *KEPT=* ]]' _ "$SRC_DIR" "$out"
+
 # The tool route's registration test below ("a root the manifest tool set
 # up") runs THIS checkout's tools/repos-manifest/src, by the first python
 # that imports it and yaml (the main checkout's venv, else python3); with
