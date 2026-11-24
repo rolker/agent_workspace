@@ -29,6 +29,12 @@
 #     or always): the helper refuses for a linked worktree's copy (and for
 #     the main checkout's when it cannot tell), and each of the four scripts
 #     as that copy refuses and acts on nothing, as above
+#   - GIT_DIR exported (in each run's subshell only) to the main checkout's
+#     git dir or an unrelated repository's: the helper still prints the main
+#     checkout and leaves the caller's GIT_DIR as it was; the four scripts
+#     as a linked worktree's copy make, find, list and remove in the main
+#     checkout's repository only, the unrelated one is unchanged, and the
+#     worktree nested under the copy's own survives remove, plain and --force
 # Everything runs in one sandbox (mktemp) with the real scripts copied in
 # and committed, HOME set inside it, gh and git-bug stubbed to fail.
 # Run: bash .agent/scripts/tests/test_worktree_main_root.sh
@@ -119,6 +125,17 @@ make_project() {
     gitq -C "$1" remote add origin "file:///nonexistent/$(basename "$1").git"
 }
 
+# In a run's own subshell only: export GIT_DIR=$TEST_GIT_DIR when that is
+# set (a plain variable of this shell, never exported here), and only to a
+# git dir inside the sandbox.
+use_test_git_dir() {
+    [ -n "${TEST_GIT_DIR:-}" ] || return 0
+    case "$TEST_GIT_DIR" in
+        "$SANDBOX"/*) export GIT_DIR="$TEST_GIT_DIR" ;;
+        *) echo "FATAL: TEST_GIT_DIR is outside the sandbox: $TEST_GIT_DIR" >&2; return 1 ;;
+    esac
+}
+
 # Runs <script> with args, cwd <cwd>, the stubs first on PATH; sets
 # OUT (stdout), ERR (stderr), RC.
 run_script() {  # <cwd> <script> <args...>
@@ -126,7 +143,7 @@ run_script() {  # <cwd> <script> <args...>
     shift 2
     ef="$SANDBOX/stderr.$$"
     RC=0
-    OUT="$(cd "$cwd" && PATH="${SHIM_PATH:+$SHIM_PATH:}$WS/stubbin:$PATH" "$script" "$@" 2>"$ef")" || RC=$?
+    OUT="$(cd "$cwd" && use_test_git_dir && PATH="${SHIM_PATH:+$SHIM_PATH:}$WS/stubbin:$PATH" "$script" "$@" 2>"$ef")" || RC=$?
     ERR="$(cat "$ef")"
 }
 
@@ -135,7 +152,7 @@ run_script() {  # <cwd> <script> <args...>
 run_helper() {  # <cwd> <scripts_dir>
     local ef="$SANDBOX/stderr.$$"
     RC=0
-    OUT="$(cd "$1" && PATH="${SHIM_PATH:+$SHIM_PATH:}$PATH" bash -c 'source "$1/_worktree_helpers.sh" && wt_main_root "$1" test.sh' _ "$2" 2>"$ef")" || RC=$?
+    OUT="$(cd "$1" && use_test_git_dir && PATH="${SHIM_PATH:+$SHIM_PATH:}$PATH" bash -c 'source "$1/_worktree_helpers.sh" && wt_main_root "$1" test.sh' _ "$2" 2>"$ef")" || RC=$?
     ERR="$(cat "$ef")"
 }
 
@@ -474,6 +491,73 @@ refusal_case "shim all (git dirs unknown)" "$W7" "$WS" "$W7N8" 8 feature/shim-8
 unset SHIM_PATH
 
 check "after the shim cases: the worktree the copy runs from is intact" git_lists "$WS" "$W7"
+
+# ============================================== an exported GIT_DIR ===
+# GIT_DIR in the caller's environment makes `git -C <dir>` answer for the
+# repository it names, not for <dir>. Exported (in each run's subshell
+# only) to the main checkout's git dir and to an unrelated repository's,
+# the copy in a linked worktree still takes the main checkout as its root,
+# the caller's GIT_DIR is left as it was, and the scripts' own git calls
+# act on the root's repository: nothing is made, listed or removed in the
+# unrelated repository, and the worktree nested under the copy's own
+# (where the defect would act) survives remove, plain and --force.
+echo "TEST: an exported GIT_DIR: the copy in a linked worktree still acts on the main checkout, and on nothing else"
+
+UNREL="$SANDBOX/unrelated"
+make_project "$UNREL"
+gitq -C "$UNREL" branch unrelated-side
+unrel_state() { git -C "$UNREL" for-each-ref --format='%(refname)' | sort; git -C "$UNREL" worktree list --porcelain; }
+UNREL_BEFORE="$(unrel_state)"
+W12="$WS/worktrees/workspace/issue-workspace-12"
+
+for TEST_GIT_DIR in "$WS/.git" "$UNREL/.git"; do
+    gd_label="GIT_DIR=$( [ "$TEST_GIT_DIR" = "$WS/.git" ] && echo "the main checkout's" || echo "an unrelated repository's")"
+    if [ ! -d "$TEST_GIT_DIR" ]; then
+        echo "FATAL: $TEST_GIT_DIR is not a git dir"
+        exit 1
+    fi
+
+    run_helper "$W7" "$W7/.agent/scripts"
+    check_eq "$gd_label, helper from the linked worktree's copy: prints the main checkout" "$WS" "$OUT"
+    check_eq "$gd_label, helper: exit 0, stderr empty" "0:" "$RC:$ERR"
+    got="$(cd "$W7" && use_test_git_dir && bash -c 'source "$1/_worktree_helpers.sh" && wt_main_root "$1" test.sh >/dev/null && printf "%s" "${GIT_DIR-unset}"' _ "$W7/.agent/scripts" 2>/dev/null)"
+    check_eq "$gd_label, helper: the caller's GIT_DIR is unchanged after it returns" "$TEST_GIT_DIR" "$got"
+
+    run_script "$W7" "$W7/.agent/scripts/worktree_create.sh" --issue 12 --type workspace --allow-unverified-branch
+    check_eq "$gd_label, create from the copy: exit 0 ($(tail -n2 <<<"$ERR"))" 0 "$RC"
+    check "$gd_label, create: the worktree is under the main checkout" test -d "$W12/.agent/scripts"
+    check "$gd_label, create: git lists it in the main checkout's repository" git_lists "$WS" "$W12"
+    check "$gd_label, create: nothing nested under the copy's worktree" bash -c '! compgen -G "$1/worktrees/workspace/*-12" >/dev/null' _ "$W7"
+
+    run_script "$W7" "$W7/.agent/scripts/worktree_enter.sh" --issue 12 --type workspace --print-path
+    check_eq "$gd_label, enter --print-path from the copy: the main checkout's worktree" "$W12" "$OUT"
+
+    run_script "$W7" "$W7/.agent/scripts/worktree_list.sh" --json
+    check_eq "$gd_label, list --json from the copy: exit 0" 0 "$RC"
+    check_has "$gd_label, list: holds the main checkout's worktree" "$W12" "$OUT"
+    check "$gd_label, list: names nothing of the unrelated repository" bash -c '[[ "$1" != *"$2"* ]]' _ "$OUT" "$UNREL"
+
+    run_script "$W7" "$W7/.agent/scripts/worktree_remove.sh" --issue 8 --type workspace
+    check "$gd_label, remove of the nested path's issue: not acted on (exit $RC)" test "$RC" -ne 0
+    check "$gd_label, remove: the nested worktree is still there" test -d "$W7N8/.agent/scripts"
+    check "$gd_label, remove: its branch is still there" has_branch "$WS" feature/shim-8
+    check "$gd_label, remove: git still lists it" git_lists "$WS" "$W7N8"
+    run_script "$W7" "$W7/.agent/scripts/worktree_remove.sh" --issue 8 --type workspace --force
+    check "$gd_label, remove --force of the nested path's issue: not acted on (exit $RC)" test "$RC" -ne 0
+    check "$gd_label, remove --force: the nested worktree is still there" test -d "$W7N8/.agent/scripts"
+    check "$gd_label, remove --force: its branch is still there" has_branch "$WS" feature/shim-8
+    check "$gd_label, remove --force: git still lists it" git_lists "$WS" "$W7N8"
+
+    run_script "$W7" "$W7/.agent/scripts/worktree_remove.sh" --issue 12 --type workspace
+    check_eq "$gd_label, remove the main checkout's worktree from the copy: exit 0 ($(tail -n2 <<<"$OUT$ERR"))" 0 "$RC"
+    check "$gd_label, remove: that worktree is gone" test ! -e "$W12"
+    check "$gd_label, remove: git no longer lists it" bash -c '! git -C "$1" worktree list --porcelain | grep -qxF "worktree $2"' _ "$WS" "$W12"
+    check_eq "$gd_label: the unrelated repository's branches and worktrees are unchanged" "$UNREL_BEFORE" "$(unrel_state)"
+    # Clean up after a failed case, so the next GIT_DIR starts afresh.
+    if [ -d "$W12" ]; then gitq -C "$WS" worktree remove --force "$W12"; fi
+    gitq -C "$WS" branch -D feature/issue-12
+done
+unset TEST_GIT_DIR
 
 # A project worktree is untouched by every refusal above.
 check "a project worktree is untouched by the refusals" test -f "$PWT/README.md"

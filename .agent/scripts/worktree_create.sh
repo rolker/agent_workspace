@@ -42,6 +42,13 @@ source "$SCRIPT_DIR/_worktree_helpers.sh"
 source "$SCRIPT_DIR/_issue_helpers.sh"
 source "$SCRIPT_DIR/_project_registry.sh"
 
+# A repository named by GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE or
+# GIT_COMMON_DIR in the caller's environment would make every `git -C <dir>`
+# below answer for that repository instead of <dir>, so worktrees would be
+# made, listed or removed in it (issue 585). This script runs as a process
+# of its own, so they are dropped for it alone.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
+
 # The workspace's main checkout, found from this script's location (also
 # when this is the copy inside a linked worktree); a refusal stops here,
 # before any git or gh call (issue 585).

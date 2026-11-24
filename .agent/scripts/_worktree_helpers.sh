@@ -62,7 +62,15 @@ is_allowed_skill() {
 #     (not a workspace checkout).
 # The caller stops on a refusal before any git write, cd or delete; there
 # is no fallback to the copy's own checkout and no override.
+# Every git call here, the registry_main_checkout* ones included, runs with
+# GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE and GIT_COMMON_DIR unset (_wt_git,
+# and a subshell for the registry calls), since any of them exported would
+# make `git -C <dir>` answer for another repository; the caller's own
+# environment is left as it was.
 # Usage: ROOT_DIR="$(wt_main_root "$SCRIPT_DIR" worktree_list.sh)" || exit 1
+_wt_git() {
+    env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_COMMON_DIR git "$@"
+}
 wt_main_root() {
     local script_dir="$1" name="${2:-worktree script}" own top err main gitdir common
     # The logical grandparent of the scripts directory, then made physical:
@@ -72,8 +80,8 @@ wt_main_root() {
         echo "ERROR: $name: cannot find the workspace checkout above $script_dir; run the copy in the workspace's main checkout." >&2
         return 1
     }
-    if ! top="$(git -C "$own" rev-parse --show-toplevel 2>/dev/null)"; then
-        err="$(git -C "$own" rev-parse --show-toplevel 2>&1 >/dev/null | head -n1)"
+    if ! top="$(_wt_git -C "$own" rev-parse --show-toplevel 2>/dev/null)"; then
+        err="$(_wt_git -C "$own" rev-parse --show-toplevel 2>&1 >/dev/null | head -n1)"
         echo "ERROR: $name: $own is not a git checkout (git: ${err:-no message}), so it has no workspace root; run the copy in the workspace's main checkout." >&2
         return 1
     fi
@@ -82,11 +90,11 @@ wt_main_root() {
         echo "ERROR: $name: $own is not the top level of a git checkout (it is inside ${top:-another checkout}), so it is not a workspace checkout; run the copy in the workspace's main checkout." >&2
         return 1
     fi
-    if registry_main_checkout_fallback "$own"; then
+    if (unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR; registry_main_checkout_fallback "$own"); then
         echo "ERROR: $name: $own is a linked worktree whose main checkout git does not name (git worktree list does not start with a checkout), so the workspace root is unknown; run the copy in the workspace's main checkout." >&2
         return 1
     fi
-    main="$(registry_main_checkout "$own")"
+    main="$(unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR; registry_main_checkout "$own")"
     main="$(cd "$main" 2>/dev/null && pwd -P)" || main=""
     # registry_main_checkout answers with the folder itself both for a main
     # checkout and when a git call inside it failed (git older than 2.31
@@ -96,9 +104,9 @@ wt_main_root() {
     # resolved from <own>, so an older git still confirms a main checkout.
     # Could not tell is a refusal, never a yes.
     if [ -n "$main" ] && [ "$main" = "$own" ]; then
-        if ! gitdir="$(git -C "$own" rev-parse --git-dir 2>/dev/null)" \
-           || ! common="$(git -C "$own" rev-parse --git-common-dir 2>/dev/null)"; then
-            err="$( { git -C "$own" rev-parse --git-dir >/dev/null && git -C "$own" rev-parse --git-common-dir >/dev/null; } 2>&1 | head -n1)"
+        if ! gitdir="$(_wt_git -C "$own" rev-parse --git-dir 2>/dev/null)" \
+           || ! common="$(_wt_git -C "$own" rev-parse --git-common-dir 2>/dev/null)"; then
+            err="$( { _wt_git -C "$own" rev-parse --git-dir >/dev/null && _wt_git -C "$own" rev-parse --git-common-dir >/dev/null; } 2>&1 | head -n1)"
             echo "ERROR: $name: cannot confirm that $own is the main checkout of its repository (git: ${err:-no message}), so the workspace root is unknown; run the copy in the workspace's main checkout." >&2
             return 1
         fi
