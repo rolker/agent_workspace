@@ -355,3 +355,13 @@ Run this round: shellcheck --severity=warning on the four changed scripts: clean
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 14:34 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 of the pre-push review approved with nothing open, Ship: recommended; the host's full pre-commit pass over the changed files passed, every hook, no SKIP, on the code at a4c3cea7, run beside the round 3 review, which added a record commit only)
+**After**: publish
+**Decision**: publish
+
+Three pre-push rounds: round 1 found 1 must-fix (a failed git call read as "is the main checkout") and 4 suggestions; round 2 found 1 must-fix (an exported GIT_DIR); round 3 (a convergence check, no cross-model reviewers) found both closed and nothing new. Gemini and Codex ran in rounds 1 and 2. Main was merged in twice (pull requests 603 and 604), with no conflict.
