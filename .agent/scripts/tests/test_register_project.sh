@@ -778,6 +778,20 @@ check "the init it runs, in the root, with --distro-dirs and --yes" \
 check "nothing written, no directory, no tool run" bash -c 'nothing_written() { ! grep -q "^one " "$1" 2>/dev/null && [ ! -e "$2" ] && [ ! -e "$3" ]; }; nothing_written "$1" "$2" "$3" && [ ! -s "$4" ]' \
     _ "$WSM/.agent/projects.local" "$(pfile "$WSM" one)" "$MR1" "$MLOG"
 
+echo "TEST: --manifest: a relative name that starts with '-' (./-m.yaml, -m.yaml), and one read with CDPATH exported, give the file's own absolute path"
+cp "$MD/m.yaml" "$MD/-m.yaml"
+mkdir -p "$MD/sub" "$SANDBOX/cdpath/sub"
+cp "$MD/m.yaml" "$MD/sub/m.yaml"
+for _case in "./-m.yaml|" "-m.yaml|" "sub/m.yaml|$SANDBOX/cdpath"; do
+    _rel="${_case%%|*}"; _cdp="${_case#*|}"
+    out="$(cd "$MD" && : > "$MLOG" && CDPATH="$_cdp" HOME="$HOMEDIR" PATH="$STUB_BIN:$PATH" "$WSM/.agent/scripts/register_project.sh" "$MR1" \
+        --manifest "$_rel" --distro fakefox --dry-run 2>&1)"; rc=$?
+    check "'$_rel'${_cdp:+ with CDPATH=$_cdp exported}: exit 0, the manifest named by its own absolute path, nothing run" \
+        bash -c '[ "$1" -eq 0 ] && [[ "$2" == *"would run: adapter --project one setup --manifest $3 --distro fakefox ("* && "$2" == *"init $3 --distro-dirs"* ]] && [ ! -s "$4" ] && [ ! -e "$5" ]' \
+        _ "$rc" "$out" "$MD/${_rel#./}" "$MLOG" "$MR1"
+done
+rm -rf "$MD/-m.yaml" "$MD/sub" "$SANDBOX/cdpath"
+
 echo "TEST: --manifest: each refusal comes before anything is written, a dry run too"
 mkdir -p "$SANDBOX/mroots/setup/.repos-manifest" "$SANDBOX/mroots/full" "$SANDBOX/mroots/afile"
 echo notes > "$SANDBOX/mroots/full/README"

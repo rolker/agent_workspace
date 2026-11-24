@@ -1338,8 +1338,11 @@ _rc_setup_from_manifest() {
     fi
     # The tool records the location as given and reads a relative one from
     # where it runs (the root), so an existing file is passed absolute.
+    # Anchored first, and -- before each path, so a name that starts with
+    # '-' is not read as an option; no CDPATH for this cd.
     if [ -f "$manifest" ] && [[ "$manifest" != /* ]]; then
-        manifest="$(cd "$(dirname "$manifest")" && pwd -P)/$(basename "$manifest")"
+        manifest="$PWD/$manifest"
+        manifest="$(CDPATH='' cd -- "$(dirname -- "$manifest")" && pwd -P)/$(basename -- "$manifest")"
     fi
     # The directories made here, the shallowest first.
     d="$root"

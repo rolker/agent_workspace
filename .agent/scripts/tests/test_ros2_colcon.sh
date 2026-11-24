@@ -4087,6 +4087,20 @@ test_setup_from_manifest() {
     rc=0; out="$(run_fresh setup --manifest "$sb/m/m.yaml" --distro fakefox 2>&1)" || rc=$?
     assert_eq "init succeeds: exit 0, the root set up" "0 true" "$rc $([ -d "$root/.repos-manifest" ] && echo true || echo false)"
     assert_eq "nothing fetched by the adapter: curl not run" "false" "$([ -e "$sb/curl.log" ] && echo true || echo false)"
+    rm -rf "$root"; rm -f "$sb/tool.log"
+    # A relative manifest whose name starts with '-', and one read with
+    # CDPATH exported: passed by the file's own absolute path.
+    cp "$sb/m/m.yaml" "$sb/m/-m.yaml"
+    mkdir -p "$sb/m/sub" "$sb/cdpath/sub"
+    cp "$sb/m/m.yaml" "$sb/m/sub/m.yaml"
+    local c rel cdp
+    for c in "./-m.yaml|" "-m.yaml|" "sub/m.yaml|$sb/cdpath"; do
+        rel="${c%%|*}"; cdp="${c#*|}"
+        rc=0; out="$(cd "$sb/m" && CDPATH="$cdp" STUB_INIT=early PATH="$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --from "$sb" --project fresh setup --manifest "$rel" --distro fakefox 2>&1)" || rc=$?
+        assert_eq "'$rel'${cdp:+ with CDPATH exported}: init given the manifest by its own absolute path" \
+            "TOOL_RAN_IN:$root ARGS:init $sb/m/${rel#./} --distro-dirs --distro fakefox --yes" "$(cat "$sb/tool.log" 2>/dev/null)"
+        rm -rf "$root"; rm -f "$sb/tool.log"
+    done
 }
 
 # Issue 599, finding 1: setup and sync decide the route once. _rc_route is
