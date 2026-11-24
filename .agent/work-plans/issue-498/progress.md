@@ -1295,3 +1295,11 @@ The owner chose "Merge (Recommended)" in a dialog (2026-11-18) for pull request 
 Pull requests 506 (part 1) and 511 (part 2a: `base` read from local paths) are merged; the issue is still open because parts 2b and 3 remain. Since the plan was written, issue 569 has changed what is left: its parts 1 and 2 (pull requests 571 and 597, merged 2026-11-24) removed the roadmap line about moving from the prototype's format and cut the `ros2_colcon` adapter's manifest route, and its part 3 (pull request 603, open, in its last review step) removes the earlier format's reader from the tool. So this plan's part 3 ("the adapter reads the new format, the old reader goes") is done elsewhere or no longer applies, and the issue's section "The existing user" has no user left (owner, 2026-11-24: "pickerel has nothing on the old format"). The adapter calling the tool is issue 503's.
 
 The plan is revised to what remains: part 2b, the manifest and its `base` read from a URL and from a file in a git repo, which also closes the gap pull request 597 states (a manifest in a git repo needs a clone kept by hand until the tool reads it from git); and whatever of the issue's own list is still not built, checked against the code. The owner chose this issue as the next one driven after 569 (2026-11-24).
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-24 14:10 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-498/plan.md` at `f491982f`
+
+Revision after #569: planned against the tool as it will be after #603 (implementation starts after it merges). Remaining work is the http(s) and git-file locations for the manifest and for base. Parts: 2b-1 (a manifest in a git repo, for init and sync, with status and show; closes the gap #597 states; Part of #498), 2b-2 (resolve, validate, show take the git form; base as a git mapping; relative parents; Part of #498), 2b-3 (http and https; Closes #498). Eight open questions with recommendations.
