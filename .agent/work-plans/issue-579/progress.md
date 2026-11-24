@@ -117,3 +117,20 @@ The plan reads the file correctly, keeps to the scope the checkpoint set, and le
 - [ ] (suggestion) Use `<issue>`, not `<N>`, for the issue number inside the PR block
 - [ ] (suggestion) Fetch `pull/<pr>/head` (works for forks) in step 1 and the Step 5 note, or state forks unsupported
 - [ ] (suggestion) Usage line 44: "read the plan file at a PR's head commit"
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:17 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review's verdict is ready; its one must-fix is a sentence the reviewer says the implementer can add without a new plan, and its suggestions are wording)
+**After**: plan
+**Decision**: proceed
+
+Implement the plan at fbbd8387 with these instructions, which answer the Plan Review's findings and bind the implementer (host decisions, listed for the owner's veto):
+- Finding 1 (must-fix): the new step 1 says what to do when the pull request changes no plan file or more than one. None: find the plan as the --issue form does, for the issue the pull request closes; if none is found, stop and say so. Two or more: take the one whose issue number matches the Closes line, else stop. Never treat the body or a comment as the plan.
+- Finding 2: the host's earlier reason for dropping "never reads PR comments" was wrong in fact: a plan can be posted as a pull request comment (worktree_create.sh --plan-file does it). The drop stands on the other reason: reviews are on the progress timeline, and a comment is as much a snapshot as the body. The pull request description gives that reason.
+- Finding 3: the plan path is written ./.agent/work-plans/issue-<issue>/plan.md, as the Step 5 note does.
+- Finding 4: in this block <N> is the pull request number; the issue number is written <issue>.
+- Finding 5: fetch with git fetch origin "pull/<pr>/head", which also works for a fork or a deleted branch, and change the Step 5 fetch the same way so the two agree.
+- Finding 6: the usage line (around line 44) says "read the plan file at a PR's head commit".
+- No -R is added here: naming the repository on the gh calls is issue 581's.
