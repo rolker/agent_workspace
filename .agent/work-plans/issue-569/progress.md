@@ -863,3 +863,21 @@ All four suggestions of part 3's round-1 review are fixed before the push: tests
 ### Checks
 - pytest (worktree src on PYTHONPATH, main .venv): `tests/test_cli.py tests/test_init_refusals.py tests/test_base_reading.py tests/test_documents.py` — 150 passed in 3.76s
 - flake8 clean on the changed files; black ran in the commit hooks. Full pre-commit pass and the whole tool suite left to the host / CI.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 12:59 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-569 at `dcf2eb42`
+**Base**: origin/main
+**Depth**: Deep (reason: whole-branch classification, 37 files, +554 -4756; fix-round re-review of round 1's four suggestions)
+**Must-fix**: 0 | **Suggestions**: 2
+**Round**: 2 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Part 3 of 3, round 2: the fixes 0ef6f8f5, 745899c9, 1aef015d, 707033b7 for round 1's four suggestions. All four hold as fixed. Checked against the code: the `sync`/`status` test overwrites the very manifest `init` recorded (`make_system` writes `sys.manifest.yaml`, `config.yaml` names `../sys.manifest.yaml`), compares the exact refusal line, and `snapshot(tmp_path)` covers the whole tree (remotes, system, manifest); the `init` test's `refused()` snapshots the whole parent directory and the exact stderr is compared; the parametrized cases' expected `named` strings follow the tuple's order as `manifest.py:412-416` writes them; the rewritten comment matches `Manifest.part` (refused when `repositories:` is missing and any `_EARLIER_FORMAT_KEYS` key is there; the `base:` case passes with `base.yaml` absent, so the base is not read). The new description and docstring are true: nothing outside `tools/repos-manifest/` imports the package's modules (the three `.agent/scripts/tests/*.sh` callers run `python -m repos_manifest.cli` or check `repos_manifest.__file__`). Tests: `test_cli.py`, `test_base_reading.py`, `test_init_refusals.py` 139 passed (worktree `src` on `PYTHONPATH`, main checkout's `.venv`). flake8 (max-line-length 100, E203/W503 ignored) clean on the changed files. A mutation run (refusal switched off in a scratch copy) was denied by the permission system and not run. Outside reviewers: Codex completed, two points: the degenerate `layers:`/`roles:`-only file (dropped again, as in round 1) and the README sentence below (kept); Gemini failed (headless run auto-denied a tool call). Claude adversarial subagent: no must-fix; the `packages:` point below kept; a point that "for ROS 2 projects" narrows the description dropped (the tool is built for them; the text is not false).
+
+### Findings
+- [ ] (suggestion) `packages:` is tested only through `_EARLIER_FORMAT_KEYS` imported from the code under test, so removing it from the tuple fails no test; add one literal `packages:` case or assert the tuple's four keys — `tools/repos-manifest/tests/test_cli.py:77`
+- [ ] (suggestion) "Every command reads a manifest" is not true of `build`, which reads the saved resolution (`cmd_build` calls `run_build` only); say "every command that reads a manifest" — `tools/repos-manifest/README.md:214`
