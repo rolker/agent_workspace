@@ -8,6 +8,9 @@ nothing waits for a person, whoever runs them."""
 from __future__ import annotations
 
 import os
+import signal
+import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -289,6 +292,45 @@ def test_with_no_terminal_a_server_that_hangs_is_given_up_on_at_the_limit(
     # git and the helper it started for http (git-remote-http) were ended, the whole group.
     assert processes_naming(url) == []
     assert list(no_terminal.iterdir()) == []
+
+
+def test_a_stop_signal_during_the_read_ends_git_and_leaves_no_temporary(tmp_path, silent):
+    """The tool, run with no terminal (a session of its own), stopped by SIGTERM while git
+    waits on a server that never answers: it ends by the signal, git's helper is gone, and its
+    temporary directory is removed."""
+    temporary = tmp_path / "tool-tmp"
+    temporary.mkdir()
+    system = tmp_path / "system"
+    system.mkdir()
+    url = f"{silent.url}/sys.git"
+    source = Path(fetch.__file__).parents[1]
+    env = {**os.environ, "TMPDIR": str(temporary), "PYTHONPATH": str(source)}
+    tool = subprocess.Popen(
+        [sys.executable, "-c", "from repos_manifest.cli import run; run()"]
+        + ["init", url, "--manifest-path", "m.yaml", "--yes"],
+        cwd=system,
+        env=env,
+        start_new_session=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        deadline = time.monotonic() + 30
+        while not processes_naming(url) or not list(temporary.iterdir()):
+            assert time.monotonic() < deadline, "git never started"
+            assert tool.poll() is None, tool.communicate()
+            time.sleep(0.05)
+        time.sleep(0.2)
+        tool.send_signal(signal.SIGTERM)
+        _, err = tool.communicate(timeout=30)
+    finally:
+        if tool.poll() is None:
+            tool.kill()
+    assert tool.returncode == -signal.SIGTERM, err
+    assert b"stopped by SIGTERM; nothing was created" in err
+    assert processes_naming(url) == []
+    assert list(temporary.iterdir()) == []
+    assert list(system.iterdir()) == []
 
 
 def test_a_private_repo_over_ssh_is_read_with_the_persons_ssh(tmp_path, monkeypatch):

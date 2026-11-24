@@ -29,7 +29,7 @@ from .base import load_manifest, parse_git_manifest
 from .fetch import read_git_file
 from .fetch_from import FetchFrom, check_prefix
 from .gitenv import Env
-from .location import GitLocation, Location
+from .location import GitLocation, Location, check_git_location
 from .manifest import UNNAMED_LAYER, Manifest
 from .yamlload import ManifestError, Refusal  # noqa: F401  (Refusal: imported from here too)
 
@@ -105,7 +105,9 @@ def default_mode(full: int) -> int:
 
 @dataclass
 class Config:
-    manifest: str  # as given to init; a relative path is taken from the system directory
+    # As given to init: a path, taken from the system directory when relative, or a file in a
+    # git repo.
+    manifest: Location
     role: Optional[str]
     groups: List[str]
     layout: str
@@ -118,7 +120,13 @@ class Config:
 
 
 def config_text(config: Config) -> str:
-    data: Dict[str, object] = {"manifest": config.manifest}
+    manifest: object = config.manifest
+    if isinstance(config.manifest, GitLocation):
+        manifest = {"url": config.manifest.url}
+        if config.manifest.version is not None:
+            manifest["version"] = config.manifest.version
+        manifest["path"] = config.manifest.path
+    data: Dict[str, object] = {"manifest": manifest}
     if config.role is not None:
         data["role"] = config.role
     if config.groups:
@@ -170,7 +178,10 @@ def is_url(location: str, base: Path) -> bool:
     return "://" in location and not os.path.lexists(base / location)
 
 
-ONLY_A_PATH = "a path; this version reads a manifest given as a path only"
+ONLY_A_PATH = (
+    "a path or a file in a git repo (a mapping with `url`, an optional `version` and `path`);"
+    " this version reads a manifest given in one of those two forms"
+)
 
 
 def read_config(system: Path) -> Config:
@@ -194,9 +205,11 @@ def read_config(system: Path) -> Config:
         raise bad("does not read as YAML") from None
     _check_keys(data, "", ("manifest", "layout"), ("role", "groups", "distros", "fetch_from"), bad)
     manifest = data["manifest"]
-    if not isinstance(manifest, str):
+    if isinstance(manifest, dict):
+        manifest = _read_git_manifest(manifest, bad)
+    elif not isinstance(manifest, str):
         raise bad(f"`manifest` is {_kind(manifest)}, not {ONLY_A_PATH}")
-    if is_url(manifest, system):
+    elif is_url(manifest, system):
         raise bad(f"`manifest` is a URL, not {ONLY_A_PATH}")
     role = data.get("role")
     if "role" in data and not isinstance(role, str):
@@ -233,6 +246,22 @@ def read_config(system: Path) -> Config:
         distros=list(distros) if distros is not None else None,
         fetch_from=_read_fetch_from(data, bad),
     )
+
+
+def _read_git_manifest(value: dict, bad) -> GitLocation:
+    """`manifest` in the git form: `url`, an optional `version` and `path`, each checked by the
+    rules a location's are (``location.check_git_location``)."""
+    _check_keys(value, "manifest", ("url", "path"), ("version",), bad)
+    try:
+        return check_git_location(
+            value["url"],
+            value.get("version"),
+            value["path"],
+            "`manifest`",
+            ("url", "version", "path"),
+        )
+    except ManifestError as exc:
+        raise bad(str(exc)) from None
 
 
 def _read_fetch_from(data: dict, bad) -> Optional[FetchFrom]:

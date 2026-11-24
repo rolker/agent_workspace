@@ -157,6 +157,8 @@ def cmd_init(args: argparse.Namespace) -> int:
         args.distro_dirs,
         args.yes,
         args.fetch_from,
+        args.manifest_ref,
+        args.manifest_path,
     )
 
 
@@ -243,7 +245,22 @@ def build_parser() -> argparse.ArgumentParser:
         "init",
         help="Set up a system directory here from a manifest, then clone its repos",
     )
-    init_p.add_argument("manifest", help="Path to the manifest file")
+    init_p.add_argument(
+        "manifest",
+        help=("Path to the manifest file; with --manifest-path, the url of the git repo it is in"),
+    )
+    init_p.add_argument(
+        "--manifest-ref",
+        action=_Once,
+        metavar="REF",
+        help="The branch or tag of the manifest's repo to read (default: its default branch)",
+    )
+    init_p.add_argument(
+        "--manifest-path",
+        action=_Once,
+        metavar="PATH",
+        help="The path of the manifest file in its git repo; the manifest is then the repo's url",
+    )
     init_p.add_argument("--role", help="The role of this machine, when the manifest has roles")
     _add_with(init_p)
     init_p.add_argument(

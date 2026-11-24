@@ -15,9 +15,10 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
-from typing import Callable, List, Optional, Sequence
+from typing import Callable, List, Optional, Sequence, Tuple
 
 from .fetch_from import FetchFrom, FetchFromError, check_prefix
+from .location import GitLocation, Location, check_git_location, is_path
 from .output import process_has_ended, signals_held
 from .show import render_body, render_head, shown_path
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
@@ -73,8 +74,10 @@ def refuse_case_twins(distros: Sequence[str]) -> None:
             )
 
 
-def check_distros(manifest, distros: List[str], distro_dirs: bool) -> None:
-    """The design's refusals on the distros, in its order; the manifest has been read."""
+def check_distros(manifest, distros: List[str], distro_dirs: bool, git_form: bool = False) -> None:
+    """The design's refusals on the distros, in its order; the manifest has been read.
+    `git_form`: the manifest was given in the git form, so another version of it can be named
+    with --manifest-ref."""
     listed = manifest.distros
     source = manifest.source
     if distro_dirs and listed is None:
@@ -93,13 +96,67 @@ def check_distros(manifest, distros: List[str], distro_dirs: bool) -> None:
     if unlisted and not distro_dirs:
         raise Refusal(
             f"{source}: does not cover distro {unlisted[0]!r}; its distros are {listed}",
-            "Name a distro it lists, or add the distro to its `distros:`",
+            (
+                "Name a distro it lists, or give with --manifest-ref a version of the manifest"
+                " that lists the distro"
+                if git_form
+                else "Name a distro it lists, or add the distro to its `distros:`"
+            ),
         )
     if unlisted:
         raise Refusal(
             f"{source}: does not list distro {unlisted[0]!r}; its distros are {listed}",
-            "Set up with the distros it lists, or add the distro to its `distros:`",
+            (
+                "Set up with the distros it lists"
+                if git_form
+                else "Set up with the distros it lists, or add the distro to its `distros:`"
+            ),
         )
+
+
+GIT_FORM = (
+    "Give the manifest in the git form: the url of its repo (such as"
+    " git@git.example.org:team/system.git or file:///srv/system.git) with --manifest-path, the"
+    " path of the file in the repo, and --manifest-ref for a branch or tag other than the"
+    " default"
+)
+
+
+def manifest_location(
+    given: str, manifest_ref: Optional[str], manifest_path: Optional[str], system: Path
+) -> Location:
+    """Where the manifest named on the command line is, by the design's rule: with
+    --manifest-path, `given` is the url of the repo the file is in; without it, a path. The
+    refusal for an option given with a manifest that is not in the git form, and the checks of
+    the git form's url, version and path (``location.check_git_location``)."""
+    if manifest_ref is not None or manifest_path is not None:
+        option = "--manifest-ref" if manifest_ref is not None else "--manifest-path"
+        if is_path(given):
+            raise Refusal(
+                f"{option} is given, and the manifest {shown_path(given)} is a path on the local"
+                " disk, not the git form",
+                f"{GIT_FORM}; or leave {option} out",
+            )
+        if manifest_path is None:
+            raise Refusal(
+                f"--manifest-ref is given without --manifest-path, so {shown_path(given)} is not"
+                " the git form",
+                f"{GIT_FORM}; or leave --manifest-ref out",
+            )
+        return check_git_location(
+            given, manifest_ref, manifest_path, "init", ("the manifest's url", *_OPTIONS)
+        )
+    if not is_path(given) and not os.path.lexists(system / given):
+        raise ManifestError(
+            f"{shown_path(given)}: is a URL, and this version reads a manifest given as a path"
+            " on the local disk or as a file in a git repo; for a file in a git repo, give its"
+            " repo's url with --manifest-path (and --manifest-ref for a branch or tag other than"
+            " the default)"
+        )
+    return given
+
+
+_OPTIONS = ("--manifest-ref", "--manifest-path")
 
 
 def summary(config: Config, plan: Sequence[Planned]) -> str:
@@ -221,21 +278,32 @@ def make_system_dir(system: Path, config: Config, on_made: Callable[[], None]) -
 
 
 def run_init(
-    manifest_location: str,
+    manifest_given: str,
     role: Optional[str],
     groups: Sequence[str],
     distros: Sequence[str],
     distro_dirs: bool,
     yes: bool,
     fetch_from: Optional[str] = None,
+    manifest_ref: Optional[str] = None,
+    manifest_path: Optional[str] = None,
 ) -> int:
     """A stop signal at any point ends the run with one line, which says whether the system
-    was made. `fetch_from` is the prefix of `--fetch-from`, when given."""
+    was made. `fetch_from` is the prefix of `--fetch-from`, when given; `manifest_ref` and
+    `manifest_path` are --manifest-ref and --manifest-path."""
     made: List[bool] = []
     try:
         with signals_end_the_run():
             return _init(
-                manifest_location, role, groups, distros, distro_dirs, yes, made, fetch_from
+                manifest_given,
+                role,
+                groups,
+                distros,
+                distro_dirs,
+                yes,
+                made,
+                fetch_from,
+                (manifest_ref, manifest_path),
             )
     except Stopped as exc:
         then = FINISH if made else "nothing was created"
@@ -243,7 +311,7 @@ def run_init(
 
 
 def _init(
-    manifest_location: str,
+    manifest_given: str,
     role: Optional[str],
     groups: Sequence[str],
     distros: Sequence[str],
@@ -251,6 +319,7 @@ def _init(
     yes: bool,
     made: List[bool],
     fetch_from: Optional[str] = None,
+    git_options: Tuple[Optional[str], Optional[str]] = (None, None),
 ) -> int:
     system = current_directory()
     distros = list(dict.fromkeys(distros))
@@ -267,17 +336,25 @@ def _init(
                 f"{len(distros)} distros given without --distro-dirs", "Add --distro-dirs"
             )
         refuse_case_twins(distros)
+        location = manifest_location(manifest_given, *git_options, system)
+        git_form = isinstance(location, GitLocation)
         place = None
         if fetch_from is not None:
             try:
                 place = FetchFrom(check_prefix(fetch_from, "--fetch-from"))
             except ManifestError as exc:
                 raise ManifestError(f"{exc}; nothing was set up") from None
-        manifest = read_manifest(manifest_location, system)
-        check_distros(manifest, distros, distro_dirs)
+        env = None
+        if git_form:
+            # git reads the manifest, so the tools are checked before the read.
+            env = require_tools()
+            manifest = read_manifest(location, system, env=env)
+        else:
+            manifest = read_manifest(location, system)
+        check_distros(manifest, distros, distro_dirs, git_form)
         layout = LAYOUT_DISTRO_DIRS if distro_dirs else LAYOUT_FLAT
         config = Config(
-            manifest=manifest_location,
+            manifest=location,
             role=role,
             groups=list(groups),
             layout=layout,
@@ -303,7 +380,8 @@ def _init(
                         f"{system.joinpath(*parts)}: exists, and init would create it",
                         "Move it out of the way, or set up in another directory",
                     )
-        env = require_tools()
+        if env is None:
+            env = require_tools()
         if not yes and not sys.stdin.isatty():
             raise Refusal(
                 "the input is not a terminal, so init cannot ask before it sets up",

@@ -26,6 +26,7 @@ from .manifest import Manifest
 from .masking import mask_urls
 from .output import make_writable, output_files, process_has_ended, signals_held, write_output
 from .gitenv import Env, require_git
+from .location import GitLocation
 from .selection import Resolved, Selected
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
 from .yamlload import ManifestError
@@ -491,8 +492,11 @@ def built_note(
     for done in result.repos:
         if done.outcome in (CLONED, UPDATED) and done.layer is not None:
             changed[done.layer] = changed.get(done.layer, 0) + 1
-    manifest = os.path.realpath(system / config.manifest)
-    for done in result.of(UPDATED):
+    if isinstance(config.manifest, GitLocation):
+        manifest = None  # read from its repo, not from a clone in the system
+    else:
+        manifest = os.path.realpath(system / config.manifest)
+    for done in result.of(UPDATED) if manifest is not None else ():
         if done.place is not None:
             inside = os.path.realpath(done.place) + os.sep
             if manifest.startswith(inside):
