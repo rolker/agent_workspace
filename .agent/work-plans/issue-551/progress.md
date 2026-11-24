@@ -845,3 +845,24 @@ Round 1's 1 must-fix and 8 suggestions, all fixed as the host's directions gave 
 
 ### Tests (each suite on its own)
 test_skill_paths: 210 passed, 0 failed; test_checkpoint_269: 43 passed, 0 failed; test_triage_reviews_integration: 70 passed, 0 failed; test_project_integration_audit: 286 passed, 0 failed. No script changed, so no script suite applies. Full pre-commit pass left to the host. Not pushed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 12:24 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-551 at `e985201b`
+**Base**: origin/main
+**Depth**: Deep (reason: 13 files, +508 -44 on the whole branch; skill definitions and a governance trigger; round 2 classified on the whole diff)
+**Must-fix**: 2 | **Suggestions**: 3
+**Round**: 2 | **Ship**: continue — round 2: must-fix rising (1 -> 2); both are mechanical one-place text fixes
+
+Round 1's M1 and S1 to S8 are all closed; each was checked against the skill text and the scripts on this branch. project_setting.sh doc prints nothing on exit 1 (lines 257-262), exits 2 with "the registry <file> has errors (above); fix it first" (line 140), and exits 3 for an unknown project (_USAGE_RC, line 145). sitrep_checks.sh drops the self-pointer row before --list-pointers prints (line 1242). The merge of main (pull request 597) changes nothing these skills say: registration_refused and unused_settings name no document key, and project_setting.sh and project_document_path are untouched. discover_governance.sh stays as it is: a display inventory, which the plan reviewed and kept untouched (plan.md line 36); the issue does not list it as a reader, and docs/design.md already says it does not know the roles. Name it in the pull request body as display-only. Codex's must-fix (the audit cannot find a roadmap that its own pointer table names) is round 1's S5 decision; the skill says plainly that it cannot handle that case, so it is not a finding here. Static: shellcheck clean on the four changed scripts. Tests: test_skill_paths 210/0, test_project_integration_audit 286/0. Cross-model: Gemini ran with 8 findings. Its must-fix 1 is a false positive, because doc suppresses the set line on exit 1. Its must-fix 2 is confirmed and kept. Its SIGPIPE point does not hold: the script runs without -e and the first line is already read. Its bash_blocks_parse point and its two test-coverage points are known and noted, so they are dropped. Codex ran with 1 finding, covered above.
+
+### Findings
+- [ ] (must-fix) the documented set command double-quotes "<key>=<value>", and a #<heading> may hold a backtick or `$` (set accepts any heading without control characters), so bash runs a command substitution and stores a different heading. Use single quotes, and say how to write a `'` (`'\''`) — `.claude/skills/onboard-project/SKILL.md:445-448`, `.claude/skills/design-discussion/SKILL.md:152-153`
+- [ ] (must-fix) ADR-0017: docs/design.md's onboarding bullet (Sessions and roots) still lists the footprint questions as `instructions` and the records settings only; add the goals, design and roadmap question, with a change-log row — `docs/design.md:287-289`
+- [ ] (suggestion) "What a stored value changes" says goals is read by this skill, audit-project and design-discussion only; since round 1's fixes, brainstorm, plan-task, review-plan and review-issue also read goals and design through the lookup, and the integration audit's ignore check follows roadmap — `.claude/skills/onboard-project/SKILL.md:436-441`
+- [ ] (suggestion) design-discussion step 0 and brainstorm read every exit-2 result as a refused setting, and neither handles exit 3. Round 1's S3 mapped both codes in onboard-project and audit-project only. With a broken registry, brainstorm then reads ARCHITECTURE.md as the design. Map the registry reason and exit 3 here too — `.claude/skills/design-discussion/SKILL.md:145-149`, `.claude/skills/brainstorm/SKILL.md:95-98`
+- [ ] (suggestion) two brainstorm references are now stale. The path paragraph gives `docs/design.md` "in the project list below" as an example, but the round 1 fix removed that path from the list. The digest line says "#551 may move it", and this pull request closes #551 without moving it — `.claude/skills/brainstorm/SKILL.md:49-50,77`
