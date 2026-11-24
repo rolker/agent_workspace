@@ -365,3 +365,18 @@ Run this round: shellcheck --severity=warning on the four changed scripts: clean
 **Decision**: publish
 
 Three pre-push rounds: round 1 found 1 must-fix (a failed git call read as "is the main checkout") and 4 suggestions; round 2 found 1 must-fix (an exported GIT_DIR); round 3 (a convergence check, no cross-model reviewers) found both closed and nothing new. Gemini and Codex ran in rounds 1 and 2. Main was merged in twice (pull requests 603 and 604), with no conflict.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 14:35 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #609 at `95cc260`
+**Depth**: Deep (reason: cold read, cross-model only: codex, per handoff)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Codex ran (EXIT=0, review complete) on the title, URL and diff only, work-plan files left out. It returned one must-fix: a workspace worktree made outside the main checkout's folder is refused by the `registry_require_root` guard when its copies are run from inside it. Judged by the lead: this refusal is deliberate and named in the pull request text. A sandbox run confirmed it is a clear refusal: `worktree_list.sh` and `worktree_remove.sh` each print one `ERROR: refusing to run: ...` line and exit 1, and the worktree and its git entry survive. By the owner's rule (a clear refusal of an unusual input is fine) it is not a must-fix. Kept as a suggestion only the test gap Codex named: the suite runs only the helper from that worktree, not the scripts.
+
+### Findings
+- [ ] (suggestion) Add a check that the four scripts, run from inside a workspace worktree outside the main checkout, refuse with the guard's message, and that remove deletes nothing (the suite runs only `wt_main_root` there) — `.agent/scripts/tests/test_worktree_main_root.sh:194`
