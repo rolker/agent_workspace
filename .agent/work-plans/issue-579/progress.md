@@ -166,3 +166,18 @@ Checked: the three `gh` lines, the jq filter and the grep run as written on PRs 
 - [ ] (suggestion) The plan-file filter is unanchored (`test("work-plans/issue-...")` also lists e.g. `tests/fixtures/work-plans/issue-1/plan.md`) while the read is the fixed `./.agent/work-plans/...` path; anchor it as `^\.agent/work-plans/issue-[0-9]+/plan[.]md$` so the list and the read name the same file — `.claude/skills/review-plan/SKILL.md:75`
 - [ ] (suggestion) No-plan-file case goes straight to the local `--issue` lookup; first try `git show <headRefOid>:./.agent/work-plans/issue-<issue>/plan.md` (PR 602: the plan of 551 is at its head, unchanged, committed by PR 568), so a checkout that is behind the PR does not quietly supply an older copy — `.claude/skills/review-plan/SKILL.md:96-101`
 - [ ] (suggestion) For issue 581's split: this block now has three `gh` calls (lines 72, 75, 78), not the two 581's plan names; say so in the PR description so the `-R` reaches the new one whichever merges second — `.claude/skills/review-plan/SKILL.md:75`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:25 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 1 approved with four suggestions; three of them make the new step read the right file in cases the reviewer reproduced, one of which fails quietly today, and fixing them before the push costs one short round and no extra CI run)
+**After**: publish
+**Decision**: address
+
+Address the four suggestions of the Local Review at f3476f54 before publishing (host decisions, listed for the owner's veto):
+- 1: find the issue the pull request closes with GitHub's own parse (gh pr view <N> --json closingIssuesReferences), not a grep of the body, and take body out of the first gh call so the stale snapshot never reaches the reviewer.
+- 2: anchor the plan-file filter to ^\.agent/work-plans/issue-[0-9]+/plan[.]md$ so the list and the read name the same file.
+- 3: for a pull request that changes no plan file, first try the plan at the pull request's head (git show <headRefOid>:./.agent/work-plans/issue-<issue>/plan.md), and only then the local --issue lookup; a checkout behind the pull request must not quietly supply an older copy.
+- 4: the block now has three gh calls; say so in the entry, for the pull request text, so the repository flag issue 581 adds reaches all three whichever merges second.
+Outside reviewers in round 1: Gemini ran (three points kept); Codex did not run, it hit its usage limit.
