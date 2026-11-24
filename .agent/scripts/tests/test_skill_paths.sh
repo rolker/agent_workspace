@@ -560,6 +560,31 @@ if [[ -f "$ONB" ]]; then
         'project with no remote on github.com (`github=no`)'
     has "$ONB" "onboard-project: a project with no GitHub keeps its edits on a branch" \
         'leave the edits on the branch, push nothing'
+    # issue 551 part 2: the goals, design and roadmap question, read through
+    # the one lookup and stored as settings on a yes, with the three answers;
+    # the setting's refusals told as the readers' limits, never the
+    # project's; the roadmap offers follow the lookup.
+    has "$ONB" "onboard-project: asks where the project keeps its goals, design and roadmap, through the lookup" \
+        '`<key>` is `instructions`, `records`, `goals`, `design` or `roadmap`' \
+        '**c. Documents** (`goals`, `design`, `roadmap`)' \
+        '"$WS_ROOT/.agent/scripts/project_setting.sh" doc <settings-name> goals' \
+        '"$WS_ROOT/.agent/scripts/project_setting.sh" doc <settings-name> roadmap' \
+        '"$WS_ROOT/.agent/scripts/project_setting.sh" set <settings-name> "<key>=<value>"' \
+        '**A file in the project**' '**`none`**' '**Decide later**: nothing stored'
+    has "$ONB" "onboard-project: the setting's refusals are the readers' limits, said as printed" \
+        'ASCII letters, digits, `.`, `_`, `-` and `/`' \
+        'These are limits of the workspace'"'"'s readers, not of the project' \
+        'never suggest moving or renaming the project'"'"'s files to fit' \
+        'After a value is stored, run `doc` for that key again'
+    has "$ONB" "onboard-project: the Direction offer and the queue use the project's roadmap from the lookup" \
+        '**The project'"'"'s roadmap**, in steps 5 and 6, is the file `doc <settings-name> roadmap` names' \
+        'roadmap (step 3c; with `roadmap=none`' \
+        'there is no roadmap to queue in: say so, and offer open issue or skip instead'
+    if grep -qF 'an existing `docs/roadmap.md` or `ROADMAP.md`' "$ONB"; then
+        fail "onboard-project still guesses the roadmap as docs/roadmap.md or ROADMAP.md"
+    else
+        pass "onboard-project no longer guesses the roadmap's path"
+    fi
     bash_blocks_parse "$ONB" onboard-project
 else
     fail "onboard-project skill is missing: .claude/skills/onboard-project/SKILL.md"
@@ -662,10 +687,47 @@ if [[ -f "$AUD" ]]; then
         'ask which repository on github.com and which remote it is before any issue, push or pull request' \
         '`not checked: github=unknown (<the fact'"'"'s evidence>)`' \
         'and the branch is pushed to `<remote>`, both as the `github` fact names them'
+    # issue 551 part 2: goals, design and roadmap read through the lookup;
+    # a missing, untracked or refused setting and one naming a part's file
+    # are findings; ARCHITECTURE.md stays an accepted design name.
+    has "$AUD" "audit-project: goals, design and roadmap come from the lookup, with the findings it reports" \
+        '"$WS_ROOT/.agent/scripts/project_setting.sh" doc <settings-name> design' \
+        '| Design (`design` setting, else `docs/design.md`; `ARCHITECTURE.md`) |' \
+        'an untracked file is a finding' \
+        'the file the setting names is missing' \
+        'a finding: the setting cannot be used' \
+        '"$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root <repo-dir> --roadmap <repo-dir>/<roadmap path> --list-pointers' \
+        'the same file is named as the root'"'"'s document and as a part'"'"'s'
+    if grep -qF 'an existing `docs/roadmap.md` or `ROADMAP.md`' "$AUD"; then
+        fail "audit-project still guesses the roadmap as docs/roadmap.md or ROADMAP.md"
+    else
+        pass "audit-project no longer guesses the roadmap's path"
+    fi
     no_unquoted_heredoc "$AUD" audit-project
     bash_blocks_parse "$AUD" audit-project
 else
     fail "audit-project skill is missing: .claude/skills/audit-project/SKILL.md"
+fi
+
+# --- design-discussion (issue 551 part 2): a project's documents come from
+# the lookup, a fallback is only a suggestion, and an answer is recorded
+# as a setting on a yes.
+DD="$SKILLS/design-discussion/SKILL.md"
+if [[ -f "$DD" ]]; then
+    has "$DD" "design-discussion: a project's goals, design and roadmap come from the lookup; a fallback is asked about" \
+        '"$WS_ROOT/.agent/scripts/project_setting.sh" doc <project> roadmap' \
+        'It is a suggestion: ask whether it is the project'"'"'s roadmap (or design) before relying on it' \
+        '"$WS_ROOT/.agent/scripts/project_setting.sh" set <project> "<key>=<value>"' \
+        'as a write on its own yes' \
+        'never as a fault of the project'
+    if grep -qF 'settled for good by #551' "$DD"; then
+        fail "design-discussion still says where a project keeps its documents is unsettled"
+    else
+        pass "design-discussion no longer calls the documents' location unsettled"
+    fi
+    bash_blocks_parse "$DD" design-discussion
+else
+    fail "design-discussion skill is missing: .claude/skills/design-discussion/SKILL.md"
 fi
 
 # Where onboard-project's and audit-project's GitHub calls and pushes go
