@@ -735,3 +735,13 @@ Decision summary checked against the branch: correct. The live-run line reproduc
 
 ### False positives
 None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 10:21 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner's answer in the dialog, to "Merge pull request 572 now?": "Merge (Recommended)". The dialog showed: three pre-push rounds and, after publishing, the Codex cold read, a re-review and a triage that each found one more must-fix, all fixed; the last convergence check (c82addae) and the final triage (137ed2a5) with nothing open; Gemini ran three times and Codex four; Copilot not requested because this session's permission check refused the request command; CI with all 10 checks passed on 0d1c577f; no hosted review or comment; mergeable, clean; the two roadmap text changes quoted in full; the two small points left open (a problem row out of place in a malformed section; "implemented, no pull request yet" when the pull request list could not be read, the same on main); five fix rounds in all.
