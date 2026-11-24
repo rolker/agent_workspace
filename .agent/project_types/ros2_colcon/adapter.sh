@@ -112,7 +112,7 @@
 # --distro <d> [--role <r>] [--with <group>]... [--fetch-from <prefix>]`
 # runs the tool's init --distro-dirs --yes in a root that is not set up
 # yet, making the root when missing (_rc_setup_from_manifest);
-# register_project.sh --manifest calls it. Nothing about the manifest is
+# registration with --manifest calls it. Nothing about the manifest is
 # kept outside the tool's .repos-manifest/.
 #
 # Fresh hosting dir (#237, step 6 phase 2): `setup` bootstraps the manifest
@@ -661,7 +661,7 @@ _rc_refuse_removed_source() {
         echo "init does not read the old checkouts under $root/layers/main/<layer>_ws/src or $root/configs/manifest-resolved*: it clones again under $root/<distro>/, so push work in them first" >&2
     fi
     echo "Then remove the old keys: .agent/scripts/project_setting.sh unset $name source source_ref source_path${line:+, and $line from its line in .agent/projects.local}" >&2
-    echo "Or set the instance up in a new, empty directory and register it in one step: .agent/scripts/register_project.sh <dir> --manifest <file> --distro ${ACTIVE_PROJECT_DISTRO:-<distro>}${ACTIVE_PROJECT_ROLE:+ --role $ACTIVE_PROJECT_ROLE}" >&2
+    echo "Or set the instance up in a new, empty directory and register it in one step, registering <dir> with --manifest <file> --distro ${ACTIVE_PROJECT_DISTRO:-<distro>}${ACTIVE_PROJECT_ROLE:+ --role $ACTIVE_PROJECT_ROLE}" >&2
     echo "More in docs/manifest/design.md, under \"A root that sets source\"" >&2
     return 1
 }
@@ -1274,7 +1274,7 @@ adapter_env() {
 # `<tool> init <file> --distro-dirs --distro <d> [--role <r>] [--with
 # <group>]... [--fetch-from <prefix>] --yes` (--yes: the question before
 # fetching is the session's, asked with the tool's show first), its output
-# and exit status passed through. register_project.sh --manifest calls it
+# and exit status passed through. Registration with --manifest calls it
 # for a missing or empty root, after its own checks (a URL or git location
 # refused there; the tool refuses one too). Refused here, before anything
 # is made: a root that holds .repos-manifest/ (set up already: setup with
@@ -1286,7 +1286,7 @@ adapter_env() {
 # (.repos-manifest is not there), they are removed again, deepest first,
 # with rmdir alone, so nothing that holds anything is removed. The adapter
 # has no signal trap: a signal ends it before that removal, and
-# register_project.sh's rollback removes the empty directories then.
+# registration's rollback removes the empty directories then.
 _rc_setup_from_manifest() {
     local manifest="" distro="" role="" fetch="" root bin d rc=0 rec="" second=""
     local -a with=() args=() made=()
