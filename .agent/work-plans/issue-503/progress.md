@@ -1454,3 +1454,11 @@ The owner's answer in the dialog, to "Merge pull request #562 with F1 deferred t
 **Decision**: revise
 
 Pull requests 513 and 514 (part 1) and 562 (part 4: validate, build and test call the tool) are merged; the issue is still open because registration from a manifest and the rest of the later parts remain. Since part 4, issue 569 part 2 (pull request 597, merged 2026-11-24) cut the adapter's manifest route: the adapter now has two routes, `register_project.sh` refuses `--set source=` for a `ros2_colcon` project through the new `registration_refused` list, and the settings keys `source`, `source_ref` and `source_path` are read by no route. The plan is revised to plan the next part against that code: registration passes the manifest's location, role, distro and fetch settings to the tool's `init` (the manifest roadmap's line), with the later parts named so a later run can tell which are delivered. The owner asked on 2026-11-24 for manifest work that can run in parallel; this issue's files (the registration scripts and the adapter) do not overlap the tool's, where issues 569 and 498 are working.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-24 13:20 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-503/plan.md` at `f484a921`
+
+Revision: part 2 (registration from a manifest) planned in full. register_project.sh takes --manifest (local file), --distro, --role, --with, --fetch-from and hands them to the adapter's setup, which runs init --distro-dirs --yes; nothing is recorded in the registry line or settings file. A URL or git location is refused before anything is written until issue 498. Findings 1 to 3 of #599 are folded in; part 3 stays a named later part. Three open questions for the owner.
