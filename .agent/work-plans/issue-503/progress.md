@@ -1698,3 +1698,28 @@ Suggestions left open for the one follow-up issue, from the review entry:
 - (suggestion) Minor: `$TOOL_BIN`/`$M_DISTRO` unquoted in NEXT lines (the adapter's `_rc_tool_sync_step` quotes them); `${SETUP_ARGS[*]}` unquoted in the dry run; a kept `bootstrap_url=` with an empty value is refused though the adapter would not refuse it — `.agent/scripts/register_project.sh:824`, `:1087`, `:846`
 
 Outside reviewers on the one round: Codex ran (four points: one folded into a must-fix, three classed as suggestions); Gemini skipped, failed earlier today ("empty response; 1 tool action(s) were auto-denied in headless mode (Bash)").
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 15:12 -05:00
+**By**: claude-code (claude-sonnet-5-5)
+**Reviews-read**: none
+
+**PR**: #610 at `93975f86`
+**Sources**: 2 (Local Review (Pre-Push) @ `bb91e0b3`, CI rollup; Copilot: skipped, failed earlier today (insufficient remaining quota))
+**Cross-source confirmations**: 0
+**CI**: pending (checks not settled after about 5 minutes: Lint (pre-commit), repos-manifest tests (Python 3.10), repos-manifest tests (Python 3.14), Validate Adapter Contract; Validate Documentation passed; none failed. Known and not this branch's: `test_review_viewer.sh` fails where there is no local display, issue 598)
+
+Lighter review level (owner, 2026-11-24): one round; the open suggestions below are carried by the host from its `## Checkpoint` to one follow-up issue at merge. The review at `bb91e0b3` does not cover the head (code changed in the fix pass), so the helper listed it as stale; its two must-fix findings and suggestion 1 are ticked in the `## Implementation` at `1cd3f882` and I checked those three fixes in the code and tests the entry names. No pull-request reviews, inline comments or conversation comments exist. I found nothing against the code that is a must-fix: no finding below is a must-fix.
+
+### Findings
+- [ ] (suggestion, Local Review @ `bb91e0b3`) register_session_root.sh's check for `--manifest` searches the flattened array, so a value equal to `--manifest` passes it — `.agent/scripts/register_session_root.sh:128`
+- [ ] (suggestion, Local Review @ `bb91e0b3`) Values of `--distro`, `--role`, `--with` and `--fetch-from` starting with `-` are passed on unchecked — `.agent/scripts/register_project.sh:243`
+- [ ] (suggestion, Local Review @ `bb91e0b3`) Tool not installed at `$TOOL_BIN` and a root inside an existing system are not refused before writing or shown by the dry run — `.agent/scripts/register_project.sh:823`
+- [ ] (suggestion, Local Review @ `bb91e0b3`) A root left non-empty without `.repos-manifest` gets a NEXT that `--manifest` then refuses — `.agent/scripts/register_project.sh:1349`
+- [ ] (suggestion, Local Review @ `bb91e0b3`) The rollback removes parent directories that were missing at check time, not ones the run is known to have made — `.agent/scripts/register_project.sh:1230`
+- [ ] (suggestion, Local Review @ `bb91e0b3`) on_exit's NEXT does not say "without --manifest" (the fix pass for must-fix 2 changed that text, so this may already be resolved; the follow-up issue should confirm) — `.agent/scripts/register_project.sh:1393`
+- [ ] (suggestion, Local Review @ `bb91e0b3`) `manifest_is_remote` misses the scp form with no user (`host:path`) — `.agent/scripts/register_project.sh:816`
+- [ ] (suggestion, Local Review @ `bb91e0b3`) Minor: unquoted `$TOOL_BIN`/`$M_DISTRO` in NEXT lines, `${SETUP_ARGS[*]}` in the dry run, an empty kept `bootstrap_url=` refused though the adapter would not refuse it — `.agent/scripts/register_project.sh:824`, `:1087`, `:846`
+
+### False positives
