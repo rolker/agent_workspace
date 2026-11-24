@@ -741,6 +741,6 @@ Scope: the merge of origin/main (pull request 568, issue 551) into the branch. C
 **CI**: pending (after about 6 minutes of polling: Lint (pre-commit), repos-manifest tests (#267 prototype) (Python 3.10) and (Python 3.14) still in progress; Validate Adapter Contract and Validate Documentation pass)
 
 ### Findings
-- [ ] No open findings. The three low findings of the Local Review @ `860476c` were ruled on in the previous Integrated Review (deferred by the owner to issue 599) and are not carried forward; the `sources` helper lists that entry as stale at this head.
+- [x] No open findings. The three low findings of the Local Review @ `860476c` were ruled on in the previous Integrated Review (deferred by the owner to issue 599) and are not carried forward; the `sources` helper lists that entry as stale at this head.
 
 ### False positives
