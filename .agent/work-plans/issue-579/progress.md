@@ -234,3 +234,19 @@ Round 1's four, each closed: (1) `closingIssuesReferences` replaces the body gre
 **Decision**: publish
 
 Two pre-push rounds: round 1 approved with four suggestions, fixed before publishing on the host's answer; round 2, a convergence check with no outside reviewers, found all four closed and nothing new. Outside reviewers in round 1: Gemini ran (three points kept); Codex did not run (usage limit).
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 13:37 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #604 at `b059dcfe`
+**Depth**: Deep (reason: cold read, cross-model only: codex, per handoff)
+**Must-fix**: 1 | **Suggestions**: 1
+
+Codex ran (EXIT=0, complete review); no other specialist ran (cold read). Lead checked both findings against the changed block and against the worktree layout.
+
+### Findings
+- [ ] (must-fix) PR-number form's fallback (no plan file at the head) hands off to the `--issue` lookup, which after the PR repo's own top folder checks the workspace worktree `issue-workspace-<N>` and then every registered project's `issue-*-<N>` worktree by number alone: for a project PR, an open worktree of another repository's issue with the same number is silently read as this PR's plan (the right project worktree is checked after the workspace one). Limit the fallback to the PR's own repository (its top folder and its own worktree dir) and stop otherwise — `.claude/skills/review-plan/SKILL.md:108`
+- [ ] (suggestion) `git fetch -q origin "pull/<N>/head"` (step 1 and Step 5 note) assumes `origin` is the repository the PR belongs to; in a fork checkout the fetch fails or gets another PR. Not silent: `git show <headRefOid>:...` exits 128 when the head commit was not fetched. Same repository-identity question as issue 581; the old Step 5 text also fetched from `origin` — `.claude/skills/review-plan/SKILL.md:93`
