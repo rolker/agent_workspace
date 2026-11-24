@@ -985,3 +985,14 @@ The prompt given to Codex held 34 of the PR's 35 files. The one left out was `.a
 
 ### Findings
 - [ ] Cold read not done: Codex hit its usage limit. Retry the cold read with Gemini, or with Codex after its limit resets.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:10 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (a failed phase with a cause outside the change; /orchestrator lets the host answer retry, and run-issue step 9a says the retry names Gemini when Codex was the agent that failed)
+**After**: phase-failed
+**Decision**: retry
+**Phase**: review-code
+
+The cold read of pull request 603 (part 3 of 3) failed at cdc4b964 because Codex hit its usage limit, in its words: "ERROR: You've hit your usage limit. ... try again at 1:28 PM." Nothing was read and no findings were produced; the reviewer did not put its own read in its place. Copilot had already refused for lack of quota (review 6044708190). The retry is the cold read again, with the cold-read task line and Gemini as the one agent. Gemini's headless run failed in every pre-push round today (it denied a tool call and returned nothing), so this retry may fail the same way; this is the host's first retry of this phase.
