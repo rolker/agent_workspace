@@ -256,3 +256,27 @@ Implement the plan at a3b24fcd with these instructions, which answer the Plan Re
 - E: the guard line prints the helper's exit code and points to the per-exit table; it does not say "stop" for exit 4, which is an ordinary case.
 - The planner's three departures stand as the reviewer accepted them: a header is taken only when it is owner/repo#N for this number; any gh-resolved setting triggers the gh call; on exit 5 review-issue and plan-task ask for the issue's text and nothing is posted.
 - In review-plan step 1, issue 579 (driven at the same time) rewrites the "PR number" block, which will hold three gh calls after it lands. This change adds the repository to the gh calls that exist on this branch and says in its entry that the block will need the flag on all three whichever merges second.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 13:38 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-581 at `8154ec52`
+
+Implemented the plan at a3b24fcd with the Checkpoint's points A to E.
+
+- `.agent/scripts/issue_repo.sh` (new): `<N>` or `owner/repo#N` → `owner/repo` on stdout. Exit 0 printed; 1 usage; 2 gh resolves another repository here; 3 not in a git repository (a package worktree's top folder names the header's `owner/repo#N`); 4 no GitHub repository here (ordinary, no gh call); 5 gh had to be asked and could not answer. Decided with no gh call when origin is the only remote naming a GitHub repository, no `remote.*.gh-resolved`, no `GH_REPO`; else one `GH_HOST=github.com GH_PROMPT_DISABLED=1 gh repo view ... </dev/null`. Built on `extract_gh_slug`, `_wpd_enclosing_manifest`, `issue_checkout_of`; no URL parser of its own; `dispatch_phase.sh` not edited.
+- A: the header counts only when the checkout's top-level is `issue_checkout_of`'s answer; a sibling checkout's origin decides and its exit-2 advice names its own origin (tested). B: the top folder, outside git or inside another repository, is exit 3 naming `up/pkg#7` and the issue checkout (tested both ways). C: review-issue and plan-task say a dispatched phase on exit 4 or 5 ends its entry `**Status**: partial`, naming the issue text it needs. D: every gh issue/pr line in the three skills carries `-R "github.com/$_REPO"` (pinned). E: the guard prints `issue_repo.sh exit $_rc`, says the block makes no gh call and points to each skill's "Repository by exit code" table; no "stop".
+- review-issue: helper at the head of steps 1 and 7; `_REPO_SLUG="$_REPO"`; per-exit table; step 8 no-comment wording. plan-task: steps 1 and 8 likewise; step 4's type is a local comparison of `$_REPO` with the workspace origin's slug; plan template Issue line from the printed repository; step 8 skipped on exit 4/5. review-plan: new step 0 with its table; step 1's PR block gains only the head and the flag on its two `gh pr view` calls; step 2 gets the head and sets `ISSUE_NUM` itself.
+- Issue 579 rewrites review-plan step 1's pull-request block (three gh calls once it lands): whichever of the two merges second must put the issue_repo.sh head in that block and `-R "github.com/$_REPO"` on all its gh calls; `test_skill_paths.sh` fails until it does.
+- `test_skill_paths.sh`: pins as planned plus `bash -n` of every bash block in the three skills, and two mutation cases (guard removed, flag removed). `script_reference.md` row; `github_cli_patterns.md` paragraph. The plan was synced (A, B rows, D, E, PR-form ref).
+- Decided beyond the plan: another remote naming the same GitHub repository as origin does not force a gh call; review-plan's PR form passes the issue number from the branch name (else the PR number), since the PR's own issue reference needs the repository first; plan-task step 8's block also resolves `WORK_PLANS_DIR` and takes the title literally so it runs in a fresh shell; the manifest header is read with the same `sed` as `resolve_issue_dir` rather than sourcing `_worktree_helpers.sh` (it pulls in the project registry); issue_repo.sh is not added to `.agent/user_tier_scripts.txt` (the skills' other `$WS_ROOT` scripts are not there either), so a project session asks permission per call.
+- Not exercised: `gh pr create -R` from a checkout whose origin is a fork of `$_REPO` (plan-task step 8, standalone only).
+
+Suites run, each on its own:
+- `bash .agent/scripts/tests/test_issue_repo.sh`: "test_issue_repo: 64 passed, 0 failed"
+- `bash .agent/scripts/tests/test_skill_paths.sh`: "test_skill_paths: 234 passed, 0 failed"
+- `bash .agent/scripts/tests/test_records_write_gate.sh`: "test_records_write_gate: 68 passed, 0 failed" (selected for the new script by suites_for_files.sh)
+- `bash .agent/scripts/tests/test_checkpoint_269.sh`: "test_checkpoint_269: 43 passed, 0 failed"
+- `bash .agent/scripts/tests/test_script_tests_hook_scope.sh`: "test_script_tests_hook_scope: 367 passed, 0 failed" (a suite file was added)
+The changed skill blocks were also run in a fresh shell with a stub gh (exit 0 and exit 4 paths). The full pre-commit pass and full suite run are left to the host.
