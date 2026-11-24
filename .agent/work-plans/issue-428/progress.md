@@ -1344,3 +1344,26 @@ S1, S2, S3 closed: reproduced on 4070a022, `https://evil.example?@github.com/o/r
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 09:12 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+**Dispatch**: resumed (agent ad8fbaf5c1e18deea, resume 1 of 3)
+
+**PR**: #570 at `4070a022`
+**Sources**: 2 (Local Review @ `4070a022` (entry fed74a8a, approved, no findings; Gemini and Codex ran), CI rollup). No hosted review, no hosted-reviewer check-run, no inline or conversation comment. The pre-push Local Review @ `be996b08` is listed by the helper as stale (code changed since); its four suggestions were ruled on in the Integrated Review at `95e6593c` (a0cfd6a7) and are not re-listed.
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Owner direction (2026-11-20), as before: "Let's not waist too much time going for perfect when we can have agents handle the edge cases."
+
+Summary: nothing open. The three suggestions left open at a0cfd6a7 are fixed, checked here on `4070a022` by running `extract_gh_slug` (`https://evil.example?@github.com/o/r`, `ssh://a#b@github.com/o/r`, `https://github.com/o/..`, `o/.` and `o/..git` give nothing, `o/.x` still gives `o/.x`; `/home/u/go/src/github.com/o/r` and `/home/u/ghq/github.com/o/r.git` give nothing while `/s/fake_remotes/github.com/o/r.git` gives `o/r`; `git@github.com:name_short/r.git` gives `name_short/r` and `_o/r` nothing; the ordinary scp, https-with-token, ssh-with-port and trailing-slash forms still give `o/r`), by reading `sitrep_root.sh`'s `GH_URL` (same three changes; `SLUG`, the gh-issue reference grammar shared with `sitrep_checks.sh`, is untouched), and by running `test_issue_helpers.sh` here: 130 passed, 0 failed, the parity rows included. S4 (the out-of-scope copies of the loose pattern) was ruled addressed at a0cfd6a7; a follow-up issue before `Closes #428` takes effect stays the owner's call. CI on `4070a022` at 09:11: Validate Documentation and Validate Adapter Contract passed in both runs; Lint and both repos-manifest suites pending in both runs; nothing failed.
+
+### Findings
+- [x] (suggestion, Integrated Review @ `95e6593c`) S1: a `?` or `#` in the user part and a repository of `.` or `..` are now refused in both parsers, with table rows — `.agent/scripts/_issue_helpers.sh`, `.agent/scripts/sitrep_root.sh` (fixed: 72d77eee, verified here)
+- [x] (suggestion, Integrated Review @ `95e6593c`) S2: the local-path form now needs `/fake_remotes/github.com/`; the `demo15` fixture moved under `fake_remotes` — `.agent/scripts/_issue_helpers.sh`, `.agent/scripts/tests/test_worktree_create.sh` (fixed: 82603cf2, verified here)
+- [x] (suggestion, Integrated Review @ `95e6593c`) S3: `_` is accepted after the owner's first character in both parsers, so the "hosted elsewhere" note no longer fires for a managed-user owner — `.agent/scripts/_issue_helpers.sh`, `.agent/scripts/sitrep_root.sh` (fixed: 1bf11430, verified here)
+
+### False positives
