@@ -36,11 +36,20 @@ workspace session behaves exactly as it did before this idiom existed.
 ## Usage
 
 ```
-/plan-task <issue-number> [--no-pr]
+/plan-task <N> [--no-pr]
+/plan-task <owner/repo#N> [--no-pr]
 ```
 
 - `--no-pr` — skip draft PR creation (step 8). The plan is still committed
   locally. Useful when working offline or when a PR isn't needed yet.
+
+A bare number `<N>` is issue N of the repository of the checkout the skill
+is run in (the session's root). An issue of another repository is written
+`owner/repo#N`. Below, `<ref>` is the reference as given and `<N>` its
+number. Every `gh` call names the repository with `-R "github.com/$_REPO"`,
+never the one `gh` would pick from the current directory; `$_REPO` comes
+from `$WS_ROOT/.agent/scripts/issue_repo.sh <ref>`, asked again at the head
+of every code block that needs it, because each block is a new shell.
 
 ## Overview
 
@@ -56,15 +65,40 @@ principles, ADR compliance, and downstream consequences.
 
 ### 1. Read the issue and any review comments
 
-Try git-bug first for offline-capable issue reading, then fall back to `gh`:
+Find the repository first, then try git-bug for offline-capable issue
+reading, then fall back to `gh`. The block's first lines ask
+`issue_repo.sh` for the repository and print it as a `Repository:` line;
+show that line in the report. On a non-zero exit the block prints the exit
+code and makes no `gh` call; do what this table says for that code.
+
+#### Repository by exit code
+
+| Exit | What this skill does |
+|---|---|
+| 0 | Proceeds. Every `gh issue` and `gh pr` call carries `-R "github.com/$_REPO"`, the git-bug lookup uses `$_REPO`, and step 4's type comes from comparing `$_REPO` with the workspace's repository. |
+| 1 | Stops: the reference is neither `<N>` nor `owner/repo#N`. Show the usage. |
+| 2, 3 | Stops and shows the helper's message. It names the repository `gh` resolves here and this checkout's own (exit 2), or says this is no git repository (exit 3), and gives the `owner/repo#N` to pass or the `gh repo set-default` to run. |
+| 4 | An ordinary case: this checkout has no GitHub repository, so no `gh` call is made and the git-bug lookup (by GitHub URL) is skipped. Ask the owner for the issue's text. Step 4's worktree type is the session's root (`workspace` in a workspace session, `project` in a project session); the plan's `## Issue` line is the reference as given, with no URL; step 8 (draft PR) is skipped, as with `--no-pr`, and the report says why. |
+| 5 | `gh` had to be asked which repository it resolves here and could not answer (its message is shown). Say which read failed, then as for exit 4: the issue's text from the owner, the type from the session's root, no URL, no draft PR. |
+| any other (127: the script is missing — a project session with no user tier, or an older workspace checkout) | Stops and shows the message on stderr. |
+
+**A dispatched phase cannot ask the owner.** When this skill runs from a
+`/run-issue` handoff and step 1 gives exit 4 or 5, it cannot plan without
+the issue's text: it writes no plan, appends a `## Plan Authored` entry
+(step 7's call, with no `**Plan**` line) with `**Status**: partial` and a
+line naming the text it needs (the title and body of issue `<ref>`) with
+the helper's message, and ends. The host asks the owner.
 
 ```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+_REPO=$("$WS_ROOT/.agent/scripts/issue_repo.sh" "<ref>") || { _rc=$?; echo "issue_repo.sh exit $_rc: this block makes no gh call; see the Repository by exit code table"; exit "$_rc"; }
+echo "Repository: $_REPO"
 # git-bug first (offline-capable) — provides title, body, and status
 # Look up by GitHub URL metadata (git-bug human_id != GitHub issue number)
 ISSUE_TITLE=""
 ISSUE_BODY=""
 if command -v git-bug &>/dev/null && command -v jq &>/dev/null; then
-    _REPO_SLUG="<owner/repo>"  # resolve from git remote
+    _REPO_SLUG="$_REPO"  # from issue_repo.sh, above
     _GITHUB_URL="https://github.com/${_REPO_SLUG}/issues/<N>"
     _LIST_JSON=$(git bug bug -m "github-url=${_GITHUB_URL}" --format json 2>/dev/null || echo "")
     _BUG_ID=$(echo "$_LIST_JSON" | jq -r '.[0].human_id // empty' 2>/dev/null)
@@ -88,7 +122,7 @@ fi
 
 # Fall back to gh if git-bug didn't provide the data
 if [ -z "$ISSUE_TITLE" ] || [ -z "$ISSUE_BODY" ]; then
-    _GH_JSON=$(gh issue view <N> --json title,body,labels,comments,url 2>/dev/null || echo "")
+    _GH_JSON=$(gh issue view <N> -R "github.com/$_REPO" --json title,body,labels,comments,url 2>/dev/null || echo "")
     if [ -n "$_GH_JSON" ]; then
         [ -z "$ISSUE_TITLE" ] && ISSUE_TITLE=$(echo "$_GH_JSON" | jq -r '.title')
         [ -z "$ISSUE_BODY" ] && ISSUE_BODY=$(echo "$_GH_JSON" | jq -r '.body')
@@ -179,10 +213,26 @@ $WS_ROOT/.agent/scripts/worktree_create.sh --issue <N> --type project
 source $WS_ROOT/.agent/scripts/worktree_enter.sh --issue <N> --type project
 ```
 
-To determine the type, run `gh issue view <N> --json url` and compare
-against the workspace repo URL — use `--type project` when the issue is
-in a project repo. If a worktree for the issue already exists, just enter
-it.
+To determine the type, compare the repository step 1 printed with the
+workspace's own, with no `gh` call: `--type workspace` when they are the
+same repository, `--type project` otherwise. On exit 4 or 5 in step 1 the
+type is the session's root instead (`workspace` in a workspace session,
+`project` in a project session). If a worktree for the issue already
+exists, just enter it.
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+_REPO=$("$WS_ROOT/.agent/scripts/issue_repo.sh" "<ref>") || { _rc=$?; echo "issue_repo.sh exit $_rc: this block makes no gh call; see the Repository by exit code table"; exit "$_rc"; }
+echo "Repository: $_REPO"
+# shellcheck source=../../../.agent/scripts/_issue_helpers.sh
+source "$WS_ROOT/.agent/scripts/_issue_helpers.sh"
+_WS_SLUG=$(extract_gh_slug "$(git -C "$WS_ROOT" remote get-url origin 2>/dev/null)")
+if [ -n "$_WS_SLUG" ] && [ "${_REPO,,}" = "${_WS_SLUG,,}" ]; then
+    echo "type: workspace"
+else
+    echo "type: project"
+fi
+```
 
 Use `$WORK_PLANS_DIR` (from the resolver) as the base path in step 5 and
 step 7 — do not construct `$WS_ROOT/.agent/work-plans/issue-<N>/` by hand.
@@ -198,7 +248,7 @@ prompts/findings) alongside the plan:
 
 ## Issue
 
-<issue URL — use `gh issue view <N> --json url --jq '.url'` if available, otherwise use the repo's GitHub URL pattern>
+https://github.com/<owner/repo>/issues/<N>  (the repository step 1 printed; on exit 4 or 5 in step 1, write the issue reference as given instead, with no URL)
 
 ## Context
 
@@ -327,24 +377,34 @@ counter match on that SHA, so it must be the value `plan-sha` printed.
 
 **Skip this step** if:
 - The user passed `--no-pr`, or
-- `gh` is unavailable (`command -v gh &>/dev/null && gh auth status &>/dev/null` fails)
+- `gh` is unavailable (`command -v gh &>/dev/null && gh auth status &>/dev/null` fails), or
+- step 1 gave exit 4 or 5 (no GitHub repository, or `gh` could not answer)
 
-If skipped, note in the report: "Draft PR skipped (offline or `--no-pr`).
-The plan is committed locally on branch `<branch-name>`."
+If skipped, note in the report: "Draft PR skipped (offline, no GitHub
+repository, or `--no-pr`). The plan is committed locally on branch
+`<branch-name>`."
 
 Otherwise, push the branch and create (or update) a draft PR with a `[PLAN]`
 title prefix and the plan as the body. The prefix prevents agents from
-confusing the PR number with the issue number.
+confusing the PR number with the issue number. The repository is asked for
+again (a new shell):
 
 ```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+_REPO=$("$WS_ROOT/.agent/scripts/issue_repo.sh" "<ref>") || { _rc=$?; echo "issue_repo.sh exit $_rc: this block makes no gh call; see the Repository by exit code table"; exit "$_rc"; }
+echo "Repository: $_REPO"
 # Push current branch (name may vary: feature/issue-<N> or feature/ISSUE-<N>-<desc>)
 git push -u origin HEAD
 
-# Use ISSUE_TITLE from step 1 (already resolved from git-bug or gh)
+# The issue title step 1 read, written in literally (a new shell)
+ISSUE_TITLE="<issue title>"
+# shellcheck source=../../../.agent/scripts/_resolve_work_plans_dir.sh
+source "$WS_ROOT/.agent/scripts/_resolve_work_plans_dir.sh"
+WORK_PLANS_DIR=$(resolve_work_plans_dir <N>) || exit 1
 CURRENT_BRANCH=$(git branch --show-current)
 
 # Check for existing PR on this branch
-EXISTING_PR=$(gh pr list --head "$CURRENT_BRANCH" --json url --jq '.[0].url // ""' 2>/dev/null || echo "")
+EXISTING_PR=$(gh pr list -R "github.com/$_REPO" --head "$CURRENT_BRANCH" --json url --jq '.[0].url // ""' 2>/dev/null || echo "")
 
 # Build PR body: prepend Closes reference, then plan content
 BODY_FILE=$(mktemp /tmp/gh_body.XXXXXX.md)
@@ -353,10 +413,10 @@ cat "$WORK_PLANS_DIR/plan.md" >> "$BODY_FILE"
 
 if [ -n "$EXISTING_PR" ]; then
     # Update existing PR title and body
-    gh pr edit "$EXISTING_PR" --title "[PLAN] $ISSUE_TITLE" --body-file "$BODY_FILE"
+    gh pr edit "$EXISTING_PR" -R "github.com/$_REPO" --title "[PLAN] $ISSUE_TITLE" --body-file "$BODY_FILE"
 else
     # Create new draft PR
-    gh pr create --draft --title "[PLAN] $ISSUE_TITLE" --body-file "$BODY_FILE"
+    gh pr create -R "github.com/$_REPO" --draft --title "[PLAN] $ISSUE_TITLE" --body-file "$BODY_FILE"
 fi
 rm -f "$BODY_FILE"
 ```
