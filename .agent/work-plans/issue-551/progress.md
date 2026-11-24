@@ -731,3 +731,13 @@ Triage after the cold read's fixes (deaa41d7, ff2eae97). The `sources` helper fi
 
 ### False positives
 - None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 11:19 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+The owner's answer in the dialog, to "Merge pull request 568 now and carry F1 into part 2 of the same issue?": "Merge, carry F1 (Recommended)". F1 is the open suggestion of the Integrated Review at b523c1bc: the comment on bookkeeping_roadmap_paths in .agent/scripts/_bookkeeping.sh (lines 38-39) says a roadmap value "may hold ( ) | ! @ +", which is untrue since deaa41d7; a comment-only reword, deferred to part 2's pull request on this issue. The dialog showed: the merge answered on 2026-11-23 never landed and the branch then conflicted with main; main merged in today with two documentation conflicts resolved and tests that no reader added by pull request 572 bypasses the lookup; the Codex cold read's must-fix and suggestion, both fixed, and the convergence check that approved them; Copilot not requested because this session's permission check refuses the request command; the new limit on the characters a document path may hold; CI with all 10 checks passed on 7277fdb5; no hosted review or comment; mergeable, clean. The cold read ran for this pull request (cold_read=yes), so step 9a has nothing to route.
