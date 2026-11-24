@@ -283,3 +283,23 @@ Suites run (each on its own, after the last change):
 - `test_ros2_colcon.sh`: `=== Results: 1209 passed, 0 failed, 0 skipped ===`
 - `run_script_tests.sh -j 4 --files <the 6 changed files>`: `run_script_tests: all 57 suites passed in 300s` (among them `test_ros2_colcon.sh`, `test_package_issue_loop.sh`, `test_worktree_create.sh`)
 - The full pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 14:15 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a5a07de4e76c3aa52, resume 1 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-585 at `3e739e87`
+**Base**: origin/main
+**Depth**: Deep (reason: whole-branch diff, 1240 changed lines in 16 files, including worktree_remove.sh, which deletes; fix round classified on the whole diff)
+**Must-fix**: 1 | **Suggestions**: 0
+**Round**: 2 | **Ship**: recommended — round 2: 1 mechanical must-fix (prev 1), not rising — fix and ship rather than another full round
+
+Round 1 findings, all closed: F1 (`wt_main_root` confirms a folder that answers as its own main checkout with plain `rev-parse --git-dir`/`--git-common-dir` and refuses on any failure or difference; the shim tests prove the refusal for all four scripts, remove plain and `--force` with a real worktree on the defect's path, and that a real main checkout still passes with an old git); F2 (`--layer` case as a worktree's copy in `test_ros2_colcon.sh`); F3 (self-removal from inside the worktree); F4 (sourced-enter exact stdout and ERROR); F5 (Table 1 enter 146-180 and list 175, both checked; Change log row, 1289 lines).
+
+Checked this round: shellcheck --severity=warning on the four changed scripts: clean; `test_merge_pr.sh`: 187 passed, 0 failed (both self-removal cases); `test_worktree_main_root.sh`: 199 passed, 0 failed (fresh adversarial run). Follow-up on `_registry_main_checkout_status` (a failed git call reported as the folder with the not-a-fallback flag): right to leave for a follow-up in the pull request text; `wt_main_root` no longer depends on it, and its other callers only read the registry for messages and lookups and delete nothing.
+
+### Findings
+- [ ] (must-fix) An exported `GIT_DIR` (with or without `GIT_WORK_TREE`/`GIT_COMMON_DIR`) still gives a silent wrong root: `git -C "$own"` answers for `GIT_DIR`'s repository, so with `GIT_DIR=<main>/.git` or another repository's git dir, the copy in a linked worktree passes `--show-toplevel` (the cwd), `_registry_main_checkout_status` and the new confirm step (git dir equals common dir), and `wt_main_root` prints the worktree with exit 0, which is the original defect, silently. Reproduced in a sandbox by the adversarial pass; raised by Gemini in both rounds (dropped in round 1, reversed now). Run the helper's git calls, including the `registry_main_checkout*` calls, without `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE` and `GIT_COMMON_DIR` (prior art: `_project_document_git` in `_project_registry.sh:1546`, `_bookkeeping.sh:58`), and add a case with `GIT_DIR` exported — `.agent/scripts/_worktree_helpers.sh:66`
