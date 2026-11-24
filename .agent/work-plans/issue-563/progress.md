@@ -342,3 +342,38 @@ Specialists: static analysis (shellcheck not installed, not run; the touched sui
 - [x] (suggestion) A pull request with no worktree gets its path from a line row whose item has `(#<N>`, which misses the second issue of a list such as `(#208, #209)` (in the roadmap today) and does not say that the `no path` group reads `no path (a line names it)` (Gemini) — `.claude/skills/sitrep/SKILL.md:1274-1284`
 - [x] (suggestion) Each group's "<t> of <n> done" is said to come from step 1's `--- next steps`, whose lines carry no counts; name the summary's ` paths` suffix or the rows as the source — `.claude/skills/sitrep/SKILL.md:1203-1207`
 - [x] (suggestion) Path grammar edges: two paragraphs with the same path number get the same summary label (`P1 none P1 none`), so the per-path comparison of two records mis-pairs them; `**Across the paths<anything>**` keeps the suffix as the group's name; a `**Path` span that never closes drops the path with no row saying so (Claude adversarial, Gemini) — `.agent/scripts/sitrep_checks.sh:330-337, 973-983`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 08:48 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-563 at `5bf94c05`
+**Addressed**: Local Review (Pre-Push) at `14471097` (2026-11-24 08:34 -05:00)
+**Commits**: 8eaa6175, ce1daa2b, 5bf94c05
+
+### Actions
+- [x] (must-fix) Closing question's paths read with the checker's rules: step 3's last block takes the names from step 1's `path` rows, or with no rows from the new `sitrep_checks.sh --list-paths` (same scanner, no check run, no pointer followed); only each paragraph's first sentence is read from the prose, keyed by those names (fence-aware, a paragraph opens only after a blank, table or heading line). The `haspaths` fallback asks `--list-paths` too. A failed `--list-paths` prints `paths=unknown`, which step 8 treats like `paths=none` and says under Problems (host N2 kept: the question still works with no rows) — `.claude/skills/sitrep/SKILL.md` step 3, `.agent/scripts/sitrep_checks.sh` (8eaa6175)
+- [x] (suggestion) Five-branch limit: overflow rule (more than five matched: the first five in step 3's order, the rest under "And <k> more:"), template wording now "matched no branch or pull request for" — `.claude/skills/sitrep/SKILL.md` step 8 (5bf94c05)
+- [x] (suggestion) Acceptance case's path: printed as `acceptance_path=` by step 3's last block (not step 5's, as the review proposed), because that block already holds the checker's names, so the path named is one the report shows; step 8's first line uses it, and with none it is `acceptance_first` alone — `.claude/skills/sitrep/SKILL.md` steps 3 and 8 (8eaa6175)
+- [x] (suggestion) Pull request with no worktree: its issue is found in any number of a bracketed list such as `(#208, #209)`, as step 5 reads an item, and it is marked as step 3 marks a group, `no path (a line names it)` included — `.claude/skills/sitrep/SKILL.md` step 8 (5bf94c05)
+- [x] (suggestion) "<t> of <n> done" source: the summary's ` paths` part, one count per group in next-steps order — `.claude/skills/sitrep/SKILL.md` step 8 (5bf94c05)
+- [x] (suggestion) Checker edges made visible, no recovery logic (owner direction 2026-11-20): a bold `Path`/`Across` span that never closes, words after `Across the paths` (the group keeps the name `Across the paths`, as the header already said), and a path number used twice each print an `unchecked` `format` row, reported under Problems; step 8 compares per path only when no label repeats — `.agent/scripts/sitrep_checks.sh` path_mark, bold_unclosed, group_rows (ce1daa2b)
+
+### Host directions (for the owner's veto)
+- Must-fix fixed per plan item 12 and the review; fallback by asking the checker (one reader); N2 kept.
+- Four skill-text suggestions fixed with the smallest text edits.
+- Checker edge cases made visible as `format` rows, not handled; mechanism text names no project.
+
+### Decided beyond the directions
+- New checker mode `--list-paths` (the fallback's "ask the checker"), documented in the script header and `.agent/knowledge/script_reference.md`.
+- Step 3's path lines now print the name as the checker gives it (`Path 1, Alpha`) in one field, not number and name split; step 8's question text follows.
+- `paths=unknown` added for a checker that cannot list the paths.
+
+### Suites (each run on its own from the worktree, on the final state)
+- test_sitrep_checks.sh: "test_sitrep_checks: 286 passed, 0 failed" (also run at each intermediate commit: 285/0 after 8eaa6175, 286/0 after ce1daa2b)
+- test_sitrep_root.sh: "test_sitrep_root: 69 passed, 0 failed"
+- test_design_anchors.sh: "test_design_anchors: 82 passed, 0 failed"
+- test_update_roadmap.sh: "test_update_roadmap:16 passed, 0 failed"
+- test_skill_paths.sh: "test_skill_paths: 199 passed, 0 failed"
+- The full pass is left to the host.
