@@ -8,7 +8,9 @@
 # Also enforces the silent-at-source contract requirement and rejects
 # adapters that call exit at top level, and checks each type's optional
 # unused_settings list (the settings-file keys the type never reads, issue
-# #332): every entry a known key, once, with a reason; and its required
+# #332): every entry a known key, once, with a reason; its optional
+# registration_refused list (the keys register_project.sh refuses for the
+# type, issue #569), the same; and its required
 # registration.conf (what register_project.sh does for the type, issue
 # #332): every key set once with a valid value, no required command the
 # type never reads.
@@ -61,6 +63,15 @@ for type_dir in "$TYPES_DIR"/*/; do
     # misspelt key refuses nothing) or show the user an empty reason.
     if ! problems="$(project_type_unused_settings_problems "$type_dir/unused_settings")"; then
         echo "❌ $type_name: unused_settings is invalid:"
+        # shellcheck disable=SC2001
+        echo "$problems" | sed 's/^/     /'
+        FAILED=1
+    fi
+
+    # The keys a project of the type can never be registered with: the
+    # same grammar, read by register_project.sh before it writes anything.
+    if ! problems="$(project_type_unused_settings_problems "$type_dir/registration_refused")"; then
+        echo "❌ $type_name: registration_refused is invalid:"
         # shellcheck disable=SC2001
         echo "$problems" | sed 's/^/     /'
         FAILED=1

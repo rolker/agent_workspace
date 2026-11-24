@@ -364,6 +364,29 @@ test_validator_flags_missing_adapter_file() {
     assert_contains "flags empty_type" "empty_type: missing adapter.sh" "$out"
 }
 
+test_validator_checks_registration_refused() {
+    echo "TEST: validator checks a type's registration_refused list like unused_settings: known keys, once each, with a reason (#569)"
+    local sb out rc list k
+    sb="$(make_sandbox)"
+    # The sandbox holds single_project only; the grammar is the same for
+    # every type, so ros2_colcon's shipped list is checked from there.
+    list="$sb/.agent/project_types/single_project/registration_refused"
+    cp "$REAL_ROOT/.agent/project_types/ros2_colcon/registration_refused" "$list"
+    rc=0; out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
+    assert_eq "the shipped ros2_colcon list: exit 0" "0" "$rc"
+    assert_not_contains "the shipped list: no complaint" "registration_refused is invalid" "$out"
+    for k in source source_ref source_path; do
+        assert_contains "the shipped list refuses $k" $'\n'"$k " $'\n'"$(cat "$list")"
+    done
+    printf 'source a reason\nsourc a typo\nsource again\nsource_ref\n' > "$list"
+    rc=0; out="$("$sb/.agent/scripts/validate_adapter.sh" 2>&1)" || rc=$?
+    assert_eq "a bad list: exit 1" "1" "$rc"
+    assert_contains "a bad list: flagged" "single_project: registration_refused is invalid" "$out"
+    assert_contains "unknown key named with its line" "line 2: unknown settings key 'sourc'" "$out"
+    assert_contains "duplicate named" "line 3: 'source' is listed twice" "$out"
+    assert_contains "missing reason named" "line 4: 'source_ref' has no reason" "$out"
+}
+
 test_validator_checks_unused_settings() {
     echo "TEST: validator checks a type's unused_settings list: known keys, once each, with a reason (#332)"
     local sb out rc list
@@ -1212,6 +1235,7 @@ test_validator_passes_complete_adapters
 test_validator_flags_missing_verbs
 test_validator_flags_missing_adapter_file
 test_validator_checks_unused_settings
+test_validator_checks_registration_refused
 test_validator_checks_registration_conf
 test_validator_rejects_toplevel_exit
 test_validator_rejects_noisy_source

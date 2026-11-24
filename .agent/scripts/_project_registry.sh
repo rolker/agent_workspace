@@ -99,6 +99,14 @@
 #   Today ros2_colcon lists build and test (colcon owns them; it reads
 #   install), and single_project lists bootstrap_url, source, source_ref
 #   and source_path.
+# - a key a project of the type can never be registered with (the type
+#   reads it, but its adapter refuses it) is refused by register_project.sh
+#   --set before anything is written: each type lists such keys with the
+#   reason, in the same grammar, in
+#   .agent/project_types/<type>/registration_refused
+#   (registration_refused_setting). Today ros2_colcon lists source,
+#   source_ref and source_path; `project_setting.sh set` still accepts
+#   them on a registered project.
 #     location              project | outside       where the loop's records
 #     location_path         absolute path           (work plans, progress
 #     tracking              project | untracked | repo   timelines) live
@@ -1138,12 +1146,31 @@ _project_file_has_line_key() {
 # here names a type.
 # Usage: reason=$(_project_type_unused_setting "$root" "$type" build)
 _project_type_unused_setting() {
-    local root="$1" type="$2" want="$3" f k reason
+    _project_type_setting_listed "$1" "$2" unused_settings "$3" \
+        "the list of settings project type '$2' never reads"
+}
+
+# Does project type <type> refuse settings key <key> at registration (its
+# adapter refuses a project that sets it, so registering one with it can
+# never succeed)? The same returns and grammar as
+# _project_type_unused_setting, read from the type's data file
+# .agent/project_types/<type>/registration_refused. Read by
+# register_project.sh for each --set key, before anything is written.
+# Usage: reason=$(registration_refused_setting "$root" "$type" source)
+registration_refused_setting() {
+    _project_type_setting_listed "$1" "$2" registration_refused "$3" \
+        "the list of settings project type '$2' refuses at registration"
+}
+
+# The reader behind both lists: <lname> is the file's name under the
+# type's directory, <what> names it in the unreadable-file reason.
+_project_type_setting_listed() {
+    local root="$1" type="$2" lname="$3" want="$4" what="$5" f k reason
     [ -n "$type" ] || return 1
-    f="$root/.agent/project_types/$type/unused_settings"
+    f="$root/.agent/project_types/$type/$lname"
     [ -e "$f" ] || [ -L "$f" ] || return 1
     if [ ! -f "$f" ] || [ ! -r "$f" ]; then
-        echo "the list of settings project type '$type' never reads, $f, exists but is not a readable file"
+        echo "$what, $f, exists but is not a readable file"
         return 2
     fi
     while read -r k reason || [ -n "$k" ]; do
@@ -1158,12 +1185,12 @@ _project_type_unused_setting() {
     return 1
 }
 
-# Check a type's unused_settings list <file> (the grammar
-# _project_type_unused_setting reads): readable; each line that is not
-# blank or a '#' comment names a known settings key, once, followed by a
-# reason. Prints one problem per line ("line N: ...") and returns 1 when
+# Check a type's unused_settings or registration_refused list <file> (the
+# grammar _project_type_setting_listed reads): readable; each line that is
+# not blank or a '#' comment names a known settings key, once, followed by
+# a reason. Prints one problem per line ("line N: ...") and returns 1 when
 # there is any; returns 0 when the list is valid or absent. Used by
-# validate_adapter.sh.
+# validate_adapter.sh for both lists.
 # Usage: project_type_unused_settings_problems "$file"
 project_type_unused_settings_problems() {
     local f="$1" raw k reason lineno=0 bad=0 seen=" " known
@@ -1189,7 +1216,7 @@ project_type_unused_settings_problems() {
         fi
         seen="$seen$k "
         if [ -z "$reason" ]; then
-            echo "line $lineno: '$k' has no reason (the reason is what set and check show the user)"
+            echo "line $lineno: '$k' has no reason (the reason is what the user is shown when the key is refused)"
             bad=1; continue
         fi
     done < "$f"

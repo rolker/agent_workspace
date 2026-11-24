@@ -689,16 +689,31 @@ check "the refusal says why and names the manifest tool's init" \
 check "no registry line, no settings file" \
     bash -c '! grep -q "^upsilon " "$1" && [ ! -e "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" upsilon)"
 
-echo "TEST: --set source=... with the type ros2_colcon on a new path: setup refuses it (the route source selected is removed), and the registration is rolled back (issue 569)"
+echo "TEST: --set source, source_ref or source_path with the type ros2_colcon is refused before anything is written, naming the manifest tool's init (issue 569)"
 SRC_DIR="$SANDBOX/colcon/phi"
 out="$(reg "$WS" "$SRC_DIR" ros2_colcon --set "source=$SANDBOX/no/manifest.yaml")"; rc=$?
-check "setup ran and was refused: exit 1, STATUS=refused" [ "$rc" -eq 1 -a "$(status_of "$out")" = refused ]
-check "setup's refusal names the removed route, the manifest tool's init and the unset" \
-    bash -c '[[ "$1" == *"== adapter --project phi setup"* && "$1" == *"source no longer selects a route"* && "$1" == *"init <manifest> --distro-dirs --distro <distro>"* && "$1" == *"project_setting.sh unset phi source source_ref source_path"* ]]' _ "$out"
+check "refused: exit 1, STATUS=refused" [ "$rc" -eq 1 -a "$(status_of "$out")" = refused ]
+check "the refusal names the key, the type, the way on and the design's section" \
+    bash -c '[[ "$1" == *"--set source is refused for a project of type ros2_colcon: the manifest route it selected is removed"* && "$1" == *"make the directory, run the manifest tool'"'"'s init in it (repos-manifest init <manifest> --distro-dirs --distro <distro> [--role <role>]), then register the directory without --set source="* && "$1" == *"\"A root that sets source\""* ]]' _ "$out"
+check "NEXT= names the directory and registering it without the key" \
+    bash -c '[[ "$1" == *$'"'"'\nNEXT=register '"'"'"$2"'"'"' without --set source, after the steps above'"'"'* ]]' _ "$out" "$SRC_DIR"
+check "setup never ran" bash -c '[[ "$1" != *"adapter --project phi setup"* ]]' _ "$out"
 check "no registry line, no settings file" \
     bash -c '! grep -q "^phi " "$1" && [ ! -e "$2" ]' _ "$WS/.agent/projects.local" "$(pfile "$WS" phi)"
-check "no directory left, and none named on KEPT=" \
+check "no directory made, and none named on KEPT=" \
     bash -c '[ ! -e "$1" ] && [[ "$2" != *KEPT=* ]]' _ "$SRC_DIR" "$out"
+for _k in source_ref=v1 source_path=m.yaml; do
+    out="$(reg "$WS" "$SRC_DIR" ros2_colcon --set "$_k")"; rc=$?
+    check "--set ${_k%%=*} alone: refused through the type's list, nothing written" \
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"--set ${4%%=*} is refused for a project of type ros2_colcon"* ]] && ! grep -q "^phi " "$3" && [ ! -e "$5" ] && [ ! -e "$6" ]' \
+        _ "$rc" "$out" "$WS/.agent/projects.local" "$_k" "$(pfile "$WS" phi)" "$SRC_DIR"
+done
+mkdir -p "$SANDBOX/colcon/chi"
+out="$(reg "$WS" "$SANDBOX/colcon/chi" ros2_colcon --set "source=$SANDBOX/no/manifest.yaml" --dry-run)"; rc=$?
+check "a dry run is refused the same way, and the directory that existed is left" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"--set source is refused for a project of type ros2_colcon"* ]] && [ -d "$3" ] && ! grep -q "^chi " "$4"' \
+    _ "$rc" "$out" "$SANDBOX/colcon/chi" "$WS/.agent/projects.local"
+rmdir "$SANDBOX/colcon/chi"
 
 # The tool route's registration test below ("a root the manifest tool set
 # up") runs THIS checkout's tools/repos-manifest/src, by the first python

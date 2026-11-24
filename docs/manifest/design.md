@@ -41,7 +41,9 @@ This section describes the code as it is. It was checked against
   them is refused at use, by every verb that reads the manifest and by `setup` and `sync`,
   before anything is fetched; the message names `repos-manifest init` in the root and the
   `project_setting.sh unset` of the three keys. On the tool route `validate` names them as a
-  second record. Their removal is a line of [roadmap.md](roadmap.md).
+  second record. `register_project.sh` refuses a `--set` of any of them for a `ros2_colcon`
+  project before it writes anything, through the type's `registration_refused` list, since
+  such a registration could never pass. Their removal is a line of [roadmap.md](roadmap.md).
 - `register_project.sh` writes both. A root set up from a manifest in the new format is made
   with `repos-manifest init` in that directory first, then registered.
 
