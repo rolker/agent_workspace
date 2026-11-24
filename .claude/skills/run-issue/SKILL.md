@@ -197,6 +197,8 @@ next `dispatch_phase.sh next` call — the timeline alone is the state
 machine, so `/run-issue <N>` on a half-done issue resumes from the newest
 entry with no state anywhere else.
 
+For the manifest work, a dated lighter review level (one code review round, suggestions deferred to one follow-up issue) is in force until the Rolling test of issue 436 passes; it is in `host_standing_rules.md` and this overview describes the loop without it. Under it the host appends a `publish` or `plan` checkpoint that `next` did not raise, in the cases that file names, instead of dispatching a second review round.
+
 **One dispatch path.** Every phase — dispatched or inline — is handed off
 the same way: `dispatch_phase.sh --issue <ref> --skill <phase> [--pr <M>]
 [--type <type>]` prints the handoff block, and the host pastes it into a
@@ -1113,6 +1115,8 @@ merge, by either of the two ways to one:
   re-fetch on the merge answer and before `merge_pr.sh`, which a
   `findings` checkpoint would otherwise reach with no request and no
   cold read.
+
+For the manifest work, the standing rules file (`## Manifest work: the lighter review level`) says when the Copilot request is not made and what the cold read is; read it before this step.
 
 The re-fetch comes first because a review it finds unread goes to
 `triage-reviews`, and its findings to a fix round, before the one request
