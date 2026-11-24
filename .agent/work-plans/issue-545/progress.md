@@ -251,3 +251,27 @@ Cross-model: gemini complete, codex complete. Claude adversarial complete. Stati
 - `bash .agent/scripts/tests/test_script_tests_hook_scope.sh`: `test_script_tests_hook_scope: 357 passed, 0 failed`
 - `bash .agent/scripts/tests/test_skill_paths.sh` (script_reference.md changed): `test_skill_paths: 200 passed, 0 failed`
 - Commits ran every hook except validate-script-tests (SKIP per #465). The full pre-commit pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-23 22:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+**Dispatch**: resumed (agent ada1d3b19e629ea27, resume 1 of 3)
+
+**Branch**: feature/issue-545 at `b86cca30`
+**Base**: main
+**Depth**: Standard (reason: whole-branch diff, new ~1080-line script plus tests and design-doc change; fix-round classified on the whole diff)
+**Must-fix**: 2 | **Suggestions**: 5
+**Round**: 2 | **Ship**: recommended — round 2: 2 mechanical must-fix (prev 5), not rising; fix and ship rather than another full round
+
+Cross-model: gemini complete, codex complete. Claude adversarial complete (no must-fix). Static analysis (pre-commit black/flake8/pylint/shellcheck on changed files) clean; `test_review_viewer.sh` 81 tests OK (1 skipped, xvfb). `--help` exits 0, `--bogus x` exits 1. GUI not launched. All 12 round-1 findings verified fixed; the three display-only fixes read closely and judged correct: Ctrl+N is bound on the text widget and returns "break", so it runs before the Text class binding and the root binding does not double-fire; `sel` is raised last; the flash timer id is cleared in `_end_flash` before a later `after_cancel`. Host decisions held: a failed save on close keeps the window open, a callback error exits 1, usage errors exit 1, and the snapshot may be the `--previous` file. Dropped: the decision kept after a failed close-save (that is the intended retry), the `# covers:` selection concern (suites_for_files.sh selects test_review_viewer.sh, verified in round 1), and parse_notes heading collision (documented limit, test-only reader).
+
+### Findings
+- [ ] (must-fix) The `--help` epilog says to "write the notes file in the format above", but `--help` shows no format: the format is only in the module docstring. Exit 2's stderr points to `--help`, and plan step 5 put the fallback there. Put the notes format template in the epilog or description; add a test that `--help` shows `**Decision**` and `## Note` — `.agent/scripts/review_viewer.py:87-92,1023-1039` (gemini, verified)
+- [ ] (must-fix) `_ask_text` and `_ask_decision` call `wait_visibility()` and `grab_set()` before entering `_modal()`. `wait_visibility` runs the event loop with depth 0, and blocks while the root is iconified, because a transient dialog does not map. A second close (e.g. from the taskbar of a minimised window) therefore nests a second decision dialog; the inner pick finishes and destroys the root, then the outer one calls finish/destroy on a dead app and the clean close exits 1. `grab_set` can also raise TclError ("another application has grab", or the dialog already closed), leaving an orphan dialog whose Save goes nowhere. Enter `_modal()` before building the Toplevel and catch TclError from `grab_set` (carry on without the grab) — `.agent/scripts/review_viewer.py:855-858,969-972` (Claude adversarial, gemini)
+- [ ] (suggestion) A data row whose cells are all `-` (a row of N/A) is still drawn as a separator (verified: `| - | - |` shows `| --- | --- |`), contradicting the comment; treat only the second row of a table block as the delimiter row — `.agent/scripts/review_viewer.py:222-224` (lead, Claude adversarial)
+- [ ] (suggestion) A pipe after an escaped backslash (`\\|`) is treated as escaped; count the preceding backslashes and treat the pipe as escaped only when the count is odd (display only) — `.agent/scripts/review_viewer.py:197-198` (codex, gemini)
+- [ ] (suggestion) `Path.resolve()` (symlink loop, RuntimeError on Python 3.12 and earlier) and `is_dir()` (PermissionError) in `main` and `check_paths` give a traceback instead of a one-line exit 1 — `.agent/scripts/review_viewer.py:570,1050-1052` (Claude adversarial, gemini)
+- [ ] (suggestion) The CLI tests for exit 2 (empty env, `DISPLAY=:9999`) would open a real window on macOS or Windows now that `check_display` skips the env test there; skip them when `sys.platform in NATIVE_TK_PLATFORMS` — `.agent/scripts/tests/test_review_viewer.py:511-522` (gemini)
+- [ ] (suggestion) `NotesWriter.write` moves the old notes to `.prev` before the new write succeeds; a failed first write leaves no file at the notes path (nothing lost, the old file is in `.prev`). Write the temp file first, then rotate and replace — `.agent/scripts/review_viewer.py:525-530` (gemini)
