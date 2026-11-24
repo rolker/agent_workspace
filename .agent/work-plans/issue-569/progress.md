@@ -728,3 +728,19 @@ Scope: the merge of origin/main (pull request 568, issue 551) into the branch. C
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 12:00 -05:00
+**By**: Claude Code (claude-opus-5-5)
+**Reviews-read**: 6042973987
+
+**PR**: #597 at `aa47b9c`
+**Sources**: 3 (Local Review @ `aa47b9cd` (PR mode, after the merge of origin/main, no findings), Copilot could-not-review notice @ `860476c` (review 6042973987: insufficient quota, no findings), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending (after about 6 minutes of polling: Lint (pre-commit), repos-manifest tests (#267 prototype) (Python 3.10) and (Python 3.14) still in progress; Validate Adapter Contract and Validate Documentation pass)
+
+### Findings
+- [ ] No open findings. The three low findings of the Local Review @ `860476c` were ruled on in the previous Integrated Review (deferred by the owner to issue 599) and are not carried forward; the `sources` helper lists that entry as stale at this head.
+
+### False positives
