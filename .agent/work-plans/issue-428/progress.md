@@ -1382,3 +1382,23 @@ Cross-model: codex ran (EXIT=0), given the PR title, URL, the diff without `.age
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 09:16 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+**Dispatch**: resumed (agent ad8fbaf5c1e18deea, resume 2 of 3)
+
+**PR**: #570 at `4070a022`
+**Sources**: 2 (Local Review @ `4070a022` (entry a54943be, the cold read, cross-model only: Codex, approved, no findings), CI rollup). No hosted review, no hosted-reviewer check-run, no inline or conversation comment. Copilot was not requested (the request command was refused by this session's permission check), so it is not a source and not a pending one. The earlier Local Review @ `4070a022` (fed74a8a, no findings) was integrated in 74d22a3c; nothing from it or from earlier rounds is open.
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Summary: nothing open. The cold read raised nothing; its unchecked `- [ ] No issues found. LGTM.` line is the reviewer's empty-result placeholder, not a finding (the `sources` helper does not list it). CI on `4070a022` at 09:14, both runs: Validate Documentation passed, Validate Adapter Contract passed, Lint (pre-commit) pending, repos-manifest tests on Python 3.10 and 3.14 pending; nothing failed.
+
+Pull request text checked against the branch, nothing wrong: `extract_gh_slug` makes no gh call (its header says so; the only `gh` uses in the file are `issue_lookup`'s fallback); the 130 checks of `test_issue_helpers.sh` (run here earlier on this head: 130 passed, 0 failed); `test_ros2_colcon.sh`'s stub sources the real helper (line 846); run-issue step 11 says "call `next` again" (`.claude/skills/run-issue/SKILL.md:1326`); the `worktree_remove.sh` header (line 32) and its `script_reference.md` row list a manifest path containing `..`; the three fixes are in both parsers (72d77eee, 82603cf2, 1bf11430); the review history matches the timeline (pre-push round 1 with four suggestions, Gemini and Codex; the re-review fed74a8a, Gemini and Codex; the Codex cold read a54943be); the five out-of-scope scripts still carry `sed -E 's#.*github\.com[:/]##'` and neither they nor `worktree_enter.sh` are changed by this branch. Two places where the text is less exact than it could be, neither wrong enough to block: "the same grammar as `sitrep_root.sh`" leaves out the test-fixture-only `fake_remotes/github.com/` path form, which `extract_gh_slug`'s header records; and for an `ssh.github.com` or `www.github.com` origin "says so" is true (the lookup is skipped with a note), but the note `worktree_create.sh:762` prints gives the reason as "this project's origin is hosted elsewhere", which is inexact for those two hosts. That limit is on the plan's veto list and the earlier review ruled it not a finding; under the owner's direction (2026-11-20, "Let's not waist too much time going for perfect when we can have agents handle the edge cases") it stays a recorded limit.
+
+### Findings
+
+### False positives
