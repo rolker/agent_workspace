@@ -880,7 +880,7 @@ Part 3 of 3, round 2: the fixes 0ef6f8f5, 745899c9, 1aef015d, 707033b7 for round
 
 ### Findings
 - [x] (suggestion) `packages:` is tested only through `_EARLIER_FORMAT_KEYS` imported from the code under test, so removing it from the tuple fails no test; add one literal `packages:` case or assert the tuple's four keys — `tools/repos-manifest/tests/test_cli.py:77`
-- [ ] (suggestion) "Every command reads a manifest" is not true of `build`, which reads the saved resolution (`cmd_build` calls `run_build` only); say "every command that reads a manifest" — `tools/repos-manifest/README.md:214`
+- [x] (suggestion) "Every command reads a manifest" is not true of `build`, which reads the saved resolution (`cmd_build` calls `run_build` only); say "every command that reads a manifest" — `tools/repos-manifest/README.md:214`
 
 ## Checkpoint
 **Status**: complete

@@ -2172,7 +2172,7 @@ the order they were read, and resolves it for every role and distro it lists, wr
 `--role` or `--distro` limits the check to that role or distro, and `--with` switches on extra
 groups in each one.
 
-Every command reads this format only. A manifest in the tool's earlier format, where repos
+Every command that reads a manifest reads this format only (`build` works from the saved resolution and reads none). A manifest in the tool's earlier format, where repos
 are nested under their layer and the version key is `ref`, is refused with a message that names
 that format and the specification. The reader of that format is removed, and with it three
 things this design drops: a `packages:` section with package dependencies, roles defined by

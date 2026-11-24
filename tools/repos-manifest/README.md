@@ -211,7 +211,7 @@ repos-manifest build -- --symlink-install
 source rolling/setup.bash
 ```
 
-Every command reads a manifest in the format of [docs/spec.md](docs/spec.md) only. A manifest
+Every command that reads a manifest reads it only in the format of [docs/spec.md](docs/spec.md). A manifest
 in the tool's earlier format (repos under `repos:` by layer, with `extends:`,
 `optional_layers:` or `packages:`) is refused with a message that names that format; write it
 again in the format of the specification.
