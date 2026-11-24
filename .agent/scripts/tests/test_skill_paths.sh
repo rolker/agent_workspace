@@ -1320,6 +1320,14 @@ fi
 has "$SKILLS/review-plan/SKILL.md" "review-plan: step 0 names both branch forms and which number <N> is in the PR form" \
     '`feature/ISSUE-<issue>-<description>` (case ignored), else the pull request number `<N>`' \
     '`<N>` is the issue number everywhere except in step 1'"'"'s **PR number** form and the Step 5 note'"'"'s PR lines, where `<N>` is the pull request number and `<issue>` the issue number'
+if grep -qF 'wt_registry_worktree_dirs' "$SKILLS/review-plan/SKILL.md"; then
+    fail "review-plan: the --issue lookup still searches registered projects' worktrees by number"
+else
+    pass "review-plan: the --issue lookup searches no registered project's worktrees"
+fi
+has "$SKILLS/review-plan/SKILL.md" "review-plan: the --issue lookup is this checkout's plan, then the workspace worktree, then a stop naming both paths" \
+    'Registered projects'"'"' worktrees are not searched' \
+    'echo "No plan for issue <N>: looked at $plan and $plan2.'
 has "$SKILLS/review-plan/SKILL.md" "review-plan: the PR number form stops where origin is not \$_REPO (it fetches the head from origin)" \
     'if [ "${_ORIGIN_SLUG,,}" != "${_REPO,,}" ]; then' \
     'the PR number form is not supported in this checkout'

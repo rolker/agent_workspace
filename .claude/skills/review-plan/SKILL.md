@@ -193,11 +193,12 @@ the repository this phase runs in, which for a dispatched phase is the
 handoff's `worktree=` (for an issue of a package repository, the owning
 checkout inside the package worktree; issue 429). If the file doesn't exist,
 check the workspace worktree (`worktrees/workspace/issue-workspace-<N>/`)
-first, then every registered project's worktree dir (a project's worktrees
-live under its own root, issue #265). Enumerate every root's worktree dir
-with the shared helper, the same way the worktree scripts do, rather than
-deriving a glob. The block asks `issue_repo.sh` first and looks for no
-plan when the issue is not this checkout's:
+built from this checkout's top level, then stop and name the paths looked
+at. Registered projects' worktrees are not searched: another project's
+issue can have the same number, and an issue of another root is reviewed
+from a session in that root (the session-root rule). The block asks
+`issue_repo.sh` first and looks for no plan when the issue is not this
+checkout's:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
@@ -208,21 +209,18 @@ if [ -f "$plan" ]; then echo "$plan"; else
 # shellcheck source=../../../.agent/scripts/_worktree_helpers.sh
 source $WS_ROOT/.agent/scripts/_worktree_helpers.sh
 WS_ROOT="$(git rev-parse --show-toplevel)"
-# … then the workspace worktree (a workspace-repo issue's plan lives here) …
-plan="$(wt_workspace_base "$WS_ROOT")/issue-workspace-<N>/.agent/work-plans/issue-<N>/plan.md"
-if [ -f "$plan" ]; then echo "$plan"; else
-    # … then every registered project's worktree dir.
-    while IFS=$'\t' read -r _name wtdir; do
-        plan="$wtdir/issue-"*"-<N>/.agent/work-plans/issue-<N>/plan.md"
-        [ -f $plan ] && { echo "$plan"; break; }
-    done < <(wt_registry_worktree_dirs "$WS_ROOT")
+# … then the workspace worktree (a workspace-repo issue's plan lives here),
+# then stop: no other root's worktrees.
+plan2="$(wt_workspace_base "$WS_ROOT")/issue-workspace-<N>/.agent/work-plans/issue-<N>/plan.md"
+if [ -f "$plan2" ]; then echo "$plan2"; else
+    echo "No plan for issue <N>: looked at $plan and $plan2. An issue of another root is reviewed from a session in that root."
+    exit 1
 fi
 fi
 ```
 
-`wt_registry_worktree_dirs` covers every registered non-parent root's
-worktree dir (in-tree or out-of-tree). If no match is found in any of these
-locations, stop and inform the user.
+A dispatched phase runs in the issue's own checkout (the handoff's
+`worktree=`), so the first path finds its plan.
 
 ### 2. Read the issue and any review-issue comments
 
