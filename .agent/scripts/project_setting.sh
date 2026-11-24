@@ -58,8 +58,11 @@
 #   3  check only: valid, but records settings not yet honoured (#393)
 # doc: 0 an answer printed; 1 nothing to read (goals unset, no candidate
 # exists, or the file a set key names is missing; the reason on stderr);
-# 2 the settings file or registry is invalid, or the path resolves outside
-# the project root.
+# 2 the registry is invalid, or the key itself is unusable (set twice, an
+# invalid value, a roadmap that is a symbolic link) or its path resolves
+# outside the project root (a settings file invalid only in other lines
+# gives a warning and the key as written, or the candidates when unset);
+# 3 a usage error or an unknown project.
 
 set -euo pipefail
 
@@ -91,7 +94,11 @@ case "$CMD" in
     get|set|unset|list|check|doc) ;;
     *) echo "ERROR: unknown command '$CMD'" >&2; usage; exit 1 ;;
 esac
-[ $# -ge 1 ] || { echo "ERROR: $CMD needs a project name" >&2; usage; exit 1; }
+# doc's usage errors (and an unknown project) exit 3, apart from its exit 1
+# "nothing to read"; the other commands keep 1.
+_USAGE_RC=1
+[ "$CMD" = doc ] && _USAGE_RC=3
+[ $# -ge 1 ] || { echo "ERROR: $CMD needs a project name" >&2; usage; exit "$_USAGE_RC"; }
 NAME="$1"
 shift
 
@@ -133,7 +140,7 @@ if [ "$_RC" -eq 2 ]; then
 fi
 if [ "$_RC" -ne 0 ]; then
     echo "ERROR: project '$NAME' is not registered in $(registry_file "$MAIN_ROOT")" >&2
-    exit 1
+    exit "$_USAGE_RC"
 fi
 FILE="$(project_file_path "$MAIN_ROOT" "$NAME")"
 
@@ -241,12 +248,15 @@ case "$CMD" in
         exit 0
         ;;
     doc)
-        [ $# -eq 1 ] || { echo "ERROR: doc takes one document: goals, design or roadmap" >&2; exit 1; }
+        [ $# -eq 1 ] || { echo "ERROR: doc takes one document: goals, design or roadmap" >&2; exit 3; }
         case "$1" in goals|design|roadmap) ;; *)
-            echo "ERROR: doc: unknown document '$1' (goals, design or roadmap)" >&2; exit 1 ;;
+            echo "ERROR: doc: unknown document '$1' (goals, design or roadmap)" >&2; exit 3 ;;
         esac
+        # The answer only on success: on exit 1 the lookup also prints the
+        # missing file a set key names, which is not an answer here.
         _RC=0
-        project_document_path "$MAIN_ROOT" "$NAME" "$1" || _RC=$?
+        _OUT="$(project_document_path "$MAIN_ROOT" "$NAME" "$1")" || _RC=$?
+        [ "$_RC" -eq 0 ] && printf '%s\n' "$_OUT"
         exit "$_RC"
         ;;
     check)

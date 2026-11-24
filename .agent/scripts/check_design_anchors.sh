@@ -149,8 +149,11 @@
 #   0  no findings
 #   1  one or more findings
 #   2  usage error, root is not a directory, the root's design file missing
-#      (or its setting names a missing file), the settings or registry
-#      cannot be read, or _project_registry.sh cannot be loaded
+#      (or its setting names a missing file), the design or roadmap key
+#      itself is unusable (set twice, an invalid value) or names a file
+#      outside the root (a fallback file too), or _project_registry.sh
+#      cannot be loaded. A registry or settings file unreadable for another
+#      reason gives a warning and the fallback, not an exit.
 
 set -uo pipefail
 LC_ALL=C
@@ -188,41 +191,44 @@ if [[ ! -d "$ROOT" ]]; then
     exit 2
 fi
 cd "$ROOT" || exit 2
+# The physical root, so the lookup below does not resolve a relative <root>
+# again from inside it.
+ROOT="$(pwd -P)"
 
 # The root's design file (issue #551): project_document_for_dir
 # (_project_registry.sh) against the main checkout's registry. A registered
 # project's root (or a worktree of its own repository) reads its `design`
 # setting; any other root, the workspace included, reads docs/design.md.
 # A #<heading> on the setting is dropped: the file is the unit here. The
-# roadmap whose pointer table is followed comes from the same lookup.
+# roadmap whose pointer table is followed comes from the same lookup. A
+# registry or settings file that cannot be read leaves a warning and the
+# fixed candidates; only a design or roadmap key that is itself unusable
+# (or a file outside the root) stops the check.
 DESIGN=""
 ROADMAP_FILE=""
 # shellcheck source=_project_registry.sh
-if ! source "$SELF_DIR/_project_registry.sh" 2>/dev/null || ! declare -F project_document_for_dir >/dev/null; then
+if ! source "$SELF_DIR/_project_registry.sh" 2>/dev/null || ! declare -F project_document_query >/dev/null; then
     echo "error: could not load _project_registry.sh beside $0" >&2
     exit 2
 fi
 DOC_WS="$(registry_main_checkout "$SELF_DIR/../..")"
-doc_rc=0
-doc_line="$(project_document_for_dir "$DOC_WS" "$ROOT" design 2>&1)" || doc_rc=$?
-if [[ $doc_rc -ne 0 ]]; then
-    echo "error: no design file under $ROOT: ${doc_line%%$'\n'*}" >&2
+project_document_query project_document_for_dir "$DOC_WS" "$ROOT" design
+if [[ $PROJECT_DOC_RC -ne 0 ]]; then
+    echo "error: no design file under $ROOT: ${PROJECT_DOC_WHY:-unknown error}" >&2
     exit 2
 fi
-if [[ "$doc_line" == none ]]; then
+if [[ "$PROJECT_DOC_LINE" == none ]]; then
     echo "check_design_anchors: $ROOT keeps no design (design=none); only parts' designs are checked" >&2
 else
-    DESIGN="${doc_line#* }"
+    DESIGN="${PROJECT_DOC_LINE#* }"
     DESIGN="${DESIGN%%#*}"
 fi
-doc_rc=0
-doc_line="$(project_document_for_dir "$DOC_WS" "$ROOT" roadmap 2>&1)" || doc_rc=$?
-if [[ $doc_rc -eq 2 ]]; then
-    echo "error: the roadmap of $ROOT cannot be told: ${doc_line%%$'\n'*}" >&2
+project_document_query project_document_for_dir "$DOC_WS" "$ROOT" roadmap
+if [[ $PROJECT_DOC_RC -eq 2 ]]; then
+    echo "error: the roadmap of $ROOT cannot be told: ${PROJECT_DOC_WHY:-unknown error}" >&2
     exit 2
 fi
-[[ $doc_rc -eq 0 && "$doc_line" != none ]] && ROADMAP_FILE="${doc_line#* }"
-unset doc_rc doc_line
+[[ $PROJECT_DOC_RC -eq 0 && "$PROJECT_DOC_LINE" != none ]] && ROADMAP_FILE="${PROJECT_DOC_LINE#* }"
 # The root design's file name when it is not design.md (ARCHITECTURE.md,
 # say): citations `<path>ARCHITECTURE.md#x` are read too, and count only
 # when they resolve to the root's design.
@@ -513,7 +519,10 @@ done
 # an awk assignment.
 citations() {
     DESIGN_ALT="$DESIGN_ALT" awk 'BEGIN { re = "[-A-Za-z0-9_.$:{}~%+/]*design\\.md#[A-Za-z0-9_-]*"; OFS = "\t"
-        alt = ENVIRON["DESIGN_ALT"]; needle = alt "#" }
+        alt = ENVIRON["DESIGN_ALT"]; needle = alt "#"
+        # A name that itself ends in design.md (my-design.md) is already
+        # matched by re: scanning it again would report each citation twice.
+        altscan = (alt != "" && alt !~ /design\.md$/) }
     # fragment_end(str, from): the index after the run of fragment
     # characters that starts at <from>.
     function fragment_end(str, from) {
@@ -546,7 +555,7 @@ citations() {
         # The root design under another file name (DESIGN_ALT): the same
         # path characters before it, the fragment after it.
         off = 0
-        while (alt != "" && (k = index(substr(line, off + 1), needle)) > 0) {
+        while (altscan && (k = index(substr(line, off + 1), needle)) > 0) {
             s = off + k
             b = s
             while (b > 1 && substr(line, b - 1, 1) ~ /[-A-Za-z0-9_.$:{}~%+\/]/) b--

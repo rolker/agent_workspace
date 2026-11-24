@@ -118,6 +118,59 @@ mkroot fam/fam1
 mkdir -p "$R/fam/docs"
 printf '# Roadmap\n' > "$R/fam/docs/roadmap.md"
 
+# loose: no document settings; its settings file is given bad lines below.
+mkroot loose
+mkdir -p "$R/loose/docs"
+printf '# Design\n\n## Overview\n' > "$R/loose/docs/design.md"
+printf '# Other\n\n## Overview\n' > "$R/loose/docs/other.md"
+printf '# Roadmap\n\n## Direction\n\n| Line | Check |\n|---|---|\n| Loose line | file-exists README.md |\n\n- [ ] Loose item (#7)\n' > "$R/loose/docs/roadmap.md"
+printf 'See docs/design.md#overview.\n' > "$R/loose/README.md"
+commit_all "$R/loose"
+# linkr: roadmap names a symbolic link inside the root.
+mkroot linkr
+mkdir -p "$R/linkr/notes"
+printf '# Plan\n\n- [ ] Link item (#7)\n' > "$R/linkr/notes/real.md"
+ln -s real.md "$R/linkr/notes/link.md"
+commit_all "$R/linkr"
+# candlink: no settings; ROADMAP.md is a link out of the root, docs/roadmap.md
+# a file.
+mkroot candlink
+mkdir -p "$R/candlink/docs"
+printf '# Outside roadmap\n\n- [ ] Outside item (#7)\n' > "$SB/outside_roadmap.md"
+ln -s ../../outside_roadmap.md "$R/candlink/ROADMAP.md"
+printf '# Roadmap\n\n- [ ] Inside item (#7)\n' > "$R/candlink/docs/roadmap.md"
+commit_all "$R/candlink"
+# candout: no settings; the candidate docs/design.md is a link out of the root.
+mkroot candout
+mkdir -p "$R/candout/docs"
+ln -s ../../../outside.md "$R/candout/docs/design.md"
+commit_all "$R/candout"
+# mydes: a design file whose name ends in design.md.
+mkroot mydes
+mkdir -p "$R/mydes/docs"
+printf '# Design\n\n## Overview\n' > "$R/mydes/docs/my-design.md"
+printf 'Good: docs/my-design.md#overview. Bad: docs/my-design.md#gone\n' > "$R/mydes/README.md"
+commit_all "$R/mydes"
+# nonec: design=none, and its part's citations are all sound.
+mkroot nonec
+mkdir -p "$R/nonec/docs/part"
+printf '# Part\n\n## Intro\n' > "$R/nonec/docs/part/design.md"
+printf 'See docs/part/design.md#intro.\n' > "$R/nonec/README.md"
+commit_all "$R/nonec"
+# ptr: roadmap=notes/plan.md, whose Direction holds a line and a pointer
+# table; the decoy docs/roadmap.md points elsewhere.
+mkroot ptr
+mkdir -p "$R/ptr/docs" "$R/ptr/notes" "$R/ptr/tools/x" "$R/ptr/tools/y"
+printf '# Design\n\n## Overview\n' > "$R/ptr/docs/design.md"
+printf '# Plan\n\n## Direction\n\n| Line | Check |\n|---|---|\n| Plan line | file-exists README.md |\n\n| Sub-roadmap | Root |\n|---|---|\n| tools/x/ROADMAP.md | tools/x |\n' > "$R/ptr/notes/plan.md"
+printf '# Roadmap\n\n## Direction\n\n| Line | Check |\n|---|---|\n| Decoy line | file-exists README.md |\n\n| Sub-roadmap | Root |\n|---|---|\n| tools/y/ROADMAP.md | tools/y |\n' > "$R/ptr/docs/roadmap.md"
+for t in x y; do
+    printf '# %s\n\n## Ok\n\n[%s](#gone-%s)\n' "$t" "$t" "$t" > "$R/ptr/tools/$t/design.md"
+    printf '# %s roadmap\n' "$t" > "$R/ptr/tools/$t/ROADMAP.md"
+done
+printf 'Ptr.\n' > "$R/ptr/README.md"
+commit_all "$R/ptr"
+
 cat > "$WSC/.agent/projects.local" <<REG
 keyed    single_project  $R/keyed
 plain    single_project  $R/plain
@@ -129,6 +182,13 @@ headed   single_project  $R/headed
 sub      single_project  $R/host/sub
 fam1     single_project  $R/fam/fam1  parent=fam
 fam      project         $R/fam
+loose    single_project  $R/loose
+linkr    single_project  $R/linkr
+candlink single_project  $R/candlink
+candout  single_project  $R/candout
+mydes    single_project  $R/mydes
+nonec    single_project  $R/nonec
+ptr      single_project  $R/ptr
 REG
 
 PS() { (cd "$WSC" && bash "$S/project_setting.sh" "$@"); }
@@ -155,6 +215,23 @@ PS set escape design=docs/link.md roadmap=docs/link.md >/dev/null 2>&1 || fail "
 PS set arch design=ARCHITECTURE.md >/dev/null 2>&1 || fail "set arch"
 PS set headed 'design=docs/design.md#Overview' >/dev/null 2>&1 || fail "set headed"
 PS set sub roadmap=notes/plan.md >/dev/null 2>&1 || fail "set sub"
+PS set linkr roadmap=notes/link.md >/dev/null 2>&1 || fail "set linkr"
+PS set mydes design=docs/my-design.md >/dev/null 2>&1 || fail "set mydes"
+PS set nonec design=none >/dev/null 2>&1 || fail "set nonec"
+PS set ptr roadmap=notes/plan.md >/dev/null 2>&1 || fail "set ptr"
+
+echo "TEST: roadmap names a Markdown file; the path is checked before the heading"
+for bad in src/main.py ROADMAP notes/plan.txt; do
+    out="$(PS set plain "roadmap=$bad" 2>&1)"; rc=$?
+    check "set refuses roadmap=$bad" test "$rc" -ne 0
+done
+[[ "$out" == *"must name a Markdown file"* ]] && pass "the .md refusal says why" || fail "md refusal: '$out'"
+check "design may name a file of any type" PS set plain design=docs/design.txt
+PS unset plain design >/dev/null 2>&1
+out="$(PS set plain 'roadmap=../r.md#x' 2>&1)"; rc=$?
+check "set refuses roadmap=../r.md#x" test "$rc" -ne 0
+[[ "$out" == *"no '..'"* && "$out" != *"roadmap=../r.md)"* ]] && pass "the path error comes first, not a suggestion of the bad path" || fail "path first: '$out'"
+check "a refused set wrote nothing" test ! -e "$WSC/.agent/projects.d/plain"
 
 echo "TEST: a hand-written bad value fails the parser"
 printf 'design=../outside.md\n' > "$WSC/.agent/projects.d/plain"
@@ -162,8 +239,42 @@ out="$(PS check plain 2>&1)"; rc=$?
 check "check exits 2 on design=../outside.md" test "$rc" -eq 2
 [[ "$out" == *"design must be 'none' or a file inside the project"* ]] && pass "the parser names the rule" || fail "parser: '$out'"
 out="$(PS doc plain design 2>&1)"; rc=$?
-check "doc exits 2 for an invalid settings file" test "$rc" -eq 2
+check "doc exits 2 when the design key itself is invalid" test "$rc" -eq 2
+printf 'roadmap=src/main.py\n' > "$WSC/.agent/projects.d/plain"
+out="$(PS check plain 2>&1)"; rc=$?
+check "the parser refuses a hand-written roadmap=src/main.py" test "$rc" -eq 2
+out="$(PS doc plain roadmap 2>&1)"; rc=$?
+check "doc roadmap exits 2 for roadmap=src/main.py" test "$rc" -eq 2
 rm -f "$WSC/.agent/projects.d/plain"
+
+echo "TEST: a settings file bad only in other lines fails open (issue owner: no setting, today's search)"
+LF="$WSC/.agent/projects.d/loose"
+printf 'build=make; rm -rf /\n' > "$LF"
+out="$(PS doc loose design 2>"$SB/err")"; rc=$?
+check "an unrelated bad key: doc design reads the candidate" test "$rc:$out" = "0:fallback docs/design.md"
+grep -q '^warning: .*has errors' "$SB/err" && pass "one warning names the problem" || fail "warning: '$(cat "$SB/err")'"
+check "exactly one warning line" test "$(wc -l < "$SB/err")" -eq 1
+out="$(bash "$S/check_design_anchors.sh" "$R/loose" 2>&1)"; rc=$?
+check "check_design_anchors.sh still checks the candidate design ($out)" test "$rc" -eq 0
+out="$(bash "$S/update_roadmap.sh" --issue 7 --root "$R/loose" --dry-run 2>&1 >/dev/null)"
+[[ "$out" == *"docs/roadmap.md: #7"* ]] && pass "update_roadmap.sh still finds the candidate roadmap" || fail "loose roadmap: '$out'"
+out="$(bash "$S/sitrep_checks.sh" --root "$R/loose" 2>/dev/null)"
+[[ "$out" == *"Loose line"* && "$out" != *"not readable"* ]] && pass "sitrep_checks.sh reads the candidate's Direction" || fail "loose checks: '$out'"
+(source "$S/_bookkeeping.sh"; bookkeeping_roadmap_paths "$R/loose") > "$SB/bk" 2>&1
+check "the merge gate's bookkeeping paths are the fixed list" test "$(wc -l < "$SB/bk")" -eq 3
+printf 'build=make; rm -rf /\ndesign=docs/other.md\n' > "$LF"
+out="$(PS doc loose design 2>"$SB/err")"; rc=$?
+check "an unrelated bad key beside a valid design: the setting is read" test "$rc:$out" = "0:set docs/other.md"
+grep -q '^warning: .*other lines' "$SB/err" && pass "the warning says the key is read as written" || fail "warning2: '$(cat "$SB/err")'"
+printf 'build=make; rm -rf /\ndesign=../x.md\n' > "$LF"
+out="$(PS doc loose design 2>&1)"; rc=$?
+check "an unrelated bad key beside an invalid design: exit 2" test "$rc" -eq 2
+printf 'design=docs/other.md\ndesign=docs/design.md\n' > "$LF"
+out="$(PS doc loose design 2>&1)"; rc=$?
+check "design set twice: exit 2" test "$rc" -eq 2
+[[ "$out" == *"set more than once"* ]] && pass "the duplicate is named" || fail "dup: '$out'"
+check "design set twice: roadmap (unset) still reads the candidate" test "$(PS doc loose roadmap 2>/dev/null)" = "fallback docs/roadmap.md"
+rm -f "$LF"
 
 echo "TEST: project_setting.sh doc reports set, fallback and none"
 check "doc design (set)" test "$(PS doc keyed design)" = "set docs/arch/design.md"
@@ -182,7 +293,18 @@ check "doc design through a link out of the root: exit 2" test "$rc" -eq 2
 [[ "$out" == *"resolves outside"* ]] && pass "the escape is named" || fail "escape: '$out'"
 check "doc at a parent root reads the candidates" test "$(PS doc fam roadmap)" = "fallback docs/roadmap.md"
 out="$(PS doc keyed readme 2>&1)"; rc=$?
-check "doc refuses an unknown document" test "$rc" -eq 1
+check "doc refuses an unknown document (exit 3, not 1)" test "$rc" -eq 3
+out="$(PS doc keyed 2>&1)"; rc=$?
+check "doc without a document: exit 3" test "$rc" -eq 3
+out="$(PS doc nosuch design 2>&1)"; rc=$?
+check "doc for an unknown project: exit 3" test "$rc" -eq 3
+out="$(PS doc linkr roadmap 2>&1)"; rc=$?
+check "a roadmap setting that is a symbolic link: exit 2" test "$rc" -eq 2
+[[ "$out" == *"symbolic link"* ]] && pass "the link is named" || fail "link: '$out'"
+out="$(PS doc candout design 2>&1)"; rc=$?
+check "an unset key whose candidate leaves the root: exit 2 (fails closed)" test "$rc" -eq 2
+check "the candidates split on blanks whatever the caller's IFS" \
+    test "$( (source "$S/_project_registry.sh"; IFS=,; project_document_candidates roadmap) | wc -l)" -eq 3
 
 echo "TEST: project_document_name_for_root and project_document_for_dir"
 g -C "$R/keyed" worktree add -q "$R/keyed/worktrees/wt" -b feature
@@ -205,9 +327,28 @@ echo "TEST: the workspace checkout never reads the registry"
 cp "$WSC/.agent/projects.local" "$SB/projects.local.good"
 printf 'broken line with = in path\n' >> "$WSC/.agent/projects.local"
 check "a broken registry: the workspace still reads docs/design.md" test "$(for_dir "$WSC" design 2>/dev/null)" = "fallback docs/design.md"
-out="$(for_dir "$R/keyed" design 2>&1)"; rc=$?
-check "a broken registry: a project root exits 2" test "$rc" -eq 2
+out="$(for_dir "$R/plain" design 2>"$SB/err")"; rc=$?
+check "a broken registry: a project root reads the candidate" test "$rc:$out" = "0:fallback docs/design.md"
+grep -q '^warning: the registry' "$SB/err" && pass "a broken registry: one warning names it" || fail "registry warning: '$(cat "$SB/err")'"
+check "a broken registry: exactly one warning line" test "$(wc -l < "$SB/err")" -eq 1
+check "a broken registry: a keyed root reads the candidate, not the setting" test "$(for_dir "$R/keyed" roadmap 2>/dev/null)" = "fallback docs/roadmap.md"
+mkdir -p "$SB/unreg/docs"
+printf '# Design
+
+## Overview
+' > "$SB/unreg/docs/design.md"
+printf 'See docs/design.md#overview.
+' > "$SB/unreg/README.md"
+out="$(bash "$S/check_design_anchors.sh" "$SB/unreg" 2>&1)"; rc=$?
+check "a broken registry: an unregistered root is still checked ($out)" test "$rc" -eq 0
+out="$(bash "$S/update_roadmap.sh" --issue 7 --root "$R/plain" --dry-run 2>&1 >/dev/null)"
+[[ "$out" == *"docs/ROADMAP.md: #7"* ]] && pass "a broken registry: update_roadmap.sh uses the candidates" || fail "broken registry roadmap: '$out'"
+out="$( (source "$S/_project_registry.sh"; project_document_path "$WSC" plain design "$R/plain") 2>/dev/null)"; rc=$?
+check "a broken registry: project_document_path with a directory reads the candidates" test "$rc:$out" = "0:fallback docs/design.md"
 cp "$SB/projects.local.good" "$WSC/.agent/projects.local"
+out="$( (source "$S/_project_registry.sh"; project_document_path "$WSC" nosuch design "$R/plain") 2>&1)"; rc=$?
+check "an unregistered name with a directory: the candidates, with a warning" test "$rc" -eq 0
+[[ "$out" == *"warning: project 'nosuch' is not registered"* ]] && pass "the warning names the name" || fail "unregistered: '$out'"
 
 echo "TEST: update_roadmap.sh follows the roadmap setting"
 UR="$S/update_roadmap.sh"
@@ -227,10 +368,28 @@ out="$(bash "$UR" --issue 7 --root "$WSC" 2>/dev/null)"
 check "the workspace root: docs/roadmap.md is edited" test "$out" = "$WSC/docs/roadmap.md"
 out="$(bash "$UR" --issue 7 --root "$R/escape" 2>&1)"
 [[ "$out" == *"could not tell which file is the roadmap"* ]] && pass "a setting that leaves the root: nothing is edited, with the reason" || fail "escape: '$out'"
+out="$(bash "$UR" --issue 7 --root "$R/linkr" 2>&1)"
+check "a roadmap setting that is a link: the link is left a link" test -L "$R/linkr/notes/link.md"
+grep -qF -- '- [ ] Link item (#7)' "$R/linkr/notes/real.md" && pass "a roadmap setting that is a link: nothing is edited (refused)" || fail "link ticked"
+[[ "$out" == *"symbolic link"* ]] && pass "the refusal names the link" || fail "link message: '$out'"
+out="$(bash "$UR" --issue 7 --root "$R/candlink" 2>"$SB/err")"
+check "unset: a candidate linked out of the root is skipped, the inside one edited" test "$out" = "$R/candlink/docs/roadmap.md"
+grep -qF -- '- [ ] Outside item (#7)' "$SB/outside_roadmap.md" && pass "the file outside the root is not edited" || fail "outside ticked"
+grep -q 'skipping ROADMAP.md' "$SB/err" && pass "the skip is said" || fail "skip message: '$(cat "$SB/err")'"
 g -C "$WSC" checkout -q -- docs/roadmap.md
 
 echo "TEST: check_design_anchors.sh reads the design setting"
 CDA="$S/check_design_anchors.sh"
+out="$(cd "$R" && bash "$CDA" keyed 2>&1)"; rc=$?
+check "a relative root is resolved once ($out)" test "$rc" -eq 0
+out="$(bash "$CDA" "$R/mydes" 2>&1)"; rc=$?
+check "a design named my-design.md: the broken citation fails" test "$rc" -eq 1
+check "a design named my-design.md: each citation is reported once" test "$(grep -c "broken anchor '#gone'" <<< "$out")" -eq 1
+out="$(bash "$CDA" "$R/nonec" 2>&1)"; rc=$?
+check "design=none with sound parts: exit 0 ($out)" test "$rc" -eq 0
+out="$(bash "$CDA" "$R/ptr" 2>&1)"; rc=$?
+check "a key-named roadmap's pointer table is followed" test "$rc" -eq 1
+[[ "$out" == *"#gone-x"* && "$out" != *"#gone-y"* ]] && pass "the part it names is read; the decoy's is not" || fail "ptr: '$out'"
 out="$(bash "$CDA" "$R/keyed" 2>&1)"; rc=$?
 check "a design named docs/arch/design.md: its citations resolve ($out)" test "$rc" -eq 0
 printf 'Broken: docs/arch/design.md#nope\n' >> "$R/keyed/README.md"
@@ -267,6 +426,13 @@ out="$(bash "$SC" --root "$R/missing" 2>&1)"
 [[ "$out" == *"(roadmap not found: $R/missing/notes/gone.md)"* ]] && pass "a missing set file is the one named" || fail "checks missing: '$out'"
 out="$(bash "$SC" --root "$R/escape" 2>&1)"
 [[ "$out" == *"(roadmap not readable: "*"resolves outside"* ]] && pass "a setting that leaves the root is not readable, with the reason" || fail "checks escape: '$out'"
+out="$(bash "$SC" --root "$R/ptr" 2>&1)"
+[[ "$out" == *"Plan line"* && "$out" != *"Decoy line"* ]] && pass "a keyed project's Direction comes from the set file, not docs/roadmap.md" || fail "checks ptr: '$out'"
+printf 'roadmap=notes/a\tb.md\n' > "$WSC/.agent/projects.d/loose"
+out="$(bash "$SC" --root "$R/loose" 2>/dev/null | grep '^section')"
+check "a refused value's reason keeps the section row at five fields ($out)" test "$(awk -F'\t' '{print NF}' <<< "$out")" = 5
+[[ "$out" == *"not readable"* ]] && pass "the row says not readable" || fail "tab row: '$out'"
+rm -f "$WSC/.agent/projects.d/loose"
 
 echo "TEST: the merge gate's bookkeeping paths include the roadmap setting's file"
 bk_paths() { (source "$S/_bookkeeping.sh"; bookkeeping_roadmap_paths "$1"); }
@@ -277,6 +443,17 @@ check "a workspace worktree adds nothing" test "$(bk_paths "$WSC/worktrees/wsb" 
 check "an unset setting adds nothing" test "$(bk_paths "$R/plain" | wc -l)" -eq 3
 check "roadmap=none adds nothing" test "$(bk_paths "$R/nonep" | wc -l)" -eq 3
 check "a root inside another repository adds nothing (its path is not the repository's)" test "$(bk_paths "$R/host/sub" | wc -l)" -eq 3
+# merge_pr.sh's CI bookkeeping patterns, run from its own text with the
+# PR's worktree (_ci_wt) set and without.
+ci_patterns() {
+    (source "$S/_bookkeeping.sh"; _ci_wt="$1"
+     eval "$(sed -n '/^MERGE_PR_CI_BOOKKEEPING_PATTERNS=(/,/^fi$/p' "$S/merge_pr.sh")"
+     printf '%s\n' "${MERGE_PR_CI_BOOKKEEPING_PATTERNS[@]}")
+}
+check "merge_pr.sh's CI patterns with a keyed worktree add the set roadmap" \
+    test "$(ci_patterns "$R/keyed/worktrees/wt" | tr '\n' ' ')" = ".agent/work-plans/* ROADMAP.md docs/ROADMAP.md docs/roadmap.md notes/plan.md "
+check "merge_pr.sh's CI patterns without a worktree are the fixed list" \
+    test "$(ci_patterns "" | tr '\n' ' ')" = ".agent/work-plans/* ROADMAP.md docs/ROADMAP.md docs/roadmap.md "
 WT="$R/keyed/worktrees/wt"
 g -C "$WT" add -A && g -C "$WT" commit -q -m "code"
 REVIEWED="$(g -C "$WT" rev-parse HEAD)"

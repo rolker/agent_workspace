@@ -345,34 +345,32 @@ if [[ "$WORKTREES" != true ]]; then
     # DOC_WHY (why there is none), from project_document_path; the
     # workspace (no project name) reads the candidates only.
     doc_lookup() {
-        local out rc=0 why
-        DOC_REL=""; DOC_WHY=""
-        out="$(project_document_path "$WS_ROOT" "$PROJECT" "$1" "$ROOT" 2>/dev/null)" || rc=$?
-        if [[ $rc -eq 0 ]]; then
-            case "$out" in
+        DOC_REL=""; DOC_WHY=""; DOC_MISSING=""
+        # A registry or settings file that cannot be read for a reason
+        # outside this key: a warning on stderr, the candidates.
+        project_document_query project_document_path "$WS_ROOT" "$PROJECT" "$1" "$ROOT"
+        if [[ $PROJECT_DOC_RC -eq 0 ]]; then
+            case "$PROJECT_DOC_LINE" in
                 none) DOC_WHY="this project keeps no $1 document ($1=none in its settings)" ;;
-                *) DOC_REL="${out#* }"; DOC_REL="${DOC_REL%%#*}" ;;
+                *) DOC_REL="${PROJECT_DOC_LINE#* }"; DOC_REL="${DOC_REL%%#*}" ;;
             esac
             return 0
         fi
-        why="$(project_document_path "$WS_ROOT" "$PROJECT" "$1" "$ROOT" 2>&1 >/dev/null | head -n1)"
-        if [[ $rc -eq 1 ]]; then
-            DOC_WHY="${why:-no $1 file}"
-            # Not in the working tree: the file it would be, which the
-            # checks that read the default branch may still find there.
-            DOC_MISSING=""
-            [[ -z "$PROJECT" ]] || DOC_MISSING="$(project_file_get "$WS_ROOT" "$PROJECT" "$1" 2>/dev/null)" || DOC_MISSING=""
+        if [[ $PROJECT_DOC_RC -eq 1 ]]; then
+            DOC_WHY="${PROJECT_DOC_WHY:-no $1 file}"
+            # Not in the working tree: the file it would be (the setting's,
+            # else the first candidate), which the checks that read the
+            # default branch may still find there.
+            DOC_MISSING="${PROJECT_DOC_LINE#set }"
             [[ -n "$DOC_MISSING" ]] || DOC_MISSING="$(project_document_candidates "$1" | head -n1)"
             DOC_MISSING="${DOC_MISSING%%#*}"
         else
-            DOC_WHY="the $1 setting cannot be read: ${why:-unknown error}"
+            DOC_WHY="the $1 setting cannot be read: ${PROJECT_DOC_WHY:-unknown error}"
         fi
     }
-    DOC_MISSING=""
     doc_lookup roadmap
     roadmap=""; [[ -n "$DOC_REL" ]] && roadmap="$ROOT/$DOC_REL"
     roadmap_why="$DOC_WHY"
-    DOC_MISSING=""
     doc_lookup design
     # The design checks take the file even when only the default branch
     # has it (check() tells); only `none` or a setting that cannot be read

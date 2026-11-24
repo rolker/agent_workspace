@@ -20,10 +20,14 @@
 #              root that is not a registered project's (the workspace)
 #              reads the candidates. A setting of `none` gives the section
 #              row `(roadmap not found: <root> keeps no roadmap
-#              (roadmap=none))`; a setting that cannot be read, or a file
+#              (roadmap=none))`; a roadmap key that is itself unusable
+#              (set twice, an invalid value, a symbolic link), or a file
 #              that resolves outside the root, gives `(roadmap not readable:
-#              <reason>)`. With nothing found the path shown is the set
-#              file, else <root>/docs/roadmap.md
+#              <reason>)` (control characters in the reason made blanks). A
+#              registry or settings file that cannot be read for another
+#              reason gives a warning on stderr and the candidates. With
+#              nothing found the path shown is the set file, else
+#              <root>/docs/roadmap.md
 #   --summary  print one line instead of rows:
 #                lines <true>/<total> deferrals <true>/<total>
 #              (a deferral whose check is true is due). The sit-rep stores
@@ -358,23 +362,18 @@ if [ -z "$ROADMAP" ]; then
     ROADMAP="$ROOT/docs/roadmap.md"
     if [ "$REGISTRY_OK" = true ]; then
         _ws="$(registry_main_checkout "$SCRIPT_DIR/../..")"
-        _rc=0
-        _line="$(project_document_for_dir "$_ws" "$ROOT" roadmap 2>/dev/null)" || _rc=$?
-        if [ "$_rc" -eq 0 ] && [ "$_line" = none ]; then
+        # A registry or settings file that cannot be read for a reason
+        # outside the roadmap key: a warning on stderr, the candidates.
+        project_document_query project_document_for_dir "$_ws" "$ROOT" roadmap
+        if [ "$PROJECT_DOC_RC" -eq 0 ] && [ "$PROJECT_DOC_LINE" = none ]; then
             ROADMAP_NOTE="none: $ROOT keeps no roadmap (roadmap=none)"
-        elif [ "$_rc" -eq 0 ]; then
-            ROADMAP="$ROOT/${_line#* }"
-        elif [ "$_rc" -eq 1 ]; then
-            # Nothing exists: show the file the setting names, if any.
-            _name="$(project_document_name_for_root "$_ws" "$ROOT" 2>/dev/null)" || _name=""
-            _val=""
-            [ -z "$_name" ] || _val="$(project_file_get "$_ws" "$_name" roadmap 2>/dev/null)" || _val=""
-            [ -z "$_val" ] || ROADMAP="$ROOT/$_val"
-        else
-            _why="$(project_document_for_dir "$_ws" "$ROOT" roadmap 2>&1 >/dev/null | head -n1)"
-            ROADMAP_NOTE="error: ${_why:-the roadmap setting cannot be read}"
+        elif [ "$PROJECT_DOC_RC" -eq 0 ] || { [ "$PROJECT_DOC_RC" -eq 1 ] && [ -n "$PROJECT_DOC_LINE" ]; }; then
+            # Found, or a set file that is missing: the file the setting names.
+            ROADMAP="$ROOT/${PROJECT_DOC_LINE#* }"
+        elif [ "$PROJECT_DOC_RC" -ne 1 ]; then
+            ROADMAP_NOTE="error: ${PROJECT_DOC_WHY:-the roadmap setting cannot be read}"
         fi
-        unset _ws _rc _line _name _val _why
+        unset _ws
     fi
 fi
 TODAY="$(date +%Y-%m-%d)"

@@ -20,9 +20,16 @@
 #   - unset, or --root belongs to no registered project (the workspace):
 #     every one of the candidates docs/roadmap.md, docs/ROADMAP.md,
 #     ROADMAP.md that exists (a path that is the same file as one already
-#     processed -- case-insensitive filesystems -- is skipped);
-#   - the settings file or the registry cannot be read: nothing is updated,
-#     with the reason.
+#     processed -- case-insensitive filesystems -- is skipped; one that
+#     resolves outside --root is skipped with a message);
+#   - the registry or the settings file cannot be read for a reason outside
+#     the roadmap key (a bad registry line, another key's bad line): a
+#     warning, then the key as written if its own line is valid, else the
+#     candidates (as with no setting);
+#   - the roadmap key itself is unusable (set twice, an invalid value, a
+#     file outside --root or a symbolic link), or the first existing
+#     candidate resolves outside --root: nothing is updated, with the
+#     reason.
 # A file is read, written and reported under its stored name, whichever
 # candidate spelling found it.
 # Both formats are tried against each file found.
@@ -180,36 +187,35 @@ _try_checklist_format() {
 # This script never blocks a merge, so without the registry helper it uses
 # the same list as written here and says why.
 ROADMAP_CANDIDATES=("ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md")
+# With the helper, each candidate is checked to stay inside --root
+# (_project_document_file_error), as the lookup checks the first.
+CHECK_CANDIDATE=false
 REGISTRY_HELPER="$SCRIPT_DIR/_project_registry.sh"
 # shellcheck source=_project_registry.sh
 if [[ -f "$REGISTRY_HELPER" ]] && source "$REGISTRY_HELPER" 2>/dev/null \
-        && declare -F project_document_for_dir >/dev/null; then
+        && declare -F project_document_query >/dev/null; then
     mapfile -t _shared < <(project_document_candidates roadmap)
     ROADMAP_CANDIDATES=()
     for ((_i = ${#_shared[@]} - 1; _i >= 0; _i--)); do ROADMAP_CANDIDATES+=("${_shared[_i]}"); done
     _ws="$(registry_main_checkout "$SCRIPT_DIR/../..")"
-    _rc=0
-    _line="$(project_document_for_dir "$_ws" "$ROOT_DIR" roadmap 2>/dev/null)" || _rc=$?
-    if [[ $_rc -eq 0 && "$_line" == none ]]; then
+    # A registry or settings file that cannot be read leaves a warning on
+    # stderr and the candidates; only an unusable roadmap key stops here.
+    project_document_query project_document_for_dir "$_ws" "$ROOT_DIR" roadmap
+    if [[ $PROJECT_DOC_RC -eq 0 && "$PROJECT_DOC_LINE" == none ]]; then
         echo "  This project keeps no roadmap (roadmap=none in its settings); nothing to update for #${ISSUE_NUM}" >&2
         exit 0
-    elif [[ $_rc -eq 0 && "$_line" == "set "* ]]; then
-        ROADMAP_CANDIDATES=("${_line#set }")
-    elif [[ $_rc -eq 1 ]]; then
-        # Nothing exists: when a setting names the file, say so rather than
+    elif [[ $PROJECT_DOC_RC -eq 0 && "$PROJECT_DOC_LINE" == "set "* ]]; then
+        ROADMAP_CANDIDATES=("${PROJECT_DOC_LINE#set }")
+    elif [[ $PROJECT_DOC_RC -eq 1 && "$PROJECT_DOC_LINE" == "set "* ]]; then
+        # The setting names a file that does not exist: say so rather than
         # tick a candidate the project did not choose.
-        _name="$(project_document_name_for_root "$_ws" "$ROOT_DIR" 2>/dev/null)" || _name=""
-        _val=""
-        [[ -z "$_name" ]] || _val="$(project_file_get "$_ws" "$_name" roadmap 2>/dev/null)" || _val=""
-        if [[ -n "$_val" ]]; then
-            echo "  ⚠️  roadmap=$_val (project '$_name') names a file not in $ROOT_DIR; nothing updated for #${ISSUE_NUM}" >&2
-            exit 0
-        fi
-    elif [[ $_rc -ne 0 ]]; then
-        _why="$(project_document_for_dir "$_ws" "$ROOT_DIR" roadmap 2>&1 >/dev/null | head -n1)"
-        echo "  ⚠️  could not tell which file is the roadmap (${_why:-unknown error}); nothing updated for #${ISSUE_NUM}" >&2
+        echo "  ⚠️  roadmap=${PROJECT_DOC_LINE#set } names a file not in $ROOT_DIR; nothing updated for #${ISSUE_NUM}" >&2
+        exit 0
+    elif [[ $PROJECT_DOC_RC -ne 0 && $PROJECT_DOC_RC -ne 1 ]]; then
+        echo "  ⚠️  could not tell which file is the roadmap (${PROJECT_DOC_WHY:-unknown error}); nothing updated for #${ISSUE_NUM}" >&2
         exit 0
     fi
+    CHECK_CANDIDATE=true
 else
     echo "  ⚠️  _project_registry.sh could not be loaded next to update_roadmap.sh; using the candidate roadmap files" >&2
 fi
@@ -220,6 +226,10 @@ PROCESSED_ROADMAPS=()
 for rel_path in "${ROADMAP_CANDIDATES[@]}"; do
     roadmap="$ROOT_DIR/$rel_path"
     [[ -f "$roadmap" ]] || continue
+    if $CHECK_CANDIDATE && ! _why="$(_project_document_file_error "$ROOT_DIR" "$rel_path")"; then
+        echo "  ⚠️  skipping $rel_path: ${_why}" >&2
+        continue
+    fi
     # Use the stored name: on a case-insensitive filesystem the
     # docs/ROADMAP.md probe also opens a stored docs/roadmap.md; reporting
     # (stdout feeds merge_pr.sh's git add) and the write-back (mv of a temp

@@ -108,13 +108,21 @@
 #                           not a URL; goals and design may add
 #                           #<heading> (a section of the file), roadmap may
 #                           not (its readers use the file's '## Direction'
-#                           section, or the whole file). Read through
+#                           section, or the whole file) and must end in .md
+#                           (the merge gate counts commits to it as
+#                           bookkeeping). Read through
 #                           project_document_path, which checks again that
 #                           the file exists and does not resolve outside the
-#                           root. Unset, a reader uses the first existing
+#                           root (and that a roadmap is no symbolic link).
+#                           Unset, a reader uses the first existing
 #                           candidate: roadmap docs/roadmap.md,
 #                           docs/ROADMAP.md, ROADMAP.md; design
-#                           docs/design.md; goals none. A part's documents
+#                           docs/design.md; goals none. A candidate that
+#                           resolves outside the root stops the reader
+#                           (exit 2), set or not. A registry or settings
+#                           file unreadable for a reason outside the key
+#                           read gives a warning and the key as written,
+#                           or the candidates (fails open). A part's documents
 #                           are named only by the root roadmap's
 #                           `| Sub-roadmap | Root |` table (ADR-0022), never
 #                           here. Every type reads these keys.
@@ -1359,36 +1367,27 @@ _PROJECT_DOCUMENT_CANDIDATES_goals=""
 # Print a document key's fallback candidates, one per line.
 # Usage: project_document_candidates roadmap
 project_document_candidates() {
-    local var="_PROJECT_DOCUMENT_CANDIDATES_$1" c
+    local var="_PROJECT_DOCUMENT_CANDIDATES_$1" c IFS=' '
     case "$1" in goals|design|roadmap) ;; *) return 1 ;; esac
     for c in ${!var}; do printf '%s\n' "$c"; done
 }
 
 # Check a goals/design/roadmap value. Prints the reason and returns 1 when
 # it is not 'none' or a project-relative file path (optionally #<heading>;
-# never on roadmap). Pure: no filesystem access (containment is checked
-# again when the path is read, project_document_path).
+# never on roadmap, whose path must also end in .md). The path is checked
+# before the heading, so a refusal never suggests an invalid path. Pure: no
+# filesystem access (containment is checked again when the path is read,
+# project_document_path).
 _project_document_value_error() {
-    local key="$1" value="$2" path heading="" comp
+    local key="$1" value="$2" path heading="" comp bad=""
     local -a comps=()
     [ "$value" = none ] && return 0
     path="${value%%#*}"
-    if [[ "$value" == *#* ]]; then
-        heading="${value#*#}"
-        if [ "$key" = roadmap ] && [ -n "$path" ]; then
-            echo "roadmap takes a file, not a section ('#$heading'): the sit-rep reads the file's '## Direction' section and update_roadmap.sh edits the whole file, so name the file alone (roadmap=$path)"
-            return 1
-        fi
-        if [ -z "$(_project_file_trim "$heading")" ] || [[ "$heading" == *[[:cntrl:]]* ]]; then
-            echo "$key: the heading after '#' must not be empty or hold control characters, got '$value'"
-            return 1
-        fi
-    fi
+    [[ "$value" == *#* ]] && heading="${value#*#}"
     if [[ "$path" == *://* ]]; then
         echo "$key must be a file inside the project (a path relative to the project root), not a URL: a document outside the project is not supported"
         return 1
     fi
-    local bad=""
     if [ -z "$path" ]; then
         bad="the path is empty"
     elif [[ "$path" == /* ]] || [[ "$path" == "~"* ]]; then
@@ -1411,6 +1410,24 @@ _project_document_value_error() {
         echo "$key must be 'none' or a file inside the project, as a path relative to the project root$([ "$key" != roadmap ] && echo ", optionally followed by #<heading>"): $bad; got '$value'"
         return 1
     fi
+    if [ "$key" = roadmap ]; then
+        # The merge gate exempts post-review commits to this file from the
+        # review- and CI-staleness checks (bookkeeping_roadmap_paths), so it
+        # may only name a Markdown file, never code.
+        if [[ "$path" != *.md ]]; then
+            echo "roadmap must name a Markdown file (a path ending in .md): commits to it after review count as bookkeeping in the merge gate; got '$value'"
+            return 1
+        fi
+        if [[ "$value" == *#* ]]; then
+            echo "roadmap takes a file, not a section ('#$heading'): the sit-rep reads the file's '## Direction' section and update_roadmap.sh edits the whole file, so name the file alone (roadmap=$path)"
+            return 1
+        fi
+    elif [[ "$value" == *#* ]]; then
+        if [ -z "$(_project_file_trim "$heading")" ] || [[ "$heading" == *[[:cntrl:]]* ]]; then
+            echo "$key: the heading after '#' must not be empty or hold control characters, got '$value'"
+            return 1
+        fi
+    fi
     return 0
 }
 
@@ -1426,6 +1443,12 @@ _project_document_value_error() {
 # <ws_root>/.agent/projects.local cannot be parsed. A parent root ("project"
 # type) is printed too: it keeps no settings, so project_document_path
 # answers it from the candidates.
+# Limit: a worktree is found through the registry's session-directory
+# match (registry_resolve_session_dir), so it must lie inside the root or
+# its `worktrees=` directory, as worktree_create.sh makes them. A
+# hand-made `git worktree add` elsewhere is not tied to its project and
+# reads the candidates; matching every registered root's git common
+# directory would cost a git call per project on every lookup.
 # Usage: name="$(project_document_name_for_root "$ws_root" "$dir")"
 project_document_name_for_root() {
     local ws="$1" dir="$2" abs top wscommon common entry rc=0 name path pabs ptop pcommon
@@ -1439,7 +1462,7 @@ project_document_name_for_root() {
     if [ -n "$top" ] && [ "$top" = "$abs" ] && [ -n "$common" ] && [ "$common" = "$wscommon" ]; then
         return 1
     fi
-    entry="$(registry_resolve_session_dir "$ws" "$abs")" || rc=$?
+    entry="$(registry_resolve_session_dir "$ws" "$abs" 2>/dev/null)" || rc=$?
     [ "$rc" -eq 2 ] && return 2
     [ "$rc" -eq 0 ] || return 1
     name="$(cut -f1 <<< "$entry")"
@@ -1481,6 +1504,22 @@ _project_document_file_error() {
     return 0
 }
 
+# The values of <key> in settings file <file> as written, one per line
+# (trimmed, CR dropped), whatever else the file holds: lets a reader tell
+# its own key when another line of the file is invalid. Prints nothing
+# when the key has no line.
+_project_document_raw_values() {
+    local file="$1" want="$2" raw line
+    [ -f "$file" ] && [ -r "$file" ] || return 0
+    while IFS= read -r raw || [ -n "$raw" ]; do
+        line="$(_project_file_trim "${raw%$'\r'}")"
+        [[ "$line" == \#* ]] && continue
+        [[ "$line" == *=* ]] || continue
+        [ "$(_project_file_trim "${line%%=*}")" = "$want" ] || continue
+        printf '%s\n' "$(_project_file_trim "${line#*=}")"
+    done < "$file"
+}
+
 # Where project <name> keeps document <key> (goals, design or roadmap),
 # read in directory <dir> (default: the project's registered root; a
 # worktree of the root's own repository reads the same relative paths).
@@ -1494,34 +1533,73 @@ _project_document_file_error() {
 #                           document
 # Returns 0 for these; 1 with the reason on stderr when there is nothing to
 # read (unset goals, no candidate exists, or the file a set key names is
-# missing); 2 with the reason when the settings file is invalid (also a
-# hand-written one at a parent root, which nothing reads), the registry
-# cannot be parsed, or the path resolves outside <dir>.
+# missing -- then "set <value>" is still printed, so a reader can name the
+# file the project chose); 2 with the reason when the key itself cannot be
+# used: it is set more than once or to an invalid value, the file it names
+# resolves outside <dir>, or (roadmap only) that file is a symbolic link or
+# reached through one (update_roadmap.sh replaces the file it edits, and
+# the merge gate's bookkeeping exemption names the path, not a link's
+# target). A candidate that resolves outside <dir> also returns 2.
+# Fails open, as when nothing is set (issue #551: "with no setting, each
+# keeps today's fixed search"): when the key cannot be read for a reason
+# outside it -- the registry cannot be parsed, <name> is not registered,
+# a parent root holds a settings file, the settings file cannot be read,
+# or another line of it is invalid -- one "warning: ..." line names the
+# problem on stderr and the key is read as written if its own line is
+# valid, else as unset (the candidates). Without <dir> there is nowhere to
+# look for them, and the return is 2.
 # Usage: line="$(project_document_path "$ws_root" "$name" roadmap [<dir>])"
 project_document_path() {
-    local ws="$1" name="$2" key="$3" dir="${4:-}" entry entries value="" rc=0 path reason c
+    local ws="$1" name="$2" key="$3" dir="${4:-}" entry entries value="" rc=0 path reason c file
+    local -a vals=()
     case "$key" in goals|design|roadmap) ;; *)
         echo "ERROR: project_document_path: unknown document '$key' (goals, design or roadmap)" >&2; return 2 ;;
     esac
     if [ -n "$name" ]; then
-        entry="$(registry_lookup "$ws" "$name")" || rc=$?
-        if [ "$rc" -eq 2 ]; then
-            echo "ERROR: the registry $(registry_file "$ws") has errors; fix it first" >&2
-            return 2
-        fi
+        entry="$(registry_lookup "$ws" "$name" 2>/dev/null)" || rc=$?
         if [ "$rc" -ne 0 ]; then
-            echo "ERROR: project '$name' is not registered in $(registry_file "$ws")" >&2
-            return 2
-        fi
-        [ -n "$dir" ] || dir="$(cut -f2 <<< "$entry")"
-        if [ "$(cut -f1 <<< "$entry")" = "$REGISTRY_PARENT_TYPE" ]; then
-            if [ -e "$(project_file_path "$ws" "$name")" ] || [ -L "$(project_file_path "$ws" "$name")" ]; then
-                echo "ERROR: $(project_file_path "$ws" "$name"): '$name' is a parent root, so nothing reads this file; remove it" >&2
+            if [ -z "$dir" ]; then
+                if [ "$rc" -eq 2 ]; then
+                    echo "ERROR: the registry $(registry_file "$ws") has errors; fix it first" >&2
+                else
+                    echo "ERROR: project '$name' is not registered in $(registry_file "$ws")" >&2
+                fi
                 return 2
             fi
+            if [ "$rc" -eq 2 ]; then
+                echo "warning: the registry $(registry_file "$ws") has errors, so the $key setting of '$name' cannot be read; using the fixed candidates" >&2
+            else
+                echo "warning: project '$name' is not registered in $(registry_file "$ws"); using the fixed candidates for $key" >&2
+            fi
+            name=""
         else
-            entries="$(project_file_entries "$ws" "$name")" || return 2
-            value="$(_project_file_value_of "$entries" "$key")" || value=""
+            [ -n "$dir" ] || dir="$(cut -f2 <<< "$entry")"
+            file="$(project_file_path "$ws" "$name")"
+            if [ "$(cut -f1 <<< "$entry")" = "$REGISTRY_PARENT_TYPE" ]; then
+                if [ -e "$file" ] || [ -L "$file" ]; then
+                    echo "warning: $file: '$name' is a parent root, so nothing reads this file (remove it); using the fixed candidates for $key" >&2
+                fi
+            elif entries="$(project_file_entries "$ws" "$name" 2>/dev/null)"; then
+                value="$(_project_file_value_of "$entries" "$key")" || value=""
+            elif reason="$(_project_file_path_error "$file")"; then
+                echo "warning: $reason; using the fixed candidates for $key" >&2
+            else
+                mapfile -t vals < <(_project_document_raw_values "$file" "$key")
+                if [ "${#vals[@]}" -gt 1 ]; then
+                    echo "ERROR: $file: $key is set more than once; keep one line" >&2
+                    return 2
+                fi
+                if [ "${#vals[@]}" -eq 1 ]; then
+                    if ! reason="$(_project_document_value_error "$key" "${vals[0]}")"; then
+                        echo "ERROR: $file: $reason" >&2
+                        return 2
+                    fi
+                    value="${vals[0]}"
+                    echo "warning: $file has errors in other lines (.agent/scripts/project_setting.sh check $name names them); reading $key=$value" >&2
+                else
+                    echo "warning: $file has errors (.agent/scripts/project_setting.sh check $name names them); $key is not set in it, so the fixed candidates are read" >&2
+                fi
+            fi
         fi
     fi
     if [ -z "$dir" ]; then
@@ -1535,9 +1613,18 @@ project_document_path() {
     if [ -n "$value" ]; then
         path="${value%%#*}"
         rc=0; reason="$(_project_document_file_error "$dir" "$path")" || rc=$?
+        if [ "$rc" -eq 1 ]; then
+            echo "$key=$value (project '$name'): $reason" >&2
+            printf 'set %s\n' "$value"
+            return 1
+        fi
         if [ "$rc" -ne 0 ]; then
             echo "$key=$value (project '$name'): $reason" >&2
             return "$rc"
+        fi
+        if [ "$key" = roadmap ] && [ "$(readlink -f -- "$dir/$path" 2>/dev/null)" != "$(cd "$dir" 2>/dev/null && pwd -P)/$path" ]; then
+            echo "$key=$value (project '$name'): $path is a symbolic link or is reached through one; name the file itself (update_roadmap.sh replaces the file it edits)" >&2
+            return 2
         fi
         printf 'set %s\n' "$value"
         return 0
@@ -1559,17 +1646,46 @@ project_document_path() {
 # project_document_path for the project directory <dir> belongs to
 # (project_document_name_for_root): a registered root or a worktree of its
 # own repository reads the project's setting; any other directory (the
-# workspace) reads the candidates in <dir>. Same output and returns.
+# workspace) reads the candidates in <dir>. When the registry cannot be
+# parsed, one "warning: ..." line says so and the candidates in <dir> are
+# read. Same output and returns.
 # Usage: line="$(project_document_for_dir "$ws_root" "$dir" design)"
 project_document_for_dir() {
     local ws="$1" dir="$2" key="$3" name="" rc=0
     name="$(project_document_name_for_root "$ws" "$dir")" || rc=$?
     if [ "$rc" -eq 2 ]; then
-        echo "ERROR: the registry $(registry_file "$ws") has errors; fix it first" >&2
-        return 2
+        echo "warning: the registry $(registry_file "$ws") has errors, so whether $dir has a $key setting cannot be told; using the fixed candidates" >&2
     fi
     [ "$rc" -eq 0 ] || name=""
     project_document_path "$ws" "$name" "$key" "$dir"
+}
+
+# project_document_query <fn> <args...>: run <fn> (project_document_path
+# or project_document_for_dir) in this shell and set PROJECT_DOC_RC (its
+# return), PROJECT_DOC_LINE (its stdout line, also on return 1 when a set
+# key names a missing file) and PROJECT_DOC_WHY (the last line of its
+# reason, tabs, CRs and other control characters made blanks, so it fits
+# a TSV row or a key=value line). Its "warning: ..." lines are passed on to
+# stderr. No temporary file: the two streams are told apart by content
+# (an answer is "set ...", "fallback ..." or "none"; no reason starts so).
+project_document_query() {
+    local fn="$1" all line
+    shift
+    PROJECT_DOC_RC=0; PROJECT_DOC_LINE=""; PROJECT_DOC_WHY=""
+    case "$fn" in project_document_path|project_document_for_dir) ;; *)
+        PROJECT_DOC_RC=2; PROJECT_DOC_WHY="project_document_query: unknown function '$fn'"; return 0 ;;
+    esac
+    all="$("$fn" "$@" 2>&1)" || PROJECT_DOC_RC=$?
+    while IFS= read -r line; do
+        case "$line" in
+            "set "*|"fallback "*|none) PROJECT_DOC_LINE="$line" ;;
+            warning:*) printf '%s\n' "$line" >&2 ;;
+            "") ;;
+            *) PROJECT_DOC_WHY="$line" ;;
+        esac
+    done <<< "$all"
+    PROJECT_DOC_WHY="${PROJECT_DOC_WHY//[[:cntrl:]]/ }"
+    return 0
 }
 
 # ------------------------------------- where a command comes from (#332) ---
