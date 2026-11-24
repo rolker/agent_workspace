@@ -1013,15 +1013,17 @@ else
     pass "research no longer names the manifest repo"
 fi
 
-# --- Path 3's marker (#477): the sit-rep marks work Path 3 by the README
-# line's opening words in a Serves line, and review-issue tells reviews to
-# write them. Rewording any one of the three loses the match silently, so
-# each must still carry the phrase.
-for f in README.md .claude/skills/review-issue/SKILL.md .claude/skills/sitrep/SKILL.md; do
+# --- The README goal with no section name (#477): review-issue tells
+# reviews to write that README line's opening words, word for word, in a
+# Serves line. Rewording either file alone leaves the instruction naming a
+# goal the README no longer states, so both must still carry the phrase.
+# (The sit-rep no longer marks work by this phrase: since #563 it marks
+# work by the Direction line that names it.)
+for f in README.md .claude/skills/review-issue/SKILL.md; do
     if grep -qiF 'A safeguard has to earn its cost' "$WS_ROOT/$f"; then
-        pass "Path 3 marker: $f carries \"A safeguard has to earn its cost\""
+        pass "unnamed goal phrase: $f carries \"A safeguard has to earn its cost\""
     else
-        fail "Path 3 marker: $f no longer carries \"A safeguard has to earn its cost\" (the sit-rep's Path 3 match depends on it)"
+        fail "unnamed goal phrase: $f no longer carries \"A safeguard has to earn its cost\" (review-issue's Serves rule quotes the README line)"
     fi
 done
 
