@@ -250,3 +250,23 @@ Codex ran (EXIT=0, complete review); no other specialist ran (cold read). Lead c
 ### Findings
 - [x] (must-fix) PR-number form's fallback (no plan file at the head) hands off to the `--issue` lookup, which after the PR repo's own top folder checks the workspace worktree `issue-workspace-<N>` and then every registered project's `issue-*-<N>` worktree by number alone: for a project PR, an open worktree of another repository's issue with the same number is silently read as this PR's plan (the right project worktree is checked after the workspace one). Limit the fallback to the PR's own repository (its top folder and its own worktree dir) and stop otherwise — `.claude/skills/review-plan/SKILL.md:108`
 - [x] (suggestion) `git fetch -q origin "pull/<N>/head"` (step 1 and Step 5 note) assumes `origin` is the repository the PR belongs to; in a fork checkout the fetch fails or gets another PR. Not silent: `git show <headRefOid>:...` exits 128 when the head commit was not fetched. Same repository-identity question as issue 581; the old Step 5 text also fetched from `origin` — `.claude/skills/review-plan/SKILL.md:93`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 13:38 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a6b043f1791fcc0ee, resume 1 of 3)
+
+**PR**: #604 at `f31885eb`
+**Addressed**: Local Review at `b059dcfe` (2026-11-24 13:37 -05:00)
+**Commits**: f31885eb
+
+Host directions (host decisions, listed for the owner's veto): fix the must-fix by narrowing, not widening: in the PR-number form the only local fallback is the plan file in the checkout the skill is run from, and if it is not there, stop and name the path; never send the reader to the Issue number form's search; leave the `--issue` form unchanged, since it is the loop's own route and outside this pull request; keep the Step 5 note in agreement. Suggestion: one clause where the fetch is introduced saying `origin` must be the pull request's repository, and that a failed fetch or `git show` stops with git's message and never reads another copy; naming the repository on the `gh` calls stays issue 581's. Update the wording pin only as needed.
+
+### Actions
+- [x] (must-fix) No plan file at the head: the one local fallback is now `$(git rev-parse --show-toplevel)/.agent/work-plans/issue-<issue>/plan.md`, the checkout the skill runs from; if it is not there, stop and say so, naming the path looked at. The text says never to search other worktrees or registered projects (the Issue number form's search), because another repository's issue can have the same number. The `--issue` form is unchanged. Step 5's comment now says "the PR-number form's local fallback", and the case text says that file takes `--plan <path>` — `.claude/skills/review-plan/SKILL.md:107-117,354-355`
+- [x] (suggestion) Where the fetch is introduced: "`origin` must be that repository. If the fetch fails, or `git show` fails for any reason other than the file not existing at that commit (the no-plan-file case below), stop and show git's message; never read another copy." The exception keeps the no-plan-file case working, because there a missing file at the head is the expected signal for the local fallback. The `gh` calls still name no repository; that stays issue 581's — `.claude/skills/review-plan/SKILL.md:84-89`
+
+### Checks
+- The pinned sentences are unchanged. The issue 579 pin in `test_skill_paths.sh` gained two phrases: "Never search other worktrees or registered projects" and "stop and show git's message; never read another copy".
+- `bash .agent/scripts/tests/test_skill_paths.sh` → `test_skill_paths: 213 passed, 0 failed`. Commits used `SKIP=validate-script-tests`; the full pre-commit pass and the other suites were left to the host.
