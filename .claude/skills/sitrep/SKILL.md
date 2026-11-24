@@ -1156,7 +1156,7 @@ Running: <branch>: <its state>.
 - Running: <name>: <issue title> (issue <N>)<, the next step>: <state>. <path>.
 - And <k> more:
   - <name>
-- No work on this machine for: <the groups whose first unmet line no branch advances>.
+- No work on this machine for: <the groups whose first unmet line step 5 matched no branch or pull request for>.
 
 **Problems**:
 
@@ -1241,8 +1241,10 @@ Rules for the report:
 - **With paths** (step 1's rows hold `path` rows), there is one line per
   group instead, in roadmap order, from step 1's `--- next steps`: the
   group's name as written, how many of its lines are true ("<t> of <n>
-  done"), and its first line not yet true as written with its result in
-  words, or "nothing open", or "no design yet" for a path with no lines
+  done", from the summary step 1 printed: its ` paths` part has one
+  count per group in the same order as the next-steps lines, `none`
+  for a group with no lines), and its first line not yet true as
+  written with its result in words, or "nothing open", or "no design yet" for a path with no lines
   (an Across group with none is left out). No group is "behind" another:
   the paths move in no fixed order, and a path with no design yet is not
   late. There is no single `Next:` and `Running:` pair: the work in
@@ -1278,7 +1280,10 @@ Rules for the report:
   bullet per name under it. The next step's branch is always among the five shown (it
   takes the fifth place when it would fall below). With paths, the
   branches step 5 matched to any group's first unmet line come first,
-  and each of them is among the five shown; then one bullet "No work on
+  and each of them is among the five shown, except when more than five
+  are matched: then the first five of them, in step 3's order, are
+  shown, and the rest are named under "And <k> more:" with the others;
+  then one bullet "No work on
   this machine for:" names the groups whose first unmet line step 5
   matched no branch or pull request for (left out when there is none). A line is filled in
   part by part, and a part the branch does not have is left out:
@@ -1311,11 +1316,15 @@ Rules for the report:
     Direction section is not written as paths).
   - A branch with only a pull request has no timeline here, so no Serves
     line was read: with no path paragraph it gets no path word either,
-    like every other line; otherwise the name of the path whose line
+    like every other line; otherwise the mark of the group whose line
     names its issue, read from the rows step 1 printed (the `line` row
-    whose item has `(#<N>` or whose check is `gh-issue <N>`, under its
-    `path` row; the rows file itself is gone after step 4), else "path
-    unknown (no worktree, timeline not read)". Its issue is the `<N>` of a
+    whose item names `#<N>` in brackets as step 5 reads an item:
+    `(#<N>)`, `(#<N>,` or any number of a list such as `(#208, #209)`;
+    or whose check is `gh-issue <N>`; under its `path` row; the rows
+    file itself is gone after step 4), written as step 3 writes it: the
+    path's name, `Across the paths`, or `no path (a line names it)` for
+    the `no path` group; else "path unknown (no worktree, timeline not
+    read)". Its issue is the `<N>` of a
     `feature/issue-<N>` head branch, or an issue in step 3's
     `closingIssuesReferences` whose repository is this one (the match
     step 5 makes); with neither, it is path unknown. Never a `no path

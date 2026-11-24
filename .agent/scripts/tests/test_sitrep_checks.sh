@@ -1317,7 +1317,9 @@ grep -qF 'By default it is the focus: one of the' "$SKILL" && grep -qF '`no path
 # from the rows step 1 printed (the rows file is gone after step 4), else
 # path unknown.
 sk_flat="$(tr '\n' ' ' < "$SKILL" | tr -s ' ')"
-grep -qF 'otherwise the name of the path whose line names its issue, read from the rows step 1 printed' <<< "$sk_flat" \
+grep -qF 'otherwise the mark of the group whose line names its issue, read from the rows step 1 printed' <<< "$sk_flat" \
+    && grep -qF 'any number of a list such as `(#208, #209)`' <<< "$sk_flat" \
+    && grep -qF '`no path (a line names it)` for the `no path` group' <<< "$sk_flat" \
     && grep -qF 'else "path unknown (no worktree, timeline not read)". Its issue is the `<N>` of a `feature/issue-<N>` head branch, or an issue in step 3'"'"'s `closingIssuesReferences` whose repository is this one' <<< "$sk_flat" \
     && grep -qF 'Never a `no path line (...)` label, which needs the timeline that was not read.' <<< "$sk_flat" \
     && grep -qF 'isDraft,reviewDecision,updatedAt,closingIssuesReferences' "$SKILL" \
