@@ -141,3 +141,16 @@ The plan carries the owner's four answers and the host's mechanism decisions fai
 
 - [ ] Specify that the `.reviewed` snapshot, the `changed_lines` inputs and the noted passage use the raw draft text, not the padded display text; add a table-row test.
 - [ ] Add `Tk()` `TclError` handling to the exit-2 path and a subprocess test with an unreachable `DISPLAY`.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 21:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (plan review needs-work on two one-line gaps with stated fixes; carried into the implement handoff, as the owner chose for issue 452's plan on 2026-11-23, to save a plan round)
+**After**: plan
+**Decision**: proceed
+
+Implement plan.md at 354d2251 with the Plan Review's findings and suggestions applied in the code, and noted in the Implementation entry:
+- F1: the `.reviewed` snapshot, the `changed_lines` inputs and every quoted passage use the raw draft text, never the padded display text; selection maps to raw lines; a test with a table row whose cell changes marks only that line.
+- F2: `Tk()` raising `TclError` (dead or missing X display, Wayland-only) exits 2 with the one-line message, no traceback; a subprocess test with `DISPLAY=:9999`.
+- Suggestions adopted: the `.prev` rename happens at the first write, with `os.replace`, one level of history; keep `parse_notes` only if the writer's round-trip test uses it; state what `snapshot_path` does for a notes path not ending in `.notes.md`; a missing `--previous` file exits 1 with one line; the skill-wiring follow-up note says `.reviewed` and `.prev` files land in the tracked `reviews/` folder.
