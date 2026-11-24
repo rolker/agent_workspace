@@ -122,6 +122,14 @@ gh pr diff <N>
 gh pr view <N> --json body --jq '.body' | grep -o '#[0-9]*'
 ```
 
+In cold-read mode (step 2, "Cold read, cross-model only") fetch the
+metadata without `comments,reviews`, so no earlier finding reaches the
+lead's context either:
+
+```bash
+gh pr view <N> --json title,body,baseRefName,headRefName,headRefOid,files,additions,deletions,url
+```
+
 #### 1b. Branch mode (--branch [<base-ref>])
 
 This snippet is illustrative pseudo-code; the skill body describes
@@ -207,6 +215,31 @@ whole-diff tier still run. Record `**Depth**: <tier> (reason: round <R>
 convergence check per handoff)` and the cross-model outcome as "skipped
 (round-<R> convergence check, per handoff)". Without those words, the
 fix-round rule above applies.
+
+**Cold read, cross-model only** (issue 452; run-issue step 9a): the
+converse of the round-3 check. Look in your task text for the words "cold
+read, cross-model only", which a run-issue host writes into a PR-mode
+handoff with the one agent to use, e.g. `/review-code <M> (cold
+read, cross-model only: codex; the final diff only, no earlier review
+entries or findings)`. It is the pull request's one independent read when
+Copilot is not available. When the words are there: skip 5a-5d, the
+Claude adversarial pass included, and run 5e with only the one agent the
+handoff names (`--agents codex`, or `--agents gemini`); do not read
+earlier review entries or findings from `progress.md`, the issue's
+comments or the pull request's comments and reviews (step 1a's cold-read
+query leaves them out), and do not pass them to the agent: `cross_model_review.sh` gives it the title, URL and diff only, with
+the issue's work-plan files left out, and that is what keeps the read
+cold.
+Classify the depth as usual for the header, then record `**Depth**: <tier>
+(reason: cold read, cross-model only: <agent>, per handoff)`: run-issue
+reads those exact words on the `**Depth**` line (`review_progress.sh
+cold-read`) to know the cold read has run for this pull request, so keep
+them verbatim. Step 6's silence filter and step 8's entry apply as for any
+PR-mode review; the findings are the named agent's, judged by you as lead.
+If the named agent fails, write the entry with `**Status**: failed` and
+say why: a failed cold read is not recorded as one that ran. The round-3
+words and these never come together; if both are there, the cold read
+wins (it is the cross-model read the round-3 check would have skipped).
 
 **User override**: If the `/review-code` invocation includes a depth keyword
 (`light`, `standard`, or `deep`), use that tier instead of the automatic

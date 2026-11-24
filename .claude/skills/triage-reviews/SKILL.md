@@ -43,14 +43,25 @@ workspace session behaves exactly as it did before this idiom existed.
 
 **Lifecycle position**: implement → push → review → **triage-reviews** → fix
 
-Evaluate all PR review comments — from human reviewers, Copilot, and other
-bots — together with the issue's own `progress.md` review timeline (the
+Evaluate all PR review comments — from human reviewers, and from Copilot
+or other bots when they reviewed — together with the issue's own `progress.md` review timeline (the
 `## Local Review` / `## Local Review (Pre-Push)` entries `review-code`
 wrote), against the local worktree code, workspace principles, and ADRs.
 A finding raised by two sources covering the current head is a **cross-source
 confirmation**, the strongest signal. Classifies each finding as valid or
 false positive, presents a structured plan, and writes one unified
 `## Integrated Review` entry. Does not auto-fix or post comments.
+
+**No Copilot review is the ordinary case** (issue 452). Automatic Copilot
+review is off on every repository (owner, 2026-11-23), so a pull request
+usually has no Copilot review and no `copilot-pull-request-reviewer`
+check-run; Copilot reviews only when `run-issue` step 9a asked it, once
+per pull request, before the merge checkpoint. Triage the sources that
+exist (the local reviews, any human review, the CI rollup) and write
+the entry as usual; an absent Copilot review is not a gap, a pending
+source or a reason to wait, and is not listed as one. A Copilot
+could-not-review notice is read like any review: no findings, and its
+own words say why.
 
 ```
 /triage-reviews <pr-number> [--strict-progress] [--no-progress]
@@ -299,7 +310,7 @@ Output a structured report:
 
 **PR**: <url>
 **Head**: `<branch>` at `<short-sha>`
-**Sources**: <count> (e.g., Copilot R2 @ `<sha>`, Local Review @ `<sha>`, CI rollup)
+**Sources**: <count> (e.g., Local Review @ `<sha>`, CI rollup; Copilot @ `<sha>` only when it was requested and reviewed)
 **Reviews**: <total> review(s), <total> inline comment(s), <total> conversation comment(s)
 **Cross-source confirmations**: <count>
 
@@ -411,7 +422,7 @@ never written again):
 **Reviews-read**: <review_id, review_id, … of the non-PENDING reviews step 3 fetched, or none>
 
 **PR**: #<N> at `<short-sha>`
-**Sources**: <count> (e.g., Copilot R2 @ `<sha>`, Local Review @ `<sha>`, CI rollup)
+**Sources**: <count> (e.g., Local Review @ `<sha>`, CI rollup; Copilot @ `<sha>` only when it was requested and reviewed)
 **Cross-source confirmations**: <count>
 **CI**: <all-pass | failures-noted | pending>
 

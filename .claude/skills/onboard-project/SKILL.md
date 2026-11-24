@@ -84,9 +84,13 @@ says so, and changes nothing without a yes.
 
 Each is shown before it is made, and made only on the user's yes to that
 write: a yes to the batch covers nothing else. Changes to the GitHub
-repository itself (branch protection, Copilot review, labels, a git-bug
-bridge) belong to the hygiene checklist, which `audit-project` holds
-(#332 D4); onboarding ends by offering it (step 10).
+repository itself (branch protection, labels, a git-bug bridge) belong to
+the hygiene checklist, which `audit-project` holds (#332 D4); onboarding
+ends by offering it (step 10). Onboarding never turns on automatic Copilot
+review (it is off on every repository, owner, 2026-11-23: the quota lasts
+a few days a month); Copilot reviews a pull request only when asked, by
+the review loop once per pull request (`run-issue` step 9a) or by hand
+with `gh pr edit <N> --add-reviewer "@copilot"`.
 
 The settings file `.agent/projects.d/<name>` (at a parent root, the
 chosen instance's) lives in the workspace checkout, outside this session's
@@ -651,7 +655,7 @@ URL by hand.
 End by offering `/agent-workspace:audit-project` (#332 D4), whatever
 `instructions` says. It checks what onboarding does not: governance
 coverage, documentation, tests, and the hygiene checklist (pre-commit, CI,
-branch protection, Copilot review, component labels, git-bug bridge,
+branch protection, independent review, component labels, git-bug bridge,
 license headers), reporting each item the project's facts make moot as
 skipped, with the reason. It is report-only unless the user takes its
 optional final step, where every write again waits for a yes.

@@ -2,7 +2,10 @@
 # .agent/scripts/tests/test_review_code_convergence.sh
 # Tests for .agent/scripts/review_progress.sh (issue #269 PR B): the
 # review-code skill's convergence round-counting, ship verdict, and the
-# PROGRESS_PERSISTENCE_STRICT-switched step-8 persistence path.
+# PROGRESS_PERSISTENCE_STRICT-switched step-8 persistence path; the
+# cold-read record run-issue step 9a reads (issue 452); and a text pin on
+# review-code's two handoff-word paths (round-3 "no cross-model reviewers",
+# the cold read's "cold read, cross-model only").
 #
 # Every case runs in throwaway git repos under mktemp -d — never this repo.
 # WORKTREE_ISSUE / WORK_PLANS_DIR_OVERRIDE / PROGRESS_PERSISTENCE_STRICT are
@@ -275,6 +278,99 @@ if [[ "$rc" -eq 0 ]] && grep -q '2222222' "$OTHER/.agent/work-plans/issue-7/prog
     pass "persist strict: WORK_PLANS_DIR_OVERRIDE naming another repo's standard issue dir is honored there"
 else
     fail "persist strict: standard override in another repo (rc=$rc out=$out)"
+fi
+
+# ======================================================== cold-read =====
+# run-issue step 9a (issue 452): "the fallback already ran" is a complete
+# PR-mode `## Local Review` whose **Depth** carries "cold read, cross-model
+# only", from the current pull request's start; never a whole-file match.
+cold_entry() {  # <heading> <status> <depth>
+    printf '%s\n**Status**: %s\n**When**: 2026-09-17 13:00 -04:00\n**By**: t (m)\n**Verdict**: approved\n\n**PR**: #70 at `beef123`\n**Depth**: %s\n**Must-fix**: 0 | **Suggestions**: 0\n\n### Findings\n- [ ] No issues found. LGTM.\n' "$1" "$2" "$3"
+}
+COLD='standard (reason: cold read, cross-model only: codex, per handoff)'
+cr() { "$RP" cold-read --progress "$1" 2>&1; }
+HDR() { printf -- '---\nissue: 7\n---\n\n# Issue #7\n\n'; }
+
+out=$(cr "$FIX/absent-cold.md")
+[[ "$out" == "cold_read=no" ]] && pass "cold-read: no progress file -> no" || fail "cold-read: absent file (out=$out)"
+
+{ HDR; cold_entry '## Local Review' complete "$COLD"; } > "$FIX/cold1.md"
+out=$(cr "$FIX/cold1.md")
+[[ "$out" == "cold_read=yes" ]] && pass "cold-read: a complete PR-mode Local Review with the Depth marker -> yes" || fail "cold-read: marked entry (out=$out)"
+
+# The words in a Checkpoint body, a Plan Review body and an ordinary
+# review's finding text are not the record (issue 452's own timeline holds
+# them several times).
+{ HDR
+  printf '## Checkpoint\n**Status**: complete\n**When**: 2026-09-17 12:00 -04:00\n**By**: t (m)\n**Decided-by**: owner\n**After**: plan\n**Decision**: proceed\n\nThe fallback records **Depth** "cold read, cross-model only".\n\n'
+  printf '## Plan Review\n**Status**: complete\n**When**: 2026-09-17 12:05 -04:00\n**By**: t (m)\n**Verdict**: approved\n**Depth**: cold read, cross-model only\n\n'
+  cold_entry '## Local Review' complete 'standard (reason: 120 lines)' | sed 's/No issues found. LGTM./mentions cold read, cross-model only — `x:1`/'; } > "$FIX/cold-text.md"
+out=$(cr "$FIX/cold-text.md")
+[[ "$out" == "cold_read=no" ]] && pass "cold-read: the words in a Checkpoint, a Plan Review and a finding line do not count -> no" || fail "cold-read: whole-file text (out=$out)"
+
+{ HDR; cold_entry '## Local Review (Pre-Push)' complete "$COLD" | sed 's/^\*\*PR\*\*: #70 at/**Branch**: feature\/issue-7 at/'; } > "$FIX/cold-prepush.md"
+out=$(cr "$FIX/cold-prepush.md")
+[[ "$out" == "cold_read=no" ]] && pass "cold-read: a pre-push review with the marker is not the cold read -> no" || fail "cold-read: pre-push (out=$out)"
+
+{ HDR; cold_entry '## Local Review' partial "$COLD"; printf '\n'; cold_entry '## Local Review' failed "$COLD"; } > "$FIX/cold-partial.md"
+out=$(cr "$FIX/cold-partial.md")
+[[ "$out" == "cold_read=no" ]] && pass "cold-read: a partial or failed marked review is not a cold read that ran -> no" || fail "cold-read: partial/failed (out=$out)"
+
+{ HDR; cold_entry '## Local Review' complete 'standard (reason: 120 lines changed)'; } > "$FIX/cold-plain.md"
+out=$(cr "$FIX/cold-plain.md")
+[[ "$out" == "cold_read=no" ]] && pass "cold-read: an ordinary PR-mode re-review -> no" || fail "cold-read: plain PR review (out=$out)"
+
+# An earlier merged pull request's cold read does not count for the next
+# pull request of the issue (pr_start.py pr_start); the next one's does.
+{ HDR; cold_entry '## Local Review' complete "$COLD"; printf '\n'
+  merge_checkpoint merge merge; printf '\n'
+  next_plan; } > "$FIX/cold-merged0.md"
+out=$(cr "$FIX/cold-merged0.md")
+[[ "$out" == "cold_read=no" ]] && pass "cold-read: the merged pull request's cold read does not count after the next part's start -> no" || fail "cold-read: earlier pull request (out=$out)"
+{ cat "$FIX/cold-merged0.md"; printf '\n'; cold_entry '## Local Review' complete "$COLD" | sed 's/#70/#71/'; } > "$FIX/cold-merged1.md"
+out=$(cr "$FIX/cold-merged1.md")
+[[ "$out" == "cold_read=yes" ]] && pass "cold-read: the next pull request's own cold read -> yes" || fail "cold-read: next pull request's cold read (out=$out)"
+
+# A restart moves the round start, not the pull-request start: the open
+# pull request's cold read still counts.
+{ cat "$FIX/cold1.md"; printf '\n'; restart_checkpoint; } > "$FIX/cold-restart.md"
+out=$(cr "$FIX/cold-restart.md")
+[[ "$out" == "cold_read=yes" ]] && pass "cold-read: a restart does not hide the open pull request's cold read -> yes" || fail "cold-read: restart (out=$out)"
+
+# --pr <M>: only a cold read correlated to that pull request counts (a
+# pull request closed and replaced without a merge checkpoint keeps the
+# same pr_start, so the replacement must not inherit the old read).
+out=$("$RP" cold-read --progress "$FIX/cold1.md" --pr 70 2>&1)
+[[ "$out" == "cold_read=yes" ]] && pass "cold-read --pr: the same pull request's cold read -> yes" || fail "cold-read --pr 70 (out=$out)"
+out=$("$RP" cold-read --progress "$FIX/cold1.md" --pr 72 2>&1)
+[[ "$out" == "cold_read=no" ]] && pass "cold-read --pr: a replaced pull request's cold read does not count for another -> no" || fail "cold-read --pr 72 (out=$out)"
+"$RP" cold-read --progress "$FIX/cold1.md" --pr abc >/dev/null 2>&1; rc=$?
+[[ "$rc" -eq 2 ]] && pass "cold-read --pr: a non-number is a usage error (rc 2)" || fail "cold-read --pr abc (rc=$rc)"
+
+"$RP" cold-read --progress "$FIX/bad.md" >/dev/null 2>&1; rc=$?
+[[ "$rc" -ne 0 ]] && pass "cold-read: malformed progress.md fails loudly (rc=$rc), never a silent no" || fail "cold-read: malformed (rc=$rc)"
+"$RP" cold-read >/dev/null 2>&1; rc=$?
+[[ "$rc" -eq 2 ]] && pass "cold-read: missing --progress is a usage error (rc 2)" || fail "cold-read: usage (rc=$rc)"
+
+# ================================================ review-code skill text =====
+# A text pin, not behaviour coverage: review-code keeps both handoff-word
+# paths, the round-3 convergence check and the cold read (issue 452).
+RC_SKILL="$SCRIPT_DIR/../../../.claude/skills/review-code/SKILL.md"
+# One line, runs of whitespace squeezed: the phrases wrap across lines.
+RC_FLAT=$(tr '\n' ' ' < "$RC_SKILL" | tr -s ' ')
+if [[ "$RC_FLAT" == *'no cross-model reviewers'* \
+   && "$RC_FLAT" == *'cold read, cross-model only'* \
+   && "$RC_FLAT" == *'skip 5a-5d, the Claude adversarial pass included'* \
+   && "$RC_FLAT" == *'run 5e with only the one agent the handoff names'* ]]; then
+    pass "review-code SKILL.md: keeps the round-3 words and has the cold-read words (skip 5a-5d, 5e with the one named agent)"
+else
+    fail "review-code SKILL.md: a handoff-word path is missing ($RC_SKILL)"
+fi
+# The cold read's metadata query leaves out comments and reviews.
+if grep -qxF 'gh pr view <N> --json title,body,baseRefName,headRefName,headRefOid,files,additions,deletions,url' "$RC_SKILL"; then
+    pass "review-code SKILL.md: cold-read mode fetches PR metadata without comments,reviews"
+else
+    fail "review-code SKILL.md: no cold-read metadata query without comments,reviews ($RC_SKILL)"
 fi
 
 echo ""

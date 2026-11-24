@@ -520,6 +520,7 @@ review_progress findings%"$S/review_progress.sh" findings --progress "$P/progres
 review_progress check%"$S/review_progress.sh" check --progress "$P/progress.md" --index 0
 review_progress check --deferred%"$S/review_progress.sh" check --progress "$P/progress.md" --index 0 --deferred why
 review_progress plan-sha%"$S/review_progress.sh" plan-sha --plan "$P/plan.md"
+review_progress cold-read%"$S/review_progress.sh" cold-read --progress "$P/progress.md"
 review_progress plan-sha --ref%"$S/review_progress.sh" plan-sha --plan ./.agent/work-plans/issue-7/plan.md --ref HEAD
 progress_append%checkpoint_entry | "$S/progress_append.sh" 7
 progress_append -C%checkpoint_entry | (cd "$H" && "$S/progress_append.sh" -C "$OLDPWD" 7)
@@ -553,8 +554,8 @@ usage_subs=$("$S/review_progress.sh" 2>&1 | sed -n 's/^  review_progress\.sh \([
 check "review_progress.sh's dispatch table: every row has a label" "$([[ -n "$table" && -z "$unparsed" ]]; echo $?)" "unparsed: $unparsed"
 check "the table's labels are exactly the subcommands its usage text names" \
     "$([[ -n "$usage_subs" && "$(sort <<< "${subs%$'\n'}")" == "$usage_subs" ]]; echo $?)" "table: $subs usage: $usage_subs"
-check "review_progress.sh's dispatch table lists the seven known subcommands" \
-    "$([[ "$(sort <<< "${subs%$'\n'}" | tr '\n' ' ')" == "check findings persist plan-sha round sources verdict " ]]; echo $?)" "$subs"
+check "review_progress.sh's dispatch table lists the eight known subcommands" \
+    "$([[ "$(sort <<< "${subs%$'\n'}" | tr '\n' ' ')" == "check cold-read findings persist plan-sha round sources verdict " ]]; echo $?)" "$subs"
 for sub in $subs; do
     if [[ " $NO_RECORDS_SUBS " == *" $sub "* ]]; then
         out=$(cd "$B" && "$S/review_progress.sh" "$sub" --must-fix 0 --round 1 2>&1); rc=$?
@@ -607,6 +608,8 @@ for where_ in A WS; do
     check "findings from $where_ lists the open finding" "$([[ "$rc" -eq 0 && "$out" == *'"index": 0'* ]]; echo $?)" "$out"
     out=$(cd "$dir" && "$S/review_progress.sh" sources --progress "$P/progress.md" --head 1234567 --reviews "$SANDBOX/reviews.json" 2>&1); rc=$?
     check "sources from $where_ runs" "$([[ "$rc" -eq 0 ]]; echo $?)" "$out"
+    out=$(cd "$dir" && "$S/review_progress.sh" cold-read --progress "$P/progress.md" 2>&1); rc=$?
+    check "cold-read from $where_ reads its own timeline" "$([[ "$rc" -eq 0 && "$out" == "cold_read=no" ]]; echo $?)" "$out"
     out=$(cd "$dir" && "$S/review_progress.sh" plan-sha --plan "$P/plan.md" 2>&1); rc=$?
     check "plan-sha from $where_ prints the plan commit" "$([[ "$rc" -eq 0 && "$out" == "$(git -C "$dir" log -1 --format=%h -- .agent/work-plans/issue-7/plan.md)" ]]; echo $?)" "$out"
     sum_before=$(md5sum < "$P/progress.md")
@@ -645,7 +648,7 @@ for i, b in enumerate(blocks, 1):
 print(len(blocks))
 PY
 nblocks=$(find "$BLOCKS" -name '*.sh' | wc -l)
-check "SKILL.md has three blocks that use where (step 1, step 4, step 6)" "$([[ "$nblocks" -eq 3 ]]; echo $?)" "n=$nblocks"
+check "SKILL.md has four blocks that use where (step 1, step 4, step 6, step 9a)" "$([[ "$nblocks" -eq 4 ]]; echo $?)" "n=$nblocks"
 run_block() {  # <block-file> <ref> -- prints the block's output, then rc= and cwd=
     local body
     body=$(sed -e "s|<ref>|$2|g" -e 's| \[--project <project>\]||g' -e 's|<type>|project|g' -e 's|<N>|7|g' \
@@ -679,6 +682,12 @@ check "step 4's block for a package issue with no timeline yet: BEFORE=0" "$([[ 
 out=$(dp "$H" --check-exit --issue 'owner/pkg_a#8' --skill review-issue --type project --before 0)
 check "check-exit on that missing timeline: MISSING, not OK" "$([[ "$out" == "status=MISSING"$'\n'"rc=0" ]]; echo $?)" "$out"
 check "... and A8 has no timeline (so nothing was counted elsewhere)" "$([[ ! -e "$A8/.agent/work-plans/issue-8/progress.md" ]]; echo $?)"
+# Step 9a's cold-read block (issue 452) reads the timeline where `where`
+# puts it and stops on a missing one, never a silent cold_read=no.
+out=$(sed -e 's|<ref>|owner/pkg_a#8|g' -e 's| \[--project <project>\]||g' -e 's|<type>|project|g' -e 's|<N>|8|g' \
+    -e 's|<M>|5|g' "$BLOCKS/4.sh" | (cd "$H" && bash 2>&1); echo "rc=$?")
+check "step 9a's block for a package issue with no timeline: STOP, never cold_read=no" \
+    "$([[ "$out" == *"STOP: no progress.md at "* && "$out" != *"cold_read="* && "$out" != *"rc=0" ]]; echo $?)" "$out"
 
 # ----------------------------------------------------------------- case 10
 # Pre-push review round 2. (1) The gate matches the records shape on the

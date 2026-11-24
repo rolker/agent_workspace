@@ -1,6 +1,6 @@
 ---
 name: audit-project
-description: Check the project at this session's root against workspace and project conventions. Reports governance coverage, documentation and test gaps, the hygiene checklist (pre-commit, CI, branch protection, Copilot review, component labels, git-bug bridge, license headers; items the project's facts make moot are reported skipped) and the integration audit. Report-only; an optional final step answers each finding with fix now, open issue, queue in the roadmap, or skip, every write after a yes.
+description: Check the project at this session's root against workspace and project conventions. Reports governance coverage, documentation and test gaps, the hygiene checklist (pre-commit, CI, branch protection, independent review, component labels, git-bug bridge, license headers; items the project's facts make moot are reported skipped) and the integration audit. Report-only; an optional final step answers each finding with fix now, open issue, queue in the roadmap, or skip, every write after a yes.
 session_scope: project
 ---
 
@@ -62,9 +62,9 @@ nothing. Step 10 is optional and offered at the end: it answers each
 finding with fix now, open issue, queue in the roadmap, or skip, and
 **every write waits for a yes**. The writes step 10 can make:
 
-- changes to the GitHub repository itself: branch protection and Copilot
-  review (`gh api`), labels (`gh label create`), and a git-bug bridge
-  (`git bug bridge new`, then a first pull);
+- changes to the GitHub repository itself: branch protection (`gh api`),
+  labels (`gh label create`), and a git-bug bridge (`git bug bridge new`,
+  then a first pull);
 - a project worktree and its branch, files and commits on it (an
   `## Onboarding` roadmap section among them), and a push;
 - an issue and a pull request on the project's repository.
@@ -241,7 +241,7 @@ as a GitHub call without access). An item is never dropped from the report.
 | **Pre-commit config** | `.pre-commit-config.yaml` exists at the root | Write one for the project's languages, with `no-commit-to-branch` set to the default branch; the workspace has no template, and its own `$WS_ROOT/.pre-commit-config.yaml` is an example |
 | **CI workflow** | `.github/workflows/*.yml` with build and test steps | Write a workflow on the default branch that runs the project's own build and test commands (`project_setting.sh get <settings-name> build` and `test`); the workspace has no template |
 | **Branch protection** | A rule requires pull requests on the default branch (`pull_request` in the branch's rules) | `gh api` — needs admin access |
-| **Copilot auto-review** | Copilot reviews pull requests (`copilot_code_review` in the branch's rules) | `gh api` — needs admin access |
+| **Independent review** | Pull requests get a review by someone other than the author's own session. **Informational**: no check here can fail, so the item is reported **in place**, never **missing**, with what meets it. A project meets it by using pull requests (`prs` is not `no`) that merge through the workspace review loop, which gives each one a cold read before `merge_pr.sh` (Copilot when asked, else one cross-model reviewer; `run-issue` step 9a); the report line reads `in place (informational): pull requests merge through the review loop's cold read`. No GitHub call: an automatic Copilot rule (`copilot_code_review` in the branch's rules) is neither needed nor looked for, and its absence is no finding | Nothing to make. Never turn the automatic Copilot rule back on (owner, 2026-11-23: the quota lasts a few days a month); to ask Copilot for one pull request by hand: `gh pr edit <N> --add-reviewer "@copilot"` |
 | **Component labels** | `component:` labels, one per component | `gh label create` per component |
 | **git-bug bridge** | `git bug bridge`, run in `<repo-dir>`, lists a GitHub bridge | `git bug bridge new` and a first pull |
 | **License headers** | Source files carry copyright and license headers | Too invasive for a batch: always open issue or queue |
@@ -251,9 +251,9 @@ as a GitHub call without access). An item is never dropped from the report.
 
 | Fact | Items skipped | Reason line |
 |------|---------------|-------------|
-| `github=no` | Branch protection, Copilot auto-review, Component labels, git-bug bridge | `skipped: no remote on github.com (github=no)` |
+| `github=no` | Branch protection, Independent review (the loop's cold read reads a GitHub pull request), Component labels, git-bug bridge | `skipped: no remote on github.com (github=no)` |
 | `issues=no` | git-bug bridge (it carries issues) | `skipped: the project uses no GitHub issues (issues=no)` |
-| `prs=no` | Copilot auto-review (it reviews pull requests) | `skipped: the project uses no pull requests (prs=no)` |
+| `prs=no` | Independent review (it reviews pull requests) | `skipped: the project uses no pull requests (prs=no)` |
 | `issues=no` and `prs=no` | Component labels (they label issues and pull requests) | `skipped: the project uses no issues or pull requests (issues=no, prs=no)` |
 | `multi_component=no` | Component labels | `skipped: one component (multi_component=no)` |
 | `windows=yes` | git-bug bridge | `skipped: Windows (windows=yes)` |
@@ -272,9 +272,11 @@ how the project works: report the item, and in step 10 ask rather than
 recommend it.
 
 With `github=unknown`, the GitHub checks have no repository to read: ask
-which repository on github.com it is, or report branch protection, Copilot
-auto-review and component labels as `not checked: github=unknown (<the
-fact's evidence>)`.
+which repository on github.com it is, or report branch protection,
+component labels and independent review as `not checked: github=unknown
+(<the fact's evidence>)`. Independent review is among them although it
+makes no GitHub call: the loop's cold read reads a GitHub pull request,
+so with no known repository its "in place" would be unfounded.
 
 The GitHub checks only read. The default branch and the rules on it:
 
@@ -310,9 +312,7 @@ access call that succeeds and prints `false`, `null` or anything else
 leaves the item `not checked: classic branch protection needs admin
 access`. When the rules call itself fails (offline), the item is
 `not checked: <reason>` unless the protection call shows required pull
-request reviews. Copilot auto-review lives only in the
-rules, so a failed rules call leaves it `not checked: <reason>`; a
-permission problem never fails the run.
+request reviews; a permission problem never fails the run.
 
 ### 9. Integration audit
 
@@ -441,16 +441,14 @@ offered as open issue or skip only, and queue in the roadmap is not offered
 **until the records lookup (#393) lands** (such a project keeps its roadmap
 with its records): say so.
 
-**GitHub settings** (branch protection, Copilot review, labels, git-bug
-bridge) touch no tracked file, so each is made as soon as the user says yes
+**GitHub settings** (branch protection, labels, git-bug bridge) touch no tracked file, so each is made as soon as the user says yes
 to it, one item at a time. Check access first:
 
 ```bash
 gh api --hostname github.com repos/<owner>/<repo> --jq '.permissions.admin'
 ```
 
-Without admin access, say that branch protection and Copilot review need it
-and move on. Labels need write access only:
+Without admin access, say that branch protection needs it and move on. Labels need write access only:
 
 ```bash
 gh label create "component:<name>" --description "<what it is>" --color "5319E7" -R github.com/<owner>/<repo>
