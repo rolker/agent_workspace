@@ -311,3 +311,11 @@ Asked at the merge checkpoint for pull request 571 (part 1 of 3: the one row of 
 **Decision**: revise
 
 Pull request 571 (part 1 of 3, the tool's roadmap row) merged on 2026-11-24. The issue is still open because parts 2 and 3 are to come. Delivered: part 1. Not delivered: part 2 (cut the adapter's manifest route) and part 3 (remove the reader). The plan is unchanged since its last review (774fb12d), but that review's verdict was needs-work for parts 2 and 3, and the host's proceed of the same day covered part 1 only. The plan now takes in all seven findings and is reviewed again before part 2 is implemented. Main has moved since the plan was written (other merges changed `test_ros2_colcon.sh` and `worktree_create.sh`), so the plan's line numbers are re-read from this branch.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-24 09:41 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-569/plan.md` at `6530c842`
+
+Revision after the second Plan Review and the merge of part 1 (pull request 571, marked delivered). All seven findings are in, each checked against the code: `_rc_tool_validate` keeps its `source_ref`/`source_path` reads; exact new text for `single_project/unused_settings` with its two test assertions; no new registration test, and the `MR_SRC`/`MR_PY` finder kept in `test_register_project.sh`; the CLI backstop test ported to `cli.read_manifest`; `test_output.py`'s `--cache-dir` case in part 3; the refusal test asserts nothing fetched or imported and is folded into `test_tool_route_order` and `test_bootstrap_no_url_names_the_tool`; root `fork_parity.md`, root `roadmap.md` (part 2) and tool roadmap row 31 (part 3) named. Host decision recorded: `ros2_colcon/unused_settings` does not gain the `source*` keys here. Line numbers re-read on `df2f5010`; `adapter.sh` did not change on main.
