@@ -38,6 +38,60 @@ is_allowed_skill() {
     return 1
 }
 
+# --- The workspace root of the worktree scripts (issue 585) ---
+# Print the main checkout of the workspace whose scripts are in
+# <script_dir> (the caller's own SCRIPT_DIR), physical, one line. A copy
+# run from inside a linked worktree of the workspace (worktrees/workspace/
+# issue-...) gets the main checkout too, so it makes, finds and removes
+# worktrees where the main checkout keeps them and reads the main
+# checkout's registry (.agent/projects.local, gitignored, so only there).
+# Only the script's location counts: never the cwd, never the user-tier
+# file (~/.claude/agent-workspace-root; ADR-0016, design.md "Sessions and
+# roots").
+# Refuses (nothing on stdout, one ERROR: line on stderr naming <name> and
+# the directory, return 1) when the checkout above <script_dir>:
+#   - is not the top level of its own git checkout (not a git checkout,
+#     git itself failed, whose own error line is quoted, or a plain
+#     directory inside another repository, which must not borrow it);
+#   - is a linked worktree whose main checkout git does not name (one of a
+#     checkout made with `git clone --separate-git-dir`);
+#   - has a main checkout that holds no .agent/scripts/_worktree_helpers.sh
+#     (not a workspace checkout).
+# The caller stops on a refusal before any git write, cd or delete; there
+# is no fallback to the copy's own checkout and no override.
+# Usage: ROOT_DIR="$(wt_main_root "$SCRIPT_DIR" worktree_list.sh)" || exit 1
+wt_main_root() {
+    local script_dir="$1" name="${2:-worktree script}" own top err main
+    # The logical grandparent of the scripts directory, then made physical:
+    # `cd -P <dir>/../..` would resolve a symlinked .agent/scripts first
+    # and land beside the link's target instead.
+    own="$(cd "$(dirname "$(dirname "$script_dir")")" 2>/dev/null && pwd -P)" || {
+        echo "ERROR: $name: cannot find the workspace checkout above $script_dir; run the copy in the workspace's main checkout." >&2
+        return 1
+    }
+    if ! top="$(git -C "$own" rev-parse --show-toplevel 2>/dev/null)"; then
+        err="$(git -C "$own" rev-parse --show-toplevel 2>&1 >/dev/null | head -n1)"
+        echo "ERROR: $name: $own is not a git checkout (git: ${err:-no message}), so it has no workspace root; run the copy in the workspace's main checkout." >&2
+        return 1
+    fi
+    top="$(cd "$top" 2>/dev/null && pwd -P)" || top=""
+    if [ "$top" != "$own" ]; then
+        echo "ERROR: $name: $own is not the top level of a git checkout (it is inside ${top:-another checkout}), so it is not a workspace checkout; run the copy in the workspace's main checkout." >&2
+        return 1
+    fi
+    if registry_main_checkout_fallback "$own"; then
+        echo "ERROR: $name: $own is a linked worktree whose main checkout git does not name (git worktree list does not start with a checkout), so the workspace root is unknown; run the copy in the workspace's main checkout." >&2
+        return 1
+    fi
+    main="$(registry_main_checkout "$own")"
+    main="$(cd "$main" 2>/dev/null && pwd -P)" || main=""
+    if [ -z "$main" ] || [ ! -f "$main/.agent/scripts/_worktree_helpers.sh" ]; then
+        echo "ERROR: $name: the main checkout of $own (${main:-unknown}) holds no .agent/scripts/_worktree_helpers.sh, so it is not a workspace checkout; run the copy in the workspace's main checkout." >&2
+        return 1
+    fi
+    printf '%s\n' "$main"
+}
+
 # --- Worktree base directory helpers ---
 # Worktrees live under whichever root owns them (issue #265):
 #   worktrees/workspace/                — workspace worktrees (unchanged)

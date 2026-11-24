@@ -22,12 +22,16 @@
 
 # Don't use set -e since we're sourced
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 source "$SCRIPT_DIR/_worktree_helpers.sh"
 source "$SCRIPT_DIR/_issue_helpers.sh"
 # shellcheck source=_project_registry.sh
 source "$SCRIPT_DIR/_project_registry.sh"
+
+# The workspace's main checkout, found from this script's location (also
+# when this is the copy inside a linked worktree). A refusal returns 1
+# without ending the caller's shell when sourced (issue 585).
+ROOT_DIR="$(wt_main_root "$SCRIPT_DIR" worktree_enter.sh)" || { return 1 2>/dev/null || exit 1; }
 
 # ---------------------------------------------------- user-tier guard (#265) ---
 # This script is promoted to the user tier (.agent/user_tier_scripts.txt), so

@@ -32,7 +32,6 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 # The directory this script was called from. Every adapter call for one
 # worktree comes from it: the calls made before the `cd "$ROOT_DIR"` below
 # run in it, and the one after passes it with the dispatcher's --from, so
@@ -42,6 +41,11 @@ CALLER_DIR="$PWD"
 source "$SCRIPT_DIR/_worktree_helpers.sh"
 source "$SCRIPT_DIR/_issue_helpers.sh"
 source "$SCRIPT_DIR/_project_registry.sh"
+
+# The workspace's main checkout, found from this script's location (also
+# when this is the copy inside a linked worktree); a refusal stops here,
+# before any git or gh call (issue 585).
+ROOT_DIR="$(wt_main_root "$SCRIPT_DIR" worktree_create.sh)" || exit 1
 
 # ---------------------------------------------------- user-tier guard (#265) ---
 # This script is promoted to the user tier (.agent/user_tier_scripts.txt), so
@@ -579,7 +583,12 @@ resolve_worktree_repos() {
     WR_VERB_ARGS=(--issue "$ISSUE_REF")
     [ -n "$LAYER" ] && WR_VERB_ARGS+=(--layer "$LAYER")
     [ -n "$PACKAGE_REPOS" ] && WR_VERB_ARGS+=(--package-repos "$PACKAGE_REPOS")
-    if ! REPO_LINES="$("$SCRIPT_DIR/adapter" "${WR_ADAPTER_ARGS[@]}" worktree_repos "${WR_VERB_ARGS[@]}")"; then
+    # The main checkout's adapter, as for every adapter call here: the
+    # adapter takes its workspace root from its own location, so only that
+    # copy reads the main checkout's registry when this script is the copy
+    # in a linked worktree (issue 585). From the main checkout it is the
+    # adapter beside this script.
+    if ! REPO_LINES="$("$ROOT_DIR/.agent/scripts/adapter" "${WR_ADAPTER_ARGS[@]}" worktree_repos "${WR_VERB_ARGS[@]}")"; then
         exit 1
     fi
     if [ -z "$REPO_LINES" ]; then
@@ -830,8 +839,10 @@ elif [ "$WORKTREE_TYPE" == "project" ]; then
     fi
     BASE_SOURCE=""
     if [ -n "$OWN_REL" ] && [ -z "$BASE_BRANCH" ] && [ -z "$PARENT_ISSUE_NUM" ]; then
+        # The main checkout's copy: pr_base_for calls the adapter beside it
+        # (see resolve_worktree_repos).
         # shellcheck source=_pr_base.sh
-        source "$SCRIPT_DIR/_pr_base.sh"
+        source "$ROOT_DIR/.agent/scripts/_pr_base.sh"
         PB_ARGS=(--repo "$(basename "$OWN_REL")" --layer "$LAYER")
         [ -n "$PROJECT_NAME" ] && PB_ARGS+=(--project "$PROJECT_NAME")
         if ! BASE_BRANCH="$(pr_base_for "${PB_ARGS[@]}")"; then
@@ -1073,7 +1084,7 @@ if [ "$WORKTREE_TYPE" == "project" ]; then
     if [ -n "$LAYER" ]; then
         WE_ADAPTER_ARGS=(--from "$CALLER_DIR")
         [ -n "$PROJECT_NAME" ] && WE_ADAPTER_ARGS+=(--project "$PROJECT_NAME")
-        WE_OUTPUT="$("$SCRIPT_DIR/adapter" "${WE_ADAPTER_ARGS[@]}" worktree_env --worktree "$WORKTREE_DIR")" || {
+        WE_OUTPUT="$("$ROOT_DIR/.agent/scripts/adapter" "${WE_ADAPTER_ARGS[@]}" worktree_env --worktree "$WORKTREE_DIR")" || {
             echo "Error: worktree_env failed for the new worktree" >&2
             exit 1
         }

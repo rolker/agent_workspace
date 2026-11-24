@@ -211,7 +211,11 @@ test_must_be_sourced() {
     # registered root. This case deliberately runs from a sandbox worktree,
     # so drive a copy of the script whose workspace root IS that sandbox --
     # otherwise the guard (correctly) refuses before the must-be-sourced
-    # message this test is about.
+    # message this test is about. The sandbox is a git checkout of its own
+    # (a main checkout, holding the scripts), since the script takes its
+    # root as the main checkout git names and refuses a folder that is no
+    # git checkout (issue 585).
+    git -C "$SANDBOX" init -q
     mkdir -p "$SANDBOX/.agent/scripts"
     local f
     for f in worktree_enter.sh _worktree_helpers.sh _project_registry.sh \

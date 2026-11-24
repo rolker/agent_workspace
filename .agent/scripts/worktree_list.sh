@@ -18,9 +18,13 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 source "$SCRIPT_DIR/_worktree_helpers.sh"
+
+# The workspace's main checkout, found from this script's location (also
+# when this is the copy inside a linked worktree); a refusal stops here
+# (issue 585).
+ROOT_DIR="$(wt_main_root "$SCRIPT_DIR" worktree_list.sh)" || exit 1
 
 # ---------------------------------------------------- user-tier guard (#265) ---
 # This script is promoted to the user tier (.agent/user_tier_scripts.txt), so
