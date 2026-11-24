@@ -154,3 +154,43 @@ Implement plan.md at 354d2251 with the Plan Review's findings and suggestions ap
 - F1: the `.reviewed` snapshot, the `changed_lines` inputs and every quoted passage use the raw draft text, never the padded display text; selection maps to raw lines; a test with a table row whose cell changes marks only that line.
 - F2: `Tk()` raising `TclError` (dead or missing X display, Wayland-only) exits 2 with the one-line message, no traceback; a subprocess test with `DISPLAY=:9999`.
 - Suggestions adopted: the `.prev` rename happens at the first write, with `os.replace`, one level of history; keep `parse_notes` only if the writer's round-trip test uses it; state what `snapshot_path` does for a notes path not ending in `.notes.md`; a missing `--previous` file exits 1 with one line; the skill-wiring follow-up note says `.reviewed` and `.prev` files land in the tracked `reviews/` folder.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 21:44 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-545 at `27098645`
+
+- `73a479f4` `.agent/scripts/review_viewer.py` (new, executable, stdlib only): pure core (`check_display`, `split_lines`, `light_format` with display-to-file column maps, `selection_to_range`, `passage_text`, `Note`/`Review`, `render_notes`/`parse_notes`, `NotesWriter`, `snapshot_path`, `changed_lines`, `Session`) and a thin tkinter `ViewerApp` (text pane, side list with click-to-jump and flash, Add note Ctrl+N, Note on whole draft, Edit, Delete, Approve, Changes requested, ask on close: Approve / Changes requested / Just close). Markdown markers stay visible and styled; only table rows are padded, so every display line is its file line.
+- `73a479f4` tests: `.agent/scripts/tests/test_review_viewer.py` (55 tests) and wrapper `test_review_viewer.sh` (`# covers:` line, +x); `test_script_tests_hook_scope.sh` gains `[test_review_viewer.py]=".agent/scripts"` in `ROOT_READERS`.
+- `27098645` `docs/design.md#review-loop-and-timeline`: local draft review bullet plus change-log row (ADR-0017); `.agent/knowledge/script_reference.md` row.
+
+Plan Review findings and suggestions applied:
+- F1: the `.reviewed` snapshot is `Session.raw_text` (the file as read at launch); `changed_lines` takes raw texts; every passage comes from `passage_text`, which maps display columns back to file columns. Tests: `test_table_cell_change_marks_only_that_row` (a wider cell re-pads every row's display, only its row is marked), `test_two_rounds_snapshot_is_raw_text`, `PassageTest`.
+- F2: `Tk()` raising `TclError` exits 2 with one stderr line, no traceback; `test_unreachable_display_exits_2` runs the CLI with `DISPLAY=:9999`.
+- `.prev`: `NotesWriter` renames an existing notes file with `os.replace` at the first write only (one level); tested, including "nothing moves at launch".
+- `parse_notes` kept: the writer round-trip tests use it (each decision, whole-draft note, multi-line and blank-line passages).
+- `snapshot_path`: `x.notes.md` -> `x.reviewed`; any other name (and a bare `.notes.md`) gets `.reviewed` appended; tested.
+- A missing `--previous` file exits 1 with one line; tested (also a missing draft).
+- Follow-up note for the skill-wiring issue (not opened by this pass): a launcher passing `--notes .agent/work-plans/issue-<N>/reviews/<name>.notes.md` puts the `.reviewed` snapshot and the `.prev` notes beside it, in that tracked folder, so the launcher must commit or ignore them deliberately.
+
+Choices made here: no `**Decision**` line while undecided (a killed window leaves none); dismissing the ask-on-close dialog keeps the window open; the notes folder is created at the first write; a failed write shows an error and "NOT SAVED" in the status bar; a failed save on close prints one stderr line and still exits 0.
+
+Suites run (each on its own):
+- `bash .agent/scripts/tests/test_review_viewer.sh`: `Ran 55 tests` / `OK (skipped=1)`; the skip is the window-build smoke, which runs only under `xvfb-run` (not installed here).
+- `bash .agent/scripts/tests/test_script_tests_hook_scope.sh`: `test_script_tests_hook_scope: 357 passed, 0 failed`.
+- `bash .agent/scripts/tests/test_skill_paths.sh`: `test_skill_paths: 200 passed, 0 failed`.
+- `bash .agent/scripts/tests/test_design_anchors.sh`: `test_design_anchors: 82 passed, 0 failed`.
+- `pre-commit run --files` on the three new files with `SKIP=validate-script-tests`: black, flake8, pylint, shellcheck pass. Full pass left to the host.
+
+Not verified: the tkinter layer (`ViewerApp`) has not run. No xvfb here, the GUI was not launched (per handoff), and a withdrawn-window build check was denied. Its first real use, or an xvfb run of the smoke test, is its first exercise.
+
+Process note: an early `pre-commit run --files` without `SKIP` started the validate-script-tests hook, which selected every suite (a new `.agent/scripts` file reaches every suite that copies the whole folder). It was stopped partway; two orphaned fake-codex processes from its `test_cross_model_review.sh` run may still be alive until their own 1800 s timeout (killing them was denied).
+
+### Decision summary
+
+- New `.agent/scripts/review_viewer.py`: a stdlib tkinter window for reviewing a draft. It implements the owner's four answers: light formatting, edit/delete plus whole-draft note plus side list, changes-only second round, ask on close. Window close is the done signal; exit 2 with one line means review in chat in the same notes format.
+- Notes and the `.reviewed` snapshot always hold the file's own text, never the padded table display (Plan Review F1). A dead or refused display exits 2 with no traceback (F2).
+- A relaunch moves the old notes file to `.prev` at the first write. No notes carry over to the next round.
+- The design section and the script reference are updated in this PR. Skills that offer the viewer are a follow-up; their `reviews/` folder will hold `.reviewed` and `.prev` files.
+- The GUI layer has not run here. The pure core has 55 tests.
