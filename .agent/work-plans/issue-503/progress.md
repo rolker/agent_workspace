@@ -1740,3 +1740,22 @@ Codex (EXIT=0, AGENT_TIMEOUT=3000) read the whole diff: the prompt held all 17 n
 - [x] (must-fix) The refusal of a URL or git-location manifest prints `--manifest $MANIFEST` as given, so a credential-bearing URL (https://user:token@host/...) shows its user name and token on stderr, dry run included; mask it with mask_url_userinfo as the fix pass did for --fetch-from. The adapter's own "Running:" line prints a manifest given directly to `adapter setup` the same way. — `.agent/scripts/register_project.sh:845`, `.agent/project_types/ros2_colcon/adapter.sh:1366`
 - [ ] (suggestion) A relative --manifest given straight to `adapter setup` is made absolute only when it exists in the caller's directory; otherwise it is passed relative and the tool reads it from the root, so a mistyped path can pick a same-named file there. Registration does not hit this (it passes the checked absolute M_ABS). Refuse a relative path that is not an existing file. — `.agent/project_types/ros2_colcon/adapter.sh:1343`
 - [ ] (suggestion) A repeated --distro or --role is silently resolved to the last value (shared parser, line 243) and now feeds init in manifest mode, while `adapter setup` refuses both duplicates; refuse duplicates in manifest mode so both entry points agree. — `.agent/scripts/register_project.sh:243`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 15:03 -05:00
+**By**: claude-code (claude-opus-5-5)
+
+**PR**: #610 at `3a08a7b3`
+**Addressed**: Local Review at `93975f8` (2026-11-24 14:52 -05:00)
+**Commits**: 3a08a7b3
+
+### Actions
+- [x] (must-fix) A manifest URL carrying user:password@ printed verbatim: masked with mask_url_userinfo in register_project.sh's three --manifest refusals (remote location, not a regular file, no such file; one `_m_shown` value) and in the adapter's `Running:` line (`shown[1]`); the tool is still handed the value as given. Read and grepped for every other print of the value: the dry run's setup and `init` lines, the setup banner and `NEXT=` lines carry only the checked absolute local path (M_ABS) or no value; register_session_root.sh prints no manifest value (its usage and refusals name only the options) and passes the arguments on unchanged. The remote refusal comes before the dry-run block, so a dry run reaches it (the existing loop and the new test both cover it). — `.agent/scripts/register_project.sh:845`, `.agent/project_types/ros2_colcon/adapter.sh:1366`
+- [ ] (suggestion) relative --manifest given straight to `adapter setup` — left open for the follow-up issue, as the handoff directs
+- [ ] (suggestion) repeated --distro or --role takes the last value in registration — left open for the follow-up issue, as the handoff directs
+
+### Tests
+New: test_register_project.sh, a manifest URL with `user:secret@` (bare host and with a path), real run and `--dry-run`: refused, masked, `secret` nowhere on stdout or stderr, no tool run; test_ros2_colcon.sh, `adapter setup --manifest https://user:secret@...` with the stub tool: masked in `Running:`, `secret` nowhere in the output, the tool given it unmasked. Without the fix: test_register_project 302 passed, 4 failed (the four new checks); test_ros2_colcon 1247 passed, 2 failed (masked line, no secret).
+
+Suites run with the fix, each on its own: test_register_project: 306 passed, 0 failed; test_register_session_root: 87 passed, 0 failed; test_ros2_colcon: 1249 passed, 0 failed, 0 skipped; test_script_tests_hook_scope: 366 passed, 0 failed; test_adapter: 260 passed, 0 failed; test_fresh_clone_no_project: 26 passed, 0 failed; test_project_registry: 425 passed, 0 failed; test_worktree_create: PASS 112, FAIL 0; test_project_file: 701 passed, 0 failed; test_project_integration_audit: 286 passed, 0 failed; test_skill_paths: 213 passed, 0 failed; test_validate_workspace_stale: 126 passed, 0 failed. shellcheck --severity=warning clean on the four changed files; the adapter does not name register_project.sh. The full pre-commit pass is left to the host.
