@@ -132,7 +132,10 @@
 #                 up to three of its files; Claude Code's own
 #                 settings.local.json and .claude/worktrees/ are meant to
 #                 be ignored and are not reported), a path the workspace would
-#                 add that an ignore rule would hide (ignore-would-hide)
+#                 add that an ignore rule would hide (ignore-would-hide;
+#                 the roadmap's path is the one the project's `roadmap`
+#                 setting names, else the first existing candidate, else
+#                 docs/roadmap.md, and none for roadmap=none)
 #   5 conventions rule-like lines in instruction files and project skills,
 #                 with no .agents/README.md or .agents/review-context.yaml
 #                 for the workspace's review skills to read
@@ -938,8 +941,24 @@ if [ "$IS_GIT" -eq 1 ]; then
             emit_offer 4 ignored-agent-file warn "$subj" "$n files present but ignored by one rule, so they are never committed and no other clone or worktree has them; the rule: $rule"
         fi
     done
-    for p in AGENTS.md CLAUDE.md .agents/README.md .agents/review-context.yaml docs/roadmap.md \
-             .pre-commit-config.yaml .github/workflows/ci.yml; do
+    # The roadmap the workspace may offer a section in (onboarding's
+    # Direction section, the queued `## Onboarding` rows) follows the
+    # project's `roadmap` setting (issue #551), read through the one lookup:
+    # the file it names, also one not written yet; unset, the first candidate
+    # that exists, else docs/roadmap.md, where onboarding would create one.
+    # roadmap=none keeps no roadmap, so none is offered and none is checked;
+    # a setting the lookup refuses (project_setting.sh doc names why) has no
+    # path to check either.
+    ROADMAP_OFFER=()
+    project_document_query project_document_path "$MAIN_ROOT" "$AUD_NAME" roadmap "$PROOT_ABS"
+    case "$PROJECT_DOC_RC:$PROJECT_DOC_LINE" in
+        "0:set "*|"1:set "*) ROADMAP_OFFER=("${PROJECT_DOC_LINE#set }") ;;
+        "0:fallback "*)      ROADMAP_OFFER=("${PROJECT_DOC_LINE#fallback }") ;;
+        "0:none")            ;;
+        "1:")                ROADMAP_OFFER=("$(project_document_candidates roadmap | head -n1)") ;;
+    esac
+    for p in AGENTS.md CLAUDE.md .agents/README.md .agents/review-context.yaml \
+             "${ROADMAP_OFFER[@]+"${ROADMAP_OFFER[@]}"}" .pre-commit-config.yaml .github/workflows/ci.yml; do
         [ -n "${REPORTED[$p]:-}" ] && continue
         g ls-files --error-unmatch -- "$p" >/dev/null 2>&1 && continue
         # -q decides: with -v, check-ignore also prints a negated ("!")

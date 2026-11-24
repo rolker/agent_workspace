@@ -436,6 +436,41 @@ check "a path the \"!\" rule leaves ignored is still reported, with the ignoring
     grep -qE $'^4\tignore-would-hide\twarn\tCLAUDE.md\t.*\\.gitignore:2:\\*\\.md' <<< "$AUDIT_OUT"
 printf 'worktrees/\ndocs/\n' > "$P4/.gitignore"
 
+echo "TEST: category 4, the roadmap path follows the project's roadmap setting (issue #551)"
+roadmap_hidden() { # <path>: an ignore-would-hide line names it
+    grep -qE $'^4\tignore-would-hide\twarn\t'"$1"$'\t' <<< "$AUDIT_OUT"
+}
+printf 'worktrees/\ndocs/\nplan/\n' > "$P4/.gitignore"
+printf 'build=make\ntest=make test\nroadmap=plan/roadmap.md\n' > "$WS/.agent/projects.d/p4"
+audit "$P4"
+check "roadmap=plan/roadmap.md (not written yet): its ignored path is reported (got: ${AUDIT_OUT//$'\t'/ | })" \
+    roadmap_hidden 'plan/roadmap\.md'
+check "and docs/roadmap.md is not" bash -c '! grep -qE $'"'"'\tignore-would-hide\t[^\t]*\tdocs/roadmap'"'"' <<< "$1"' _ "$AUDIT_OUT"
+printf 'build=make\ntest=make test\nroadmap=none\n' > "$WS/.agent/projects.d/p4"
+audit "$P4"
+check "roadmap=none: no roadmap path is checked (got: ${AUDIT_OUT//$'\t'/ | })" \
+    bash -c '! grep -qE $'"'"'\tignore-would-hide\t[^\t]*\t[^\t]*roadmap'"'"' <<< "$1"' _ "$AUDIT_OUT"
+check "and the audit ran (exit $AUDIT_RC)" [ "$AUDIT_RC" -eq 0 ]
+printf 'build=make\ntest=make test\n' > "$WS/.agent/projects.d/p4"
+printf '# Roadmap\n' > "$P4/ROADMAP.md"
+printf 'worktrees/\ndocs/\nROADMAP.md\n' > "$P4/.gitignore"
+audit "$P4"
+check "unset, an existing ROADMAP.md (the first candidate that exists) ignored: it is reported (got: ${AUDIT_OUT//$'\t'/ | })" \
+    roadmap_hidden 'ROADMAP\.md'
+check "and docs/roadmap.md is not" bash -c '! grep -qE $'"'"'\tignore-would-hide\t[^\t]*\tdocs/roadmap'"'"' <<< "$1"' _ "$AUDIT_OUT"
+rm -f "$P4/ROADMAP.md"
+mkdir -p "$P4/plan"
+printf '# Roadmap\n' > "$P4/plan/real.md"
+ln -s real.md "$P4/plan/roadmap.md"
+printf 'build=make\ntest=make test\nroadmap=plan/roadmap.md\n' > "$WS/.agent/projects.d/p4"
+printf 'worktrees/\ndocs/\nplan/\n' > "$P4/.gitignore"
+audit "$P4"
+check "a roadmap setting the lookup refuses (a symbolic link): no roadmap path is checked, the audit runs (exit $AUDIT_RC; got: ${AUDIT_OUT//$'\t'/ | })" \
+    bash -c '[ "$2" -eq 0 ] && ! grep -qE $'"'"'\tignore-would-hide\t[^\t]*\t[^\t]*roadmap'"'"' <<< "$1"' _ "$AUDIT_OUT" "$AUDIT_RC"
+rm -rf "$P4/plan"
+printf 'build=make\ntest=make test\n' > "$WS/.agent/projects.d/p4"
+printf 'worktrees/\ndocs/\n' > "$P4/.gitignore"
+
 echo "TEST: category 4, ignored agent files grouped per rule; Claude Code's own worktrees not reported"
 mkdir -p "$P4/.claude/worktrees/wt1" "$P4/.claude/notes"
 echo x > "$P4/.claude/worktrees/wt1/file"
