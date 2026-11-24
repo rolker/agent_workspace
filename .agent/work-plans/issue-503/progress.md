@@ -1845,3 +1845,15 @@ The ten suggestions of the Integrated Review at d092c02b stay open for the one f
 - `test_script_tests_hook_scope.sh`: `test_script_tests_hook_scope: 374 passed, 0 failed`
 - `validate_adapter.sh`: exit 0, all 13 verbs implemented for both types
 - `shellcheck --severity=warning` clean on the four changed scripts; the full pre-commit pass is left to the host
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 15:42 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (manifest-work rule: fix pass, no second round)
+**After**: publish
+**Decision**: publish
+
+Written by the host where `next` would start a PR-mode re-review (`action=review-code` after the fix pass at 83daf55f), under the manifest-work rule in `.agent/knowledge/host_standing_rules.md` ("Manifest work: the lighter review level"), now on main. The fix pass merged origin/main into the branch after pull request 611 landed (merge commit 90b32eab; conflicts in `docs/design.md`'s change log and `docs/manifest/design.md`, both resolved keeping what both sides say) and made true what that merge had made false: the refusal of a manifest given to registration as a URL or a git location now says registration with `--manifest` takes a local file and gives the tool's `init <repo url> --manifest-path <file>` way for a manifest kept in a git repo; the adapter's refusal gives the matching next step for a URL source; and the documents that repeated the old claim are rewritten. These changes after the cold read are read by CI only; the owner is told so with the merge question.
+
+Suggestions open for the one follow-up issue, unchanged: the eight from the pre-push round and the cold read's two, as listed in this part's two earlier publish checkpoints. Two things the fix pass noticed in main's text and left alone, added to that issue: `docs/manifest/design.md`'s settings table says the tool takes a URL with no path as the file itself, while `init` refuses a URL given without `--manifest-path`; and the adapter's git-form line prints the `source` value unmasked (also in issue 612).
