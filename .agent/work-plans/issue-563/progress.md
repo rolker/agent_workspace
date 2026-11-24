@@ -466,3 +466,13 @@ Committed tree: `git status` is clean (no untracked or modified file) and the su
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 09:16 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 of the pre-push review approved with nothing open, Ship: recommended; the host's full pre-commit pass over the changed files passed, every hook, no SKIP, on 612b7ade, level with main)
+**After**: publish
+**Decision**: publish
+
+Three pre-push rounds: round 1 found 1 must-fix and 5 suggestions, round 2 found 2 must-fix and 4 suggestions in the fixes, round 3 (a convergence check, no cross-model reviewers) found every one closed and nothing new. Outside reviewers: Gemini and Codex ran in rounds 1 and 2 and both found the round 1 must-fix; they were not asked in round 3.
