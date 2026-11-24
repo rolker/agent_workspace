@@ -2,8 +2,8 @@
 
 Status: draft. This describes the format we are moving to. The resolver in `src/` reads it,
 with `base` given as paths on the local disk; it does not yet read a `base` given as a URL or
-as a file in a git repo, and it still reads the prototype's earlier shape for a manifest
-without `repositories:` or `base:`. Sections marked "Open" are not settled.
+as a file in a git repo. It reads no other format: a manifest in the tool's earlier format is
+refused, naming that format. Sections marked "Open" are not settled.
 
 ## What a manifest is
 

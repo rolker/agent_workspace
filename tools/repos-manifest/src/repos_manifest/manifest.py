@@ -134,28 +134,6 @@ class Part:
     warnings: List[str] = field(default_factory=list)
 
 
-def has_repositories_key(path: Path) -> bool:
-    """True if the file reads, parses as YAML and is a mapping with a top-level `repositories:`
-    or `base:` key: a manifest in this format (one that builds on others may give no repos).
-    Anything else, a file that does not read or parse included, is for the earlier reader."""
-    try:
-        data = _load_yaml(Path(path).read_text(encoding="utf-8"), str(path))
-    except (ManifestError, OSError, UnicodeDecodeError, ValueError):
-        return False
-    return isinstance(data, dict) and ("repositories" in data or "base" in data)
-
-
-def read_problem(path: Path, source: Optional[str] = None) -> Optional[str]:
-    """Why the file at `path` cannot be read or parsed as YAML, as an error message; None if it
-    can be. Says nothing about whether it is a valid manifest."""
-    label = source if source is not None else str(path)
-    try:
-        _load_yaml(_read_text(Path(path), label), label)
-    except ManifestError as exc:
-        return str(exc)
-    return None
-
-
 def _read_text(path: Path, label: str) -> str:
     # newline="": the text as it is on the disk, so a carriage return is not turned into a
     # newline before the check on the text sees it.
@@ -437,7 +415,7 @@ class _Checker:
                     "",
                     f"is in the earlier format (it has {', '.join(f'`{k}:`' for k in old)} and no"
                     " `repositories:`); this tool reads it only in the format of the"
-                    " specification",
+                    " specification, docs/spec.md",
                 )
 
         for key in raw:
