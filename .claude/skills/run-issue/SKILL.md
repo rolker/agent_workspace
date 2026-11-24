@@ -1323,7 +1323,8 @@ References for the gate rule.
 owner's merge answer, before anything else, run `fetch_pr_reviews.sh
 --pr <M>` once more and apply step 9's "A review not yet read" check: if a
 review landed while he decided, do not merge; send it to `triage-reviews`
-and present the merge checkpoint again. When the answer was `merge` at a
+and call `next` again (after that triage it may raise `checkpoint:findings`
+rather than the merge checkpoint). When the answer was `merge` at a
 `findings` checkpoint, step 9a runs next, before `merge_pr.sh` (step 9a
 says when the answer stands), except for a merge answer given after 9a
 said no cold read is possible, which stands as given. Before

@@ -1158,3 +1158,257 @@ Summary: no must-fix open. S1 and S2 are valid wording fixes, one phrase or line
 **Decision**: merge
 
 The owner's answer in the dialog, to "Merge pull request 542 now, with F1 and F2 carried into part 2 of the same issue?": "Merge, carry F1 F2 (Recommended)". F1 is the open suggestion on run-issue step 11 ("present the merge checkpoint again" should say "call next again"); F2 is the open suggestion on the worktree_remove.sh header and its script_reference.md row (the refusal of a manifest path containing ".." is not listed). Both are deferred to part 2's pull request on this issue. The dialog showed: six pre-push rounds and five pull-request reviews, the last approved with no must-fix (4bd5eeb0); the Integrated Review at 895aae63; CI settled with all 10 checks passed on 8ce42584; no hosted review ever started; the host's fetch just before asking: no reviews, no comments, mergeable. His direction earlier the same day applies: "Let's not waist too much time going for perfect when we can have agents handle the edge cases."
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 08:23 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (run-issue step 13's conditions hold: plan.md is at 6b241e5d, the commit the newest Plan Review names, and the plan names Part 2, which is not delivered)
+**After**: plan
+**Decision**: proceed
+
+The owner asked for this drive today: "/orchestrator 563 and 428". Pull request 542 (Part 1: items 1, 2, 3 and 5) merged on 2026-11-20; the issue stays open because Part 2 (item 4, the github.com-only slug check) is still to come and its pull request is the one that says Closes #428. The leftover Part 1 worktree and local branch were removed (every commit was on main) and recreated from main at c11c6816.
+
+Instructions that bind the implementer (host decisions, listed for the owner's veto):
+- Implement Part 2 only (item 4 and its rows of item 6). Part 1's files are delivered.
+- The plan was reviewed on 2026-11-19 and main has moved since: before editing, list the call sites again on this branch and work from that list, not from the plan's line numbers; say in the entry where the two differ.
+- Carry the two suggestions the owner deferred to this pull request on 2026-11-20 ("Merge, carry F1 F2"): F1, run-issue step 11 says "present the merge checkpoint again" after a late review's triage and should say to call next again; F2, the worktree_remove.sh header and its script_reference.md row do not list the refusal of a manifest path containing "..".
+- Issue 563 (sit-rep per path) is in flight on its own branch and rewrites parts of test_sitrep_checks.sh and test_sitrep_root.sh: keep this part's edits to those two suites to the fixtures item 4 needs.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 08:41 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-428 at `b7c0c7d3`
+**Commits**: 62c1f1e1, aa2968f6, fa8d167b, b7c0c7d3
+
+Part 2 of the issue (plan item 4 and its rows of item 6), plus the two suggestions the owner carried here on 2026-11-20 ("Merge, carry F1 F2"). Part 1's files were not redone. Owner direction applied (2026-11-20): "Let's not waist too much time going for perfect when we can have agents handle the edge cases."
+
+### Changes
+- `extract_gh_slug` (`.agent/scripts/_issue_helpers.sh`) uses `sitrep_root.sh`'s `gh_slug` grammar in bash, no `gh` call: https/http (user or user:token), ssh (user, port), git and scp-like github.com forms, host in any case, exactly owner/repo, optional `.git` and trailing `/`. Not accepted: other hosts, `notgithub.com`, `github.com.evil.example`, `www.`/`ssh.github.com`, GitHub Enterprise, more than two path segments, a bare `owner/repo`. Kept difference, recorded in the header: an absolute path (starting with `/`) ending `/github.com/<owner>/<repo>[.git]`, the sandboxes' bare-clone form. — 62c1f1e1
+- New `test_issue_helpers.sh`: a 49-row table through `extract_gh_slug` and, for parity, through `gh_slug` taken from `sitrep_root.sh`'s PYLIB block (the suite fails if the block cannot be found). The 3 local-path rows are marked as the intended difference. Run against the old parser, 24 checks fail. — 62c1f1e1
+- `test_ros2_colcon.sh`: the stub `_issue_helpers.sh` now sources the real file and replaces only `issue_lookup`, so there is no stale copy. Two new assertions: the stub's function gives nothing for `git@gitlab.com:o/r.git` (the old copy gave `git@gitlab.com:o/r`) and `o/r` for a GitHub URL. — 62c1f1e1
+- `test_merge_pr_gate.sh`: the hang-3 (applied, applied-ontop) and hang-4 origins are now `ssh://git@github.com/owner/pkg_a.git`. `serve_shim` maps a quoted path that is not a local folder into `$sb/fake_remotes/github.com`; a path that is a local folder is served as before. — 62c1f1e1
+- `test_sitrep_checks.sh`: one case, a root whose origin is `git@gitlab.com:acme/w.git`, so a bare `gh-issue 5 closed` gives `unknown` and gh is never called. Nothing else in that suite changed; `test_sitrep_root.sh` is unchanged. — 62c1f1e1
+- `worktree_create.sh`: a bare `--issue` for `--type project` with no GitHub slug (an origin on another host, or no origin) gets no lookup, no `gh issue view` fallback and no `gh pr view` check. The worktree is made and one of the plan's two notes is printed, without the "offline or issue does not exist" line. The workspace-slug fallback now runs for the workspace type only. Tests in `test_worktree_create.sh`: both project cases, run from the workspace folder with a gh stub that answers any repo and number, plus the unchanged workspace-type case (looked up and pr-checked in `ws-owner/ws`). — aa2968f6
+- `script_reference.md`: `_issue_helpers.sh` row (62c1f1e1) and `worktree_create.sh` row (aa2968f6).
+- F2: the `worktree_remove.sh` header's refused list and its `script_reference.md` row now include "a manifest path containing `..` (correct `.worktree-repos` by hand)". It was not already on main. — fa8d167b
+- F1: run-issue step 11 now says "call `next` again (after that triage it may raise `checkpoint:findings` rather than the merge checkpoint)" instead of "present the merge checkpoint again". It was not already on main. — b7c0c7d3
+
+### Call sites on this branch versus the plan
+- Same set as the plan: `merge_pr.sh` (now lines 466, 468, 535, 541, 646, 2294, 2419), `worktree_create.sh` (634, 642, 660, 663, 672, 704), `worktree_enter.sh` (323, 339), `sitrep_checks.sh` (474), the three internal calls in `_issue_helpers.sh`, and the orchestrator skill's WS_REPO snippet. Every one passes `git remote get-url` output; none passes a bare slug.
+- Different from the plan: `test_ros2_colcon.sh`'s fixtures already use `git@github.com:owner/<name>.git` behind a `GIT_SSH_COMMAND` shim, so the only stale thing there was the copy (line 845). The plan's `make_origin_repo` reference is in `test_merge_pr.sh` (line 207); its comment described the old "plain text substitution", so it was reworded (a comment-only change in a file the plan does not list). The plan's line numbers for the hang-3 fixtures (~1585, ~1616) are now 1606 and 1637. The third `github.com$` fixture (hang-ws, line 1669, `ssh://git@github.com$bare` for the workspace sandbox) gives an empty slug under both the old and the new parser (more than two segments), which that sandbox's `repos//...` fixtures expect, so it was left as is.
+
+### Decided here (not in the plan)
+- The local-path form is accepted only when the input starts with `/`. Without that, the plan's own refused case `ssh://git@github.com/tmp/x/github.com/o/r.git` would match.
+- `serve_shim` maps only paths that are not local folders. Mapping every path would have broken hang-ws, whose origin path is an absolute bare repo.
+- Other copies of the old loose parser (the `sed 's#.*github\.com[:/]##'` pattern in `gh_create_issue.sh`, `gh_create_pr.sh`, `git_bug_setup.sh`, `pr_status.sh` and `_project_registry.sh:784`) are not in the plan and were not changed. Listed for the host to decide whether they need an issue.
+
+### Suites run (each on its own with `bash`; the full pass is left to the host)
+- test_issue_helpers.sh: 98 passed, 0 failed
+- test_sitrep_checks.sh: 253 passed, 0 failed
+- test_sitrep_root.sh: 65 passed, 0 failed
+- test_worktree_create.sh: PASS: 112 FAIL: 0
+- test_worktree_enter_stderr.sh: 35 passed, 0 failed
+- test_ros2_colcon.sh: 1553 passed, 0 failed, 0 skipped
+- test_merge_pr_gate.sh: 213 passed, 0 failed
+- test_merge_pr.sh: 175 passed, 0 failed
+- test_merge_pr_skill.sh: 132 passed, 0 failed
+- test_merge_pr_root_resolution.sh: 6 passed, 0 failed
+- test_project_registry.sh: 425 passed, 0 failed
+- test_precommit_hook_path.sh: 19 passed, 0 failed
+- test_worktree_remove.sh: 138 passed, 0 failed
+- test_skill_paths.sh: 200 passed, 0 failed
+- test_records_write_gate.sh: 68 passed, 0 failed
+- test_user_tier_install.sh: 276 passed, 0 failed
+- test_package_issue_loop.sh: 228 passed, 0 failed
+- test_validate_workspace_stale.sh: 126 passed, 0 failed
+- test_user_tier_guard.sh: 64 passed, 0 failed
+- test_script_tests_hook_scope.sh: 358 passed, 0 failed
+
+Hook rule: the first commit (62c1f1e1) was made without `SKIP=validate-script-tests` by mistake. The `validate-script-tests` hook ran its selection and passed. Every later commit, this entry's included, set it.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 08:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-428 at `be996b08`
+**Base**: origin/main
+**Depth**: Deep (reason: 407 changed lines across 12 files; skill and knowledge files present)
+**Must-fix**: 0 | **Suggestions**: 4
+**Round**: 1 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Part 2 only (plan item 4, plus F1 and F2 carried from part 1). Specialists: static analysis (shellcheck --severity=warning on the 9 changed shell files: clean), governance, plan drift, Claude adversarial (fresh subagent; ran test_issue_helpers 98/0, test_worktree_create 112/0, test_sitrep_checks 253/0, test_ros2_colcon 1553/0, test_merge_pr_gate 213/0), cross-model: Gemini ran (2 must-fix claimed, rated suggestions here: both need a crafted origin URL and gh_slug shares them; 2 more dropped: a pre-existing workspace-type path, and F1/F2 called out of scope though the owner carried them here), Codex ran (no issues found).
+
+### Findings
+- [ ] (suggestion) Parser hardening, in step with gh_slug: userinfo class admits `?`/`#` (`https://evil.example?@github.com/o/r` gives `o/r`), and repo `.`/`..` is accepted (`https://github.com/o/..` gives `o/..`); crafted URLs only — `.agent/scripts/_issue_helpers.sh:64-66`
+- [ ] (suggestion) The local-path fixture form accepts any absolute path ending `/github.com/<o>/<r>`, so a local origin under a GOPATH/ghq-style layout is read as GitHub `o/r`; could be narrowed to `fake_remotes/github.com/` — `.agent/scripts/_issue_helpers.sh:70`
+- [ ] (suggestion) Owner pattern excludes `_`, so a github.com Enterprise Managed User owner (`name_shortcode`) gives no slug and worktree_create.sh's note says the origin is "hosted elsewhere"; same limit as gh_slug — `.agent/scripts/_issue_helpers.sh:65`
+- [ ] (suggestion) The PR closes issue 428 while the same loose host parsing stays in gh_create_pr.sh:136,141, gh_create_issue.sh:130,191,197,249, pr_status.sh:37, git_bug_setup.sh:93, _project_registry.sh:784, and worktree_enter.sh:323-327 still looks a project worktree's bare issue up in the workspace repository first (pre-existing); name these in the PR text or a follow-up issue — `.agent/scripts/worktree_enter.sh:323`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 08:54 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 1 of the pre-push review approved with no must-fix, Ship: recommended; the host's full pre-commit pass over the 12 changed files passed, every hook, no SKIP, on e64aeefd)
+**After**: publish
+**Decision**: publish
+
+The review's four suggestions stay open and are listed in the pull request text for the owner at the merge question: (1) the slug parser accepts a crafted user part with ? or #, and a repository named . or .., as sitrep_root.sh's gh_slug does; (2) the local test-path form accepts any absolute path ending /github.com/<owner>/<repo>; (3) an owner name with _ gives no slug; (4) five other scripts keep the old loose parsing (captured in the inbox for the owner). Reason for not fixing before the push: each needs an unusual or crafted origin, and the owner's direction on this issue (2026-11-20) is "Let's not waist too much time going for perfect when we can have agents handle the edge cases". Outside reviewers: Gemini ran, found (1), which it rated must-fix and the lead rated a suggestion; Codex ran, found nothing.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 08:58 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #570 at `95e6593c`
+**Sources**: 2 (Local Review (Pre-Push) @ `be996b08` (entry e64aeefd, approved, four open suggestions; covers `95e6593c` via bookkeeping), CI rollup). No hosted review, no hosted-reviewer check-run, no inline or conversation comment on the pull request. Part 1's entries (pull request 542) are closed and not sources here.
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Owner direction (2026-11-20), applied here: "it's ok if scripts don't handle everything and come back saying they can't do it. If it's occasinal and an agent can deal with, that's fine. If it happens too often, than we can look at root causes and such. Let's not waist too much time going for perfect when we can have agents handle the edge cases."
+
+Summary: no must-fix. Each of the four suggestions was checked by running `extract_gh_slug` on the cited inputs at `95e6593c`; every claim reproduces. S1 to S3 are valid suggestions on unusual or crafted origins, none reachable from an ordinary origin URL, so none is a broken ordinary case; they stay open for the owner's merge-or-fix call (the pull request text already lists all three under "Open, small"). S4 asked for the out-of-scope copies to be named in the pull request text or a follow-up issue; the pull request text names them, so it is addressed here, and whether to open a follow-up issue before `Closes #428` takes effect is the owner's call. CI on `95e6593c`: Validate Documentation passed in both runs; Lint, Validate Adapter Contract and the two repos-manifest suites are still pending in both runs at 08:56; nothing failed.
+
+### Findings
+- [x] (suggestion, Local Review (Pre-Push) @ `be996b08`, covers `95e6593c` via bookkeeping) S1, valid: the userinfo class `[^@/[:space:]]+@` admits `?` and `#`, so `https://evil.example?@github.com/o/r` and `https://evil.example#@github.com/o/r` give `o/r` although git would fetch from evil.example; and the repo class admits `.` and `..` (`https://github.com/o/..` gives `o/..`). Reproduced. Only a crafted origin reaches it, and whoever can write `.git/config` can already run code through it; `o/..` gets a refusal from gh, not a wrong action. `sitrep_root.sh`'s `GH_URL` has the same classes, so the fix goes in both together. Fix: exclude `?#` from the userinfo class in both parsers, refuse a repo of exactly `.` or `..`, add rows to the shared table in `test_issue_helpers.sh`. Size: two regex edits in each of two files plus about four table rows — `.agent/scripts/_issue_helpers.sh:48`, `.agent/scripts/sitrep_root.sh:231-232`
+- [x] (suggestion, Local Review (Pre-Push) @ `be996b08`, covers `95e6593c` via bookkeeping) S2, valid: the test-fixture branch accepts any absolute path ending `/github.com/<o>/<r>[.git]`; `/home/u/go/src/github.com/o/r` and `/home/u/ghq/github.com/o/r.git` both give `o/r` (reproduced). In those layouts the folder is normally a clone of that very GitHub repository, so the slug is usually right; a wrong slug needs a local folder named after a GitHub repository it is not. Fix: narrow the branch to `/fake_remotes/github.com/`. Size: one regex line, plus moving the one fixture outside `fake_remotes` (`test_worktree_create.sh:1515-1516`, `$SANDBOX/github.com/acme/demo15.git`) and updating the three local-path rows and the header note — `.agent/scripts/_issue_helpers.sh:52`
+- [x] (suggestion, Local Review (Pre-Push) @ `be996b08`, covers `95e6593c` via bookkeeping) S3, valid: the owner class `[A-Za-z0-9][A-Za-z0-9-]*` excludes `_`, so a managed-user owner such as `name_short` gives no slug (reproduced with `git@github.com:name_short/r.git`). The result is a skipped lookup and a printed note, not a wrong action, and the worktree is still made; but the note at `worktree_create.sh:762` then says the origin "is hosted elsewhere", which is untrue for such an owner. `gh_slug` has the same limit. Fix: admit `_` in the owner class in both parsers (with a table row), or soften the note to "is not a github.com repository this script can read". Size: one class edit in each of two files plus one row, or one message line — `.agent/scripts/_issue_helpers.sh:47`, `.agent/scripts/worktree_create.sh:762`
+- [x] (suggestion, Local Review (Pre-Push) @ `be996b08`, covers `95e6593c` via bookkeeping) S4, valid and addressed: the old loose pattern remains in `gh_create_pr.sh`, `gh_create_issue.sh`, `pr_status.sh`, `git_bug_setup.sh` and `_project_registry.sh`, and `worktree_enter.sh` (unchanged by this pull request) still looks up a project worktree's bare issue in the workspace repository first. These are outside issue 428's item 4, which names `extract_gh_slug` only. The finding asked for them to be named in the pull request text or a follow-up issue; the pull request 570 body names all six under "Not in this issue's scope" (checked). No follow-up issue exists yet; because this pull request closes issue 428, opening one before the merge is the owner's call — `.agent/scripts/worktree_enter.sh:323`
+
+### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 08:57 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (address is the one answer the host may give at findings; merging with boxes open is the owner's alone, and he is away while the loop runs)
+**After**: findings
+**Decision**: address
+
+The Integrated Review at a0cfd6a7 left three valid suggestions open, each a small fix: S1 (a crafted user part with ? or #, and a repository named . or .., are accepted; fix in both parsers, _issue_helpers.sh and sitrep_root.sh), S2 (the test-fixture local-path form accepts any absolute path ending /github.com/<owner>/<repo>; narrow it to the test sandboxes' fake_remotes/github.com/ folders), S3 (an owner name with _ gives no slug and worktree_create.sh then says the origin is hosted elsewhere, which is untrue). Reason for fixing now rather than asking: a cold read of the final diff comes before the merge question in any case, so a fix round now adds little wait, and the three fixes are a few regex lines with test rows. Issue 563's branch also edits sitrep_root.sh and its suite: the S1 and S3 edits there stay to the slug pattern and its test rows.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 09:04 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #570 at `1bf11430`
+**Addressed**: Integrated Review at `95e6593c` (2026-11-24 08:58 -05:00)
+**Commits**: `72d77eee`, `82603cf2`, `1bf11430`
+
+### Actions
+- [x] S1: a `?` or `#` in the https/ssh user part gives no slug, and a repository of `.` or `..` (after the `.git` suffix, so `o/..git` and `o/...git` too) gives none, in both parsers; ten table rows, one (`o/.x`) guarding against over-refusal — `.agent/scripts/_issue_helpers.sh:50-63`, `.agent/scripts/sitrep_root.sh:231-235` (`72d77eee`)
+- [x] S2: the local-path form needs `/fake_remotes/github.com/`; the `demo15` fixture moved under `fake_remotes`; rows added for `~/go/src/github.com/o/r`, `~/ghq/github.com/o/r.git`, `remotes/github.com/...` and `not_fake_remotes/github.com/...` (all give nothing); the three host-name local-path rows now sit under `fake_remotes` so they still test the host segment; header notes in `_issue_helpers.sh`, `test_issue_helpers.sh`, `test_merge_pr.sh` and the `script_reference.md` line say `fake_remotes` — `.agent/scripts/_issue_helpers.sh:40-46,57`, `.agent/scripts/tests/test_worktree_create.sh:1505-1517` (`82603cf2`)
+- [x] S3: `_` accepted after the owner's first character in both parsers; rows `o_x/r` (now `o_x/r`), `name_short/r.git` and `_o/r` (nothing) — `.agent/scripts/_issue_helpers.sh:25-26,49`, `.agent/scripts/sitrep_root.sh:234-235` (`1bf11430`)
+
+### Host directions applied (listed for the owner's veto)
+- S1 and S3 fixed in both parsers with table rows; S2 narrowed to `fake_remotes/github.com/` with the named fixture moved.
+- `sitrep_root.sh` edits are only in `GH_URL` (issue 563 also edits the file). `GH_URL` no longer reuses `SLUG`: `SLUG` is also the gh-issue reference grammar shared with `sitrep_checks.sh`, so admitting `_` there would have changed reference parsing in one of two places. `GH_URL` carries its own copy with `_` in the owner; the reference grammar is unchanged.
+- The scp-like form's user part (`[^@/:\s]+@`) was left as it was: there git hands the user to ssh and still connects to github.com.
+
+### Checks
+Suites run, each on its own (four at a time), all from this worktree:
+- `test_issue_helpers.sh`: test_issue_helpers: 130 passed, 0 failed
+- `test_sitrep_root.sh`: test_sitrep_root: 65 passed, 0 failed
+- `test_sitrep_checks.sh`: test_sitrep_checks: 253 passed, 0 failed
+- `test_worktree_create.sh`: PASS: 112 FAIL: 0
+- `test_merge_pr.sh`: Results: 175 passed, 0 failed
+- `test_merge_pr_gate.sh`: test_merge_pr_gate: 213 passed, 0 failed
+- `test_merge_pr_skill.sh`: test_merge_pr_skill: 132 passed, 0 failed
+- `test_project_registry.sh`: Results: 425 passed, 0 failed
+- `test_precommit_hook_path.sh`: test_precommit_hook_path: 19 passed, 0 failed
+- `test_worktree_enter_stderr.sh`: Results: 35 passed, 0 failed
+- `test_worktree_remove.sh`: test_worktree_remove: 138 passed, 0 failed
+- `test_ros2_colcon.sh`: Results: 1553 passed, 0 failed, 0 skipped
+- `test_skill_paths.sh`: test_skill_paths: 200 passed, 0 failed
+
+Commits made with `SKIP=validate-script-tests` (issue 465 rule); the full pre-commit pass is left to the host.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 09:10 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #570 at `4070a022`
+**Depth**: Deep (reason: 548 changed lines across 13 files; skill and knowledge files present; fix-round re-review classified on the whole diff)
+**Must-fix**: 0 | **Suggestions**: 0
+
+PR-mode re-review after the fix pass for S1 to S3 (commits 72d77eee, 82603cf2, 1bf11430). Specialists: static analysis (shellcheck 0.9.0 --severity=warning on the 10 changed shell files: clean), governance, plan drift, Claude adversarial (fresh subagent: about 34 extra inputs through both parsers, zero differences; ran test_issue_helpers 130/0, test_worktree_create 112/0, test_merge_pr_gate 213/0, test_sitrep_checks 253/0, test_merge_pr 175/0, test_ros2_colcon 1553/0), cross-model: Gemini ran (1 must-fix and 7 suggestions claimed, none survive: the must-fix is the pre-existing workspace-type gh fallback this pull request does not change, dropped at pre-push too; the rest are the recorded D1 decision, the owner-carried F1/F2, a fixture concern checked and cleared, or below threshold), Codex ran (no issues found).
+
+S1, S2, S3 closed: reproduced on 4070a022, `https://evil.example?@github.com/o/r`, `https://github.com/o/..` and `/home/u/go/src/github.com/o/r` give nothing, `git@github.com:name_short/r.git` gives `name_short/r`; ordinary forms (scp, https with token, ssh with port, trailing /) still give `o/r`. test_package_issue_loop.sh, not run by the fix pass, run here on its own: 228 passed, 0 failed (its `remotes/github.com` local clone feeds `check_branch_updates.sh`, which reads no slug). Known and recorded, not a finding: `ssh.github.com` (port-443 SSH) and `www.github.com` give no slug, where the old parser gave one; the plan lists this for the owner's veto, and the result is a skipped lookup with a note, not a wrong action.
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 09:12 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+**Dispatch**: resumed (agent ad8fbaf5c1e18deea, resume 1 of 3)
+
+**PR**: #570 at `4070a022`
+**Sources**: 2 (Local Review @ `4070a022` (entry fed74a8a, approved, no findings; Gemini and Codex ran), CI rollup). No hosted review, no hosted-reviewer check-run, no inline or conversation comment. The pre-push Local Review @ `be996b08` is listed by the helper as stale (code changed since); its four suggestions were ruled on in the Integrated Review at `95e6593c` (a0cfd6a7) and are not re-listed.
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Owner direction (2026-11-20), as before: "Let's not waist too much time going for perfect when we can have agents handle the edge cases."
+
+Summary: nothing open. The three suggestions left open at a0cfd6a7 are fixed, checked here on `4070a022` by running `extract_gh_slug` (`https://evil.example?@github.com/o/r`, `ssh://a#b@github.com/o/r`, `https://github.com/o/..`, `o/.` and `o/..git` give nothing, `o/.x` still gives `o/.x`; `/home/u/go/src/github.com/o/r` and `/home/u/ghq/github.com/o/r.git` give nothing while `/s/fake_remotes/github.com/o/r.git` gives `o/r`; `git@github.com:name_short/r.git` gives `name_short/r` and `_o/r` nothing; the ordinary scp, https-with-token, ssh-with-port and trailing-slash forms still give `o/r`), by reading `sitrep_root.sh`'s `GH_URL` (same three changes; `SLUG`, the gh-issue reference grammar shared with `sitrep_checks.sh`, is untouched), and by running `test_issue_helpers.sh` here: 130 passed, 0 failed, the parity rows included. S4 (the out-of-scope copies of the loose pattern) was ruled addressed at a0cfd6a7; a follow-up issue before `Closes #428` takes effect stays the owner's call. CI on `4070a022` at 09:11: Validate Documentation and Validate Adapter Contract passed in both runs; Lint and both repos-manifest suites pending in both runs; nothing failed.
+
+### Findings
+- [x] (suggestion, Integrated Review @ `95e6593c`) S1: a `?` or `#` in the user part and a repository of `.` or `..` are now refused in both parsers, with table rows — `.agent/scripts/_issue_helpers.sh`, `.agent/scripts/sitrep_root.sh` (fixed: 72d77eee, verified here)
+- [x] (suggestion, Integrated Review @ `95e6593c`) S2: the local-path form now needs `/fake_remotes/github.com/`; the `demo15` fixture moved under `fake_remotes` — `.agent/scripts/_issue_helpers.sh`, `.agent/scripts/tests/test_worktree_create.sh` (fixed: 82603cf2, verified here)
+- [x] (suggestion, Integrated Review @ `95e6593c`) S3: `_` is accepted after the owner's first character in both parsers, so the "hosted elsewhere" note no longer fires for a managed-user owner — `.agent/scripts/_issue_helpers.sh`, `.agent/scripts/sitrep_root.sh` (fixed: 1bf11430, verified here)
+
+### False positives
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 09:13 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #570 at `4070a022`
+**Depth**: Deep (reason: cold read, cross-model only: codex, per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Cross-model: codex ran (EXIT=0), given the PR title, URL, the diff without `.agent/work-plans/**` and the plan's Approach section only; no earlier review entries or findings. It reported no issues and ran the parser parity suite (test_issue_helpers.sh, 130 passed); it did not run the integration suites.
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 09:16 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+**Dispatch**: resumed (agent ad8fbaf5c1e18deea, resume 2 of 3)
+
+**PR**: #570 at `4070a022`
+**Sources**: 2 (Local Review @ `4070a022` (entry a54943be, the cold read, cross-model only: Codex, approved, no findings), CI rollup). No hosted review, no hosted-reviewer check-run, no inline or conversation comment. Copilot was not requested (the request command was refused by this session's permission check), so it is not a source and not a pending one. The earlier Local Review @ `4070a022` (fed74a8a, no findings) was integrated in 74d22a3c; nothing from it or from earlier rounds is open.
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Summary: nothing open. The cold read raised nothing; its unchecked `- [ ] No issues found. LGTM.` line is the reviewer's empty-result placeholder, not a finding (the `sources` helper does not list it). CI on `4070a022` at 09:14, both runs: Validate Documentation passed, Validate Adapter Contract passed, Lint (pre-commit) pending, repos-manifest tests on Python 3.10 and 3.14 pending; nothing failed.
+
+Pull request text checked against the branch, nothing wrong: `extract_gh_slug` makes no gh call (its header says so; the only `gh` uses in the file are `issue_lookup`'s fallback); the 130 checks of `test_issue_helpers.sh` (run here earlier on this head: 130 passed, 0 failed); `test_ros2_colcon.sh`'s stub sources the real helper (line 846); run-issue step 11 says "call `next` again" (`.claude/skills/run-issue/SKILL.md:1326`); the `worktree_remove.sh` header (line 32) and its `script_reference.md` row list a manifest path containing `..`; the three fixes are in both parsers (72d77eee, 82603cf2, 1bf11430); the review history matches the timeline (pre-push round 1 with four suggestions, Gemini and Codex; the re-review fed74a8a, Gemini and Codex; the Codex cold read a54943be); the five out-of-scope scripts still carry `sed -E 's#.*github\.com[:/]##'` and neither they nor `worktree_enter.sh` are changed by this branch. Two places where the text is less exact than it could be, neither wrong enough to block: "the same grammar as `sitrep_root.sh`" leaves out the test-fixture-only `fake_remotes/github.com/` path form, which `extract_gh_slug`'s header records; and for an `ssh.github.com` or `www.github.com` origin "says so" is true (the lookup is skipped with a note), but the note `worktree_create.sh:762` prints gives the reason as "this project's origin is hosted elsewhere", which is inexact for those two hosts. That limit is on the plan's veto list and the earlier review ruled it not a finding; under the owner's direction (2026-11-20, "Let's not waist too much time going for perfect when we can have agents handle the edge cases") it stays a recorded limit.
+
+### Findings
+
+### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 09:21 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner's answer in the dialog, to "Merge pull request 570 now?": "Merge (Recommended)". The dialog showed: the pre-push review approved with four suggestions, three fixed after publishing and the fourth (five other scripts that read a remote the old loose way) left out of this issue and in his inbox; the re-review approved with no findings; the final triage (a76dfc7c) with nothing open; Gemini ran twice and Codex three times, the last the cold read of the final diff with no findings; Copilot not requested because this session's permission check refused the request command; CI with all 10 checks passed on 4070a022; no hosted review or comment; mergeable, clean; the known limit that ssh.github.com and www.github.com remotes are not recognised.

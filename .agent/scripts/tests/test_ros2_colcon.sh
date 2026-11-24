@@ -837,18 +837,14 @@ test_worktree_enter_disambiguates_by_qualified_issue() {
 
 # Replace the sandbox's _issue_helpers.sh with a stub that records the
 # --repo it's called with (issue_lookup) to $ISSUE_LOOKUP_LOG, instead of
-# doing any real lookup. extract_gh_slug is the real implementation (still
-# needed by worktree_create.sh's own remote-URL parsing).
+# doing any real lookup. extract_gh_slug (still needed by
+# worktree_create.sh's own remote-URL parsing) is the real one: the stub
+# sources the real _issue_helpers.sh (it only defines functions), then
+# replaces issue_lookup, so no copy can fall behind (issue 428).
 stub_issue_lookup_recorder() {
     local sb="$1"
-    cat > "$sb/.agent/scripts/_issue_helpers.sh" << 'STUBEOF'
-extract_gh_slug() {
-    local url="$1" slug
-    slug=$(echo "$url" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
-    if [[ "$slug" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]]; then
-        echo "$slug"
-    fi
-}
+    printf 'source %q\n' "$REAL_ROOT/.agent/scripts/_issue_helpers.sh" > "$sb/.agent/scripts/_issue_helpers.sh"
+    cat >> "$sb/.agent/scripts/_issue_helpers.sh" << 'STUBEOF'
 issue_lookup() {
     local issue_num="" repo_slug="" root_dir=""
     while [[ $# -gt 0 ]]; do
@@ -880,6 +876,12 @@ test_worktree_create_issue_lookup_uses_qualified_repo() {
     # at all) instead of the issue's qualified owner/repo.
     git -C "$sb" remote add origin "git@github.com:rolker/agent_workspace.git"
     stub_issue_lookup_recorder "$sb"
+    # The stub's extract_gh_slug is the real one: an scp-form origin on
+    # another host gives no slug (the old copy gave "git@gitlab.com:o/r").
+    assert_eq "stub's extract_gh_slug is the real one (non-GitHub origin: no slug)" "" \
+        "$(source "$sb/.agent/scripts/_issue_helpers.sh" && extract_gh_slug "git@gitlab.com:o/r.git")"
+    assert_eq "stub's extract_gh_slug is the real one (GitHub origin)" "o/r" \
+        "$(source "$sb/.agent/scripts/_issue_helpers.sh" && extract_gh_slug "git@github.com:o/r.git")"
     log="$sb/issue_lookup.log"
     : > "$log"
     out="$(cd "$sb" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/stubbin:$PATH" ISSUE_LOOKUP_LOG="$log" \
