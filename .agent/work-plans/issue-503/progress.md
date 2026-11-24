@@ -1776,3 +1776,30 @@ Suggestions open for the one follow-up issue: the eight listed in the earlier pu
 - Repeated `--distro` or `--role` options silently use the last value in registration, while `adapter setup` run directly rejects duplicates. — `.agent/scripts/register_project.sh`
 
 Outside reviewers on this pull request: Codex ran on the one pre-push round and as the cold read of the final diff; Gemini skipped, failed earlier today; Copilot skipped, failed earlier today (insufficient remaining quota).
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 15:11 -05:00
+**By**: claude-code (claude-sonnet-5-5)
+**Reviews-read**: none
+
+**PR**: #610 at `f11021cd`
+**Sources**: 3 (Local Review @ `93975f8` and its Implementation fix pass at `3a08a7b3`, Local Review (Pre-Push) @ `bb91e0b` via the two Checkpoints, CI rollup); no Copilot review was requested (skipped: quota), no human review, no inline or conversation comments
+**Cross-source confirmations**: 0
+**CI**: pending (at the time of writing: Lint (pre-commit), Validate Adapter Contract, the two repos-manifest test jobs (Python 3.10 and 3.14) pending on both runs; Validate Documentation passed on one run and pending on the other; nothing failed; polled once a minute for 6 minutes)
+
+The cold read's must-fix is fixed; I checked it in the code, not only in the Implementation entry. `mask_url_userinfo` (`.agent/scripts/_project_registry.sh:2969`) turns `https://user:secret@host/p` into `https://***@host/p`. `register_project.sh:841` computes `_m_shown` and uses it in all three `--manifest` refusals (remote location, not a regular file, no such file); the checks still read the value as given. The adapter's `Running:` line masks `shown[1]` (the manifest) and the `--fetch-from` value (`adapter.sh:1365-1366`) while the tool is handed `args` unmasked. The new tests (`test_register_project.sh`, `test_ros2_colcon.sh` in 3a08a7b3) assert the refusal text holds `https://***@example.invalid` and not `secret`, that nothing is written, that a real run's output never holds `secret`, and that the stub tool still receives the unmasked URL. I did not run the tests; CI is the run. The sources helper dropped the earlier suggestions as stale (code changed since), so the ten open ones are carried from the two Checkpoints and the cold read's entry. None is a must-fix against the code; under the lighter review level they go to one follow-up issue at merge.
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) @ `bb91e0b`) register_session_root.sh's check for `--manifest` searches the flattened array, so a value equal to `--manifest` passes it — `.agent/scripts/register_session_root.sh:128`
+- [ ] (suggestion, Local Review (Pre-Push) @ `bb91e0b`) Values of `--distro`, `--role`, `--with` and `--fetch-from` starting with `-` are passed on unchecked — `.agent/scripts/register_project.sh:243`
+- [ ] (suggestion, Local Review (Pre-Push) @ `bb91e0b`) Tool not installed at `$TOOL_BIN` and a root inside an existing system are not refused before writing or shown by the dry run — `.agent/scripts/register_project.sh:823`
+- [ ] (suggestion, Local Review (Pre-Push) @ `bb91e0b`) A root left non-empty without `.repos-manifest` gets a NEXT that `--manifest` then refuses — `.agent/scripts/register_project.sh:1349`
+- [ ] (suggestion, Local Review (Pre-Push) @ `bb91e0b`) The rollback removes parent directories that were missing at check time, not ones the run is known to have made — `.agent/scripts/register_project.sh:1230`
+- [ ] (suggestion, Local Review (Pre-Push) @ `bb91e0b`) on_exit's NEXT does not say "without --manifest" (may be resolved by the earlier fix pass; the follow-up issue confirms) — `.agent/scripts/register_project.sh:1393`
+- [ ] (suggestion, Local Review (Pre-Push) @ `bb91e0b`) `manifest_is_remote` misses the scp form with no user (`host:path`) — `.agent/scripts/register_project.sh:816`
+- [ ] (suggestion, Local Review (Pre-Push) @ `bb91e0b`) Minor: unquoted `$TOOL_BIN`/`$M_DISTRO` in NEXT lines, `${SETUP_ARGS[*]}` in the dry run, an empty kept `bootstrap_url=` refused though the adapter would not refuse it — `.agent/scripts/register_project.sh:824`
+- [ ] (suggestion, Local Review @ `93975f8`) A relative --manifest given straight to `adapter setup` is made absolute only when it exists in the caller's directory; otherwise it is passed relative and the tool reads it from the root; refuse a relative path that is not an existing file — `.agent/project_types/ros2_colcon/adapter.sh:1343`
+- [ ] (suggestion, Local Review @ `93975f8`) A repeated --distro or --role takes the last value in registration while `adapter setup` refuses duplicates; refuse duplicates in manifest mode — `.agent/scripts/register_project.sh:243`
+
+### False positives
