@@ -434,3 +434,20 @@ Round 2's five, all closed: N1 (a qualified ref where origin is not on github.co
 **Decision**: publish
 
 Three pre-push rounds: round 1 found 2 must-fix and 5 suggestions; round 2 found 3 must-fix and 2 suggestions in the fixes; round 3 (a convergence check, no cross-model reviewers) found every one closed and nothing new. Gemini and Codex ran in rounds 1 and 2 and found must-fix points in both. Main was merged in twice (pull requests 603 and 604); the second merge reconciled review-plan step 1 with pull request 604.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 14:33 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #608 at `1c2193eb`
+**Depth**: Deep (reason: cold read, cross-model only: codex, per handoff)
+**Must-fix**: 1 | **Suggestions**: 0
+
+Codex ran (EXIT=0, review complete) on the title, URL and diff only. It returned two findings; the lead kept one.
+Suites run at `1c2193eb`: test_issue_repo.sh 113 passed, 0 failed; test_skill_paths.sh 260 passed, 0 failed.
+Dropped (Codex 1, issue_repo.sh:141, a package worktree whose issue checkout folder was deleted): probed in a sandbox package worktree. From the sibling checkout the helper prints the sibling's origin with exit 0 both with the issue checkout present and after it was moved away. That is the documented sibling-checkout answer, so a missing folder changes nothing.
+
+### Findings
+- [ ] (must-fix) review-plan's file path form never checks which checkout the plan file is in: step 0 passes the path's bare `issue-<N>` to issue_repo.sh in the session's checkout, so a plan path in another repository's checkout (the skill's own example `$WS_ROOT/.agent/work-plans/issue-45/plan.md` is the workspace checkout in a project session) is read, reviewed against this checkout's issue N fetched with `-R` this repository, and recorded on this checkout's issue N timeline with no refusal. Check that the path's checkout (`git -C <dir> rev-parse --show-toplevel`) is this checkout's repository (or run the helper from there) and refuse otherwise, with a test — `.claude/skills/review-plan/SKILL.md:72` (step 0, file path form) and `:184` (File path)
