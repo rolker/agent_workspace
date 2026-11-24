@@ -512,3 +512,38 @@ Codex ran (EXIT=0), given the title, URL and diff only (work-plan files left out
 
 ### Findings
 - [x] (must-fix) The acceptance case's path (`acceptance_path`, from the checker) and its text (`acceptance_first`, from step 5's own awk, which skips no fence and needs no paragraph start) can come from different paragraphs, so the report names the wrong text as a path's test; read both through the checker and test it — `.claude/skills/sitrep/SKILL.md:832` (paired at `:1194`)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 09:29 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a4c066f54a5215d26, resume 2 of 3)
+
+**PR**: #572 at `74f9d149`
+**Addressed**: Local Review at `2e15844` (2026-11-24 09:20 -05:00)
+**Commits**: 870aa475 (merge of origin/main), 74f9d149
+
+### Merge
+- 870aa475 merges origin/main (pull request 570, issue 428 part 2) with a merge commit. No conflicts and nothing to reconcile by hand: main's `sitrep_root.sh` change (GitHub URL pattern), its 8 lines in `test_sitrep_checks.sh`, and its `script_reference.md` change all merged automatically beside this branch's. After the merge: test_sitrep_checks "296 passed, 0 failed", test_sitrep_root "69 passed, 0 failed", test_issue_helpers "130 passed, 0 failed".
+
+### Actions
+- [x] (must-fix) Acceptance text and path from one reader: `--list-paths` now prints `acceptance<TAB><group><TAB><text>` for the first `**Acceptance case.**` paragraph, found and joined by the scanner's fence and paragraph rules (path_mark reads its text like a group's), also with no path paragraph (group empty; `group` lines only with paths, so the worktree block's paths test now looks for a `group` line). Step 5's block takes `acceptance_first`/`acceptance_rest` from that line and only renders them (link and ADR-title rendering kept in the skill); its awk reader of the roadmap is gone. Tests: a fenced and a continuing Acceptance case line ahead of the real one under another path (step 5 text and step 3 `acceptance_path=` agree), and the acceptance case with no path paragraph — `.agent/scripts/sitrep_checks.sh`, `.claude/skills/sitrep/SKILL.md` step 5 (74f9d149)
+
+### Host directions (for the owner's veto)
+- Merge main first, keep both sides: done, nothing needed reconciling.
+- One reader: the checker gives the acceptance paragraph's text; step 5 only renders.
+- Other second readers in the sit-rep skill text: none left. After this commit no block in `.claude/skills/sitrep/SKILL.md` reads the roadmap file: step 1 runs the checker, step 3's worktree block and last block and step 5's block call `--list-paths`, and the rest reads the checker's rows (step 5's `nums` from a row's item and check cell, about SKILL.md:740) or files the checker does not own (inbox, run record, progress.md Serves lines, the Decision register in design.md, ADR titles). So the pull request's sentence "The checker is the only reader of the roadmap's structure" is true of the branch.
+
+### Decided beyond the directions
+- The acceptance line is printed whenever the paragraph exists, with an empty group when there is no path paragraph or none above it; `--list-paths` prints no `group` line in a section with no path, as before.
+- Step 5 says "acceptance case: could not be read (reason above)" when `--list-paths` fails, and `acceptance_first` is then empty.
+- The step 1 sentence "steps 3 and 5 read them" left as written (still true; test_skill_paths pins it).
+
+### Suites (each run on its own from the worktree, on the final content)
+- test_sitrep_checks.sh: "test_sitrep_checks: 299 passed, 0 failed"
+- test_sitrep_root.sh: "test_sitrep_root: 69 passed, 0 failed"
+- test_issue_helpers.sh: "test_issue_helpers: 130 passed, 0 failed"
+- test_skill_paths.sh: "test_skill_paths: 199 passed, 0 failed"
+- test_design_anchors.sh: "test_design_anchors: 82 passed, 0 failed"
+- test_update_roadmap.sh: "test_update_roadmap:16 passed, 0 failed"
+- CI checks the push; the host owns it.
