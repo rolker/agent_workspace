@@ -360,3 +360,49 @@ Round 1's seven: all closed as written (M1 re-run in a stub-gh sandbox: `rolker/
 - [x] (must-fix) review-plan step 1's `--issue` lookup: after the new records guard says the issue is this checkout's, the block still falls back to every registered project's worktrees by number alone, so from the workspace checkout another project's issue-N plan is reviewed against this repository's issue N, with no message. Older than this branch, but it contradicts the guard and the skill text this branch added ("refuses it here before any plan or record is read"). Drop the registered-projects fallback (the session-root rule), or accept a candidate only when `issue_repo.sh <N>` run in its checkout prints `$_REPO`; the workspace-worktree fallback is built from this checkout's top level and stays (codex; gemini as suggestion) — `.claude/skills/review-plan/SKILL.md:151-165`
 - [x] (suggestion) plan-task steps 6 and 7 use `$WORK_PLANS_DIR` and `$PLAN_SHA` from earlier shells; step 6 fails loudly when they are empty, but step 7's unquoted `<<ENTRY` silently writes `**Plan**: \`/plan.md\` at \`\`` and runs any backtick in the agent's summary line. Older than this branch and not hit in practice (this issue's Plan Authored entries are right); resolve both in the block as step 8 now does and use a quoted heredoc — `.claude/skills/plan-task/SKILL.md:362-385`
 - [x] (suggestion) A qualified ref is printed with the caller's casing (`SomeOne/Proj#45` prints `SomeOne/Proj`); it feeds the git-bug `github-url` lookup, which is case-sensitive, and the plan's `## Issue` URL. Print `$EXPECTED` (gemini, adversarial) — `.agent/scripts/issue_repo.sh:207-209`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 14:22 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent adcf9fb69aa534953, resume 1 of 3)
+
+**Branch**: feature/issue-581 at `c35bf6ee`
+**Addressed**: Local Review (Pre-Push) at `fe3881ae` (2026-11-24 14:08 -05:00)
+**Commits**: b9ed6cc1 (merge of origin/main), 44cdb74c, 233df9fe, ebb03ad5, 5336ffa3, df84f3ff, c35bf6ee
+
+Fix round 2 (3 must-fix, 2 suggestions), with the host's directions, listed for the owner's veto. Across rounds 1 and 2 the same defect kept coming back: the issue's repository was decided by its number, or by asking `gh`, where the checkout itself should decide. Each fix below makes the rule narrower and adds no lookup.
+- Merge of `origin/main` (pull request 604, issue 579). Two files conflicted: review-plan's "PR number" block and the end of `test_skill_paths.sh`. Both are now resolved, and both sides hold:
+  - 604's text, cases and stop messages are kept as merged.
+  - The block gets the `issue_repo.sh` head, and `-R "github.com/$_REPO"` is on its three `gh pr view` calls.
+  - Where origin is not `$_REPO` (a package checkout whose origin is a fork), the block stops and says the PR number form is not supported there. It does not fetch from origin in that case.
+  - The convention is 604's: in step 1's PR number form and the Step 5 note's PR lines, `<N>` is the pull request number and `<issue>` the issue number. Step 0 now says so.
+  - Both pin sections are kept. This branch's step-0 pin follows the new wording, and a new pin covers the fork stop.
+- N1: the `gh` confirmation of a qualified ref is removed. Where no GitHub repository is read from origin (another host, an SSH host alias, `ssh.github.com:443`, no origin), a qualified ref cannot be shown to be this checkout's, so it is exit 6. The message says so and says what works: run from a checkout whose origin is on github.com, or pass the bare number, which there takes the exit-4 path. The exit-4 and exit-6 rows of the three skills, the exit-4 message, the script reference and the plan are updated. Both of the reviewer's cases are tested (another-host origin beside a GitHub upstream; SSH-alias origin beside one), each with no `gh` call.
+- N2: plan-task step 8 now matches an existing pull request on the branch name and the head repository's owner (`headRepositoryOwner`: origin's owner in the fork case, else `$_REPO`'s, compared without case). When more than one matches, it lists them and stops. The step-8 test's stub answers `pr list` from a JSON fixture through the block's own `--jq`. Three cases: two on the branch name, one from another owner (only the fork's own is edited); only another owner's (a new pull request is created); two from this head (stops). All three fail against the previous text.
+- N3: review-plan's `--issue` lookup is now this checkout's plan, then the workspace worktree built from this checkout's top level, then a stop that names both paths. The registered-projects fallback is gone. A dispatched phase runs in the issue's own checkout, so the first path finds its plan. The PR number form's own fallback (this checkout only) agrees. `test_project_registry.sh`'s test of the dropped fallback (a copy of the prescribed loop) is removed with it.
+- Suggestion (casing): a qualified ref's repository is printed in this checkout's casing (origin's or the header's). Tested for both.
+- Suggestion (steps 6 and 7): fixed; it was a short change. Each block resolves the work-plans directory itself, behind the records guard, and step 7 asks `plan-sha` itself. The free text goes through quoted heredocs (step 6's summary, step 7's title and entry); only the `**Plan**` line is filled, by `printf`. `test_issue_repo.sh` runs both blocks as written, each in a fresh shell. All three of its checks fail against the previous text.
+- Found by running the full set of named suites: `test_issue_repo.sh` reads the real plan-task SKILL.md (since round 1's step-8 test) but had no `ROOT_READERS` entry in `test_script_tests_hook_scope.sh`. The entry is added (c35bf6ee).
+
+### Actions
+- [x] (must-fix) Qualified ref confirmed by `gh` where origin is not GitHub — `.agent/scripts/issue_repo.sh` (44cdb74c)
+- [x] (must-fix) plan-task step 8 took the first PR on the branch name — `.claude/skills/plan-task/SKILL.md` step 8 (ebb03ad5)
+- [x] (must-fix) review-plan `--issue` fell back to registered projects by number — `.claude/skills/review-plan/SKILL.md` step 1 (5336ffa3)
+- [x] (suggestion) plan-task steps 6 and 7 relied on earlier shells; unquoted ENTRY heredoc — `.claude/skills/plan-task/SKILL.md` steps 6, 7 (df84f3ff)
+- [x] (suggestion) Qualified ref printed in the caller's casing — `.agent/scripts/issue_repo.sh` (233df9fe)
+
+Suites run, each on its own, in the foreground, after the last code commit:
+- `test_issue_repo.sh`: "test_issue_repo: 113 passed, 0 failed"
+- `test_skill_paths.sh`: "test_skill_paths: 260 passed, 0 failed"
+- `test_records_write_gate.sh`: "test_records_write_gate: 68 passed, 0 failed"
+- `test_project_registry.sh`: "=== Results: 423 passed, 0 failed ==="
+- `test_script_tests_hook_scope.sh`: "test_script_tests_hook_scope: 374 passed, 0 failed" (1 failed before c35bf6ee)
+- `test_dispatch_phase.sh`: "test_dispatch_phase: 244 passed, 0 failed"
+- `test_worktree_create.sh`: "PASS: 112 / FAIL: 0"
+- `test_package_issue_loop.sh`: "test_package_issue_loop: 228 passed, 0 failed"
+- `test_plan_correlation.sh`: "test_plan_correlation: 18 passed, 0 failed"
+- `test_issue_review_entry.sh`: "test_issue_review_entry: 6 passed, 0 failed"
+- `test_checkpoint_269.sh`: "test_checkpoint_269: 43 passed, 0 failed"
+
+The full pre-commit pass and the full suite run are left to the host. No command was refused.
