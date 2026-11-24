@@ -712,3 +712,22 @@ Scope: the cold read's two findings (Local Review at `13ef12b2`) and the fix dif
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 11:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #568 at `7277fdb5`
+**Sources**: 3 (Local Review @ `13ef12b2` (cold read, Codex: 1 must-fix, 1 suggestion, both closed by the Implementation at `ff2eae97`); Local Review @ `7277fdb5` (round-3 convergence check, approved, 0 findings); CI rollup. No PR reviews or conversation comments; no Copilot review requested.)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+Triage after the cold read's fixes (deaa41d7, ff2eae97). The `sources` helper finds no open finding covering `7277fdb5` and no dropped entries; the convergence check's rulings on both Codex findings were checked against `_project_registry.sh` (`_project_document_path_char`, `_project_document_value_error` at :1413, the resolved-file comparison at :1724-1730) and hold. CI at triage time: Validate Documentation and Validate Adapter Contract passed; Lint (pre-commit) and the repos-manifest tests (Python 3.10, 3.14) pending, in both workflow runs. One new finding from reading the branch: a comment this pull request added was made false by deaa41d7. The pull request's Decision summary has one inaccurate sentence (reported to the host, who owns the body): "A broken registry, an unreadable settings file or another key's bad line: readers warn once and use the fixed search" — for another key's bad line the reader uses the key's own line when that line is valid, and only otherwise the fixed search (`_project_registry.sh:1669-1689`; `docs/design.md` Documentation layers and `update_roadmap.sh`'s header say it correctly). Everything else in the summary matches the branch.
+
+### Findings
+- [ ] (suggestion, Integrated Review) The comment on `bookkeeping_roadmap_paths` says the escaping is needed because "a value may hold ( ) | ! @ +, which extglob reads"; since deaa41d7 a set roadmap value holds only ASCII letters, digits, `.`, `_`, `-` and `/` (checked at set and at every lookup), so the sentence is false. Fix: reword to say the escape keeps the literal match safe should the allowed characters ever widen (or drop the parenthesis); no code change — `.agent/scripts/_bookkeeping.sh:38-39`
+
+### False positives
+- None.
