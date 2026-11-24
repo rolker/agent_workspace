@@ -158,3 +158,11 @@ Revise the plan to answer the Plan Review at f1444d9b. Host decisions on its fin
 - Finding 5: with no GitHub remote the skill asks the owner for the issue's text; no new git-bug path is added (the owner said on 2026-11-24 that git-bug is not staying). The plan says what plan-task does then about the worktree type, the issue URL in the plan and the draft pull request, and what review-issue records in place of the posted comment.
 - Findings 6, 7, 8, 9: taken as written (the not-a-git-repository message names owner/repo#N; any other non-zero exit stops the skill and shows stderr; plan-task's prose check at line 182 becomes a local comparison; reuse the gh invocation project_integration_audit.sh already uses, and test with GH_REPO set).
 - Finding 10: the other skills with bare gh calls (address-findings, triage-reviews, review-code) are named in the pull request text as not covered; whether they get an issue is the owner's, and the host will put it to him at the merge.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-24 13:23 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-581/plan.md` at `a3b24fcd`
+
+Revision answering the Plan Review: the helper decides locally first and asks gh only when local facts leave a choice; in a package worktree the .worktree-repos header is the expected repository (no set-default to a fork); each code block re-asks the helper; a bare number means the checkout's repository, other repositories as owner/repo#N; with no GitHub remote the owner gives the issue text; contract and per-exit skill behaviour given as tables.
