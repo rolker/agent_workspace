@@ -1603,3 +1603,45 @@ Suites run (each on its own, after the last change unless noted):
 - `test_script_tests_hook_scope.sh`: `test_script_tests_hook_scope: 366 passed, 0 failed` (failed 3 before 19374b0a: the adapter named register_project.sh)
 - Before 19374b0a (a comment and message change in adapter.sh only): `test_project_registry.sh` 425 passed, 0 failed; `test_project_file.sh` 701 passed, 0 failed; `test_design_anchors.sh` 82 passed, 0 failed; `test_skill_paths.sh` 212 passed, 0 failed; and every other suite naming a changed script, each 0 failed: test_capture, test_discover_governance, test_dispatch_phase, test_fresh_clone_no_project, test_gh_create_issue, test_gh_create_pr, test_merge_pr_gate, test_merge_pr, test_merge_pr_skill, test_precommit_hook_path, test_project_documents, test_project_integration_audit, test_pr_status, test_session_start_layer, test_sitrep_checks, test_sitrep_root, test_user_tier_guard, test_validate_workspace_stale, test_worktree_create, test_worktree_enter_stderr, test_worktree_remove.
 - The full pre-commit pass and every other suite are left to the host; commits made with `SKIP=validate-script-tests`.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 14:16 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-503 at `bb91e0b3`
+**Base**: origin/main
+**Depth**: Deep (reason: 19 files, +1422/-71, a registry/adapter contract key and rollback of user directories; the owner's one-round review level for the manifest work, 2026-11-24)
+**Must-fix**: 2 | **Suggestions**: 9
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; first round always re-reviews after fixes (by the owner's one-round rule, the must-fixes are fixed and this is the only review round)
+
+### Decision summary
+
+**What changed**: `register_project.sh <dir> --manifest <file> --distro <d> [--role] [--with]... [--fetch-from]` (and `register_session_root.sh` passing the options on) sets a new or empty root up by running the manifest tool's `init --distro-dirs --yes` in it through the `ros2_colcon` adapter's `setup`, then registers it; nothing about the manifest is recorded in the workspace. `registration.conf` gets a required `manifest` key (`local-file` or `none`). The three findings of issue 599 are fixed: setup and sync read the route once, a kept settings file with a refused key is refused, and the package-worktree caveat is documented.
+
+**Reviews and outcomes**: one round (the owner's lighter level). 2 must-fix, both mechanical: a relative manifest path that starts with `-` is turned into `/`, and the printed retry after a failure drops `--name`, `--set` and the other options. 9 suggestions go to one follow-up issue. Rollback was checked at each failure point: only `rmdir` of directories the run made, nothing that existed before is touched, and KEPT= is right.
+
+**Open human calls**: whether printing a `--fetch-from` prefix that holds credentials (in the setup banner, the dry run and the adapter's `Running:` line), which the manifest tool masks in its own output, should be promoted from suggestion to a fix in this pull request.
+
+**Verified**: test_register_project.sh 294 passed, 0 failed; test_register_session_root.sh 87 passed, 0 failed; test_adapter.sh 260 passed, 0 failed; validate_adapter.sh both types pass; test_ros2_colcon.sh 1240 passed, 0 failed, 0 skipped (real-tool tests ran), all at bb91e0b3. The leading-dash bug was reproduced with a shell snippet. docs/design.md is 1293 lines, which matches its Change log row. sitrep_checks reads the roadmap line's new check as true, and the line's words are unchanged. The issue-599 route test fails without the fix (the refusal sees "tool", the branch sees "bootstrap").
+
+**Recommendation**: needs-work: fix the 2 must-fix findings, then merge without another review round.
+
+### Findings
+- [ ] (must-fix) A relative `--manifest` that starts with `-` (e.g. `-m.yaml`) passes `[ -f ]`, but `dirname` and `basename` read it as an option, so M_ABS becomes `/` and `init /` is run (exported CDPATH can garble it the same way). Fix: anchor and end option parsing: `case "$MANIFEST" in /*) _m="$MANIFEST" ;; *) _m="$PWD/$MANIFEST" ;; esac; M_ABS="$(cd -- "$(dirname -- "$_m")" && pwd -P)/$(basename -- "$_m")"`, the same in the adapter, plus a test with `./-m.yaml` — `.agent/scripts/register_project.sh:836`, `.agent/project_types/ros2_colcon/adapter.sh:1342`
+- [ ] (must-fix) The printed retry names `register_project.sh $PROJECT_ROOT` (in manifest_next and the set-up-already refusal), which drops `--name`, `--worktrees`, `--parent` and `--set`; following it registers under the directory's name without the settings. Fix: say "then re-run the same register_project.sh command without --manifest, --distro, --role, --with and --fetch-from", or rebuild that command with `%q`, and assert it in a test — `.agent/scripts/register_project.sh:1245`, `:825`, `:664`
+- [ ] (suggestion) A `--fetch-from` prefix with credentials is printed unmasked by the setup banner, the dry run (`SETUP_ARGS`, `INIT_LINE`) and the adapter's `Running:` line, while the tool masks it with `mask_url` — `.agent/scripts/register_project.sh:1087`, `:1430`, `.agent/project_types/ros2_colcon/adapter.sh:1358`
+- [ ] (suggestion) register_session_root.sh's check for `--manifest` searches the flattened array, so a value equal to `--manifest` (`--role --manifest`) passes it; track whether the option itself was parsed — `.agent/scripts/register_session_root.sh:128`
+- [ ] (suggestion) Values of `--distro`, `--role`, `--with` and `--fetch-from` that start with `-` are passed on unchecked (`--role --dry-run` swallows the dry run; the dispatcher scans argv for `--project` after the verb); refuse them before anything is written — `.agent/scripts/register_project.sh:243`
+- [ ] (suggestion) Two certain failures are not refused before writing or shown by the dry run: the tool not installed at `$TOOL_BIN`, and a root inside an existing system (init's `find_system` looks upward) — `.agent/scripts/register_project.sh:823`
+- [ ] (suggestion) A root left non-empty without `.repos-manifest` (only after init is SIGKILLed, leaving its aside) gets NEXT "re-run register_project.sh", which `--manifest` then refuses; say to remove the kept root first — `.agent/scripts/register_project.sh:1349`
+- [ ] (suggestion) The rollback removes parent directories that were missing at check time, not ones the run is known to have made (an empty directory someone else made meanwhile could go, with the message "made by setup") — `.agent/scripts/register_project.sh:1230`
+- [ ] (suggestion) on_exit's NEXT "<sync step>; or re-run register_project.sh" does not say "without --manifest" — `.agent/scripts/register_project.sh:1393`
+- [ ] (suggestion) `manifest_is_remote` misses the scp form with no user (`host:path`), which gets "no such file" rather than the issue-498 message — `.agent/scripts/register_project.sh:816`
+- [ ] (suggestion) Minor: `$TOOL_BIN`/`$M_DISTRO` unquoted in NEXT lines (the adapter's `_rc_tool_sync_step` quotes them); `${SETUP_ARGS[*]}` unquoted in the dry run; a kept `bootstrap_url=` with an empty value is refused though the adapter would not refuse it — `.agent/scripts/register_project.sh:824`, `:1087`, `:846`
+
+### Reviewers
+- Claude adversarial (fresh subagent): ran; source of both must-fixes (the leading-dash one also found by the lead) and most suggestions.
+- Codex: ran; 4 findings it called must-fix, classified here as suggestions (credential printing, rollback ownership race, register_session_root flattened check) or folded into must-fix 1 (CDPATH).
+- Gemini: skipped, failed earlier today (every run: "empty response; 1 tool action(s) were auto-denied in headless mode (Bash)").
