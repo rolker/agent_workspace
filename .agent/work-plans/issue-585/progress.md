@@ -87,3 +87,11 @@ The owner started this drive with "start those 3" (2026-11-24). Instructions for
 - The misleading comment in worktree_remove.sh ("regardless of CWD") is corrected with the fix.
 - Other scripts with the same root line are listed in the plan as follow-ups, not fixed here. The Makefile case (issue 239) stays separate.
 - worktree_remove.sh is live-path code that deletes: the full standard applies to it, including what it does when the helper refuses.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-24 13:16 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-585/plan.md` at `1e8602b7`
+
+One helper, wt_main_root in _worktree_helpers.sh (built on registry_main_checkout and its fallback; reads no user-tier file), sets ROOT_DIR in all four worktree scripts and refuses with exit 1 before any action when the main checkout is not found. A new sandbox suite runs each script as the copy in a linked worktree, committed red before the fix; other scripts with the same root line are listed as follow-ups.
