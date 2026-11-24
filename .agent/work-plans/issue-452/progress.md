@@ -521,3 +521,20 @@ Cross-model: skipped (round-4 convergence check, per handoff). Scope: the fix di
 **Decision**: publish
 
 The previous full pass failed (test_script_tests_hook_scope.sh); its fix was reviewed in round 4 and this pass, on the head to be pushed, passed. Pushing and opening the pull request.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-23 19:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #566 at `6e4ed507`
+**Sources**: 5 (Local Review (Pre-Push) R1 @ `6ed21d63` with Gemini + Codex, R2 @ `2a058ffe` with Gemini + Codex, R3 @ `6e9b7618`, R4 @ `4e279dba` (covers `6e4ed507` via bookkeeping), CI rollup); no PR reviews or conversation comments (automatic Copilot review is off on all repositories, owner 2026-11-23)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+No open findings at this head. `review_progress.sh sources` returns no local findings, no dropped entries and no candidates. Rounds 1 and 2 (3 + 2 must-fix, 8 + 8 suggestions) are all ticked and were verified fixed by rounds 3 and 4 (both approved, 0 must-fix, 0 suggestions); spot-checked here: `cold-read --pr` in `review_progress.sh` and step 9a, the cold read's fresh-agent and retry rule in `run-issue` step 9a, and the `test_script_tests_hook_scope.sh` ROOT_READERS entry for `test_review_code_convergence.sh`. CI at triage time: Validate Documentation passed; Lint (pre-commit), Validate Adapter Contract and repos-manifest tests still pending.
+
+### Findings
+
+### False positives
