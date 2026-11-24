@@ -1384,3 +1384,17 @@ The plan's split is right, and 2b-1 is the smallest part that gives `init`, `syn
 - [ ] 2b-1: no new `docs/manifest/roadmap.md` Direction line; offer the wording to the owner in the pull request body if wanted (finding 11).
 - [ ] 2b-1: "What is built" and sync's step 1 say that an edited manifest in its clone is not read until `local_manifest` is built (finding 13).
 - [ ] Plan text: drop open question 8 (finding 12); mark open question 7 settled by finding 5.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:37 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the Plan Review at 436848ed finds the plan ready: every finding has its answer in the design, the spec or the code, none of the eight open questions is the owner's by the review's reading, and what remains is fourteen exact directions for the implementer of part 2b-1)
+**After**: plan
+**Decision**: proceed
+
+This answer starts part 2b-1: a manifest in a git repo, for `init` and `sync`, with `status` and `show` reading the recorded location afresh. Pull request 603 (issue 569 part 3, the removal of the earlier format's reader) merged on 2026-11-24 and main is merged into this branch, so the plan's condition that implementation starts after it holds. The implement handoff quotes the review's fourteen directions in full and tells the implementer to follow them where they differ from the plan's text. One of them moves `fetch_from` acting on the manifest's own repo into this part, because without it a field machine would read the manifest from the public host while fetching every repo from the private one. One leaves the new Direction line out of `docs/manifest/roadmap.md`: that line is the owner's text, and its wording is offered to him in the pull request instead.
+
+Also in this part, on the owner's answer of 2026-11-24 at the merge of pull request 603 ("Merge, F1 goes into 498 (Recommended)"): the module docstring of `cli.py`, printed by `--help`, says every command reads a manifest; it is reworded to "Every command that reads a manifest ...", as the README and the design already say, since `build` works from the saved resolution.
+
+Host decisions on the plan's open questions, each as the review recommends and listed for the owner's veto: `status` reads a manifest recorded in a git repo as `sync` does, so it makes a network read for that form; git's error text is printed, masked like the tool's other URL output, with the "a branch or tag is meant" hint only when git says the ref was not found; the read is limited to 60 seconds when there is no terminal and to 1 MiB, as constants written in the design; `status --json` gives the manifest as an object for the git form and a string otherwise; a redirect is followed only within the URL's own scheme.
