@@ -82,7 +82,7 @@ remotes:
 | `local_manifest` | Optional. A path that is used instead, once that file exists: inside the system directory, or inside each distro's directory when there is one per distro, the same path in each. Not read in this part. |
 | `role` | The role of this machine, if the manifest has roles. |
 | `groups` | Optional. Extra groups to switch on, on top of the role. |
-| `layout` | `flat`, or `distro-dirs` for a directory per distro: the system directory's layout, unrelated to `resolve --layout`. Chosen at `init` and not changed afterwards. See "More than one distro". |
+| `layout` | `flat`, or `distro-dirs` for a directory per distro: the system directory's layout. Chosen at `init` and not changed afterwards. See "More than one distro". |
 | `distros` | The distros of this system, each with its settings. The same shape for one distro or several. Absent when the manifest has no distros. See "More than one distro". Not read in this part: a distro's settings; each distro's entry is empty. |
 | `fetch_from` | Optional. Another place to clone the repos from: `prefix`, and `fallback`, false when it is missing. See "Where repos are fetched from". Not read in this part: `fallback: true`, which is refused with an error naming the file. |
 | `remotes` | Optional. Extra remotes to add to every clone. See "Extra remotes". Not read in this part. |
@@ -631,8 +631,9 @@ clone the repos there.
 Beyond the specification, `resolve` refuses a distro entry that gives both a `version` and
 `absent: true`, and an output directory that is a symbolic link. It reads at most 64
 manifests for one run, the one it was given included, and refuses a manifest of a chain that
-is in the prototype's earlier shape (one with `repos:`, `extends:`, `optional_layers:` or
-`packages:` and no `repositories:`), before any check on its keys.
+is in the tool's earlier format (one with `repos:`, `extends:`, `optional_layers:` or
+`packages:` and no `repositories:`), naming that format and the specification, before any
+check on its keys.
 
 In a system with a directory per distro, a distro's files go in
 `.repos-manifest/resolved/<distro>/`, and resolving one distro never touches another's; see
@@ -1053,10 +1054,7 @@ It is masked at two places:
   then quotes it as `repr` would, so no quoting or escaping (a quote or a backslash) can hide
   the user information. A value of the wrong type (a list or a mapping given as a `url`, a
   `base`, a version or a name) is described by its kind (`must be a string, got a list`),
-  never shown. The earlier format's reader (`schema.py`) refuses a url with a password without
-  printing it, and shows a name that fails its rule, two names that differ only in case and
-  an unknown top-level key the same way; its other messages that print a value from a
-  manifest ([prototype.md](prototype.md) lists them) are masked only as they are printed.
+  never shown.
 - As some lines are printed. These lines pass through a filter: each line `sync` prints for a
   repo's outcome (what it says and what git says, `ERROR:`, `skipped`, `left alone` and the
   updated line, and a repo's notes), `sync`'s `ERROR:` line for a distro whose plan or run
@@ -1071,19 +1069,13 @@ It is masked at two places:
   directories where the system has them, then `src`, then the repo's key. That path cannot hold
   a `scheme://` url: a distro or layer name has only letters, digits, `_` and `-`, and a repo
   key has no `//`.
-  Other lines are printed as given, among them: the "unknown role" error of `resolve` and
-  `validate` on an earlier-format manifest, which echoes the role typed on the command line, the
-  `ERROR:` line of a run stopped by a signal, `sync`'s line for a setup file it could not write,
-  and every `WARNING:` line.
+  Other lines are printed as given, among them: the `ERROR:` line of a run stopped by a
+  signal, `sync`'s line for a setup file it could not write, and every `WARNING:` line.
 
 What is not masked, so a user name and password in a url can be printed:
 - A `file://` url whose password holds a `/`: the password reaches past the authority and
   cannot be told from a path. git's file transport ignores user information.
 - The scp-like form `user:password@host:path`, which does not follow `://`.
-- A value the earlier format's reader (`schema.py`) prints from a manifest other than those
-  named above (a layer name in `optional_layers` or `repos`, a list of layers or of unknown
-  keys); [prototype.md](prototype.md) lists them. Such a line is masked only if the filter
-  above covers it.
 - A warning (`WARNING:`), including a manifest's warnings: the filter does not cover them,
   though `manifest.py` quotes the key in them through `quoted_url`.
 - A message outside the manifest readers that echoes a value typed on the command line (a
@@ -1094,8 +1086,7 @@ What is not masked, so a user name and password in a url can be printed:
 
 Tests check it. One walks the tool's source for values formatted into text whose names say
 they are urls (holding "url", or `origin`) and fails on one that does not go through the
-masking functions; another holds `manifest.py` and `schema.py` to quote no value with `!r` or
-`repr`. The walk cannot see a url held under another name, passed to a helper, joined, or
+masking functions; another holds `manifest.py` to quote no value with `!r` or `repr`. The walk cannot see a url held under another name, passed to a helper, joined, or
 formatted inside a list or a mapping, nor keyword arguments, `+=`, logging, or an exception
 formatted whole; `tests/test_url_messages.py` lists what it misses. A message reached that way
 is masked only on the lines the filter above covers. End to end, `resolve`, `validate`, `init` and `sync` are run over repo urls whose passwords hold
@@ -2181,18 +2172,11 @@ the order they were read, and resolves it for every role and distro it lists, wr
 `--role` or `--distro` limits the check to that role or distro, and `--with` switches on extra
 groups in each one.
 
-A manifest without a top-level `repositories:` or `base:` key, or a file that does not read as
-YAML, still goes to a prototype that reads an earlier shape of the format, where repos are
-nested under their layer and the version key is `ref`. A caller that needs `repos/<layer>.repos`,
-`layers.txt` and `optional_layers.txt` uses that reader, with `--layout manifest-dir`. The
-prototype also has three things this design drops: a `packages:` section with package
-dependencies, roles defined by starting packages, and a cache of fetched parent manifests that
-is kept between runs.
-
-Two things in the prototype differ from this design in smaller ways. It marks whole layers
-as optional, where the design marks repos. And when it fetches a parent manifest from a git
-repo it never lets git or ssh ask for a password, where the design lets them ask at a
-terminal.
+Every command reads this format only. A manifest in the tool's earlier format, where repos
+are nested under their layer and the version key is `ref`, is refused with a message that names
+that format and the specification. The reader of that format is removed, and with it three
+things this design drops: a `packages:` section with package dependencies, roles defined by
+starting packages, and a cache of fetched parent manifests kept between runs.
 
 `init` and `sync` are built for a manifest given as a path on the local disk, flat or with
 `--distro-dirs`: setting a system up, cloning the repos that are missing, and updating the

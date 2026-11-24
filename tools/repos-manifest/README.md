@@ -1,6 +1,6 @@
 # repos-manifest
 
-Status: prototype. The format and the tools are still being designed; see
+Status: draft. The format and the tools are still being designed; see
 [docs/spec.md](docs/spec.md), [docs/design.md](docs/design.md) and
 [docs/roadmap.md](docs/roadmap.md). The tool was called
 `ros-manifest` until #497, which renamed its directory, command and Python package.
@@ -131,11 +131,9 @@ reported. Where `sync`, `init`, `show`, `resolve` and `validate` put a url into 
 `scheme://` url's user name and password are masked as `***`, and a value of the wrong type is
 described, not shown; the lines `sync` prints for a repo's outcome, and the error of a manifest
 that cannot be read or is refused, are masked again as they are printed. Other lines are printed
-as given: for example, the "unknown role" error of an earlier-format manifest, which echoes the
-role typed on the command line (in the current format that error passes the filter). That is a
-guard against accidents, not a guarantee: a user name and password belong in a credential helper
-or an ssh key, not in a manifest url ([docs/design.md](docs/design.md#sync) says what is masked
-and what is not). A repo the manifest moves to another layer is not moved: `sync` prints the
+as given, such as a `WARNING:` line. That is a guard against accidents, not a guarantee: a user
+name and password belong in a credential helper or an ssh key, not in a manifest url
+([docs/design.md](docs/design.md#sync) says what is masked and what is not). A repo the manifest moves to another layer is not moved: `sync` prints the
 `mv` command. A clone with commits not on `origin` is not rebased yet: when `origin`'s branch
 has commits the clone lacks, `sync` prints the `git pull --rebase` command for a person to run,
 and when it has none, the `git push` command that publishes the clone's commits (`sync` never
@@ -213,8 +211,10 @@ repos-manifest build -- --symlink-install
 source rolling/setup.bash
 ```
 
-A manifest in the prototype's earlier shape still goes to the prototype's reader, which
-[docs/prototype.md](docs/prototype.md) describes, with its commands and the checks it applies.
+Every command reads a manifest in the format of [docs/spec.md](docs/spec.md) only. A manifest
+in the tool's earlier format (repos under `repos:` by layer, with `extends:`,
+`optional_layers:` or `packages:`) is refused with a message that names that format; write it
+again in the format of the specification.
 
 ## Installing
 
@@ -227,12 +227,11 @@ python3 -m venv .venv
 
 It needs Python 3.10 or later and PyYAML.
 
-The settings under the old name are ignored since the rename: set
-`REPOS_MANIFEST_GIT_TIMEOUT` in place of `ROS_MANIFEST_GIT_TIMEOUT`, and an old
-`.ros-manifest-cache` directory can be deleted (the default cache is now
-`.repos-manifest-cache`). A checkout that had the old tool installed can keep an
-ignored `tools/ros-manifest/` directory after pulling (its egg-info and
-`__pycache__`, which git does not remove); it can be deleted too.
+The reader of the earlier format, with its cache of parent manifests and its
+`REPOS_MANIFEST_GIT_TIMEOUT` setting (`ROS_MANIFEST_GIT_TIMEOUT` before the rename), is gone:
+a `.repos-manifest-cache` or `.ros-manifest-cache` directory it left can be deleted. A checkout
+that had the old tool installed can keep an ignored `tools/ros-manifest/` directory after
+pulling (its egg-info and `__pycache__`, which git does not remove); it can be deleted too.
 
 ## Development
 

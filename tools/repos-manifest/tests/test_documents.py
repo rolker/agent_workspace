@@ -10,10 +10,7 @@ from pathlib import Path
 import pytest
 
 TOOL = Path(__file__).parent.parent
-# prototype.md describes the earlier reader and goes with it.
-DOCUMENTS = [TOOL / "README.md"] + [
-    p for p in sorted((TOOL / "docs").glob("*.md")) if p.name != "prototype.md"
-]
+DOCUMENTS = [TOOL / "README.md"] + sorted((TOOL / "docs").glob("*.md"))
 
 # Each names the workspace's adapter, or one adapter as the caller.
 NAMING_THE_WORKSPACE_ADAPTER = [
