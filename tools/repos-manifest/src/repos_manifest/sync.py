@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import errno
 import os
-import re
 import shlex
 import shutil
 import subprocess
@@ -26,6 +25,9 @@ from . import fetch_from, selection, update
 from .manifest import Manifest
 from .masking import mask_urls
 from .output import make_writable, output_files, process_has_ended, signals_held, write_output
+from .gitenv import Env, require_git
+from .location import GitLocation
+from .location import label as location_label
 from .selection import Resolved, Selected
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
 from .yamlload import ManifestError
@@ -51,7 +53,7 @@ from .system import (
     put_distro_state,
     read_built,
     read_config,
-    read_manifest,
+    read_recorded_manifest,
     read_state,
     reporting_oserror,
     resolved_parts,
@@ -62,21 +64,9 @@ from .system import (
 FINISH = "run `repos-manifest sync` to finish"
 
 
-Env = Dict[str, str]
-
-# Named by `git rev-parse --local-env-vars` but carrying configuration, not a repository's place.
-CONFIGURATION_VARIABLES = frozenset({"GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"})
-
-
 def require_tools() -> Env:
     """`vcs` and `git` are on PATH, and `vcs --version` runs; what it prints is not read.
-    Returns the environment every `vcs` and `git` of the run is given: this process's, without
-    the variables that point git at a particular repository or its parts, so that a run from a
-    git hook or `git submodule foreach` acts on its own clones. Those are the names
-    `git rev-parse --local-env-vars` prints, less `GIT_CONFIG_PARAMETERS` and
-    `GIT_CONFIG_COUNT`, which carry configuration (`git -c`, `GIT_CONFIG_KEY_<n>`) and are
-    kept, as git keeps them when it runs a command in another repository; and
-    `GIT_NAMESPACE`, which that list does not name."""
+    Returns the environment every `vcs` and `git` of the run is given (`gitenv.require_git`)."""
     vcs = shutil.which("vcs")
     if vcs is None:
         raise Refusal("`vcs` is not found on PATH", "Install vcs2l or vcstool, which provide it")
@@ -96,65 +86,6 @@ def require_tools() -> Env:
     if not works:
         raise Refusal(f"`{vcs} --version` does not run", "Repair or reinstall vcs2l or vcstool")
     return require_git()
-
-
-def require_git() -> Env:
-    """`git` is on PATH, runs, and is new enough: the git half of `require_tools`, for a command
-    that runs git and never `vcs` (`status`). Returns the environment `require_tools` returns."""
-    git = shutil.which("git")
-    if git is None:
-        raise Refusal("`git` is not found on PATH", "Install git")
-    try:
-        done = subprocess.run(
-            [git, "rev-parse", "--local-env-vars"],
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError:
-        done = None
-    if done is None or done.returncode != 0:
-        raise Refusal(f"`{git} rev-parse --local-env-vars` does not run", "Repair or reinstall git")
-    require_git_version(git)
-    local = set(done.stdout.split()) - CONFIGURATION_VARIABLES | {"GIT_NAMESPACE"}
-    return {name: value for name, value in os.environ.items() if name not in local}
-
-
-# The oldest git that has every command `sync` runs: `git switch` (with `--no-overwrite-ignore`
-# and `--detach`) came in 2.23. The others are older: a fetch that does not replace a tag
-# without `--force` (2.20), `config --type` (2.18), `fetch --no-prune-tags` (2.17), `rev-parse
-# --is-shallow-repository` (2.15), `status --porcelain=v2` (2.11), `worktree list --porcelain`
-# and `for-each-ref --contains` (2.7), `fetch --refmap` (2.1).
-GIT_MINIMUM = (2, 23)
-_GIT_VERSION = re.compile(r"git version (\d+)\.(\d+)")
-
-
-def require_git_version(git: str) -> None:
-    """Stop with a plain message when `git --version` names a version older than
-    `GIT_MINIMUM`. A version it does not print in the usual form is not judged."""
-    try:
-        printed = subprocess.run(
-            [git, "--version"],
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            check=False,
-            env={**os.environ, "LC_ALL": "C"},
-        ).stdout
-    except OSError:
-        raise Refusal(f"`{git} --version` does not run", "Repair or reinstall git") from None
-    match = _GIT_VERSION.match(printed.strip())
-    if match is None:
-        return
-    found = (int(match.group(1)), int(match.group(2)))
-    if found < GIT_MINIMUM:
-        need = ".".join(str(n) for n in GIT_MINIMUM)
-        raise Refusal(
-            f"git {found[0]}.{found[1]} is on PATH, and this tool needs git {need} or later"
-            " (for `git switch`); nothing was changed",
-            f"Install git {need} or later",
-        )
 
 
 def sweep_temporaries(directory: Path) -> None:
@@ -562,8 +493,11 @@ def built_note(
     for done in result.repos:
         if done.outcome in (CLONED, UPDATED) and done.layer is not None:
             changed[done.layer] = changed.get(done.layer, 0) + 1
-    manifest = os.path.realpath(system / config.manifest)
-    for done in result.of(UPDATED):
+    if isinstance(config.manifest, GitLocation):
+        manifest = None  # read from its repo, not from a clone in the system
+    else:
+        manifest = os.path.realpath(system / config.manifest)
+    for done in result.of(UPDATED) if manifest is not None else ():
         if done.place is not None:
             inside = os.path.realpath(done.place) + os.sep
             if manifest.startswith(inside):
@@ -700,10 +634,16 @@ def closing(results: Sequence[DistroResult]) -> int:
     return 1 if failed or reported or any(result.setup_failure for result in results) else 0
 
 
-def recorded_manifest(system: Path) -> str:
-    """Said after a message that names the manifest by its recorded path, so that a relative
-    path, taken from the system directory, is not read as taken from the current directory."""
+def recorded_manifest(system: Path, config: Config) -> str:
+    """Said after a message that names the manifest by its recorded location, so that a
+    relative path, taken from the system directory, is not read as taken from the current
+    directory; and a file in a git repo is known to be read from the repo, not from a clone."""
     recorded = system / SYSTEM_DIR / CONFIG_FILE
+    if isinstance(config.manifest, GitLocation):
+        return (
+            f"(the manifest is `manifest` in {recorded}: a file in a git repo, read from the"
+            " repo afresh at every run)"
+        )
     return (
         f"(the manifest's path is `manifest` in {recorded}, taken from the system directory"
         f" {system})"
@@ -739,30 +679,36 @@ def resolve_for(manifest: Manifest, config: Config, distro: Optional[str], named
 
 
 def resolve_all(
-    system: Path, config: Config, distros: Sequence[Optional[str]], changes: bool = True
+    system: Path,
+    config: Config,
+    distros: Sequence[Optional[str]],
+    changes: bool = True,
+    env: Optional[Env] = None,
 ) -> List[Union[Planned, Reported]]:
     """Phase one: read the manifest, then resolve each distro and build its resolved files, in
     memory. A manifest that cannot be read ends the run with nothing changed; a distro that
     does not resolve, or whose files cannot be written out, is reported, and nothing of it is
     changed, while the others go on. `changes` is false for `status`, which changes nothing:
     a distro `fetch_from` refuses is then reported as refused, without `sync`'s words about
-    what it left unchanged."""
+    what it left unchanged. `env` is the run's git environment, for a manifest read from a
+    git repo."""
     try:
-        manifest = read_manifest(config.manifest, system)
+        manifest = read_recorded_manifest(system, config, env)
     except ManifestError as exc:
+        said = recorded_manifest(system, config)
         raise ManifestError(
-            f"the manifest is what failed; nothing was changed: {exc} {recorded_manifest(system)}"
+            f"the manifest is what failed; nothing was changed: {exc} {said}"
         ) from None
     if config.distros is None and manifest.distros is not None:
         # A flat system set up from a manifest with no distros: it cannot gain one.
         return [
             Reported(
                 None,
-                f"{config.manifest}: the manifest now has distros"
+                f"{location_label(config.manifest)}: the manifest now has distros"
                 f" ({', '.join(manifest.distros)}), and this system directory was set up"
                 " without one; nothing in it has been moved or changed. A system with distros"
                 " is set up in a new directory with `repos-manifest init`, with `--distro-dirs`"
-                f" to hold more than one distro. {recorded_manifest(system)}",
+                f" to hold more than one distro. {recorded_manifest(system, config)}",
             )
         ]
     plan: List[Union[Planned, Reported]] = []
@@ -783,7 +729,7 @@ def resolve_all(
                 Reported(
                     distro,
                     f"{named}: the manifest does not resolve for it; nothing of it has been"
-                    f" moved or removed: {exc} {recorded_manifest(system)}",
+                    f" moved or removed: {exc} {recorded_manifest(system, config)}",
                 )
             )
             continue
@@ -794,7 +740,7 @@ def resolve_all(
                 Reported(
                     distro,
                     f"{named}: the manifest's output is what failed; nothing of it was changed:"
-                    f" {exc} {recorded_manifest(system)}",
+                    f" {exc} {recorded_manifest(system, config)}",
                 )
             )
     return plan
@@ -823,8 +769,13 @@ def _sync(named_distros: Sequence[str], changing: List[bool]) -> int:
             )
         config = read_config(system)
         distros = distros_for(system, config, named_distros, cwd)
-        plan = resolve_all(system, config, distros)
-        env = require_tools()
+        if isinstance(config.manifest, GitLocation):
+            # git is needed to read the manifest, so the tools are checked before the read.
+            env = require_tools()
+            plan = resolve_all(system, config, distros, env=env)
+        else:
+            plan = resolve_all(system, config, distros)
+            env = require_tools()
         changing.append(True)
         results = sync_distros(system, config, plan, env)
     return closing(results)

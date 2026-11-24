@@ -3,7 +3,7 @@ and validate checks a manifest; show prints what a manifest comes to for a machi
 sync set up a system directory and clone its repos; build builds its layers with colcon and
 writes its setup.bash.
 
-Every command reads a manifest in the format of docs/spec.md.
+Every command that reads a manifest reads it in the format of docs/spec.md.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from . import output, selection
 from .build import run_build
 from .fetch_from import FetchFromError
 from .init import run_init
+from .location import GitLocation
 from .manifest import Manifest
 from .masking import mask_urls
 from .show import render, shown_path
@@ -32,6 +33,7 @@ from .system import (
     one_distro_for,
     read_config,
     read_manifest,
+    read_recorded_manifest,
     reporting_oserror,
 )
 from .yamlload import ManifestError
@@ -113,18 +115,20 @@ def _show_in_system(args: argparse.Namespace, cwd: Path) -> selection.Resolved:
         )
     config = read_config(system)
     distro = one_distro_for(system, config, [args.distro] if args.distro else [], cwd)
-    # The recorded path is read and resolved as sync reads it, from the system directory, which
-    # need not be the current one, and under its recorded name, so every refusal and warning
-    # names it as sync's do. Only once it has read and resolved is it shown, like the
-    # manifests it builds on, as an absolute path with links followed, so that it opens from
-    # where show is run.
+    # The recorded location is read and resolved as sync reads it, a path from the system
+    # directory, which need not be the current one, and under its recorded name, so every
+    # refusal and warning names it as sync's do; a file in a git repo afresh from the repo.
+    # Only once it has read and resolved is a path shown, like the manifests it builds on, as
+    # an absolute path with links followed, so that it opens from where show is run.
     try:
-        manifest = read_manifest(config.manifest, system)
+        manifest = read_recorded_manifest(system, config)
         resolved = resolve_for(manifest, config, distro, fetch_from_named(system))
     except FetchFromError:
         raise
     except ManifestError as exc:
-        raise ManifestError(f"{exc} {recorded_manifest(system)}") from None
+        raise ManifestError(f"{exc} {recorded_manifest(system, config)}") from None
+    if isinstance(config.manifest, GitLocation):
+        return resolved  # named by its label, its url masked
     canonical = os.path.realpath(system / config.manifest)
     for layer in resolved.layers:
         for repo in layer.repos:
@@ -135,15 +139,23 @@ def _show_in_system(args: argparse.Namespace, cwd: Path) -> selection.Resolved:
 
 
 def cmd_show(args: argparse.Namespace) -> int:
+    """A stop signal while the manifest is read ends the run with one line; the temporary clone
+    of a manifest in a git repo is removed and git is ended first."""
     if args.distro == "":
         raise ManifestError("--distro is given an empty name; name the distro to show")
-    with reporting_oserror():
-        cwd = current_directory()
-        if args.manifest is None:
-            resolved = _show_in_system(args, cwd)
-        else:
-            manifest = read_manifest(args.manifest, cwd)
-            resolved = selection.resolve(manifest, args.role, args.distro, args.with_groups or [])
+    try:
+        with signals_end_the_run():
+            with reporting_oserror():
+                cwd = current_directory()
+                if args.manifest is None:
+                    resolved = _show_in_system(args, cwd)
+                else:
+                    manifest = read_manifest(args.manifest, cwd)
+                    resolved = selection.resolve(
+                        manifest, args.role, args.distro, args.with_groups or []
+                    )
+    except Stopped as exc:
+        return stop_exit(exc, f"stopped by {signal_name(exc)}; nothing was changed")
     print(render(resolved))
     return 0
 
@@ -157,6 +169,8 @@ def cmd_init(args: argparse.Namespace) -> int:
         args.distro_dirs,
         args.yes,
         args.fetch_from,
+        args.manifest_ref,
+        args.manifest_path,
     )
 
 
@@ -243,7 +257,22 @@ def build_parser() -> argparse.ArgumentParser:
         "init",
         help="Set up a system directory here from a manifest, then clone its repos",
     )
-    init_p.add_argument("manifest", help="Path to the manifest file")
+    init_p.add_argument(
+        "manifest",
+        help=("Path to the manifest file; with --manifest-path, the url of the git repo it is in"),
+    )
+    init_p.add_argument(
+        "--manifest-ref",
+        action=_Once,
+        metavar="REF",
+        help="The branch or tag of the manifest's repo to read (default: its default branch)",
+    )
+    init_p.add_argument(
+        "--manifest-path",
+        action=_Once,
+        metavar="PATH",
+        help="The path of the manifest file in its git repo; the manifest is then the repo's url",
+    )
     init_p.add_argument("--role", help="The role of this machine, when the manifest has roles")
     _add_with(init_p)
     init_p.add_argument(
@@ -282,8 +311,9 @@ def build_parser() -> argparse.ArgumentParser:
         "status",
         help=(
             "Show what the system directory holds against what the manifest says; changes"
-            " nothing and fetches nothing. Exit status 1 when a repo that is not optional is"
-            " not at its place or cannot be used"
+            " nothing and fetches no repo (a manifest recorded in a git repo is read from it)."
+            " Exit status 1 when a repo that is not optional is not at its place or cannot be"
+            " used"
         ),
     )
     status_p.add_argument(

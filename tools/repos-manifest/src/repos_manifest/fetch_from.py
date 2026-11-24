@@ -6,7 +6,9 @@ published url's path, without a `.git` ending) and `.git`. `apply` gives a resol
 those urls: each `Selected.url` becomes the built url and `Selected.published` keeps the
 manifest's, so
 `init`, `sync`, `status` and `show` all act on the built url through the same code, and `sync`'s
-url rule moves a clone's `origin` to it.
+url rule moves a clone's `origin` to it. A manifest given in the git form is read from the repo
+of its name at the place too (`manifest_location`), so a field machine never reaches for the
+published host.
 
 Only `fallback: false` is built: a repo missing at the place is an error. `fallback: true` is
 refused where the config is read (``system.read_config``).
@@ -22,6 +24,7 @@ import re
 from dataclasses import dataclass, replace
 from typing import Dict, Optional, Sequence, Tuple
 
+from .location import GitLocation
 from .manifest import check_url, url_path
 from .masking import quoted_url, remember_url, type_name
 from .selection import Layer, Resolved
@@ -81,6 +84,29 @@ def repo_name(url: str) -> str:
 def effective_url(prefix: str, name: str) -> str:
     """The url a repo of name `name` is fetched from."""
     return f"{prefix}{name}.git"
+
+
+def manifest_location(location: GitLocation, prefix: str, named: str) -> GitLocation:
+    """Where a manifest given in the git form is read from with a `fetch_from` prefix: the
+    same version and path in the repo of the same name at the place, its url built and checked
+    as every repo's is, and the published url kept for messages. `named` says where the
+    setting is. A `FetchFromError` when the published url gives no name to put after the
+    prefix, or the url built is not one a manifest may name."""
+    remember_url(prefix)
+    remember_url(location.url)
+    try:
+        name = repo_name(location.url)
+    except FetchFromError as exc:
+        raise FetchFromError(
+            f"{named}: the manifest's repo {quoted_url(location.url)} gives no name to put after"
+            f" the prefix: {exc}"
+        ) from None
+    url = effective_url(prefix, name)
+    try:
+        check_url(url, "", f"{named}: the manifest's repo")
+    except ManifestError as exc:
+        raise FetchFromError(str(exc)) from None
+    return replace(location, url=url, published=location.url)
 
 
 def check_prefix(prefix: object, named: str) -> str:

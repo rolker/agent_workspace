@@ -2778,7 +2778,7 @@ test_source_without_tool_root_refused() {
         assert_contains "$label: names the unset" "project_setting.sh unset tiered source source_ref source_path" "$out"
         assert_contains "$label: says the manifest must list distros" "from a manifest that lists its distros (the adapter refuses a root set up without --distro-dirs)" "$out"
         assert_contains "$label: points at the design's section" "More in docs/manifest/design.md, under \"A root that sets source\"" "$out"
-        assert_not_contains "$label: a path source gets no clone step" "init reads a local file only" "$out"
+        assert_not_contains "$label: a path source gets no git-form line" "init reads the manifest from its repo" "$out"
     done
     assert_eq "nothing imported: vcs not run" "" "$(cat "$sb/vcs.log" 2>/dev/null)"
     assert_eq "nothing built or tested: colcon not run" "false" "$([ -e "$sb/colcon.log" ] && echo true || echo false)"
@@ -2806,18 +2806,26 @@ test_source_without_tool_root_refused() {
     out="$(run_adapter "$sb" setup 2>&1)" || true
     assert_contains "a dangling manifest-resolved link alone: named too" "init does not read the old checkouts" "$out"
     rm -rf "$fresh/configs"
-    # A URL source: init reads a local file only, so the message names the
-    # clone at source_ref and the file at source_path inside it, and says
-    # the clone is kept and updated by hand (the tool never fetches it).
+    # A URL source: the tool reads the manifest from its repo, so the
+    # message gives init the git form: the url, --manifest-ref when
+    # source_ref is set, and --manifest-path (manifest.yaml by default).
     printf 'source=https://example.invalid/m.git\nsource_ref=v1\nsource_path=sys/m.yaml\n' > "$sb/.agent/projects.d/tiered"
     rc=0; out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
     assert_eq "URL source, setup: exit 1" "1" "$rc"
-    assert_contains "URL source: names the clone and the file" \
-        "init reads a local file only: clone https://example.invalid/m.git at v1 and give init sys/m.yaml in the clone; the clone is kept and never fetched by the tool, so keep it at source_ref by hand before each sync (a git pull for a branch)" "$out"
+    assert_contains "URL source: init in the git form" \
+        "For this URL source, init reads the manifest from its repo, afresh at every sync, so no clone is kept by hand: in $fresh, run " "$out"
+    assert_contains "URL source: the url, the ref and the path" \
+        "init https://example.invalid/m.git --manifest-ref v1 --manifest-path sys/m.yaml --distro-dirs --distro <distro> [--role <role>]" "$out"
+    assert_not_contains "URL source: no clone kept by hand" "init reads a local file only" "$out"
+    assert_not_contains "a tag: no commit sentence" "source_ref is a commit" "$out"
     printf 'source=https://example.invalid/m.git\nsource_ref=v1\n' > "$sb/.agent/projects.d/tiered"
     out="$(run_adapter "$sb" setup 2>&1)" || true
     assert_contains "URL source without source_path: the file is manifest.yaml" \
-        "give init manifest.yaml in the clone;" "$out"
+        "init https://example.invalid/m.git --manifest-ref v1 --manifest-path manifest.yaml --distro-dirs" "$out"
+    printf 'source=https://example.invalid/m.git\nsource_ref=0123456789abcdef0123456789abcdef01234567\n' > "$sb/.agent/projects.d/tiered"
+    out="$(run_adapter "$sb" setup 2>&1)" || true
+    assert_contains "a commit as source_ref: said the tool takes a branch or tag" \
+        "source_ref is a commit, and the tool reads a manifest at a branch or a tag only, not yet at a commit: give --manifest-ref a branch or tag that holds it" "$out"
     printf 'source=%s\n' "$sb/m.yaml" > "$sb/.agent/projects.d/tiered"
     # The registry line's distro and role go into the init command, and
     # the unset names them as fields to remove; without them, placeholders

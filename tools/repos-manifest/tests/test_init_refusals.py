@@ -21,7 +21,6 @@ NOT_BUILT = [
     "status",
     "show",
     "freeze",
-    "--manifest-ref",
     "--local-manifest",
 ]
 
@@ -386,7 +385,11 @@ def test_a_manifest_given_as_a_url_is_not_read_in_this_version(tmp, capsys):
         capsys,
         "https://example.org/m.manifest.yaml",
         "--yes",
-        expect="only a manifest given as a file path is read in this version",
+        expect=(
+            "is a URL, and this version reads a manifest given as a path on the local disk or as"
+            " a file in a git repo; for a file in a git repo, give its repo's url with"
+            " --manifest-path"
+        ),
     )
 
 

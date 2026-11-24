@@ -1283,3 +1283,286 @@ Nothing remains open before the owner's merge decision: no must-fix, no hosted c
 **Decision**: merge
 
 The owner chose "Merge (Recommended)" in a dialog (2026-11-18) for pull request 511 (part 2a: base read from local paths): merge it and re-run the tool's install in the main checkout. The issue stays open: parts 2b and 3 remain.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:13 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan checkpoint after a merge; the plan's remaining parts no longer match the code, so proceed is not open)
+**After**: plan
+**Decision**: revise
+
+Pull requests 506 (part 1) and 511 (part 2a: `base` read from local paths) are merged; the issue is still open because parts 2b and 3 remain. Since the plan was written, issue 569 has changed what is left: its parts 1 and 2 (pull requests 571 and 597, merged 2026-11-24) removed the roadmap line about moving from the prototype's format and cut the `ros2_colcon` adapter's manifest route, and its part 3 (pull request 603, open, in its last review step) removes the earlier format's reader from the tool. So this plan's part 3 ("the adapter reads the new format, the old reader goes") is done elsewhere or no longer applies, and the issue's section "The existing user" has no user left (owner, 2026-11-24: "pickerel has nothing on the old format"). The adapter calling the tool is issue 503's.
+
+The plan is revised to what remains: part 2b, the manifest and its `base` read from a URL and from a file in a git repo, which also closes the gap pull request 597 states (a manifest in a git repo needs a clone kept by hand until the tool reads it from git); and whatever of the issue's own list is still not built, checked against the code. The owner chose this issue as the next one driven after 569 (2026-11-24).
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-24 14:10 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-498/plan.md` at `f491982f`
+
+Revision after #569: planned against the tool as it will be after #603 (implementation starts after it merges). Remaining work is the http(s) and git-file locations for the manifest and for base. Parts: 2b-1 (a manifest in a git repo, for init and sync, with status and show; closes the gap #597 states; Part of #498), 2b-2 (resolve, validate, show take the git form; base as a git mapping; relative parents; Part of #498), 2b-3 (http and https; Closes #498). Eight open questions with recommendations.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-24 13:40 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #498 — repos-manifest: the resolver reads the format in the spec
+**Plan**: `.agent/work-plans/issue-498/plan.md` at `f491982f`
+**Branch**: `feature/issue-498`
+
+Scope: the third revision (parts 2b-1, 2b-2, 2b-3), with weight on 2b-1. Read: the plan; the 2026-11-18 and 2026-11-24 Checkpoints; issue 498's body; pull request 597's body; and, from a `git archive` of `origin/feature/issue-569` (7de6d536), `tools/repos-manifest/docs/design.md` (config.yaml, Setting up with init, Refusals, Which manifest a distro reads, Where the manifest comes from, sync, status, Where repos are fetched from, What is built), `docs/spec.md` (Locations, Reading a manifest before using it), `system.py`, `sync.py`, `init.py`, `status.py`, `cli.py`, `base.py`, `manifest.py`, `masking.py`, `signals.py`, `fetch_from.py`, `output.py`, `update.py` (`Git`), the adapter's `_rc_refuse_removed_source` and its test lines, `docs/manifest/design.md`, `docs/manifest/roadmap.md`, the tool roadmap, and the root `docs/design.md` sentence and change-log rule. No git behaviour was run; the statements about git and Python's `subprocess` below are from their documented behaviour and are marked for a test where they matter.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Three pull requests, each green; 2b-1 is the smallest that gives `init` and `sync` a manifest in a git repo end to end, provided the fetch_from trap (finding 1) is closed in it. `status` and `show` with no argument have to come with it, as the plan says: both read `config.manifest` through `read_manifest` (status.py:163 via `sync.resolve_all`, cli.py:122). `build` reads `config.yaml` (build.py:1449) but no manifest, so `Config.manifest` becoming a location must not break it. |
+| Issue alignment | Good | The "What to build" list is checked against the code; what remains is the location forms. Serves (checked, anchors exist): "Goal: Modular (`README.md#modular` ...). Design: `tools/repos-manifest/docs/design.md#where-the-manifest-comes-from`, `#what-is-built`, `#status`; the format `tools/repos-manifest/docs/spec.md` (Locations, Reading a manifest before using it); `docs/manifest/design.md#what-the-tool-has-to-give`." |
+| File targeting | Needs work | Missing: the root `docs/design.md` change-log row (finding 9); `fetch_from.py` use for the manifest's repo (finding 1); `build.py` is a reader of `Config` (no change expected; a test that `build` still reads a git-form `config.yaml`). |
+| Consequences | Needs work | Covered: `recorded_manifest`, `built_note`, `_show_in_system`, `status` text and JSON, the Refusals note. Missing: sync's `require_tools()` runs after `resolve_all` (sync.py:825-826) so the git environment does not exist when the manifest is read (finding 3); the design's Refusals order (finding 3); `docs/manifest/design.md` "Time limits on fetches" ("The tool's design sets no limit on `sync`") gains the manifest read's limit; the resolved files' head comment `# manifest: {resolved.source}` (output.py:64) is not masked, so a git leaf's label there must be the masked one (finding 7). |
+| Principle alignment | Good | One reader function, one check function for every url/version/path, tests per rule, no cache, no settings. Prior art section names what was taken from `extends.py` and why the rest is dropped. |
+| ADR compliance | Good | ADR-0022/0017 (tool design changes in the same part), ADR-0011 (adapter message and its test), ADR-0013, ADR-0009. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Consequences, 2b-1, must-fix]** `fetch_from` and the manifest's own repo is not separable. The design says: "The git form is also the one `fetch_from` can act on, because the tools know which repo the manifest is in. A field machine can be given the published location of the manifest and a `fetch_from` prefix, and reads the manifest from the private server", and "A field machine never reaches for the public host without being told to." Built as planned, 2b-1 makes a field machine set up with `--fetch-from` (fallback off, the only form built) read the manifest from the published host: it fails with no route, and with one it silently reads the public manifest while every repo comes from the private server. The fix is small and the design already answers it: when `config.fetch_from` is set and the manifest is in the git form, the url read is `fetch_from.effective_url(prefix, fetch_from.repo_name(url))`, checked by the same url check; `init --fetch-from` does the same before its read; messages name both (as `_remote_note` does for repos). The sentence "the last two wait until a manifest is read from git" in "Where repos are fetched from" then names only the parent manifest (2b-2).
+2. **[Issue alignment, 2b-1]** The plan's init rule contradicts the design's refusal row. The plan: "with `--manifest-path` the positional is the repo's url (any allowed form, an absolute local path included)". The design's row: "`--manifest-ref` or `--manifest-path` is given and the manifest is not given in the git form: a local path, or a URL with `--manifest-ref` and no `--manifest-path`." Follow the design: a positional with no `:` before its first `/` is a path and is refused with either option; `file:///srv/x.git` is the local form (and the one tests use). `config.yaml`'s mapping `url` still takes any url the spec allows for a repo, an absolute path included, as the spec says.
+3. **[Consequences, 2b-1]** The git environment before the read. `init` reads at init.py:276 and calls `require_tools()` at 304; `sync` reads in `resolve_all` (sync.py:825) and calls `require_tools()` after (826); `status` already calls `require_git()` first (status.py:148). The plan moves it only for `init`. A read without `require_git()`'s environment runs git with `GIT_DIR` and friends of a calling hook. Put the check where the git form is read: the git reader gets its environment from `require_git()` (moved out of `sync.py` into `fetch.py` or a small module both import, to avoid an import cycle `fetch -> sync -> system -> base -> fetch`), called once per process. The path form then keeps today's order, and the Refusals text says that for the git form the `git` row is checked before the manifest is read.
+4. **[Approach, 2b-1, fetch safety]** End the whole group in the no-terminal case. The plan starts git in its own session there and ends "git by its pid". Git's children (`ssh`, `git-remote-https`) then live on after the limit or a stop signal and keep the network call going; Python's `subprocess.run` kills only the pid on timeout or on an exception. In its own session git leads its own group, so `os.killpg(proc.pid, SIGKILL)` then `wait()` is safe and ends them all. In the terminal case (same group) keep ending by pid, as the prior-art note says. Also set `GIT_TERMINAL_PROMPT=0` in the no-terminal case, so git fails at once rather than trying `/dev/tty`; ssh's own prompts fail without a controlling terminal, and an `SSH_ASKPASS` window is cut off by the limit.
+5. **[Approach, 2b-1, fetch safety; settles open question 7]** Allow only the url's own transport. `GIT_ALLOW_PROTOCOL=https:http:ssh:file` lets git's curl follow an `https` to `http` redirect (git builds curl's allowed redirect protocols from the allowed transports). Set it from the url's scheme instead: `https` for an https url, `http:https` for http, `ssh` for ssh and the scp form, `file` for `file://` and an absolute path. Same-scheme redirects (a renamed GitHub repo) keep working, which `http.followRedirects=false` would break. Test: the function that builds the list, once per scheme, and a local http to http redirect that works; a `file://` redirect test adds nothing, since curl never follows one.
+6. **[Approach, 2b-1, fetch safety]** The path inside the repo. Run `git --literal-pathspecs ls-tree -z -l HEAD -- PATH`, and accept only one entry whose printed name is exactly the path asked for (after the spec's checks: relative, no `..`); this refuses `./x`, `x/`, `a//b` and pathspec magic without a rule of their own, and a path through a symlinked directory comes back empty (missing). Mode 100644 or 100755 is read; 120000 (link), 160000 (submodule), 040000 (directory) are refused by name; size over 1 MiB refused before `git cat-file blob <oid>` (no `--filters`, so no smudge or textconv runs). The bytes go through `_read_text`'s decoding and the character check, one function.
+7. **[Approach, 2b-1]** The version. A `--manifest-ref` or mapping `version` of `heads/X` or `tags/X` is allowed by the spec's version rule ("apply to a repo and to a location alike"), but `git clone --branch heads/X` fails. Take the prefix off as `manifest.version_ref` does, clone `--branch X`, and refuse when the clone's refs show the other kind (`refs/heads/X` absent for `heads/`, present for `tags/`). A commit: say "a branch or tag is meant" only when git's text (run in the C locale) says the remote branch was not found, not after every failed clone, since an auth or network failure would then read as a wrong version. Name the commit read (`git rev-parse HEAD` in the bare clone) is 2b-2's; in 2b-1 the leaf's label in messages and in the resolved files' head comment is the masked `label()`.
+8. **[Approach, 2b-1]** Where the temporary clone lives. The plan does not say. `status` writes nothing in the system directory and `init` has none yet, so use `tempfile.mkdtemp(prefix="repos-manifest-")` in the system's temporary directory, `shutil.rmtree` in a `finally` (a `Stopped` from `signals_end_the_run` reaches it; git is ended first by findings 4), and one sentence in the design that a kill by SIGKILL can leave it there.
+9. **[Consequences, 2b-1]** The root `docs/design.md` sentence changes, so its change-log rule applies: "One row per change to this file, appended in the same change that alters a section: date, section, one line, issue, and the line count".
+10. **[File targeting, 2b-1]** The adapter. There is no commit warning in `_rc_refuse_removed_source` on the 569 branch (grep finds none in it or its test), so "keeping the commit warning" refers to nothing. The new line is the existing `$init` with `<manifest>` replaced by `$ACTIVE_PROJECT_SOURCE [--manifest-ref $ACTIVE_PROJECT_SOURCE_REF] --manifest-path ${ACTIVE_PROJECT_SOURCE_PATH:-manifest.yaml}` (`--manifest-ref` left out when `source_ref` is unset, so the default branch is read), and, when `source_ref` is 40 hex characters, one sentence that the tool takes a branch or a tag, so give one. Keep the `^(https?|file)://` condition. Test lines 2781 (`assert_not_contains` on the old text) and 2816 change with it, plus a case for the commit sentence.
+11. **[Documents, 2b-1, owner text]** The new `docs/manifest/roadmap.md` Direction line is invented, not the owner's words. Its wording is assembled from agent-written text: pull request 597's body ("until the tool reads a manifest from a git repo") and the design's "kept by hand". The only owner quote on this stretch is "Which ever is easier, I don't think much of this functionality will be used by any other agents until we are done". Its check `file-exists tools/repos-manifest/src/repos_manifest/fetch.py` would not show the claim either. The acceptance it serves is already carried by the tool roadmap lines "A manifest can be read from a private git server" and "Project11 is described by a manifest in one of its repos and set up from it", and by the Direction line naming #473. Leave the line out of 2b-1; if the host wants it, put the proposed wording to the owner in the pull request body.
+12. **[Open question 8, plan text]** The premise is wrong on the code: `init` does not read twice. It reads once (init.py:276), resolves and plans from that read, and syncs with that plan (`sync_distros(system, config, plan, env)`). Only a later `sync` that finishes a failed `init` reads again, which the design covers ("Repos are only ever brought in line with the current manifest"). Drop the question.
+13. **[Documents, 2b-1]** Say in "What is built" and in sync's step 1 text that until `local_manifest` is built, a developer who edits the manifest in the clone of its repo under `src/` is not read: `sync` reads the recorded location, and leaves that clone's local work alone as for any repo. The design's sync section says the opposite today ("A developer who is editing the manifest in its checkout gets that edited manifest"), so without the sentence the design is wrong for the git form.
+
+### Open questions (the plan's eight)
+
+1. `status` reading the network: the design's "Which manifest a distro reads" ("Every time a distro reads its manifest, it reads the first of these that exists ... the location in `manifest`") already answers that `status` reads the recorded location; "makes no network call of its own" was written for paths. A is sound. Host's mechanism choice, easy to change.
+2. A network manifest naming the local disk: answered by the spec ("The `url` is any that is allowed for a repo", which includes an absolute path, and "These apply to a repo and to a location named under `base:` alike"). Sound; 2b-2 only.
+3. Git's error text: the design says only "it fails with a message". Printing git's stderr masked (`mask_urls`, the url already registered by the check) with unsafe characters replaced is sound; the "branch or tag" hint only on git's not-found text (finding 7). Mechanism.
+4. Limits: neither design nor spec gives them; the 2026-11-18 Checkpoint chose them. Sound as constants written in the design; `docs/manifest/design.md`'s "Time limits on fetches" bullet updated to match. Mechanism.
+5. A relative `base` in git: the design answers the direction ("a relative path is taken from the manifest that names it"); join, normalise and refuse a result that leaves the repo is sound and keeps the spec's "no `..`" true of the result. Mechanism; 2b-2.
+6. `status --json`'s `manifest` field: no workspace script reads it (the adapter "never reads config.yaml"; grep of `.agent/` finds no reader of the field). The object form is sound. Mechanism.
+7. https to http: settled by finding 5 (allowed transports from the url's scheme), consistent with the 2026-11-18 Checkpoint's "never https to http". Mechanism, no question left.
+8. `init` reading twice: premise false on the code (finding 12). Drop it.
+
+None is an owner question: each is reversible before release, and none changes what the tool is for. The one owner item is the roadmap Direction line (finding 11), which is not among the eight.
+
+### Outside the issue (point 4)
+
+- `fetch_from` on the manifest's repo: not separable; a trap in 2b-1 (finding 1). Move into 2b-1.
+- `local_manifest` and sync's step 1: separable. No data is at risk: `sync` leaves the clone's local work alone. The trap is silent: a developer's edit is not read. Finding 13 makes the design say so. Systems set up by 2b-1's `init` lack the `local_manifest` the design says `init` sets itself; when it is built, those need a hand edit (pre-release, acceptable; say it in that issue).
+- A distro's `manifest_version`: separable; `add-distro` is not built and `read_config` refuses any key in a distro's entry.
+- A manifest named by a commit: separable; refused with a message (finding 7), and the adapter message says so (finding 10).
+
+### Summary
+
+The plan's split is right, and 2b-1 is the smallest part that gives `init`, `sync`, `status` and `show` a manifest in a git repo, with "nothing was changed" holding on a failed fetch because the read happens in `resolve_all` before any change. Every finding has an answer in the design, the spec or the code, so what remains can be handed to the implementer of 2b-1 as the directions below; no design choice is left open.
+
+### Recommended Actions
+
+- [ ] 2b-1: apply `fetch_from` to the git-form manifest's url in `init` and in every read of `config.yaml`'s manifest (finding 1), with a test of a field machine whose published url is unreachable and whose prefix serves the manifest, and an update to the "Where repos are fetched from" and "What is built" sentences.
+- [ ] 2b-1: follow the design's refusal row: a local path with `--manifest-path` or `--manifest-ref` is refused; `file://` is the local git form; tests use `file://` (finding 2).
+- [ ] 2b-1: the git reader gets its environment from `require_git()`, moved to a module `fetch.py` can import without a cycle, called once per process; the path form keeps today's order; the Refusals text names the order for the git form (finding 3).
+- [ ] 2b-1: no terminal: `start_new_session=True`, `GIT_TERMINAL_PROMPT=0`, 60 s for the whole call, then `os.killpg(pid, SIGKILL)` and `wait()`; the same on a stop signal. With a terminal: same group, no limit, end by pid. A test that a hanging server's helper is gone after the limit (finding 4).
+- [ ] 2b-1: `GIT_ALLOW_PROTOCOL` from the url's scheme (https; http:https; ssh; file); a unit test per scheme and a local http redirect that works; drop the `file://` redirect test (finding 5).
+- [ ] 2b-1: `git --literal-pathspecs ls-tree -z -l HEAD -- PATH`, one entry, printed name equal to the path; modes 100644/100755 read, 120000/160000/040000 refused by name; over 1 MiB refused before `cat-file blob`; tests for `./x`, `x/`, a path through a symlinked directory (finding 6).
+- [ ] 2b-1: `heads/`/`tags/` versions taken off and checked against the refs the clone got; the "branch or tag is meant" hint only when git's C-locale text says the remote branch was not found; a test that an unreachable host does not get the hint (finding 7).
+- [ ] 2b-1: the temporary clone in `tempfile.mkdtemp(prefix="repos-manifest-")`, removed in `finally`; the design names where it is and that SIGKILL can leave it (finding 8).
+- [ ] 2b-1: the masked `label()` in the resolved files' head comment and in every message for a git leaf (finding 7; output.py:64 prints `resolved.source` unmasked).
+- [ ] 2b-1: a change-log row in the root `docs/design.md` (finding 9); `docs/manifest/design.md`'s "Time limits on fetches" bullet names the manifest read's limit.
+- [ ] 2b-1: the adapter line built from `$init` as in finding 10, a commit sentence for a 40-hex `source_ref`, no "commit warning" wording; test lines 2781 and 2816 and a commit case.
+- [ ] 2b-1: no new `docs/manifest/roadmap.md` Direction line; offer the wording to the owner in the pull request body if wanted (finding 11).
+- [ ] 2b-1: "What is built" and sync's step 1 say that an edited manifest in its clone is not read until `local_manifest` is built (finding 13).
+- [ ] Plan text: drop open question 8 (finding 12); mark open question 7 settled by finding 5.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:37 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the Plan Review at 436848ed finds the plan ready: every finding has its answer in the design, the spec or the code, none of the eight open questions is the owner's by the review's reading, and what remains is fourteen exact directions for the implementer of part 2b-1)
+**After**: plan
+**Decision**: proceed
+
+This answer starts part 2b-1: a manifest in a git repo, for `init` and `sync`, with `status` and `show` reading the recorded location afresh. Pull request 603 (issue 569 part 3, the removal of the earlier format's reader) merged on 2026-11-24 and main is merged into this branch, so the plan's condition that implementation starts after it holds. The implement handoff quotes the review's fourteen directions in full and tells the implementer to follow them where they differ from the plan's text. One of them moves `fetch_from` acting on the manifest's own repo into this part, because without it a field machine would read the manifest from the public host while fetching every repo from the private one. One leaves the new Direction line out of `docs/manifest/roadmap.md`: that line is the owner's text, and its wording is offered to him in the pull request instead.
+
+Also in this part, on the owner's answer of 2026-11-24 at the merge of pull request 603 ("Merge, F1 goes into 498 (Recommended)"): the module docstring of `cli.py`, printed by `--help`, says every command reads a manifest; it is reworded to "Every command that reads a manifest ...", as the README and the design already say, since `build` works from the saved resolution.
+
+Host decisions on the plan's open questions, each as the review recommends and listed for the owner's veto: `status` reads a manifest recorded in a git repo as `sync` does, so it makes a network read for that form; git's error text is printed, masked like the tool's other URL output, with the "a branch or tag is meant" hint only when git says the ref was not found; the read is limited to 60 seconds when there is no terminal and to 1 MiB, as constants written in the design; `status --json` gives the manifest as an object for the git form and a string otherwise; a redirect is followed only within the URL's own scheme.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 14:15 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-498 at `cf54903a`
+
+Part 2b-1 only: a manifest in a git repo, for `init` and `sync`, with `status` and `show` (no argument) reading the recorded location afresh. Parts 2b-2 and 2b-3 are not built.
+
+- `58befa75`: `cli.py`'s docstring (printed by `--help`) says "Every command that reads a manifest ...", on the owner's decision at the merge of pull request 603.
+- `3f041a5a`: the reader. New `fetch.py` (bare shallow clone in `mkdtemp(prefix="repos-manifest-")`, removed in a `finally`; `--literal-pathspecs ls-tree` for exactly the path, link/submodule/directory refused by name, over 1 MiB refused before `cat-file blob`; `GIT_ALLOW_PROTOCOL` from the url's scheme; no terminal: own session, `GIT_TERMINAL_PROMPT=0`, 60 s for the whole read, then `killpg(SIGKILL)` and `wait`, the same on a stop signal; with a terminal: same group, no limit, end by pid; `heads/`/`tags/` checked against the clone's refs; the branch-or-tag hint only on git's C-locale "Remote branch ... not found"). New `location.py` (`GitLocation`, `check_git_location`, the one check through the manifest checker). `require_git` moved to new `gitenv.py`; `Refusal` moved beside `ManifestError` (re-exported from `system.py`). A git-read manifest with `base` is refused.
+- `37fbae57`: `init --manifest-path/--manifest-ref` (each once), the design's refusal row (a local path, absolute included, with either option; `--manifest-ref` without `--manifest-path`), vcs and git checked before the read; `config.yaml`'s mapping written and read by the same check; distro refusals name `--manifest-ref` for the git form.
+- `632575a6`: `sync`, `status`, `show` read it through `read_recorded_manifest`; `status` text and `--json` (object for the git form); masked label in messages and the resolved files' head comment.
+- `7989b1e6`: `fetch_from` applied to the manifest's own repo in `init` and every read of the recorded location.
+- `f8732974`: the adapter's URL line in `_rc_refuse_removed_source` gives the git-form `init` command, with a sentence for a 40-hex `source_ref`; suite assertions updated.
+- `cf54903a`: tool design, spec, README, tool roadmap check, `docs/manifest/design.md`, root `docs/design.md` and its change-log row (1286 lines); plan's open question 8 dropped, 7 marked settled. No line added to `docs/manifest/roadmap.md`.
+
+Suites run (worktree source on `PYTHONPATH`, the main checkout's venv):
+- tools/repos-manifest pytest, whole suite in two foreground halves (one run would pass the 10-minute tool limit): files 1-18 `1275 passed in 419.04s`; files 19-33 `837 passed in 310.76s`; nothing skipped (`-rs` listed none).
+- `bash .agent/scripts/tests/test_ros2_colcon.sh`: `=== Results: 1207 passed, 0 failed, 0 skipped ===`
+- `bash .agent/scripts/tests/test_design_anchors.sh`: `test_design_anchors: 82 passed, 0 failed`
+
+The full pre-commit pass over the branch was left to the host (each commit ran its hooks with `SKIP=validate-script-tests`).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 14:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-498 at `c2da3363`
+**Base**: origin/main
+**Depth**: Deep (reason: network fetch on manifest- and command-line-supplied values; 30 files, +2159 -405)
+**Must-fix**: 2 | **Suggestions**: 10
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; the script's rule asks a re-review, but the owner set one review round for the manifest work (2026-11-24): fix the must-fix items, defer the suggestions to one follow-up issue
+
+Part 2b-1 of the plan: a manifest in a git repo for `init` and `sync`, with `status` and `show` reading it afresh, and `fetch_from` on the manifest's own repo. Reviewers: static analysis (pre-commit on the changed .py/.sh files: clean), governance and plan drift (lead), a fresh Claude adversarial subagent, Codex (ran, complete). Gemini: skipped, failed earlier today ("empty response; 1 tool action(s) were auto-denied in headless mode (Bash)").
+
+### Findings
+- [x] (must-fix) `status` and `show` run the git read outside `signals_end_the_run()`: on SIGTERM or SIGHUP with no terminal the tool dies at once, git and its helper (own session) keep running with no limit and the `repos-manifest-*` temporary clone stays; Ctrl-C gives a traceback (KeyboardInterrupt is not caught by `main`). Reproduced for both (exit -15, git helpers alive, temporary left); `sync` and `init` clean. The design and `fetch.py` say the clone is removed "a stop signal included". Fix: wrap `run_status`'s body and `cmd_show`'s read in `with signals_end_the_run():`, catch `Stopped` and return `stop_exit(exc, f"stopped by {signal_name(exc)}; nothing was changed")`; add a SIGTERM test per command like `test_a_stop_signal_during_the_read_ends_git_and_leaves_no_temporary` — `tools/repos-manifest/src/repos_manifest/status.py:138`, `cli.py:141`
+- [x] (must-fix) A person's `url.<base>.insteadOf` that changes transport (the common `https://github.com/` to `git@github.com:`) makes the read fail with git's "transport 'ssh' not allowed" and no next step, because `GIT_ALLOW_PROTOCOL` is checked after the rewrite (reproduced: a hand clone works, the same url with `GIT_ALLOW_PROTOCOL=https` gives "fatal: transport 'file' not allowed"). The design ("Whatever lets a person clone that repo by hand lets the tools read the manifest"), the README ("read as a person clones it") and `fetch.py`'s docstring say it works. Fix (keeping the transport rule): say in `docs/design.md` "Where the manifest comes from", the README and `fetch.py`'s docstring that a url rewrite to another transport is refused, and when git's text says "transport '<x>' not allowed" add the next step "give the url the rewrite leads to (git ls-remote --get-url <url>) as the manifest's url"; a test with an insteadOf rewrite. (Or widen the rule to the rewritten url's transport, from `git ls-remote --get-url`, checked by `check_url`.) — `tools/repos-manifest/src/repos_manifest/fetch.py:92`
+- [ ] (suggestion) The redirect test proves nothing about `GIT_ALLOW_PROTOCOL`: with the env set to `https:http:ssh:file` it still passes (curl never follows a redirect to `file://`); only the unit test of `allowed_protocols` covers the rule. Test the effect, e.g. an `insteadOf` from the served http url to `file://` that must fail — `tools/repos-manifest/tests/test_fetch_git.py:250`
+- [ ] (suggestion) `tags/x` when the repo has both a branch and a tag `x` is refused (git's `--branch` takes the branch); the message is true, but fetching `refs/tags/x` exactly would read what was asked — `tools/repos-manifest/src/repos_manifest/fetch.py:100`
+- [ ] (suggestion) With no terminal, `GIT_ASKPASS`/`SSH_ASKPASS` are left as set, so a desktop askpass can still put up a dialog until the 60 s limit; the design's "fails with a message and does not wait" is a little strong — `fetch.py:93`
+- [ ] (suggestion) A run backgrounded at a terminal (`sync &`) has a terminal it cannot read: a prompt stops on SIGTTIN and with no limit the run waits; `has_terminal` could also require `os.tcgetpgrp(fd) == os.getpgrp()` — `fetch.py:60`
+- [ ] (suggestion) With a terminal, a SIGTERM to the tool alone ends git by pid and can leave ssh at a passphrase prompt (by the plan's choice; say so in the design) — `fetch.py:264`
+- [ ] (suggestion) A second size guard on the bytes `cat-file` returns, and a bound on the clone itself at a terminal (`--filter=blob:limit=1m` where supported); not exploitable now, the ls-tree size is the hash-checked object's — `fetch.py:112`
+- [ ] (suggestion) `config.yaml` records the url in full (by design, as the resolved files and a clone's `.git/config` do) and is written 0644 under the usual umask; the design could say that, or write it 0600 when the url carries a password — `tools/repos-manifest/src/repos_manifest/system.py:122`
+- [ ] (suggestion) The status safety walk (`STATUS_MAY_CALL`) does not reach `fetch.py`, whose git commands `status` now runs; a walk or test that they write only the temporary directory — `tools/repos-manifest/tests/test_update_safety.py:446`
+- [ ] (suggestion) The adapter's printed `init` command interpolates `source`, `source_ref` and `source_path` unquoted (as the line above it already does), the hint covers only `^(https?|file)://` sources, and the commit sentence only 40-hex refs (not abbreviated or SHA-256) — `.agent/project_types/ros2_colcon/adapter.sh:647`
+- [ ] (suggestion) Pre-existing, now more visible: a `config.yaml` `manifest` string such as `host:m.yaml` is read as a local path (`is_url` looks only for `://`), while the spec calls it a URL — `tools/repos-manifest/src/repos_manifest/system.py:176`
+
+Not findings: an absolute path with `--manifest-path` refused by `init` (raised by Codex and the Claude adversarial pass) follows the Plan Review's direction 2 and the design's refusal row, `file://` being the local git form; the missing `docs/manifest/roadmap.md` line (Codex) is left out on purpose.
+
+Verified: `PYTHONPATH=src .venv python -m pytest` on test_fetch_from, test_fetch_git, test_init_refusals, test_manifest_in_git, test_manifest_reading, test_system, test_update_safety, test_url_messages: 757 passed in 25.96s; `bash .agent/scripts/tests/test_ros2_colcon.sh`: 1207 passed, 0 failed, 0 skipped; the whole tool suite not rerun (the implementer's result: 1275 + 837 passed). Rule-off checks in a scratch copy: exact-name rule off fails 3 tests, size limit off fails 1, git `base` refusal off fails 2, the transport rule off fails none (suggestion above). Root `docs/design.md` is 1286 lines after the merge of main, as its new change-log row says.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 14:50 -05:00
+**By**: claude-code (claude-opus-5-5)
+
+**Branch**: feature/issue-498 at `678fc3bc`
+**Addressed**: Local Review (Pre-Push) at `c2da3363` (2026-11-24 14:27 -05:00)
+**Commits**: ab9ee785, eebc07d0, 678fc3bc
+
+### Actions
+- [x] (must-fix 1) `status` and `show` (with or without a manifest given) now run inside `signals_end_the_run()`; a stop signal ends git and its helper, removes the temporary clone and prints "ERROR: stopped by <signal>; nothing was changed", no traceback on Ctrl-C. Tests `test_status_and_show_stopped_during_the_read_end_git_and_leave_no_temporary` (SIGTERM) and `test_status_and_show_stopped_by_ctrl_c_during_the_read_print_no_traceback` (SIGINT), each over `status`, `status --json` and `show`: all 6 fail without the fix (empty stderr for SIGTERM, a KeyboardInterrupt traceback for SIGINT) — `status.py:204`, `cli.py:141`, `tests/test_fetch_git.py` (ab9ee785)
+- [x] (must-fix 2) The transport rule is kept. When git's text says "transport '<x>' not allowed" (only a rewrite gives it; a redirect is refused by curl as "Protocol ... disabled (in redirect)", and the redirect test now asserts the message names no rewrite), the message adds: "the read allows only the transport the url names, and a url rewrite in git's configuration (url.<base>.insteadOf) can lead git to another; give as the manifest's url the url the rewrite leads to, which `git ls-remote --get-url <url, masked and shell-quoted>` prints". docs/design.md ("Where the manifest comes from", twice, and "Fetching over https and pushing over ssh"), the README and fetch.py's docstring say so. Tests `test_a_rewrite_to_another_transport_is_refused_with_the_url_to_give` (insteadOf in a scratch GIT_CONFIG_GLOBAL, https://example.invalid to file://; the rewritten url given directly reads) and `test_the_rewrite_step_masks_the_url` fail without the fix — `fetch.py:_clone_failed`, `tests/test_fetch_git.py` (eebc07d0, 678fc3bc)
+- Left open on purpose: the ten suggestions (indexes 2 to 11 of the review entry), unticked, for the one follow-up issue when the pull request merges.
+
+### Checks
+- New tests: `tests/test_fetch_git.py -k status_and_show`: 6 passed (6 failed with the fix stashed); `-k "rewrite or redirect"`: 4 passed (2 failed with the fix stashed).
+- Whole tool suite, worktree source on PYTHONPATH, serial (pytest-xdist is not installed in .venv, so no `-n 4`): first 19 files 1315 passed in 402.40s; last 14 files first 1 failed, 804 passed (test_url_messages scan on the new command line; fixed in 678fc3bc), then 805 passed in 313.34s. After 678fc3bc, test_url_messages.py and test_fetch_git.py: 106 passed.
+- black (line length 100) and flake8 (repo args) clean on the touched Python files; the commit hooks ran black and flake8. The full pre-commit pass is left to the host.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 14:54 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (manifest-work rule: fix pass, no second round)
+**After**: publish
+**Decision**: publish
+
+Written by the host where `next` would start a second review round (`action=review-code` after the fix pass at 06c3446a), under the lighter review level the owner approved for the manifest work on 2026-11-24 ("One plan review and one code review round per pull request. Must-fix findings get fixed; suggestions go into a single follow-up issue instead of another round."; his answer: "yes"). The rule's text is pull request 607 (issue 605), not yet merged; this checkpoint follows it as he approved it in the session.
+
+Part 2b-1: a manifest in a git repo, for `init` and `sync`, with `status` and `show` reading the recorded location afresh. The one review round (74c89f53) found 2 must-fix and 10 suggestions. The fix pass fixed both must-fix findings: `status` and `show` stopped by a signal during the read now end git and remove the temporary clone; and a url rewrite in the person's git configuration to another transport is refused with a message that says what to give, the documents saying the same. The host chose that smaller fix over honouring the rewrite, listed for the owner's veto.
+
+The host's full pre-commit pass ran with no SKIP over the files changed since origin/main and exited 0: every hook that applied passed, the script-suite hook, shellcheck, black and flake8 included. The branch was level with main.
+
+Suggestions left open for the one follow-up issue, from the review entry:
+
+- (suggestion) The redirect test proves nothing about `GIT_ALLOW_PROTOCOL`: with the env set to `https:http:ssh:file` it still passes (curl never follows a redirect to `file://`); only the unit test of `allowed_protocols` covers the rule. Test the effect, e.g. an `insteadOf` from the served http url to `file://` that must fail — `tools/repos-manifest/tests/test_fetch_git.py:250`
+- (suggestion) `tags/x` when the repo has both a branch and a tag `x` is refused (git's `--branch` takes the branch); the message is true, but fetching `refs/tags/x` exactly would read what was asked — `tools/repos-manifest/src/repos_manifest/fetch.py:100`
+- (suggestion) With no terminal, `GIT_ASKPASS`/`SSH_ASKPASS` are left as set, so a desktop askpass can still put up a dialog until the 60 s limit; the design's "fails with a message and does not wait" is a little strong — `fetch.py:93`
+- (suggestion) A run backgrounded at a terminal (`sync &`) has a terminal it cannot read: a prompt stops on SIGTTIN and with no limit the run waits; `has_terminal` could also require `os.tcgetpgrp(fd) == os.getpgrp()` — `fetch.py:60`
+- (suggestion) With a terminal, a SIGTERM to the tool alone ends git by pid and can leave ssh at a passphrase prompt (by the plan's choice; say so in the design) — `fetch.py:264`
+- (suggestion) A second size guard on the bytes `cat-file` returns, and a bound on the clone itself at a terminal (`--filter=blob:limit=1m` where supported); not exploitable now, the ls-tree size is the hash-checked object's — `fetch.py:112`
+- (suggestion) `config.yaml` records the url in full (by design, as the resolved files and a clone's `.git/config` do) and is written 0644 under the usual umask; the design could say that, or write it 0600 when the url carries a password — `tools/repos-manifest/src/repos_manifest/system.py:122`
+- (suggestion) The status safety walk (`STATUS_MAY_CALL`) does not reach `fetch.py`, whose git commands `status` now runs; a walk or test that they write only the temporary directory — `tools/repos-manifest/tests/test_update_safety.py:446`
+- (suggestion) The adapter's printed `init` command interpolates `source`, `source_ref` and `source_path` unquoted (as the line above it already does), the hint covers only `^(https?|file)://` sources, and the commit sentence only 40-hex refs (not abbreviated or SHA-256) — `.agent/project_types/ros2_colcon/adapter.sh:647`
+- (suggestion) Pre-existing, now more visible: a `config.yaml` `manifest` string such as `host:m.yaml` is read as a local path (`is_url` looks only for `://`), while the spec calls it a URL — `tools/repos-manifest/src/repos_manifest/system.py:176`
+
+Outside reviewers on the one round: Codex ran (eight points: one became a must-fix, several became suggestions, two were rejected as by design); Gemini skipped, failed earlier today ("empty response; 1 tool action(s) were auto-denied in headless mode (Bash)").
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 14:56 -05:00
+**By**: Claude Code (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #611 at `8ceb46d5`
+**Depth**: Deep (reason: cold read, cross-model only: codex, per handoff)
+**Must-fix**: 0 | **Suggestions**: 3
+
+Codex ran once (`cross_model_review.sh --pr 611 --agents codex --issue 498`, AGENT_TIMEOUT=3000; EXIT=0, review complete). The prompt held the whole diff of the 28 files outside `.agent/work-plans/` (plan.md and progress.md left out, no truncation), so the whole diff was read. Codex also looked at local files, and its points 3, 7, 8, 9 and 10 cite the work plan, which the script did not give it.
+
+Of Codex's ten points: 1 (config.yaml 0644 with the url), 4 (`tags/x` with a branch `x`), 5 (SIGTERM at a terminal ending git by pid), 7 (`host:file` read as a local path) and the quoting part of 2 are known and go to the follow-up issue; 3 (absolute path with `--manifest-path`) and 10 (no line in docs/manifest/roadmap.md) are by design; 8 (the location model not yet shared in one module) is a plan-shape remark with no defect, dropped.
+
+### Findings
+- [ ] (suggestion) The adapter's git-form hint prints the settings file's `source` url unmasked; the line it replaced did too, so not new, but a token in that url reaches stderr — `.agent/project_types/ros2_colcon/adapter.sh:649`
+- [ ] (suggestion) A stop signal in the moment between `mkdtemp` and its `try`, or between `Popen` returning and its `try`, leaves the temporary clone or a git process behind; narrow windows, not covered by the stop tests — `tools/repos-manifest/src/repos_manifest/fetch.py:106`
+- [ ] (suggestion) The comment above `_rc_refuse_removed_source` still says init reads a local file only and the clone is updated by hand, the opposite of the message below it now — `.agent/project_types/ros2_colcon/adapter.sh:615`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 15:12 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Reviews-read**: none
+
+**PR**: #611 at `8ceb46d5`
+**Sources**: 3 (Local Review (Pre-Push) @ `c2da3363`, read through the host's `## Checkpoint`; Local Review @ `8ceb46d5` (Codex cold read); CI rollup). Copilot: skipped, failed earlier today (insufficient remaining quota).
+**Cross-source confirmations**: 0
+**CI**: pending (6 check-runs pending at 15:12, after about 6 minutes of polling: `Lint (pre-commit)`, `repos-manifest tests (#267 prototype) (Python 3.10)` and `repos-manifest tests (#267 prototype) (Python 3.14)`, each on two workflow runs (45475185677 and 45475197676); `Validate Adapter Contract` and `Validate Documentation` pass on both; no failure so far)
+
+The pre-push review (74c89f53 per the host; entry at `c2da3363`) is stale for the helper because the fix pass changed code, so its ten open suggestions are carried from the entry and the Checkpoint, which lists them as left open on purpose for one follow-up issue at merge (lighter review level approved 2026-11-24: one round, suggestions deferred). Its two must-fix findings are ticked and fixed (`06c3446a`); the fix commits are in the PR. The three Codex-read suggestions were re-read against the code at the head: `adapter.sh:615-620` still says init "reads a local file only" and the clone "the tool never fetches" while the message below it prints the git form; `adapter.sh:645-652` prints `ACTIVE_PROJECT_SOURCE` unmasked; `fetch.py:106` (`mkdtemp` before the `try` at 107) and `fetch.py:253` (`Popen` before the `try` at 264) have the windows described. No finding is classified must-fix: each is a narrow window, a stale comment, or a hardening that no code path at the head makes exploitable, and the merge gate needs none fixed. 13 open findings, 0 must-fix; all deferred to the one follow-up issue.
+
+### Findings
+- [x] (suggestion, Local Review (Pre-Push) @ `c2da3363`) The redirect test proves nothing about `GIT_ALLOW_PROTOCOL`: with the env set to `https:http:ssh:file` it still passes; only the unit test of `allowed_protocols` covers the rule. Test the effect, e.g. an `insteadOf` from the served http url to `file://` that must fail — `tools/repos-manifest/tests/test_fetch_git.py:250` (deferred: owner, 2026-11-24: Merge; follow-up issue 612)
+- [x] (suggestion, Local Review (Pre-Push) @ `c2da3363`) `tags/x` when the repo has both a branch and a tag `x` is refused; fetching `refs/tags/x` exactly would read what was asked — `tools/repos-manifest/src/repos_manifest/fetch.py:100` (deferred: owner, 2026-11-24: Merge; follow-up issue 612)
+- [x] (suggestion, Local Review (Pre-Push) @ `c2da3363`) With no terminal, `GIT_ASKPASS`/`SSH_ASKPASS` are left as set, so a desktop askpass can still put up a dialog until the 60 s limit; the design's "does not wait" is a little strong — `fetch.py:93` (deferred: owner, 2026-11-24: Merge; follow-up issue 612)
+- [x] (suggestion, Local Review (Pre-Push) @ `c2da3363`) A run backgrounded at a terminal (`sync &`) has a terminal it cannot read; `has_terminal` could also require `os.tcgetpgrp(fd) == os.getpgrp()` — `fetch.py:60` (deferred: owner, 2026-11-24: Merge; follow-up issue 612)
+- [x] (suggestion, Local Review (Pre-Push) @ `c2da3363`) With a terminal, a SIGTERM to the tool alone ends git by pid and can leave ssh at a passphrase prompt; say so in the design — `fetch.py:264` (deferred: owner, 2026-11-24: Merge; follow-up issue 612)
+- [x] (suggestion, Local Review (Pre-Push) @ `c2da3363`) A second size guard on the bytes `cat-file` returns, and a bound on the clone itself at a terminal — `fetch.py:112` (deferred: owner, 2026-11-24: Merge; follow-up issue 612)
+- [x] (suggestion, Local Review (Pre-Push) @ `c2da3363`) `config.yaml` records the url in full and is written 0644; the design could say that, or write 0600 when the url carries a password — `tools/repos-manifest/src/repos_manifest/system.py:122` (deferred: owner, 2026-11-24: Merge; follow-up issue 612)
+- [x] (suggestion, Local Review (Pre-Push) @ `c2da3363`) The status safety walk (`STATUS_MAY_CALL`) does not reach `fetch.py`, whose git commands `status` now runs; add a walk or test that they write only the temporary directory — `tools/repos-manifest/tests/test_update_safety.py:446` (deferred: owner, 2026-11-24: Merge; follow-up issue 612)
+- [x] (suggestion, Local Review (Pre-Push) @ `c2da3363`) The adapter's printed `init` command interpolates `source`, `source_ref` and `source_path` unquoted; the hint covers only `^(https?|file)://` sources and the commit sentence only 40-hex refs — `.agent/project_types/ros2_colcon/adapter.sh:647` (deferred: owner, 2026-11-24: Merge; follow-up issue 612)
+- [x] (suggestion, Local Review (Pre-Push) @ `c2da3363`) Pre-existing: a `config.yaml` `manifest` string such as `host:m.yaml` is read as a local path (`is_url` looks only for `://`) — `tools/repos-manifest/src/repos_manifest/system.py:176` (deferred: owner, 2026-11-24: Merge; follow-up issue 612)
+- [x] (suggestion, Local Review @ `8ceb46d5`) The adapter's git-form hint prints the settings file's `source` url unmasked (the replaced line did too), so a token in that url reaches stderr — `.agent/project_types/ros2_colcon/adapter.sh:649` (deferred: owner, 2026-11-24: Merge; follow-up issue 612)
+- [x] (suggestion, Local Review @ `8ceb46d5`) A stop signal between `mkdtemp` and its `try`, or between `Popen` returning and its `try`, leaves the temporary clone or a git process behind; not covered by the stop tests — `tools/repos-manifest/src/repos_manifest/fetch.py:106` (deferred: owner, 2026-11-24: Merge; follow-up issue 612)
+- [x] (suggestion, Local Review @ `8ceb46d5`) The comment above `_rc_refuse_removed_source` says init reads a local file only and the clone is updated by hand, the opposite of the message below it — `.agent/project_types/ros2_colcon/adapter.sh:615` (deferred: owner, 2026-11-24: Merge; follow-up issue 612)
+
+### False positives
+- (Local Review (Pre-Push) @ `c2da3363`, Codex) An absolute path with `--manifest-path` refused by `init` — by design: the Plan Review's direction 2 and the design's refusal row make `file://` the local git form (already ruled in that entry).
+- (Local Review @ `8ceb46d5`, Codex) No line in `docs/manifest/roadmap.md` — left out on purpose, per the entry; not a defect.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 15:32 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+"Merge (Recommended)"
+
+Asked at the findings checkpoint for pull request 611 (part 2b-1: a manifest read from a git repo, for `init` and `sync`), together with the merge question as the manifest-work rule says, after the Integrated Review at 356e7ce3 with thirteen open suggestions and no must-fix. The dialog gave: what the part does; one plan review with fourteen directions applied; the one code review round's two must-fix findings, both reproduced and fixed with tests; the Codex cold read of the whole final diff, approved, with nothing wrong in the two fixes; examples of the thirteen suggestions (a redirect test that passes with the transport rule off; `tags/x` refused when a branch `x` exists; `config.yaml` world-readable with the url in full; two narrow windows for a stop signal; a stale adapter comment); the host's choice open to his veto (a url rewrite to another transport is refused with advice, not honoured); all 10 CI checks passing on head 8ceb46d5, mergeable, a clean trial merge with main; the outside reviewers (Codex on the one round and as the cold read; Gemini skipped, failed earlier today; Copilot skipped, failed earlier today for lack of quota); and that the issue stays open for two later parts. He did not veto the choice. The other choices offered were hold and stop.
+
+The follow-up issue for this pull request's deferred suggestions is #612 (one issue, its body naming pull request 611), opened on this answer under the standing authorization of the manifest-work rule.

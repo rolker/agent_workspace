@@ -25,10 +25,13 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import yaml
 
-from .base import load_manifest
-from .fetch_from import FetchFrom, check_prefix
+from .base import load_manifest, parse_git_manifest
+from .fetch import read_git_file
+from .fetch_from import FetchFrom, check_prefix, manifest_location
+from .gitenv import Env
+from .location import GitLocation, Location, check_git_location
 from .manifest import UNNAMED_LAYER, Manifest
-from .yamlload import ManifestError
+from .yamlload import ManifestError, Refusal  # noqa: F401  (Refusal: imported from here too)
 
 SYSTEM_DIR = ".repos-manifest"
 CONFIG_FILE = "config.yaml"
@@ -58,13 +61,6 @@ SETUP_TEXT = (
 )
 
 Parts = Tuple[str, ...]
-
-
-class Refusal(ManifestError):
-    """A command refuses to go on; nothing was changed. The message gives the next step."""
-
-    def __init__(self, condition: str, next_step: str):
-        super().__init__(f"{condition}. {next_step}")
 
 
 def oserror_message(exc: OSError) -> str:
@@ -109,7 +105,9 @@ def default_mode(full: int) -> int:
 
 @dataclass
 class Config:
-    manifest: str  # as given to init; a relative path is taken from the system directory
+    # As given to init: a path, taken from the system directory when relative, or a file in a
+    # git repo.
+    manifest: Location
     role: Optional[str]
     groups: List[str]
     layout: str
@@ -122,7 +120,13 @@ class Config:
 
 
 def config_text(config: Config) -> str:
-    data: Dict[str, object] = {"manifest": config.manifest}
+    manifest: object = config.manifest
+    if isinstance(config.manifest, GitLocation):
+        manifest = {"url": config.manifest.url}
+        if config.manifest.version is not None:
+            manifest["version"] = config.manifest.version
+        manifest["path"] = config.manifest.path
+    data: Dict[str, object] = {"manifest": manifest}
     if config.role is not None:
         data["role"] = config.role
     if config.groups:
@@ -174,7 +178,10 @@ def is_url(location: str, base: Path) -> bool:
     return "://" in location and not os.path.lexists(base / location)
 
 
-ONLY_A_PATH = "a path; this version reads a manifest given as a path only"
+ONLY_A_PATH = (
+    "a path or a file in a git repo (a mapping with `url`, an optional `version` and `path`);"
+    " this version reads a manifest given in one of those two forms"
+)
 
 
 def read_config(system: Path) -> Config:
@@ -198,9 +205,11 @@ def read_config(system: Path) -> Config:
         raise bad("does not read as YAML") from None
     _check_keys(data, "", ("manifest", "layout"), ("role", "groups", "distros", "fetch_from"), bad)
     manifest = data["manifest"]
-    if not isinstance(manifest, str):
+    if isinstance(manifest, dict):
+        manifest = _read_git_manifest(manifest, bad)
+    elif not isinstance(manifest, str):
         raise bad(f"`manifest` is {_kind(manifest)}, not {ONLY_A_PATH}")
-    if is_url(manifest, system):
+    elif is_url(manifest, system):
         raise bad(f"`manifest` is a URL, not {ONLY_A_PATH}")
     role = data.get("role")
     if "role" in data and not isinstance(role, str):
@@ -237,6 +246,22 @@ def read_config(system: Path) -> Config:
         distros=list(distros) if distros is not None else None,
         fetch_from=_read_fetch_from(data, bad),
     )
+
+
+def _read_git_manifest(value: dict, bad) -> GitLocation:
+    """`manifest` in the git form: `url`, an optional `version` and `path`, each checked by the
+    rules a location's are (``location.check_git_location``)."""
+    _check_keys(value, "manifest", ("url", "path"), ("version",), bad)
+    try:
+        return check_git_location(
+            value["url"],
+            value.get("version"),
+            value["path"],
+            "`manifest`",
+            ("url", "version", "path"),
+        )
+    except ManifestError as exc:
+        raise bad(str(exc)) from None
 
 
 def _read_fetch_from(data: dict, bad) -> Optional[FetchFrom]:
@@ -755,11 +780,19 @@ def put_built_layers(system: Path, distro: Optional[str], layers: Dict[str, Laye
 # --- The manifest ---------------------------------------------------------------------------
 
 
-def read_manifest(location: str, base: Path, shown: Optional[str] = None) -> Manifest:
-    """Read the manifest at `location`, a path taken from `base` when relative, and the
-    manifests it builds on through its own `base` key (``base.py``); the one place a command
-    reads a manifest. It is named `shown` in messages and output, `location` by default. Its
-    warnings go to stderr."""
+def read_manifest(
+    location: Location, base: Path, shown: Optional[str] = None, env: Optional[Env] = None
+) -> Manifest:
+    """Read the manifest at `location` and the manifests it builds on through its own `base`
+    key (``base.py``); the one place a command reads a manifest. A path is taken from `base`
+    when relative, and named `shown` in messages and output, `location` by default. A file in
+    a git repo is read afresh (``fetch.py``), with the git environment `env` when the caller has
+    it, and named by its label, its url masked. Its warnings go to stderr."""
+    if isinstance(location, GitLocation):
+        loaded = parse_git_manifest(read_git_file(location, env), location.label())
+        for warning in loaded.warnings:
+            warn(warning)
+        return loaded
     path = base / location
     if "://" in location and not os.path.lexists(path):
         raise ManifestError(
@@ -769,3 +802,15 @@ def read_manifest(location: str, base: Path, shown: Optional[str] = None) -> Man
     for warning in loaded.warnings:
         warn(warning)
     return loaded
+
+
+def read_recorded_manifest(system: Path, config: Config, env: Optional[Env] = None) -> Manifest:
+    """The manifest `config.yaml` records, read as every distro of the system reads it: a path
+    taken from the system directory, or a file in a git repo, read afresh, from the repo of its
+    name at `fetch_from`'s place when the system sets one. `env` is the run's git environment,
+    when the caller has it."""
+    location = config.manifest
+    if isinstance(location, GitLocation) and config.fetch_from is not None:
+        named = f"`fetch_from` in {system / SYSTEM_DIR / CONFIG_FILE}"
+        location = manifest_location(location, config.fetch_from.prefix, named)
+    return read_manifest(location, system, env=env)

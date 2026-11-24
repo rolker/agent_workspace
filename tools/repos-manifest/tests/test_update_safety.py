@@ -32,6 +32,7 @@ from helpers import (
     snapshot_repo,
     state_of,
 )
+from repos_manifest import gitenv as gitenv_module
 from repos_manifest import status as status_module
 from repos_manifest import sync as sync_module
 from repos_manifest import update
@@ -442,7 +443,8 @@ STATUS_MAY_CALL = {
         "quoted",
         "counted",
     },
-    "sync": {"require_git", "resolve_all", "layer_moved", "Reported"},
+    "sync": {"resolve_all", "layer_moved", "Reported"},
+    "gitenv": {"require_git"},
 }
 # What a function `status` reaches in `update.py` may not pass or call: a git that changes the
 # work tree or the configuration (`change`), holds the lock (`hold`) or may prompt (`prompt`,
@@ -585,8 +587,18 @@ def test_what_status_reaches_in_update_neither_writes_nor_asks_origin():
 
 def test_what_status_reaches_in_sync_writes_nothing():
     reached = _walk(Path(sync_module.__file__), STATUS_MAY_CALL["sync"])
-    assert {"require_git", "resolve_all", "layer_moved", "plan_distros"} <= set(reached)
+    assert {"resolve_all", "layer_moved", "plan_distros"} <= set(reached)
     assert "require_tools" not in reached  # `vcs` is never run
+    _subprocess_words_only(reached, 0)  # sync's own code runs no command for status
+
+
+def test_what_status_reaches_in_gitenv_runs_two_reading_commands():
+    reached = _walk(Path(gitenv_module.__file__), STATUS_MAY_CALL["gitenv"])
+    assert {"require_git", "require_git_version"} <= set(reached)
+    _subprocess_words_only(reached, 2)  # `git rev-parse --local-env-vars` and `git --version`
+
+
+def _subprocess_words_only(reached, expected):
     commands = 0
     for name, function in reached.items():
         for node in ast.walk(function):
@@ -597,7 +609,7 @@ def test_what_status_reaches_in_sync_writes_nothing():
                 commands += 1
                 words = {e.value for e in node.args[0].elts if isinstance(e, ast.Constant)}
                 assert words <= SYNC_SUBPROCESS_WORDS, (name, words)
-    assert commands == 2  # `git rev-parse --local-env-vars` and `git --version`
+    assert commands == expected
 
 
 def test_the_scan_of_a_git_command_catches_a_write():
