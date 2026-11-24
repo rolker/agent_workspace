@@ -71,15 +71,18 @@ local file paths, or issue numbers.
 
 ### 0. Find the repository
 
-`<ref>` is what `issue_repo.sh` is given, the same in every block below:
+`<ref>` is what `issue_repo.sh` is given, the same in every block below.
+`<N>` is the issue number everywhere except step 1's PR number block,
+where it is the pull request number (written `<PR>` here):
 - `--issue <N>` or `--issue <owner/repo#N>` form: that reference, as given
-  (`<N>` in the steps below is its number);
+  (`<N>` is its number);
 - file path form: the `<N>` of the path's `issue-<N>` directory;
-- PR number form: the `<N>` of the current branch's name when it is
-  `feature/issue-<N>` (or `feature/issue-<N>-<description>`), else the PR
-  number. A bare number means this checkout's repository either way; the
-  issue number matters only in a package worktree, whose manifest names
-  the issue's repository for that number.
+- PR number form: the issue number in the current branch's name when it is
+  `feature/issue-<N>`, `feature/issue-<N>-<description>` or
+  `feature/ISSUE-<N>-<description>` (case ignored), else `<PR>`, the pull
+  request number. A bare number means this checkout's repository either
+  way; the issue number matters only in a package worktree, whose manifest
+  names the issue's repository for that number.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"

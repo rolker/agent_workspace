@@ -1309,6 +1309,9 @@ done
 has "$SKILLS/plan-task/SKILL.md" "plan-task: the draft PR's head names origin's owner when origin is a fork of \$_REPO" \
     '_HEAD="${_ORIGIN_SLUG%%/*}:$CURRENT_BRANCH"' \
     'gh pr create -R "github.com/$_REPO" --draft --head "$_HEAD"'
+has "$SKILLS/review-plan/SKILL.md" "review-plan: step 0 names both branch forms and the PR placeholder" \
+    '`feature/ISSUE-<N>-<description>` (case ignored), else `<PR>`, the pull request number' \
+    '`<N>` is the issue number everywhere except step 1'"'"'s PR number block'
 # The pin itself catches a block that lost its guard or a gh line that lost
 # its -R (a mutation of review-issue's text).
 MUT="$(mktemp)"
