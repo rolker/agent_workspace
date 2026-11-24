@@ -621,11 +621,11 @@ _rc_route() {
 # refused, never taken down the bootstrap route: the route `source`
 # selected (a manifest resolved from it by the adapter) is removed (issue
 # #569). The message names the way on: the manifest tool's
-# init --distro-dirs in the root (it needs a manifest that lists distros:,
-# and reads a local file only, so a URL source is cloned at source_ref
-# first and init given the file at source_path, manifest.yaml when unset,
-# inside the clone, which the tool never fetches: the message says it is
-# updated by hand), that init leaves the removed route's checkouts
+# init --distro-dirs in the root (it needs a manifest that lists distros:;
+# a URL source is given in the git form, the URL with --manifest-ref
+# source_ref and --manifest-path source_path, manifest.yaml when unset,
+# which the tool reads from the repo at every sync), that init leaves the
+# removed route's checkouts
 # (layers/main/<layer>_ws/src) and generated directories
 # (configs/manifest-resolved*) unread when the root holds them, then the
 # `unset` of the old keys, and the design's section that holds the
@@ -668,7 +668,14 @@ _rc_refuse_removed_source() {
         echo "init does not read the old checkouts under $root/layers/main/<layer>_ws/src or $root/configs/manifest-resolved*: it clones again under $root/<distro>/, so push work in them first" >&2
     fi
     echo "Then remove the old keys: .agent/scripts/project_setting.sh unset $name source source_ref source_path${line:+, and $line from its line in .agent/projects.local}" >&2
-    echo "Or set the instance up in a new, empty directory and register it in one step, registering <dir> with --manifest <file> --distro ${ACTIVE_PROJECT_DISTRO:-<distro>}${ACTIVE_PROJECT_ROLE:+ --role $ACTIVE_PROJECT_ROLE}" >&2
+    # Or a new, empty directory: registration with --manifest takes a file
+    # on the local disk, so for a URL source init is run there first and
+    # the directory registered without --manifest.
+    if [[ "$ACTIVE_PROJECT_SOURCE" =~ ^(https?|file):// ]]; then
+        echo "Or set the instance up in a new, empty directory: run the init above for this URL source there, then register <dir> without --manifest (registration with --manifest takes a file on the local disk)" >&2
+    else
+        echo "Or set the instance up in a new, empty directory and register it in one step, registering <dir> with --manifest <file> --distro ${ACTIVE_PROJECT_DISTRO:-<distro>}${ACTIVE_PROJECT_ROLE:+ --role $ACTIVE_PROJECT_ROLE}" >&2
+    fi
     echo "More in docs/manifest/design.md, under \"A root that sets source\"" >&2
     return 1
 }

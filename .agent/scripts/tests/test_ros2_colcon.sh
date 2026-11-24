@@ -2818,6 +2818,9 @@ test_source_without_tool_root_refused() {
         "init https://example.invalid/m.git --manifest-ref v1 --manifest-path sys/m.yaml --distro-dirs --distro <distro> [--role <role>]" "$out"
     assert_not_contains "URL source: no clone kept by hand" "init reads a local file only" "$out"
     assert_not_contains "a tag: no commit sentence" "source_ref is a commit" "$out"
+    assert_contains "URL source: a new directory is set up with that init and registered without --manifest" \
+        "Or set the instance up in a new, empty directory: run the init above for this URL source there, then register <dir> without --manifest (registration with --manifest takes a file on the local disk)" "$out"
+    assert_not_contains "URL source: no one-step --manifest registration offered" "registering <dir> with --manifest <file>" "$out"
     printf 'source=https://example.invalid/m.git\nsource_ref=v1\n' > "$sb/.agent/projects.d/tiered"
     out="$(run_adapter "$sb" setup 2>&1)" || true
     assert_contains "URL source without source_path: the file is manifest.yaml" \
@@ -2835,6 +2838,8 @@ test_source_without_tool_root_refused() {
     rc=0; out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
     assert_eq "distro and role on the line, setup: exit 1" "1" "$rc"
     assert_contains "the line's distro and role in the init command" "init <manifest> --distro-dirs --distro fakefox --role sim" "$out"
+    assert_contains "a path source: the one-step registration with --manifest, with the line's distro and role" \
+        "Or set the instance up in a new, empty directory and register it in one step, registering <dir> with --manifest <file> --distro fakefox --role sim" "$out"
     assert_contains "the line's fields named to remove" "unset tiered source source_ref source_path, and role= and distro= from its line in .agent/projects.local" "$out"
     sed -i 's|^tiered ros2_colcon projects/tiered distro=fakefox role=sim$|tiered ros2_colcon projects/tiered distro=fakefox|' "$sb/.agent/projects.local"
     out="$(run_adapter "$sb" setup 2>&1)" || true
