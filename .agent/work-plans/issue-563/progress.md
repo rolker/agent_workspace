@@ -402,3 +402,39 @@ Specialists: static analysis (shellcheck not installed, not run; test_sitrep_che
 - [x] (suggestion) "No work on this machine for: <group>" is decided by step 5's match on the group's first unmet line only, and a pull request with no worktree here also suppresses it; a worktree advancing another line of the group sits in In flight marked with that group just above. Word the bullet as what it checks (Gemini) — `.claude/skills/sitrep/SKILL.md:1159, 1286-1288`
 - [x] (suggestion) Across edges: in a section with no path paragraph, bold `Across the paths, …` (or an unclosed one) still emits a `format` row, against "rows exactly as before"; a second Across paragraph gives two `across` labels with no `format` row, which step 8's "no label repeats" rule relies on (Gemini) — `.agent/scripts/sitrep_checks.sh:1005-1025, 1061-1068`
 - [x] (suggestion) `acceptance_path=` is "the nearest path or Across paragraph above it" in step 3 but "the nearest path paragraph above it" in step 8; say what step 8 prints when it is `Across the paths` (Claude adversarial) — `.claude/skills/sitrep/SKILL.md:590, 1220-1226`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 09:07 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a4c066f54a5215d26, resume 1 of 3)
+
+**Branch**: feature/issue-563 at `75e958ee`
+**Addressed**: Local Review (Pre-Push) at `a1e42449` (2026-11-24 08:56 -05:00)
+**Commits**: e1a6502f, 5ab759b6, d6b4f9af, 75e958ee
+
+### Actions
+- [x] (must-fix) A `---` rule above a path paragraph: `THEMATIC_RE` now takes `---`, `***` and `___` (one character each), so the path after it opens and its lines are its own; a test for each of the three — `.agent/scripts/sitrep_checks.sh` (e1a6502f)
+- [x] (must-fix) Second reader removed: `--list-paths` now prints `group<TAB><name><TAB><first sentence>` per group and `acceptance<TAB><group>` for the first Acceptance case paragraph, read by the scanner's own paragraph, fence and section rules (path_mark gathers the opening paragraph's text; first_sentence cuts it). Step 3's last block only formats that output (an awk over `--list-paths`, no read of the roadmap), so rules, fences and `## Directions` read as the checker reads them; test covers `***`/fence above paths, `## Directions`, the acceptance case under Across — `.agent/scripts/sitrep_checks.sh`, `.claude/skills/sitrep/SKILL.md` step 3 (5ab759b6)
+- [x] (suggestion) A failed `--list-paths` in the worktree block sets `haspaths=unknown` and prints "paths: could not be listed (reason above)"; work is then `path unknown (steps not checked)`, agreeing with `paths=unknown`; tested with a failing checker stub — `.claude/skills/sitrep/SKILL.md` step 3 (5ab759b6)
+- [x] (suggestion) Bullet reworded to "No branch or pull request for the next step of:", and the rule says it covers only each group's first unmet line (other lines' work can be in flight above) — `.claude/skills/sitrep/SKILL.md` step 8 (75e958ee)
+- [x] (suggestion) Across edges: in a section with no path paragraph, an odd or unclosed Across bold adds no row (shown only beside a path, as earlier instruction N5 requires); a second Across paragraph is a `format` row like a repeated path number; no recovery logic — `.agent/scripts/sitrep_checks.sh` group_rows, bold_unclosed (d6b4f9af)
+- [x] (suggestion) `acceptance_path=` described the same way in steps 3 and 8 (nearest path or Across paragraph above it); step 8 gives the Across example ("The test of Across the paths: ...") and says the line is `acceptance_first` alone with no `acceptance_path=` line or with `paths=none`/`paths=unknown` — `.claude/skills/sitrep/SKILL.md` step 8 (5ab759b6)
+
+### Host directions (for the owner's veto)
+- Must-fix 1 fixed in the checker with a test per rule form; must-fix 2 fixed by removing the skill's reader, not patching it; the haspaths, wording, acceptance-text and Across suggestions fixed as directed; no project named.
+
+### Decided beyond the directions
+- Step 3's last block always asks `--list-paths`, even when step 1 saved rows (the rows carry no sentences, and one source avoids joining two); the rows file placeholder is gone from that block. Both come from the same scanner on the same roadmap.
+- An unclosed bold `**Path` still gives a `format` row in a section with no other path (it is a path paragraph, so the no-path promise does not cover it); only the Across rows are held back there.
+- `THEMATIC_RE` no longer matches a mixed rule such as `*_*` (not a thematic break in CommonMark).
+- The gh-failing sandbox in test_sitrep_checks.sh (`ws5`) now gets a copy of `sitrep_checks.sh`: the worktree block's fallback calls it, and the old `2>/dev/null` had hidden that it was missing.
+- Commits split through the index from scratch snapshots, each snapshot's checker suite run in a scratch copy of the tree: e1a6502f 289/0, 5ab759b6 294/0, d6b4f9af 295/0.
+
+### Suites (each run on its own from the worktree, on the final content)
+- test_sitrep_checks.sh: "test_sitrep_checks: 295 passed, 0 failed"
+- test_sitrep_root.sh: "test_sitrep_root: 69 passed, 0 failed"
+- test_design_anchors.sh: "test_design_anchors: 82 passed, 0 failed"
+- test_update_roadmap.sh: "test_update_roadmap:16 passed, 0 failed"
+- test_skill_paths.sh: "test_skill_paths: 199 passed, 0 failed"
+- The full pass is left to the host.
