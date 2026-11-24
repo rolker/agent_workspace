@@ -1227,3 +1227,23 @@ Part 2 of the issue (plan item 4 and its rows of item 6), plus the two suggestio
 - test_script_tests_hook_scope.sh: 358 passed, 0 failed
 
 Hook rule: the first commit (62c1f1e1) was made without `SKIP=validate-script-tests` by mistake. The `validate-script-tests` hook ran its selection and passed. Every later commit, this entry's included, set it.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 08:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-428 at `be996b08`
+**Base**: origin/main
+**Depth**: Deep (reason: 407 changed lines across 12 files; skill and knowledge files present)
+**Must-fix**: 0 | **Suggestions**: 4
+**Round**: 1 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Part 2 only (plan item 4, plus F1 and F2 carried from part 1). Specialists: static analysis (shellcheck --severity=warning on the 9 changed shell files: clean), governance, plan drift, Claude adversarial (fresh subagent; ran test_issue_helpers 98/0, test_worktree_create 112/0, test_sitrep_checks 253/0, test_ros2_colcon 1553/0, test_merge_pr_gate 213/0), cross-model: Gemini ran (2 must-fix claimed, rated suggestions here: both need a crafted origin URL and gh_slug shares them; 2 more dropped: a pre-existing workspace-type path, and F1/F2 called out of scope though the owner carried them here), Codex ran (no issues found).
+
+### Findings
+- [ ] (suggestion) Parser hardening, in step with gh_slug: userinfo class admits `?`/`#` (`https://evil.example?@github.com/o/r` gives `o/r`), and repo `.`/`..` is accepted (`https://github.com/o/..` gives `o/..`); crafted URLs only — `.agent/scripts/_issue_helpers.sh:64-66`
+- [ ] (suggestion) The local-path fixture form accepts any absolute path ending `/github.com/<o>/<r>`, so a local origin under a GOPATH/ghq-style layout is read as GitHub `o/r`; could be narrowed to `fake_remotes/github.com/` — `.agent/scripts/_issue_helpers.sh:70`
+- [ ] (suggestion) Owner pattern excludes `_`, so a github.com Enterprise Managed User owner (`name_shortcode`) gives no slug and worktree_create.sh's note says the origin is "hosted elsewhere"; same limit as gh_slug — `.agent/scripts/_issue_helpers.sh:65`
+- [ ] (suggestion) The PR closes issue 428 while the same loose host parsing stays in gh_create_pr.sh:136,141, gh_create_issue.sh:130,191,197,249, pr_status.sh:37, git_bug_setup.sh:93, _project_registry.sh:784, and worktree_enter.sh:323-327 still looks a project worktree's bare issue up in the workspace repository first (pre-existing); name these in the PR text or a follow-up issue — `.agent/scripts/worktree_enter.sh:323`
