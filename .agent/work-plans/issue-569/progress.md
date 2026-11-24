@@ -289,3 +289,15 @@ None. The change is one row of `tools/repos-manifest/docs/roadmap.md`. The Codex
 CI at `e6ef187f`: Lint (pre-commit), Validate Adapter Contract, Validate Documentation, and the repos-manifest tests (Python 3.10 and 3.14) all succeeded (each reported twice, push and pull_request). The `copilot-pull-request-reviewer` check-run concluded `failure`; that is Copilot's quota notice above, not a CI failure of the change, and it is not counted as a failing check.
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 09:37 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+"Merge (Recommended)"
+
+Asked at the merge checkpoint for pull request 571 (part 1 of 3: the one row of the tool's roadmap) after the Integrated Review at 0fcef131 with no open findings. The dialog gave: the old and new row text; the pre-push review approved with no findings and two triages with nothing open; all 10 CI checks passing on head e6ef187f, with the copilot-pull-request-reviewer check's failure named as its quota notice; the outside reviewers (Codex and Gemini before the push, Copilot requested and not available for lack of quota, the Codex cold read of the final diff with nothing found); and that the issue stays open, with the plan revised for the second Plan Review's seven findings and reviewed again before part 2. The other choices offered were hold and stop.
