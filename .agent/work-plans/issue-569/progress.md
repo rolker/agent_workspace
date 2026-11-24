@@ -579,3 +579,19 @@ Round 4 of part 2: the round-3 findings and the fix diff 0561a183..062fe620 only
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 11:10 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: publish
+**Decision**: publish
+
+"Publish, new issue (Recommended)"
+
+Asked at the publish checkpoint for part 2 (the cut of the adapter's manifest route) after the round-4 pre-push review at b6d30da0 approved with no findings. The host's full pre-commit pass over the branch's files, with no SKIP, failed in one suite and passed everywhere else (54 of 55 suites; every other hook, shellcheck, the adapter contract and the design anchors included). The failure, shown to him verbatim:
+
+- `test_review_viewer.sh`, 1 of 90 tests: `test_unsearchable_notes_folder_exits_1_one_line` fails with "AssertionError: 2 != 1 : review_viewer: cannot open a window (couldn't connect to display \":0\")".
+
+The host told him it fails the same way on main, that this branch does not touch the review viewer, that the session has no local display (DISPLAY is an ssh-forwarded `localhost:11.0`), and that CI passed this suite on pull request 571. The host did not answer address itself, because the fix would be to an unrelated test. His answer: push part 2, let CI be the check on it, and open a separate issue for the review-viewer test. The other choices offered were to fix it in this branch, to publish with no issue, and to stop.
