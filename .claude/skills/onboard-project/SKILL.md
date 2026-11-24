@@ -435,12 +435,17 @@ The options:
   following it. The answer holds for the rest of this run: the key is not
   asked about again (step 5's offer to record a new roadmap included).
 
-What a stored value changes: `goals` is read by this skill,
-`audit-project` and `design-discussion`, no script; `design` is the file
-the sit-rep and `check_design_anchors.sh` check citations against (the
-whole file, also when a heading is given); `roadmap` is the file the
-sit-rep reads, the one `update_roadmap.sh` ticks, and the one whose
-commits after review the merge gate counts as bookkeeping.
+What a stored value changes: `goals` and `design` are what the skills
+that read a project's goals and design find through the lookup (this
+skill, `audit-project`, `design-discussion`, `brainstorm`, `plan-task`,
+`review-plan` and `review-issue`), and `goals` is read by no script;
+`design` is also the file the sit-rep and `check_design_anchors.sh` check
+citations against (the whole file, also when a heading is given);
+`roadmap` is the file the sit-rep reads, the one `update_roadmap.sh`
+ticks, the one whose commits after review the merge gate (and
+`triage-reviews`' coverage rule) counts as bookkeeping, the one the
+integration audit's ignore check follows, and the one `audit-project`,
+`design-discussion` and `brainstorm` read.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
