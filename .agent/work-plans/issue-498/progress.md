@@ -1283,3 +1283,15 @@ Nothing remains open before the owner's merge decision: no must-fix, no hosted c
 **Decision**: merge
 
 The owner chose "Merge (Recommended)" in a dialog (2026-11-18) for pull request 511 (part 2a: base read from local paths): merge it and re-run the tool's install in the main checkout. The issue stays open: parts 2b and 3 remain.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:13 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan checkpoint after a merge; the plan's remaining parts no longer match the code, so proceed is not open)
+**After**: plan
+**Decision**: revise
+
+Pull requests 506 (part 1) and 511 (part 2a: `base` read from local paths) are merged; the issue is still open because parts 2b and 3 remain. Since the plan was written, issue 569 has changed what is left: its parts 1 and 2 (pull requests 571 and 597, merged 2026-11-24) removed the roadmap line about moving from the prototype's format and cut the `ros2_colcon` adapter's manifest route, and its part 3 (pull request 603, open, in its last review step) removes the earlier format's reader from the tool. So this plan's part 3 ("the adapter reads the new format, the old reader goes") is done elsewhere or no longer applies, and the issue's section "The existing user" has no user left (owner, 2026-11-24: "pickerel has nothing on the old format"). The adapter calling the tool is issue 503's.
+
+The plan is revised to what remains: part 2b, the manifest and its `base` read from a URL and from a file in a git repo, which also closes the gap pull request 597 states (a manifest in a git repo needs a clone kept by hand until the tool reads it from git); and whatever of the issue's own list is still not built, checked against the code. The owner chose this issue as the next one driven after 569 (2026-11-24).
