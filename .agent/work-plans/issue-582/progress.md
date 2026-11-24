@@ -38,3 +38,21 @@ issue: 582
 **Decision**: publish
 
 One row in the roadmap's deferral table, in the owner's words, added on his word: "add it to the roadmap" (2026-11-24), after he was shown the row and asked what it would change. This issue has no issue review, plan or plan review on its timeline: the change is one row of text the owner approved word for word, with nothing designed (a host decision, listed for his veto). The pull request says Part of #582; the issue stays open.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 12:18 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #600 at `8cd42af`
+**Sources**: 2 (Local Review (Pre-Push) @ `128f7e88` (covers `8cd42af` via bookkeeping), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending (Validate Documentation pass x2; Lint (pre-commit), Validate Adapter Contract, repos-manifest tests Python 3.10 and 3.14 pending, each in both runs)
+
+### Findings
+No open findings. The pre-push review approved with nothing open; the pull request has no review, inline comment or conversation comment (no Copilot review was requested; automatic review is off).
+
+Checked at this head: the roadmap diff is the one deferral row, matching the Decision summary's row word for word; `sitrep_checks.sh --root .` reads it as one deferral, result `false`, no `format` row, `--summary` gives `deferrals 3/11`; issues 582, 580, 583, 208 and 209 are open and titled as the row describes. Decision summary: accurate, with one imprecision noted for the host (its "the diff is that row alone" holds for `docs/roadmap.md`; the pull request also carries this issue's `progress.md` bookkeeping).
+
+### False positives
