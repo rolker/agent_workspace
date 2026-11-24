@@ -76,3 +76,18 @@ issue: 545
 - [ ] Changes since the last round: viewer snapshots the shown draft to `<notes stem>.reviewed` on close and diffs against it next launch; `--previous <file>` overrides; no old notes carried over.
 - [ ] No display: exit code 2 with a one-line message; agent falls back to chat review with line numbers and writes the same notes format.
 - [ ] Test the pure parts without a window (notes writer, line ranges, diff highlights, display check).
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 21:28 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (the owner's four UX answers are recorded in the Issue Review; the open points are mechanism, none changes what the work is for)
+**After**: issue-actions
+**Decision**: proceed
+
+Plan from the owner's Q1-Q4 answers as recorded, without reopening them. The issue review's mechanism recommendations are adopted (owner may veto):
+- Script: `.agent/scripts/review_viewer.py`, standard library only; launched as a background command; window close (process exit) is the done signal.
+- Notes file: the trial's format plus a whole-draft note section and `**Decision**: none (notes only)` for "Just close"; rewritten after every change. Default beside the draft; `--notes <path>` lets the launcher put it under `.agent/work-plans/issue-<N>/reviews/` when the review belongs to an issue. The host records the decision in an existing `## Checkpoint` entry; no new entry type.
+- Changes since the last round: on close the viewer saves the text it showed as `<notes stem>.reviewed`; the next launch diffs against it (difflib) and highlights changed lines; `--previous <file>` overrides; first launch shows none.
+- No display: check `DISPLAY`/`WAYLAND_DISPLAY` and catch a failed tkinter import or `Tk()`; exit 2 with one line, no traceback; the agent then runs the review in chat and writes the same notes format. No terminal viewer.
+- Tests on the pure parts (notes writer, line ranges, diff highlighting, light-formatting spans, display check); the GUI layer stays thin. `script_reference.md` row and the design section in the same PR (ADR-0017). Skills offering the viewer: a follow-up, not this PR.
