@@ -1058,3 +1058,15 @@ Codex ran (`cross_model_review.sh --pr 603 --agents codex`, AGENT_TIMEOUT=3000, 
 
 ### False positives
 - (Copilot @ `7de6d53`) The `copilot-pull-request-reviewer` check-run reports failure — it is the reviewer's quota notice, not a failure of the change; the 10 other checks (lint, documentation, adapter contract, tests on Python 3.10 and 3.14) pass on the head.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:36 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+"Merge, F1 goes into 498 (Recommended)"
+
+Asked at the findings checkpoint for pull request 603 (part 3 of 3: the removal of the earlier format's reader from the tool; it closes the issue) after the Integrated Review at ad3a88df, which holds one open suggestion from the Codex cold read. The dialog showed it verbatim (F1: the module docstring in `cli.py`, printed by `--help`, says every command reads a manifest, which is not true of `build`), with: what the pull request removes; three pre-push rounds and the cold read's approval; all 10 CI checks passing on head 7de6d536, mergeable, main unmoved; the outside reviewers (Codex in rounds 1 and 2 and as the cold read on its third attempt, Gemini failed every time on its headless tool denial, Copilot requested and not available for lack of quota); and that the CI job rename is issue 601. His answer defers F1 to the first part of issue 498, which edits the same file next. The other choices offered were to fix F1 first and to stop.
