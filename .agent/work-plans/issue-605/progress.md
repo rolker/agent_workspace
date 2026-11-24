@@ -209,3 +209,21 @@ The implementer applies F1 to F10 word for word from the Plan Review entry, in p
 - [x] (suggestion) The skip's day has no stated clock and no shared record: a parallel issue's host cannot tell a skip another host started. Add to the Row A rule cell after "that calendar day": "(the host machine's local date; the first failure and its reason are taken from the outside-reviewer line of the timeline entry that recorded it)". Codex finding 5. — `.agent/knowledge/host_standing_rules.md:48`
 
 Codex findings dismissed: 1 (fix commits reach triage unpushed): run-issue step 10 already has the host push after every `## Implementation` written while a pull request exists, before the next `triage-reviews` dispatch, and a host-written checkpoint does not change that. 4 (no-code pull request has no recorded outcome for 9a): with no cold read dispatched 9a has nothing to route, so the merge answer stands by step 9a's own rule, and a resumed host reaches the same skip by the same rule; no loop.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 14:11 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+
+**Branch**: feature/issue-605 at `2b54b5d3`
+**Addressed**: Local Review (Pre-Push) at `917e5a33` (2026-11-24 14:10 -05:00)
+**Commits**: 2b54b5d3
+
+### Actions
+- [x] Host readings marked as the host's: 9a parenthesis replaced and the "Three parts of this section..." paragraph added before "This is a first trial" — `.agent/knowledge/host_standing_rules.md`
+- [x] Fix-pass handoff names the must-fix boxes only and defers each suggestion (sentence added after the fix-pass case in the `publish` bullet) — `.agent/knowledge/host_standing_rules.md`
+- [x] `merge` bullet: follow-up issue opened once 9a has nothing left to route, number named on the timeline, added to not reopened — `.agent/knowledge/host_standing_rules.md`
+- [x] Third `publish` case added for the fix pass of a failed full pre-commit pass (reason "full-pass fix, no second round"); "The two cases" became "The three cases" and the first "; and the" became "; the" so the list reads correctly — `.agent/knowledge/host_standing_rules.md`
+- [x] Row A rule cell: local-date and first-failure-source parenthesis added after "that calendar day" — `.agent/knowledge/host_standing_rules.md`
+
+Suites run: `bash .agent/scripts/tests/test_skill_paths.sh`: test_skill_paths: 212 passed, 0 failed. Full pre-commit pass left to the host.
