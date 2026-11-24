@@ -932,3 +932,18 @@ This branch neither added nor changed any of them, so it brings in no broken ord
 **Decision**: publish
 
 Part 2 of the issue. Three pre-push rounds: round 1 found 1 must-fix and 8 suggestions, round 2 found 2 must-fix and 3 suggestions, round 3 (a convergence check, no cross-model reviewers) found every one closed and nothing new. Gemini and Codex ran in rounds 1 and 2. Left for the owner as a possible follow-up, in the inbox and not in this pull request: double-quoted free-text arguments in skill text this branch does not otherwise touch.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 12:43 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #602 at `20d8d4a3`
+**Depth**: Deep (reason: cold read, cross-model only: codex, per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Codex ran alone (EXIT=0) on the title, URL and diff only; the prompt carried no work-plan files and no earlier review entry. Its review: no issues found. The lead checked the audit's roadmap case table and the skills' doc/get/set/unset readings against `project_setting.sh` and `_project_registry.sh` as merged and found nothing to add. `test_skill_paths.sh` (212 passed) and `test_project_integration_audit.sh` (286 passed) were run at this head.
+
+### Findings
+- [ ] No issues found. LGTM.
