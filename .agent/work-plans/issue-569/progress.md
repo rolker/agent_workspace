@@ -653,3 +653,21 @@ CI at `860476c` (both runs, 45433939923 and 45433958660): Validate Adapter Contr
 - [ ] (low, Local Review @ `860476c`) The migration text (design.md:94-98) says to remove the old checkouts once the new ones are in use, but says nothing of package worktrees. Their `env.sh` is written once at create time with the old `layers/main` overlay paths (adapter.sh:1793-1835), each behind an `if [ -f ]` guard, so once the old overlays are removed the lines are skipped without a word and the worktree's build no longer finds lower-layer packages. Say to save the work in those worktrees and make them again on the tool layout before removing the old checkouts. — `docs/manifest/design.md`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 11:23 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+"Merge, defer all three"
+
+Asked at the findings checkpoint for pull request 597 (part 2 of 3: the cut of the adapter's manifest route) after the Integrated Review at e0e2f186, which holds three open low findings from the Codex cold read. The dialog showed each verbatim (F1, the route decided twice in `adapter_setup`; F2, the `registration_refused` check reading only `--set`; F3, the migration text silent on package worktrees), each fix's size, that all three are on the path for the old `source` settings which nothing uses today, and that CI had 2 of 5 checks passed and 3 queued with nothing failed, with no merge until they pass. His answer defers all three to one follow-up issue, opened as #599. The other choices offered were to fix all three first, to fix F3 only, and to stop.
+
+In the same dialog he was asked what follows part 2: part 3 of this issue (removing the old reader from the tool) or issue 498 part 2b (the tool reads a manifest from a git repo). His answer: "Part 3 first".
+
+Earlier the same day, on the one design question this part raised (cut now and state that a manifest in a git repo needs a clone kept by hand, or wait for the tool to read from git): "Which ever is easier, I don't think much of this functionality will be used by any other agents until we are done".
+
+Outside reviewers on this pull request: Codex ran in pre-push rounds 1 and 2 and as the cold read of the final diff, and found the points behind the round-1 and round-2 findings and F1 to F3; Gemini failed in rounds 1 and 2 (its headless run denied a tool call); Copilot was requested once and was not available ("insufficient remaining quota").
