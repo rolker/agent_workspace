@@ -372,8 +372,10 @@ refusal_case() {  # <label> <own checkout> <repo holding the target> <target wor
     check_refused "$label, enter --print-path"
 
     RC=0
-    OUT="$(cd "$own" && PATH="${SHIM_PATH:+$SHIM_PATH:}$WS/stubbin:$PATH" bash -c 'source "$1" --issue "$2" --type workspace; echo "survived rc=$?"' _ "$s/worktree_enter.sh" "$issue" 2>/dev/null)" || RC=$?
-    check_eq "$label, enter sourced: returns 1, the caller's shell survives" "survived rc=1" "$(tail -n1 <<<"$OUT")"
+    OUT="$(cd "$own" && PATH="${SHIM_PATH:+$SHIM_PATH:}$WS/stubbin:$PATH" bash -c 'source "$1" --issue "$2" --type workspace; echo "survived rc=$?"' _ "$s/worktree_enter.sh" "$issue" 2>"$SANDBOX/stderr.$$")" || RC=$?
+    ERR="$(cat "$SANDBOX/stderr.$$")"
+    check_eq "$label, enter sourced: returns 1, the caller's shell survives, nothing else on stdout" "survived rc=1" "$OUT"
+    check_has "$label, enter sourced: ERROR on stderr" "ERROR:" "$ERR"
 
     run_script "$own" "$s/worktree_list.sh"
     check_refused "$label, list"
