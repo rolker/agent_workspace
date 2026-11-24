@@ -624,11 +624,286 @@ whether the stub `colcon` is the one used); that `.venv/bin/python` exists in ev
 installed venv (it does for an editable install by `pip` into a venv, which `make
 install-repos-manifest` is by its description, not re-read here); the sizes.
 
+## Part 2 (revised 2026-11-24): registration from a manifest
+
+Planned in full against the code of 2026-11-24 (pull requests 513, 514 and 562 merged; issue 569
+part 2, pull request 597, cut the adapter's manifest route). Parts 1 and 4 are in the sections
+above and are not re-planned.
+
+### What the design says, and what it leaves to this part
+
+- Roadmap line: "Registration passes the manifest's location, role, distro and fetch settings to
+  `init`".
+- Design, "What the workspace records": "Everything about the manifest is given once, at
+  registration, and passed to `init`: the manifest's location, the role, the first distro, extra
+  groups, where to fetch from and extra remotes. After that the tool's record in
+  `.repos-manifest/` is the one record." So the options are handed to `init` and recorded nowhere
+  in the workspace: no settings key, no registry field. The new options therefore do not touch
+  `register_project.sh`'s `--set` or `project_setting.sh`.
+- Design, mapping table: `source` (a path) is "The manifest as a path on the local disk";
+  `role=` and `distro=` on the registry line map to `--role` and `--distro`; "`--with`,
+  `--fetch-from`, `--remote`" map from nothing. `--remote` does not exist in the tool's `init`
+  today (`cli.py`: `init` takes `manifest`, `--role`, `--with`, `--distro`, `--distro-dirs`,
+  `--fetch-from`, `--yes`), so it is not offered.
+- Design, `setup` row of the verb table: `repos-manifest init`, "with `--distro-dirs` when the
+  project has a distro, for a directory that is not set up yet". Design, "A project instance is a
+  system directory": "`setup` passes `--distro-dirs` to `init` whenever the project has a
+  distro, even for the first one alone". So the adapter's `setup` is the one place that runs
+  `init`; `register_project.sh` names no type and calls the adapter's `setup`, as it does today.
+- Design, "A root that sets `source`": `register_project.sh` refuses `--set source=` and the
+  other two "before it writes anything. The directory is made, `init` is run in it, and it is
+  registered without them." That sentence describes the by-hand route this part replaces with one
+  command; it is rewritten in the same pull request.
+
+### The command line
+
+```
+register_project.sh <path> --manifest <file> --distro <d> [--role <r>] [--with <group>]...
+                    [--fetch-from <prefix>] [--name N] [--skip-run] [--dry-run]
+```
+
+- `--manifest <file>`: a manifest file on the local disk (made absolute by the script, since the
+  tool records the location as given and reads a relative one from where it runs). Given, the
+  type is the one whose `registration.conf` accepts a manifest (a new key, `manifest=local-file`;
+  `manifest=none` for the other types, so the script names no type). With no `<type>` argument
+  and exactly one type that accepts it, that type is used; with more than one, the script asks
+  for the type.
+- `--distro` and `--role`, given with `--manifest`, go to `init` and are not written to the
+  registry line (they are the same words as the line's fields; the design's mapping sends them to
+  `init`). Without `--manifest` they write the line as today. This is the whole of this part's
+  step toward "the registry line's `role=` and `distro=` are gone": removal waits for the
+  bootstrap route, which still reads `distro=` from the line (design, "What the workspace
+  records": "Until every instance is on the tool, the bootstrap route still reads `distro=`"),
+  and for `validate`'s refusal to be dropped with it. The reason is recorded in the roadmap's
+  line, not acted on here.
+- `--with` (repeatable) and `--fetch-from` go to `init` as they are. One `--distro` only: a
+  second distro is `add-distro`, the later part 3.
+- Refused before anything is written, `--dry-run` included, each naming its reason and the way
+  on: `--manifest` with `--no-setup`, with a registered name (adoption keeps the line; a root set
+  up already is registered by `register_project.sh <path>` without `--manifest`), with a type
+  whose `registration.conf` says `manifest=none`, with a directory that exists and holds
+  anything, with a file that does not exist or is not a regular file, and with a location that is
+  not a local path (below). `--with` or `--fetch-from` without `--manifest` is a usage error (nothing else would receive
+  them).
+- `register_session_root.sh` takes the same five options and passes them on, so a session in an
+  empty folder registers and sets up the folder it stands in with one command (below, issue 473).
+
+A manifest location that is a URL or a git location (`scheme://`, or `user@host:path`), before
+issue 498 lands, is refused by `register_project.sh` before anything is written, with the text:
+the manifest tool reads a manifest from the local disk only in this version (issue 498 adds a
+URL or a file in a git repo); clone it, keep the clone up to date by hand, and give the file in
+the clone (design, "A root that sets `source`"). It is never passed to `init` and never falls
+through to another type or a settings key. The tool refuses such a location itself too
+(`system.py`, `read_manifest`: "only a manifest given as a file path is read in this version"),
+which is the backstop when the adapter's `setup` is called directly. When 498 lands, the change
+is: `registration.conf` says `manifest=location` (the script then passes any location through),
+and two options `--manifest-ref` and `--manifest-path` are passed to `init` as 498 names them,
+about +15 lines in the script, +6 in the adapter and one test each. The plan for 498 is not built,
+so the exact option names are read from its pull request then, not guessed here.
+
+### What registration does, step by step (new path or empty existing directory)
+
+1. Parse and refuse (above). No file is touched.
+2. Under the registry lock, write the registry line (name, type, path: nothing about the manifest)
+   and the settings file (the type's usual keys; the manifest options are not keys).
+3. Run `adapter --project <name> setup --manifest <abs file> [--role r] --distro d [--with g]...
+   [--fetch-from p]` (new in the script: `setup` runs when the type's `setup=when-missing` and the
+   directory is missing, or when `--manifest` is given; `--manifest` on a directory that exists
+   and is empty therefore runs it too). The adapter's `setup` with those arguments makes the
+   directory when missing, refuses when the root already holds `.repos-manifest/` (it is set up:
+   `setup` without arguments is the tool's `sync`; the refusal says so), and runs
+   `cd <root> && repos-manifest init <file> --distro-dirs --distro d [--role r] [--with g]...
+   [--fetch-from p] --yes`. `--yes` because registration asks nothing; the question "show me what
+   this comes to, then fetch?" is the session's, asked with `repos-manifest show <file> --role r
+   --distro d` before registration (design, owner's example, step 3), which is the skill's part.
+4. The static gate (`registration_verify.sh`, which runs `adapter validate`: the tool's `status`),
+   the type's `run=` verbs (none for this type), the user-tier check: unchanged.
+
+`setup=when-missing` stays as it is for a call with no `--manifest`: an existing directory is
+never set up by registration; a directory the tool set up needs none.
+
+### When `init` fails: what is left, and what registration removes
+
+`init.py` does all its refusals before creating anything ("Every refusal is checked before
+anything is created"), then makes `.repos-manifest/` with its `config.yaml` in one rename, then
+syncs; "before that step nothing of the system exists and `init` can be run again; after it,
+`sync` finishes what `init` began", and a stop signal ends the run with a line that says whether
+the system was made. Two cases, then:
+
+- Nothing made (manifest unreadable, distro not listed, no `distros:` for `--distro-dirs`, an
+  existing path in the way, a bad `--fetch-from`, a stop signal early). The adapter removes the
+  directories it created itself for this call (`rmdir` only, deepest first, never a directory it
+  did not make and never one with anything in it), so the rollback finds no directory and leaves
+  no `KEPT=`; the registry line and settings file are removed by the existing rollback.
+- The system is made and a clone fails or the run is stopped. Nothing under the root is removed
+  (the existing rule: registration never undoes anything in the project root, clones are slow to
+  redo). The line and settings file are rolled back, the directory is `KEPT=` when setup created
+  it, and the next step printed is the tool's own: `cd <root> && repos-manifest sync --distro d`,
+  then `register_project.sh <root>` without `--manifest`. `register_project.sh`'s `failed` text
+  ("setup is not run again on the kept <dir>; remove it first to start over") says that with
+  `--manifest` too, and is otherwise unchanged. A directory that existed before and was empty is
+  not removed and is named in the message; it now holds the partial system.
+- A signal during the adapter's `setup`: the adapter's directory removal runs after `init` has
+  returned (it handles the signal itself and exits 128+n), and is skipped when `.repos-manifest`
+  exists. Tested with the suite's existing fault-injection variable (`FAULT_MODE`, in
+  `test_register_project.sh`) for one signal case; if that cannot reach the adapter's step, the
+  case is listed as a residual risk, not skipped silently.
+
+### What is recorded, and what is not
+
+Registry line: `<name>  ros2_colcon  <path>` and the fields given for other reasons (`--parent`,
+`--worktrees`); never `role=` or `distro=` when `--manifest` is given. Settings file: as before
+(for this type, nothing, since `build` and `test` are in `unused_settings`). The manifest, role,
+distro, groups and fetch prefix are in the tool's `.repos-manifest/config.yaml` alone; `adapter
+validate` and `status --json` read them when needed. The workspace's own records of them are
+nothing, so `validate`'s "second record" check passes on a root registered this way.
+
+### The routing decided once (also closes findings of issue 599)
+
+This part rewrites `adapter_setup`, so the fix is made where the code is rewritten.
+
+- Finding 1 (route decided twice in `adapter_setup`, the same in `adapter_sync`): `adapter_setup`
+  and `adapter_sync` read `_rc_route` once into a local, and `_rc_refuse_removed_source` takes the
+  route as an argument instead of reading it again. Test: `_rc_route` is replaced by a function that counts its calls (and answers `tool`
+  once, then `bootstrap`); `setup` and `sync` of a root that sets `source` read it once and are
+  refused, with nothing fetched.
+- Finding 2 (`registration_refused` reads only `--set`): the script checks the keys of the
+  settings file as it will be after the run (the existing file plus `--set`) against the list,
+  before the dry-run report and before anything is written. This is on the same path as this
+  part: `--remove --keep-settings` then register again with `--manifest` is the way a root with
+  the old keys comes to the new route, and today it would write the line, run `init` (a clone of
+  every repo) and only then be rolled back by `validate`. Test: the kept-file case, with and
+  without `--dry-run`, no line written, no `init` run.
+- Finding 3 (design text on package worktrees): the same pull request rewrites "A root that sets
+  `source`", so the sentence is added there: save the work in those worktrees and make them
+  again on the tool layout before removing the old checkouts.
+All three close; the pull request says "Closes #599".
+
+### Issue 473
+
+This part gives 473's flow the one registration command and its checks: `register_project.sh`
+and `register_session_root.sh` with `--manifest` register and set up a missing or empty folder in
+one step, with `--dry-run` printing what would run, stable `STATUS=` lines, hard refusals and no
+prompts, which is the "narrow and checkable script" its text asks for. It leaves: the
+`onboard-project` skill's empty-folder branch (finding the repo, confirming the source, running
+`repos-manifest show`, the questions, a manifest in a git repo until 498), the single-repository
+case, and its type-neutral renames of `bootstrap_url` and `distro` (which this part's direction,
+moving `distro` off the line to the tool's record, partly overtakes: the plan for 473 reads the
+roadmap line first). The skill's text changes here only where it names registration's command
+line: one sentence in step 1 that the session-root command takes the manifest options. 473 stays
+open.
+
+### Files to Change (part 2)
+
+| File | Change |
+|------|--------|
+| `.agent/scripts/register_project.sh` | the options, the refusals, type choice, `setup` run when `--manifest`, dry-run lines, `failed` text, finding 2; header and usage |
+| `.agent/scripts/register_session_root.sh` | pass-through of the five options; header |
+| `.agent/scripts/_project_registry.sh` | `registration_conf_get` knows `manifest`; `registration_conf_problems` checks it |
+| `.agent/project_types/ros2_colcon/registration.conf`, `single_project/registration.conf` | `manifest=local-file`, `manifest=none` |
+| `.agent/project_types/ros2_colcon/adapter.sh` | `adapter_setup` takes the manifest arguments and runs `init`; the route read once (findings 1); directory cleanup; `_rc_refuse_removed_source` text points at `--manifest` |
+| `.agent/project_types/ros2_colcon/registration_refused` | reason text points at the one command |
+| `.agent/scripts/tests/test_register_project.sh`, `test_ros2_colcon.sh`, `test_register_session_root.sh` | below |
+| `docs/manifest/design.md` | "What exists today" (what is recorded), "A root that sets `source`" (one command, finding 3), "The tool route"'s registration sentence, "What the workspace records" (what is done now); no new design, the target is as written |
+| `docs/manifest/roadmap.md` | the registration line's check: `file-contains .agent/project_types/ros2_colcon/registration.conf manifest=local-file`, and a note on the `role=`/`distro=` line |
+| `docs/design.md` | the paragraphs on registration and the adapter's tool route (lines 430-500): one sentence each; no change to the picture of how the parts fit |
+| `.agent/projects.local.example`, `.agent/knowledge/script_reference.md` | the command line, the by-hand text replaced by the one command |
+| `.claude/skills/onboard-project/SKILL.md` | the one sentence above |
+
+### Tests (no network)
+
+- `test_register_project.sh`, with the suite's stub tool (records the arguments it is given and
+  makes `.repos-manifest/` or not, by variable): the command line given to `init` for each option
+  (absolute path, `--distro-dirs`, `--yes`, `--with` twice, `--fetch-from`); registry line and
+  settings file carry no manifest option; each refusal, with no line, no file and no directory;
+  a URL and a `git@host:path` location refused naming 498 and the clone-by-hand way; `--dry-run`
+  prints the `init` command and writes nothing; a missing directory is made and removed again
+  when `init` makes nothing (stub exits 1 early); a stub that makes the system and then fails
+  gives `KEPT=` and the `sync` next step; an empty existing directory is set up, is not removed
+  on failure; a non-empty one is refused; a set-up root with `--manifest` is refused naming
+  `sync`; adoption with `--manifest` refused; findings 1 and 2.
+- One real-tool test in the same file (the suite's real-tool block, loud skip when the tool or
+  `vcs` is missing, as the existing ones): a local manifest with `distros:` and two local git
+  repos as its sources, registered with `--manifest`, `STATUS=registered`, `adapter validate`
+  passes, the line holds no `role=` or `distro=`; a manifest that lacks the distro, registered:
+  refused by the tool's message, nothing left, no line.
+- `test_ros2_colcon.sh`: `adapter setup` with the manifest arguments against the stub tool
+  (arguments, the cleanup, the refusal on a set-up root, the route read once); the existing
+  tests keep passing unchanged.
+- `test_register_session_root.sh`: the options passed through to the stub, and an empty folder
+  registered with `--manifest`.
+- `validate_adapter.sh` (run by `make validate`): both `registration.conf` files carry the new key.
+- Every new `test_*.sh` needs its exec bit: none is new; the three above exist.
+- Each test run names its job count where it runs a parallel build: none here builds.
+
+### Direction lines made true
+
+"Registration passes the manifest's location, role, distro and fetch settings to `init`" (roadmap
+line, with its new check). Not made true: "The workspace keeps no copy of what the instance
+records" (the line's `role=`/`distro=` stay readable for the bootstrap route and the three
+`source` keys stay accepted until the bootstrap route and the keys are removed: a later part, each
+with its own line), "A session says which distro of its root it is working on" (part 3), the
+acceptance case 1 and 2 (the owner's machine, 473's skill, and 498 for a manifest in a git repo).
+
+### Proof on the owner's machine
+
+After this pull request merges, in the main checkout, with the tool installed (`make
+install-repos-manifest`) and a manifest file that lists `distros:` at `~/manifests/m.yaml`:
+
+```
+cd ~/agent_workspace
+.agent/scripts/register_project.sh ~/try-root --manifest ~/manifests/m.yaml --distro rolling --role dev --dry-run
+.agent/scripts/register_project.sh ~/try-root --manifest ~/manifests/m.yaml --distro rolling --role dev --skip-run
+grep try-root .agent/projects.local          # name, type and path only
+ls ~/try-root ~/try-root/.repos-manifest     # rolling/ and the tool's record
+(cd ~/try-root/rolling && ~/agent_workspace/.agent/scripts/adapter validate)
+(cd ~/try-root/rolling && ~/agent_workspace/.agent/scripts/adapter build --parallel-workers 4)
+.agent/scripts/register_project.sh ~/try-root --manifest ~/manifests/m.yaml --distro rolling   # refused: a registered name or set-up root
+.agent/scripts/register_project.sh --remove try-root
+.agent/scripts/register_project.sh ~/m2 --manifest https://example.org/m.yaml --distro rolling  # refused naming issue 498, nothing written
+```
+The build line is the tool's `build` through the adapter; the job count is the tool's argument
+passed on to colcon. The last two lines show the refusals.
+
+### Decisions made (open to the owner's veto)
+
+- The options are on `register_project.sh` and handed straight to `init`, recorded nowhere;
+  not a new settings key and not a registry field (the roadmap's "keeps no copy", the design's
+  "recorded once, with the instance").
+- `--role` and `--distro` go to `init` and off the registry line when `--manifest` is given.
+- The adapter's `setup` runs `init`; the script names no type (`manifest=` in `registration.conf`).
+- `--yes` is always passed; the confirmation is the session's, through `show`.
+- A URL or git location is refused before anything is written until 498; the tool's own refusal
+  is the backstop.
+- `--remote` is not offered (the tool has none); one `--distro`.
+- A manifest on a registered name (adoption) is refused; no re-`init` of a set-up root.
+- An existing directory is set up only when it is empty.
+- Findings 1 to 3 of issue 599 are folded in.
+- `register_session_root.sh` passes the options through.
+- Size: one pull request, about +90/-10 in `register_project.sh`, +110/-15 in `adapter.sh`, +35 in
+  `register_session_root.sh`, +15 in `_project_registry.sh`, +420 test lines, +80 document lines.
+
+### Open questions for the owner
+
+- Existing non-empty directory not yet set up: the design's example is an empty directory, and
+  its old-root text says "Setting up the instance in a new, empty directory instead keeps the two
+  apart". Recommendation: refuse a non-empty one (an old root's checkouts and generated
+  directories are not read by `init`, so a mixed directory is a trap). Change later: one test and
+  one line, no data effects.
+- Whether registration should run `repos-manifest show` itself on `--dry-run` (it reads the
+  manifest and its parents, and may fetch a parent manifest, so a dry run would not be offline
+  or purely read-only). Recommendation: no; the session runs `show` first, the dry run prints the
+  `init` line. Change later: an added call, no format change.
+- Dropping `role=`/`distro=` from the line for a root registered without `--manifest` (a root set
+  up by hand, as the by-hand route allowed): this part leaves them accepted, `validate` still
+  refuses them on the tool route. Recommendation: leave until the bootstrap route goes (the
+  design's own order). Change later: one refusal in `register_project.sh`, plus the roadmap's
+  removal line.
+
 ## Later parts
 
-- **Part 2:** registration passes the manifest's location, role, first distro and groups to
-  `init`; `setup` runs `init` for a root not set up.
-- **Part 3:** sessions in `<root>/<d>/` (superseding ADR-0020's refusal of a subdirectory of a
+- **Part 2:** planned in full above ("Part 2 (revised 2026-11-24)"): registration from a manifest.
+- **Part 3 (named, not planned in detail):** sessions in `<root>/<d>/` (superseding ADR-0020's refusal of a subdirectory of a
   root in no git repository); the session's distro carried into worktrees (`.worktree-repos`
   header). It must also make `worktree_create.sh`'s three adapter calls agree: `worktree_repos`
   and `pr_base_for` run from the caller's cwd, `worktree_env` after `cd "$ROOT_DIR"`, so with
