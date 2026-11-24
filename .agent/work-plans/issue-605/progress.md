@@ -152,3 +152,13 @@ The owner's words are quoted verbatim and the scope matches what he approved, bu
 ### Decisions made (owner may veto)
 - A host-written `publish` or `plan` checkpoint, in place of the second round the router would start, is how the rule runs with no script change — undoing it: the second rounds run as the router routes them, and the rule's "one round" holds only where a review is `approved`.
 - On a day Copilot is skipped, a pull request that changes no code gets no cold read, read from his "one Codex cold read on pull requests that change code" — undoing it: drop that sentence and the cold read runs on every pull request.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 14:02 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the Plan Review at e89874c4 finds the plan ready with directions F1 to F10, each given as exact wording, and leaves no decision that must come first)
+**After**: plan
+**Decision**: proceed
+
+The implementer applies F1 to F10 word for word from the Plan Review entry, in place of the plan's text where they differ. Two readings the review lists for the owner's veto are accepted by the host and go into the rule as the review words them: where `next` would start a second review round, the host writes a `publish` checkpoint that `next` did not raise (after its full pre-commit pass), which is how the rule runs with no script change; and on a day Copilot is skipped, a pull request that changes no code gets no cold read, read from his words "one Codex cold read on pull requests that change code". The end of the rule is checked as issue 436 closed as completed.
