@@ -781,7 +781,7 @@ START_RE='^ {0,3}##[[:space:]]+Direction([[:space:]]+#+)?[[:space:]]*$'
 END_RE='^ {0,3}##?([[:space:]]|$)'
 SETEXT_RE='^ {0,3}(=+|-+)[[:space:]]*$'
 NOT_PARA_RE='^[[:space:]]*$|^ {0,3}(#|>|[-*+]([[:space:]]|$)|[0-9]+[.)]([[:space:]]|$))'
-THEMATIC_RE='^ {0,3}([*_][[:space:]]*){3,}$'
+THEMATIC_RE='^ {0,3}((\*[[:space:]]*){3,}|(-[[:space:]]*){3,}|(_[[:space:]]*){3,})$'
 FENCE_RE='^ {0,3}(`{3,}|~{3,})(.*)$'
 
 # roadmap_state <file>: found | missing | unreadable. A file that exists but

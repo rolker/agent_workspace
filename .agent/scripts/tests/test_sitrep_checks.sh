@@ -2020,6 +2020,14 @@ RC=0; S="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/root" --list-paths 2
 RC=0; bash "$SITREP" --root "$SB/root" --list-paths --summary >/dev/null 2>&1 || RC=$?
 [[ $RC -eq 2 ]] && pass "(paths) --list-paths with --summary is a usage error" || fail "(paths) list-paths --summary rc=$RC"
 
+echo "TEST: a thematic break (---, *** or ___) right above a path paragraph lets it open"
+for hr in '---' '***' '___'; do
+    run_rm "$(printf '%s\n' '## Direction' '' '**Path 1, One.** First.' '' '| Line | Check |' '|---|---|' "| A | $T |" '' \
+        "$hr" '**Path 2, Two.** Second. More.' '' '**Acceptance case.** T.' '' '| Line | Check |' '|---|---|' "| B | $F |")" --no-follow
+    [[ $RC -eq 0 && "$(cut -f1-3 <<< "$OUT")" == $'path\tPath 1, One\ttrue\nline\tA\ttrue\npath\tPath 2, Two\ttrue\nline\tB\tfalse' ]] \
+        && pass "(paths) '$hr' above a path paragraph: the path opens, its lines are its own" || fail "(paths) '$hr' rc=$RC '$OUT'"
+done
+
 echo "TEST: what cannot be read as a group is a format row, never dropped unseen"
 run_rm "$(printf '%s\n' '## Direction' '' '**Path 1, One.** a' '' '| Line | Check |' '|---|---|' "| A | $T |" '' \
     '**Path 1, Again.** b' '' '**Path 3, Never' 'closes here.' '' '| Line | Check |' '|---|---|' "| B | $T |" '' \
