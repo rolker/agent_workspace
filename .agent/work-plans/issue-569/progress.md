@@ -186,3 +186,15 @@ The revision fixes everything the first review raised, and the adapter and modul
 - [ ] Part 2: in `test_register_project.sh`, delete the #436 test but keep the `MR_SRC`/`MR_PY` finder and its fail-or-skip lines; rely on the existing tool-route registration test (1056).
 - [ ] Part 2: put root `docs/roadmap.md:273` and root `docs/fork_parity.md:83` on the right part's list; fold the new tests into `test_tool_route_order` and `test_bootstrap_no_url_names_the_tool`; restate the "no fetch" check.
 - [ ] Part 3: port `test_cli.py` 76-95 to the new reader; also remove `test_output.py` 776-780; note that tool roadmap row 31 becomes true.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 09:09 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the second Plan Review at af2b47b4 has no high finding, confirms the three parts, their order and the delete and keep lists, and none of its seven findings touches part 1)
+**After**: plan
+**Decision**: proceed
+
+This answer starts part 1 only: the one row of the tool's roadmap, which the review found stands alone. The seven findings of the second Plan Review are all about parts 2 and 3. They are not dropped: after part 1 merges, the plan checkpoint that follows is answered revise, the plan takes all seven in, and it is reviewed again before part 2 is implemented.
+
+Host decision on the review's open question, for the owner's veto: `ros2_colcon/unused_settings` does not gain `source`, `source_ref` and `source_path` in this issue. The workspace-side roadmap has its own line for removing those keys, and the tool route's validate already names leftover ones; the revised plan says so.
