@@ -659,6 +659,7 @@ class ViewerApp:  # pragma: no cover - needs a display; smoke-tested under xvfb
         # Dialogs open now. The window manager's close button is not held off
         # by a dialog's grab, so on_close ignores it while this is above 0.
         self._modal_depth = 0
+        self._flash_timer: Optional[str] = None
         root.report_callback_exception = self._callback_error
         root.title(f"Review: {session.draft.name}")
         root.geometry("1200x800")
@@ -900,8 +901,15 @@ class ViewerApp:  # pragma: no cover - needs a display; smoke-tested under xvfb
         (la, ca), (lb, cb) = anchor
         a, b = f"{la}.{ca}", f"{lb}.{cb}"
         self.text.see(a)
+        if self._flash_timer is not None:  # an earlier jump's timer: restart it
+            self.root.after_cancel(self._flash_timer)
+        self.text.tag_remove("flash", "1.0", self.tk.END)
         self.text.tag_add("flash", a, b)
-        self.root.after(900, lambda: self.text.tag_remove("flash", "1.0", self.tk.END))
+        self._flash_timer = self.root.after(900, self._end_flash)
+
+    def _end_flash(self) -> None:
+        self._flash_timer = None
+        self.text.tag_remove("flash", "1.0", self.tk.END)
 
     def decide(self, decision: str) -> None:
         self.session.review.decide(decision)
