@@ -303,6 +303,49 @@ check "real run: exit 1, not a git repository" \
 check "rolled back: no registry line, no settings file" \
     bash -c '[ -z "$(grep -E "^notes[[:space:]]" "$1")" ] && [ ! -e "$2" ]' _ "$REGISTRY" "$(pfile notes)"
 
+# ------------------------------------------- registration from a manifest ---
+echo "TEST: --manifest and its options are passed to register_project.sh; a folder holding only .claude/ counts as empty (issue 503 part 2)"
+# A stub manifest tool in the sandbox workspace: records where it ran and
+# its arguments, makes .repos-manifest/resolved/ with nothing resolved and
+# exits 0, so the gate then refuses the root (the real tool's run is below).
+mkdir -p "$WS/.venv/bin"
+MSTUB_LOG="$SANDBOX/mtool.log"
+printf '#!/usr/bin/env bash\necho "INIT_IN:$(pwd -P) ARGS:$*" >> "%s"\nmkdir -p .repos-manifest/resolved\nexit 0\n' "$MSTUB_LOG" > "$WS/.venv/bin/repos-manifest"
+chmod +x "$WS/.venv/bin/repos-manifest"
+MDIR="$SANDBOX/manifests"
+mkdir -p "$MDIR"
+printf 'format: 1\ndistros: [fakefox]\nrepositories: {}\n' > "$MDIR/m.yaml"
+EMPTY="$SANDBOX/fresh/kappa"
+mkdir -p "$EMPTY/.claude"
+echo '{}' > "$EMPTY/.claude/settings.local.json"
+snap="$(reg_snapshot)"
+out="$(rsr "$EMPTY" --dry-run --manifest "$MDIR/m.yaml" --distro fakefox --role dev --with g1 --with g2 --fetch-from git@example.invalid:field/)"; rc=$?
+check "dry run: exit 0, the line without role= or distro=, the init it would run" \
+    bash -c '[ "$1" -eq 0 ] && [[ "$2" == *"would add the registry line: kappa  ros2_colcon  $3"$'"'"'\n'"'"'* && "$2" == *"init $4 --distro-dirs --distro fakefox --role dev --with g1 --with g2 --fetch-from git@example.invalid:field/ --yes"* ]]' \
+    _ "$rc" "$out" "$EMPTY" "$MDIR/m.yaml"
+check "dry run: nothing written, the tool not run" [ "$(reg_snapshot)" = "$snap" -a ! -e "$MSTUB_LOG" ]
+out="$(rsr "$EMPTY" --manifest "$MDIR/m.yaml" --distro fakefox --role dev --with g1 --with g2 --fetch-from git@example.invalid:field/)"; rc=$?
+check "the real call: the folder holding only .claude/ is set up, init run in it with every option" \
+    [ "$(cat "$MSTUB_LOG" 2>/dev/null)" = "INIT_IN:$EMPTY ARGS:init $MDIR/m.yaml --distro-dirs --distro fakefox --role dev --with g1 --with g2 --fetch-from git@example.invalid:field/ --yes" ]
+check "the stub's root fails the gate: refused and rolled back, the folder (which existed) not on KEPT=" \
+    bash -c '[ "$1" -eq 1 ] && [ "$2" = refused ] && [[ "$3" != *KEPT=* ]] && [ "$4" = "$5" ]' _ "$rc" "$(status_of "$out")" "$out" "$(reg_snapshot)" "$snap"
+check "the next step is the tool's sync, then registering without --manifest" \
+    has "$out" "cd $EMPTY && $WS/.venv/bin/repos-manifest sync --distro fakefox when the sync did not finish, then register_project.sh $EMPTY without --manifest"
+rm -f "$MSTUB_LOG"
+OTHER="$SANDBOX/fresh/lambda"
+mkdir -p "$OTHER/.claude"
+echo notes > "$OTHER/notes.txt"
+out="$(rsr "$OTHER" --manifest "$MDIR/m.yaml" --distro fakefox)"; rc=$?
+check "a folder holding anything but .claude/: refused, nothing written, the tool not run" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"holds files already"* ]] && [ "$6" = "$3" ] && [ ! -e "$4" ] && [ "$(ls -A "$5" | tr "\n" " ")" = ".claude notes.txt " ]' \
+    _ "$rc" "$out" "$snap" "$MSTUB_LOG" "$OTHER" "$(reg_snapshot)"
+for args in "--distro fakefox" "--role dev" "--with g" "--fetch-from p" "--manifest" "--manifest $MDIR/m.yaml"; do
+    # shellcheck disable=SC2086  # each case is a word list
+    out="$(rsr "$OTHER" $args)"; rc=$?
+    check "'$args': a usage error, exit 2, nothing written" [ "$rc" -eq 2 -a "$(reg_snapshot)" = "$snap" ]
+done
+rm -f "$WS/.venv/bin/repos-manifest"
+
 # ------------------------------------- a root the manifest tool set up ---
 echo "TEST: a root the manifest tool set up, in no git repository, registers from its own session (issue 503)"
 # Its resolved files are written by THIS checkout's resolver, run by the
@@ -362,6 +405,20 @@ if [ -n "$MR_PY" ]; then
     out="$(rsr "$T2")"; rc=$?
     check "the real call registers it: STATUS=registered, its gate's adapter validate passed" \
         bash -c '[ "$1" -eq 0 ] && [ "$2" = registered ] && [[ "$3" == *"OK: adapter validate passed"* ]] && [[ "$(grep -E "^t2[[:space:]]" "$4")" == "t2  ros2_colcon  $5" ]]' _ "$rc" "$(status_of "$out")" "$out" "$REGISTRY" "$T2"
+    echo "TEST: an empty folder holding only .claude/ is set up from a manifest by the real tool and registered from its own session, in one call"
+    if command -v vcs >/dev/null 2>&1; then
+        MROOT="$TS/mu"
+        mkdir -p "$MROOT/.claude"
+        echo '{}' > "$MROOT/.claude/settings.local.json"
+        out="$(rsr "$MROOT" --manifest "$TS/m.manifest.yaml" --distro fakefox)"; rc=$?
+        check "STATUS=registered, the gate's validate passed" \
+            bash -c '[ "$1" -eq 0 ] && [ "$2" = registered ] && [[ "$3" == *"OK: adapter validate passed"* ]]' _ "$rc" "$(status_of "$out")" "$out"
+        check "the line holds the name, the type and the path only" [ "$(line_of mu)" = "mu  ros2_colcon  $MROOT" ]
+        check "the tool set the folder up: its record and the repo, beside .claude/" \
+            [ -d "$MROOT/.repos-manifest" -a -d "$MROOT/fakefox/core/src/pkg_a/.git" -a -f "$MROOT/.claude/settings.local.json" ]
+    else
+        echo "  SKIPPED: vcs is not on PATH; the real tool's init needs it"
+    fi
 else
     if command -v repos-manifest >/dev/null 2>&1 || [ -n "${CI:-}" ] \
         || { [ -n "$_common" ] && [ -x "${_common%/.git}/.venv/bin/repos-manifest" ]; }; then

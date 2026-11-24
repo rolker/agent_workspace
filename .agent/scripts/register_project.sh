@@ -19,6 +19,9 @@
 #                       [--default-instance I] [--set key=value]...
 #                       [--no-setup] [--skip-run] [--install-user-tier]
 #                       [--dry-run]
+#   register_project.sh <path> [<type>] --manifest <file> --distro D
+#                       [--role R] [--with <group>]...
+#                       [--fetch-from <prefix>] [other options as above]
 #   register_project.sh --remove <name> [--keep-settings] [--dry-run]
 #   register_project.sh --detect <path>
 #
@@ -33,17 +36,45 @@
 #                  when <path>/configs/manifest or <path>/.repos-manifest
 #                  (a root the manifest tool set up; issue 503) exists or
 #                  --set bootstrap_url=... is given, else single_project.
-#                  To register from a manifest in the new format, run the
-#                  manifest tool's init in the root first (repos-manifest
-#                  init <manifest> --distro-dirs), then register the root.
+#                  With --manifest: the type whose registration.conf says
+#                  manifest=local-file (one such type, else give it).
 #   --name N       the project's name (default: the directory's name)
+#   --manifest F   set a new root up from the manifest file F on the local
+#                  disk, then register it (issue 503 part 2): the
+#                  directory is made when missing, and `adapter setup
+#                  --manifest <F made absolute> --distro D [--role R]
+#                  [--with G]... [--fetch-from P]` runs the manifest tool's
+#                  init --distro-dirs --yes in it. --distro is required;
+#                  --distro and --role go to init, not to the registry
+#                  line; --with (repeatable) and --fetch-from go to init
+#                  and need --manifest. Nothing about the manifest is
+#                  recorded in the workspace: the tool's .repos-manifest/
+#                  is the one record. Refused before anything is written
+#                  (a dry run too): with --no-setup (usage), a registered
+#                  name or path, a type whose registration.conf says
+#                  manifest=none, a root that holds .repos-manifest/ (set
+#                  up already: register it without --manifest), a root
+#                  that exists and holds anything but .claude, a manifest
+#                  that is not a regular file, a URL or a git location
+#                  (scheme://..., user@host:path) that is not an existing
+#                  file (the tool reads a local file only in this version;
+#                  issue 498), and bootstrap_url given or in a kept
+#                  settings file (the bootstrap route's setting, a second
+#                  record on the tool's route)
 #   --parent, --distro, --role, --worktrees, --default-instance
 #                  the registry's trailing fields (_project_registry.sh
-#                  header); --worktrees is written as an absolute path
+#                  header); --worktrees is written as an absolute path.
+#                  --distro and --role without --manifest on a root that
+#                  holds .repos-manifest/ are refused before anything is
+#                  written, for a type that reads the tool's record
+#                  (manifest=local-file): validate refuses them there as a
+#                  second record
 #   --set key=value  a settings-file key (project_setting.sh's keys), e.g.
 #                  --set build=./scripts/build.sh --set test=none; a key
 #                  the type lists in its registration_refused is refused
-#                  before anything is written, with the list's reason
+#                  before anything is written, with the list's reason, and
+#                  so is one a settings file kept from an earlier
+#                  registration (--remove --keep-settings) sets
 #   --no-setup     never run `adapter setup`, even for a type whose
 #                  registration.conf runs it when the directory is missing
 #   --skip-run     do not run the build and test verbs; the status says so
@@ -78,7 +109,9 @@
 #      .agent/projects.d/<name>.sh is not read or copied; make validate's
 #      stale-shape report names what is left in it to move).
 #      Then, when the type's registration.conf says setup=when-missing and
-#      the hosting directory does not exist, `adapter setup`.
+#      the hosting directory does not exist, `adapter setup`; with
+#      --manifest, `adapter setup --manifest ...` (the root missing or
+#      empty).
 #   2. the static gate, registration_verify.sh <name> (read-only).
 #   3. the verbs registration.conf names in run= (build, test), unless
 #      --skip-run.
@@ -104,7 +137,13 @@
 # of a settings file that existed before included, while it is there). A hosting directory that
 # setup created is kept and named on KEPT= (its clones are slow to redo,
 # and a re-run reuses it); a directory that existed before is never
-# touched, and a settings file changed after this run wrote it (a
+# touched. With --manifest, a root setup made that is still empty (init
+# made nothing, or the adapter was stopped by a signal before its own
+# cleanup) is removed with rmdir, with each directory above it the run
+# made, and not named on KEPT=; a root that existed before is never on
+# KEPT=, and is named when init left something in it; when the root then
+# holds .repos-manifest/, NEXT= names the tool's sync and registering the
+# root without --manifest. A settings file changed after this run wrote it (a
 # project_setting.sh set during the build, say) is kept, with a warning,
 # never overwritten. An exit no step chose (an unset variable, say) is
 # handled as a failure, by an EXIT trap. The type's facts come from
@@ -173,6 +212,10 @@ SKIP_RUN=0
 INSTALL_UT=0
 DRY_RUN=0
 KEEP_SETTINGS=0
+# --manifest and the options only init takes (issue 503 part 2).
+MANIFEST=""
+M_WITH=()
+M_FETCH=""
 # Trailing registry fields given on the command line, in this order; each
 # is read indirectly through its F_<key> variable.
 FIELD_KEYS="parent distro role worktrees default_instance"
@@ -189,6 +232,13 @@ while [ $# -gt 0 ]; do
         --detect) need_value "$@"; set_mode detect; TARGET="$2"; shift 2 ;;
         --remove) need_value "$@"; set_mode remove; TARGET="$2"; shift 2 ;;
         --name) need_value "$@"; NAME_ARG="$2"; shift 2 ;;
+        --manifest)
+            need_value "$@"; [ -z "$MANIFEST" ] || die_usage "--manifest given twice"
+            MANIFEST="$2"; shift 2 ;;
+        --with) need_value "$@"; M_WITH+=("$2"); shift 2 ;;
+        --fetch-from)
+            need_value "$@"; [ -z "$M_FETCH" ] || die_usage "--fetch-from given twice"
+            M_FETCH="$2"; shift 2 ;;
         --parent|--distro|--role|--worktrees|--default-instance)
             need_value "$@"; _k="${1#--}"; printf -v "F_${_k//-/_}" '%s' "$2"; shift 2 ;;
         --set) need_value "$@"; SETS+=("$2"); shift 2 ;;
@@ -215,7 +265,8 @@ for _f in $FIELD_KEYS; do
     [ -n "${!_v}" ] && REGISTER_ONLY_GIVEN=1
 done
 if [ -n "$NAME_ARG" ] || [ "${#SETS[@]}" -gt 0 ] || [ "$NO_SETUP" -eq 1 ] || [ "$SKIP_RUN" -eq 1 ] \
-   || [ "$INSTALL_UT" -eq 1 ] || [ -n "$TYPE_ARG" ]; then
+   || [ "$INSTALL_UT" -eq 1 ] || [ -n "$TYPE_ARG" ] || [ -n "$MANIFEST" ] || [ "${#M_WITH[@]}" -gt 0 ] \
+   || [ -n "$M_FETCH" ]; then
     REGISTER_ONLY_GIVEN=1
 fi
 case "$MODE" in
@@ -228,8 +279,23 @@ case "$MODE" in
         ;;
     register)
         [ "$KEEP_SETTINGS" -eq 0 ] || die_usage "--keep-settings goes with --remove"
+        if [ -z "$MANIFEST" ]; then
+            { [ "${#M_WITH[@]}" -eq 0 ] && [ -z "$M_FETCH" ]; } \
+                || die_usage "--with and --fetch-from go to the manifest tool's init, with --manifest"
+        else
+            [ -n "$F_distro" ] || die_usage "--manifest needs --distro: the manifest tool's init --distro-dirs sets the root up for one distro"
+            [ "$NO_SETUP" -eq 0 ] || die_usage "--manifest sets the root up, so it cannot go with --no-setup"
+        fi
         ;;
 esac
+# With --manifest, --distro and --role go to init and not to the registry
+# line (the tool's record is the one record).
+M_DISTRO=""
+M_ROLE=""
+if [ -n "$MANIFEST" ]; then
+    M_DISTRO="$F_distro"; M_ROLE="$F_role"
+    F_distro=""; F_role=""
+fi
 
 # ------------------------------------------------------------ detection ---
 
@@ -593,6 +659,12 @@ if [ "$ADOPT" -eq 0 ]; then
     fi
 fi
 
+# --manifest sets a new root up: never on a registered name or path.
+if [ -n "$MANIFEST" ] && [ "$ADOPT" -eq 1 ]; then
+    echo "ERROR: '$NAME' is registered already, at $PROJECT_ROOT; --manifest sets a new root up and registers it, and is not used on a registered project (a root set up with the manifest tool already is registered by register_project.sh $PROJECT_ROOT, without --manifest)" >&2
+    final refused "drop --manifest, or give a new directory" 1
+fi
+
 # The --set keys, validated one by one (the whole file is validated again
 # before it is written).
 SET_KEYS=" "
@@ -615,6 +687,31 @@ set_value() { # <key> → the --set value, or return 1
     return 1
 }
 
+# The type that sets a root up from a manifest file: the one whose
+# registration.conf says manifest=local-file. Prints it; returns 1 with
+# the reason on stderr when there is not exactly one, or when a type's
+# registration.conf cannot be read (so a type is never chosen by a list
+# that skipped one).
+manifest_type() {
+    local d t v rc found="" bad=""
+    for d in "$ROOT/.agent/project_types"/*/; do
+        t="$(basename "$d")"
+        [ -f "$d/adapter.sh" ] || continue
+        rc=0; v="$(registration_conf_get "$ROOT" "$t" manifest 2>/dev/null)" || rc=$?
+        if [ "$rc" -ne 0 ]; then bad="${bad:+$bad }$t"; continue; fi
+        [ "$v" = local-file ] && found="${found:+$found }$t"
+    done
+    if [ -n "$bad" ]; then
+        echo "ERROR: cannot tell which project type sets a root up from a manifest: the registration.conf of $bad is missing or invalid (.agent/scripts/validate_adapter.sh names the problem)" >&2
+        return 1
+    fi
+    case "$found" in
+        "") echo "ERROR: no project type sets a root up from a manifest (none has manifest=local-file in its registration.conf)" >&2; return 1 ;;
+        *" "*) echo "ERROR: more than one project type sets a root up from a manifest ($found); give the type after the path" >&2; return 1 ;;
+    esac
+    echo "$found"
+}
+
 # The type.
 if [ "$ADOPT" -eq 1 ]; then
     TYPE="$(cut -f1 <<< "$ENTRY")"
@@ -624,6 +721,8 @@ if [ "$ADOPT" -eq 1 ]; then
     fi
 elif [ -n "$TYPE_ARG" ]; then
     TYPE="$TYPE_ARG"
+elif [ -n "$MANIFEST" ]; then
+    TYPE="$(manifest_type)" || final refused "fix the project types' registration.conf, or give the type" 1
 # .repos-manifest is tested as the adapter's route test does (there, or a
 # link, even a dangling one), so a link to nothing is typed as it is routed.
 elif [ -d "$PROJECT_ROOT/configs/manifest" ] || [ -e "$PROJECT_ROOT/.repos-manifest" ] || [ -L "$PROJECT_ROOT/.repos-manifest" ] \
@@ -647,6 +746,7 @@ if [ "$IS_PARENT" -eq 0 ]; then
     REQUIRED="$(registration_conf_get "$ROOT" "$TYPE" required_commands)"
     CONF_SETUP="$(registration_conf_get "$ROOT" "$TYPE" setup)"
     CONF_RUN="$(registration_conf_get "$ROOT" "$TYPE" run)"
+    CONF_MANIFEST="$(registration_conf_get "$ROOT" "$TYPE" manifest)"
     # A --set key the type lists in its registration_refused: its adapter
     # refuses a project that sets it, so the registration could never
     # pass; refused here, before anything is written.
@@ -661,9 +761,112 @@ if [ "$IS_PARENT" -eq 0 ]; then
             final refused "fix $ROOT/.agent/project_types/$TYPE/registration_refused" 1
         fi
     done
+    # A settings file kept from an earlier registration (--remove
+    # --keep-settings) that sets such a key: the same, with the way on
+    # for a file (project_setting.sh unset refuses an unregistered name).
+    _kept="$(project_file_path "$ROOT" "$NAME")"
+    if [ "$ADOPT" -eq 0 ] && [ -f "$_kept" ] && [ -r "$_kept" ]; then
+        _refused_keys=""
+        for _k in $_PROJECT_FILE_KEYS; do
+            registration_refused_setting "$ROOT" "$TYPE" "$_k" >/dev/null 2>&1 && _refused_keys="${_refused_keys:+$_refused_keys, }$_k"
+        done
+        while IFS= read -r _l || [ -n "$_l" ]; do
+            _l="$(_project_file_trim "${_l%$'\r'}")"
+            [ -z "$_l" ] || [[ "$_l" == \#* ]] || [[ "$_l" != *=* ]] && continue
+            _k="$(_project_file_trim "${_l%%=*}")"
+            [[ "$SET_KEYS" == *" $_k "* ]] && continue
+            _rrc=0; _why="$(registration_refused_setting "$ROOT" "$TYPE" "$_k")" || _rrc=$?
+            if [ "$_rrc" -eq 0 ]; then
+                echo "ERROR: the settings file $_kept, kept from an earlier registration, sets $_k, which is refused for a project of type $TYPE: $_why" >&2
+                final refused "remove the $_refused_keys lines from $_kept (or remove the file), then re-run" 1
+            elif [ "$_rrc" -eq 2 ]; then
+                echo "ERROR: cannot tell whether type $TYPE refuses $_k (set in $_kept): $_why" >&2
+                final refused "fix $ROOT/.agent/project_types/$TYPE/registration_refused" 1
+            fi
+        done < "$_kept"
+    fi
 else
-    REQUIRED=""; CONF_SETUP="never"; CONF_RUN=""
+    REQUIRED=""; CONF_SETUP="never"; CONF_RUN=""; CONF_MANIFEST=""
     [ "${#SETS[@]}" -eq 0 ] || die_usage "a parent root ($REGISTRY_PARENT_TYPE) has no settings of its own; --set them on its instances"
+fi
+
+# --manifest: the type, the root and the manifest, checked before anything
+# is written (a dry run too).
+TOOL_BIN="$ROOT/.venv/bin/repos-manifest"
+M_ABS=""
+ROOT_EXISTED=0
+{ [ -e "$PROJECT_ROOT" ] || [ -L "$PROJECT_ROOT" ]; } && ROOT_EXISTED=1
+# A root holding only these entries counts as empty: a Claude Code session
+# started in the folder may have written its .claude/ there (issue 473).
+root_is_empty() {
+    local e
+    for e in "$PROJECT_ROOT"/* "$PROJECT_ROOT"/.[!.]* "$PROJECT_ROOT"/..?*; do
+        [ -e "$e" ] || [ -L "$e" ] || continue
+        [ "$(basename "$e")" = .claude ] && continue
+        return 1
+    done
+    return 0
+}
+# A location the manifest tool does not read in this version: a URL or a
+# git location (scheme://..., user@host:path). Checked only for an
+# argument that is not an existing regular file. The one place this script
+# knows it; issue 498 replaces it (the tool reading a manifest from a git
+# repo, and registration.conf then saying which locations a type takes).
+manifest_is_remote() {
+    [[ "$1" == *://* ]] || [[ "$1" =~ ^[^/:@]+@[^/:]+: ]]
+}
+if [ -n "$MANIFEST" ]; then
+    if [ "$CONF_MANIFEST" != local-file ]; then
+        echo "ERROR: a project of type $TYPE is not set up from a manifest (its registration.conf says manifest=${CONF_MANIFEST:-none})" >&2
+        final refused "drop --manifest, or give a type that is set up from a manifest" 1
+    fi
+    if [ -e "$PROJECT_ROOT/.repos-manifest" ] || [ -L "$PROJECT_ROOT/.repos-manifest" ]; then
+        echo "ERROR: $PROJECT_ROOT is set up already (it holds .repos-manifest/), so the manifest tool's init is not run there again; when its first sync did not finish, the tool's sync finishes it: cd $PROJECT_ROOT && $TOOL_BIN sync --distro $M_DISTRO" >&2
+        final refused "register it without --manifest: register_project.sh $PROJECT_ROOT" 1
+    fi
+    if [ "$ROOT_EXISTED" -eq 1 ] && [ ! -d "$PROJECT_ROOT" ]; then
+        echo "ERROR: $PROJECT_ROOT is there and is not a directory" >&2
+        final refused "give a new or empty directory" 1
+    fi
+    if [ "$ROOT_EXISTED" -eq 1 ] && ! root_is_empty; then
+        echo "ERROR: $PROJECT_ROOT holds files already; a root is set up from a manifest in a new or empty directory (only a .claude/ may be there), so the tool's directories are not mixed with others" >&2
+        final refused "give a new or empty directory" 1
+    fi
+    if [ -f "$MANIFEST" ]; then
+        M_ABS="$(cd "$(dirname "$MANIFEST")" && pwd -P)/$(basename "$MANIFEST")"
+    elif manifest_is_remote "$MANIFEST"; then
+        echo "ERROR: --manifest $MANIFEST: the manifest tool reads a manifest from the local disk only in this version (issue 498 adds a URL or a file in a git repo); clone the repo that holds it, keep the clone up to date by hand, and give the file in the clone (docs/manifest/design.md, \"A root that sets source\")" >&2
+        final refused "give --manifest a file on the local disk" 1
+    elif [ -e "$MANIFEST" ]; then
+        echo "ERROR: --manifest $MANIFEST is not a regular file" >&2
+        final refused "give --manifest a manifest file" 1
+    else
+        echo "ERROR: --manifest $MANIFEST: no such file" >&2
+        final refused "give --manifest a manifest file on the local disk" 1
+    fi
+    # bootstrap_url is the bootstrap route's: on the tool's route validate
+    # refuses it as a second record, after init has cloned every repo.
+    _bu=""
+    if set_value bootstrap_url >/dev/null; then
+        _bu="--set bootstrap_url"
+    elif [ "$ADOPT" -eq 0 ] && [ -f "$_kept" ] && grep -qE '^[[:space:]]*bootstrap_url[[:space:]]*=' "$_kept" 2>/dev/null; then
+        _bu="the settings file $_kept, kept from an earlier registration,"
+    fi
+    if [ -n "$_bu" ]; then
+        echo "ERROR: $_bu sets bootstrap_url, the bootstrap route's setting; a root set up from a manifest is on the manifest tool's route, where validate refuses it as a second record beside the tool's" >&2
+        if [ "${_bu#--set}" != "$_bu" ]; then
+            final refused "drop --set bootstrap_url" 1
+        fi
+        final refused "remove the bootstrap_url line from $_kept (or remove the file), then re-run" 1
+    fi
+fi
+# --distro or --role without --manifest on a root the manifest tool set up,
+# for a type that reads the tool's record: validate refuses them there as
+# a second record, so the registration could never pass.
+if [ -z "$MANIFEST" ] && [ "$CONF_MANIFEST" = local-file ] && { [ -n "$F_distro" ] || [ -n "$F_role" ]; } \
+   && { [ -e "$PROJECT_ROOT/.repos-manifest" ] || [ -L "$PROJECT_ROOT/.repos-manifest" ]; }; then
+    echo "ERROR: $PROJECT_ROOT holds .repos-manifest/: the manifest tool records its distros and role there, and a distro= or role= on the registry line is a second record that validate refuses" >&2
+    final refused "drop --distro and --role" 1
 fi
 if [ -n "$F_default_instance" ] && [ "$IS_PARENT" -eq 0 ]; then
     die_usage "--default-instance is for a parent root (type $REGISTRY_PARENT_TYPE)"
@@ -796,10 +999,38 @@ if [ "${#KV[@]}" -gt 0 ]; then
     fi
 fi
 
-# Setup: when the type runs it and the hosting directory is missing.
+# Setup: when the type runs it and the hosting directory is missing, or
+# with --manifest (the root missing or empty, checked above).
 RUN_SETUP=0
 if [ "$CONF_SETUP" = "when-missing" ] && [ ! -e "$PROJECT_ROOT" ] && [ "$NO_SETUP" -eq 0 ]; then
     RUN_SETUP=1
+fi
+SETUP_ARGS=()
+SETUP_WHY="$PROJECT_ROOT does not exist"
+if [ -n "$MANIFEST" ]; then
+    RUN_SETUP=1
+    SETUP_ARGS=(--manifest "$M_ABS" --distro "$M_DISTRO")
+    [ -n "$M_ROLE" ] && SETUP_ARGS+=(--role "$M_ROLE")
+    for _g in ${M_WITH[@]+"${M_WITH[@]}"}; do SETUP_ARGS+=(--with "$_g"); done
+    [ -n "$M_FETCH" ] && SETUP_ARGS+=(--fetch-from "$M_FETCH")
+    SETUP_WHY="from the manifest; $PROJECT_ROOT $([ "$ROOT_EXISTED" -eq 1 ] && echo "is empty" || echo "does not exist")"
+    # What the adapter's setup runs in the root, for the dry run.
+    INIT_LINE="cd $(printf '%q' "$PROJECT_ROOT") && $(printf '%q' "$TOOL_BIN") init $(printf '%q' "$M_ABS") --distro-dirs --distro $(printf '%q' "$M_DISTRO")"
+    [ -n "$M_ROLE" ] && INIT_LINE="$INIT_LINE --role $(printf '%q' "$M_ROLE")"
+    for _g in ${M_WITH[@]+"${M_WITH[@]}"}; do INIT_LINE="$INIT_LINE --with $(printf '%q' "$_g")"; done
+    [ -n "$M_FETCH" ] && INIT_LINE="$INIT_LINE --fetch-from $(printf '%q' "$M_FETCH")"
+    INIT_LINE="$INIT_LINE --yes"
+fi
+# The directories setup would make (the root, and each missing one above
+# it), the shallowest first: a rollback with --manifest removes those
+# still empty, deepest first, with rmdir alone.
+MISSING_DIRS=()
+if [ -n "$MANIFEST" ]; then
+    _d="$PROJECT_ROOT"
+    while [ ! -e "$_d" ] && [ ! -L "$_d" ]; do
+        MISSING_DIRS=("$_d" ${MISSING_DIRS[@]+"${MISSING_DIRS[@]}"})
+        _d="$(dirname "$_d")"
+    done
 fi
 RUN_VERBS=""
 [ "$SKIP_RUN" -eq 0 ] && RUN_VERBS="$CONF_RUN"
@@ -852,7 +1083,10 @@ if [ "$DRY_RUN" -eq 1 ]; then
         if [ "$SETTINGS_EXISTED" -eq 1 ]; then echo "settings file kept as it is: $SETTINGS"
         else echo "no settings file (nothing to write)"; fi
     fi
-    [ "$RUN_SETUP" -eq 1 ] && echo "would run: adapter --project $NAME setup ($PROJECT_ROOT does not exist)"
+    if [ "$RUN_SETUP" -eq 1 ]; then
+        echo "would run: adapter --project $NAME setup${SETUP_ARGS[*]:+ ${SETUP_ARGS[*]}} ($SETUP_WHY)"
+        [ -n "$MANIFEST" ] && echo "    which runs: $INIT_LINE"
+    fi
     echo "would run: registration_verify.sh $NAME"
     for _v in $RUN_VERBS; do echo "would run: adapter --project $NAME $_v"; done
     [ "$SKIP_RUN" -eq 1 ] && [ -n "$CONF_RUN" ] && echo "would not run: $CONF_RUN (--skip-run)"
@@ -967,11 +1201,48 @@ rollback() {
         fi
     fi
     ROLLBACK_DONE+="settings "
-    if [ "$SETUP_RAN" -eq 1 ] && [ -e "$PROJECT_ROOT" ]; then
+    if [ "$SETUP_RAN" -eq 1 ] && [ -n "$MANIFEST" ]; then
+        rollback_manifest_root
+    elif [ "$SETUP_RAN" -eq 1 ] && [ -e "$PROJECT_ROOT" ]; then
         KEPT="$PROJECT_ROOT"
         echo "  kept $PROJECT_ROOT: created by setup; remove it, or re-run register_project.sh to reuse it" >&2
     fi
     ROLLBACK_RUNNING=0
+}
+# The root after a failed setup from a manifest. One that did not exist:
+# removed with each directory above it this run made, deepest first, by
+# rmdir alone while they are empty (init made nothing, or the adapter was
+# stopped before its own cleanup); otherwise kept and named on KEPT=
+# (init made the system: its clones are slow to redo, and the tool's sync
+# finishes it). One that existed before: never on KEPT=, never touched,
+# and named when init left something in it. Prints nothing else.
+rollback_manifest_root() {
+    local i
+    if [ "$ROOT_EXISTED" -eq 0 ]; then
+        if [ -d "$PROJECT_ROOT" ]; then
+            if ! rmdir -- "$PROJECT_ROOT" 2>/dev/null; then
+                KEPT="$PROJECT_ROOT"
+                echo "  kept $PROJECT_ROOT: created by setup, and the manifest tool's init left something there" >&2
+                return 0
+            fi
+            echo "  removed $PROJECT_ROOT (empty, made by setup)" >&2
+        fi
+        for (( i=${#MISSING_DIRS[@]}-1; i>=0; i-- )); do
+            [ "${MISSING_DIRS[$i]}" = "$PROJECT_ROOT" ] && continue
+            [ -d "${MISSING_DIRS[$i]}" ] || continue
+            rmdir -- "${MISSING_DIRS[$i]}" 2>/dev/null || break
+            echo "  removed ${MISSING_DIRS[$i]} (empty, made by setup)" >&2
+        done
+    elif ! root_is_empty; then
+        echo "  $PROJECT_ROOT existed before; it holds what init left" >&2
+    fi
+}
+# With --manifest, once the root holds the tool's record: the tool's own
+# next step and registering without --manifest. Empty otherwise.
+manifest_next() {
+    [ -n "$MANIFEST" ] && [ "$SETUP_RAN" -eq 1 ] || return 0
+    [ -e "$PROJECT_ROOT/.repos-manifest" ] || [ -L "$PROJECT_ROOT/.repos-manifest" ] || return 0
+    echo "cd $PROJECT_ROOT && $TOOL_BIN sync --distro $M_DISTRO when the sync did not finish, then register_project.sh $PROJECT_ROOT without --manifest"
 }
 # What a rollback cut short leaves (an exit inside it): each step it had
 # not finished, under the conditions that step undoes, checked on disk
@@ -1003,7 +1274,7 @@ rollback_unfinished() {
             rollback_left "the settings file $SETTINGS"
         fi
     fi
-    if [ "$SETUP_RAN" -eq 1 ] && [ -e "$PROJECT_ROOT" ]; then
+    if [ "$SETUP_RAN" -eq 1 ] && [ -e "$PROJECT_ROOT" ] && { [ -z "$MANIFEST" ] || [ "$ROOT_EXISTED" -eq 0 ]; }; then
         KEPT="$PROJECT_ROOT"
     fi
 }
@@ -1050,10 +1321,12 @@ on_signal() {
         final "NOT READY" "interrupted before its checks finished; re-run register_project.sh $NAME" "$1"
     fi
     rollback
+    local mnext
+    mnext="$(manifest_next)"
     if [ -n "$ROLLBACK_LEFT" ]; then
-        rolled_back_final "re-run register_project.sh (interrupted)" "$1"
+        rolled_back_final "${mnext:-re-run register_project.sh} (interrupted)" "$1"
     fi
-    final refused "interrupted; nothing is registered" "$1"
+    final refused "interrupted; nothing is registered${mnext:+; then $mnext}" "$1"
 }
 trap 'on_signal 130' INT
 trap 'on_signal 143' TERM
@@ -1071,6 +1344,11 @@ failed() { # <what failed> <next>
     echo "" >&2
     echo "ERROR: $1" >&2
     rollback
+    local mnext
+    mnext="$(manifest_next)"
+    if [ -n "$mnext" ]; then
+        rolled_back_final "$2; then $mnext${KEPT:+ (setup is not run again on the kept $KEPT; remove it first to start over)}" 1
+    fi
     if [ -n "$KEPT" ]; then
         rolled_back_final "$2; then re-run register_project.sh (setup is not run again on the kept $KEPT; remove it first to start over)" 1
     fi
@@ -1101,7 +1379,9 @@ on_exit() {
         final "NOT READY" "stopped unexpectedly; re-run register_project.sh $NAME, and report the error above if it recurs" "$rc"
     fi
     rollback
-    rolled_back_final "re-run register_project.sh, and report the error above if it recurs" "$rc"
+    local mnext
+    mnext="$(manifest_next)"
+    rolled_back_final "${mnext:+$mnext; or }re-run register_project.sh, and report the error above if it recurs" "$rc"
 }
 trap on_exit EXIT
 
@@ -1147,9 +1427,13 @@ fi
 
 if [ "$RUN_SETUP" -eq 1 ]; then
     echo ""
-    echo "== adapter --project $NAME setup ($PROJECT_ROOT does not exist)"
+    echo "== adapter --project $NAME setup${SETUP_ARGS[*]:+ ${SETUP_ARGS[*]}} ($SETUP_WHY)"
     SETUP_RAN=1
-    "$ADAPTER" --from "$ROOT" --project "$NAME" setup 8>&- || failed "adapter setup failed (above)" "fix the setup failure (its bootstrap_url, say)"
+    if [ -n "$MANIFEST" ]; then
+        "$ADAPTER" --from "$ROOT" --project "$NAME" setup "${SETUP_ARGS[@]}" 8>&- || failed "adapter setup failed (above)" "fix what the manifest tool reports"
+    else
+        "$ADAPTER" --from "$ROOT" --project "$NAME" setup 8>&- || failed "adapter setup failed (above)" "fix the setup failure (its bootstrap_url, say)"
+    fi
 fi
 
 # 2. The static gate.
