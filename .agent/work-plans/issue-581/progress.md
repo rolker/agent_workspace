@@ -424,3 +424,13 @@ Round 2's five, all closed: N1 (a qualified ref where origin is not on github.co
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 14:30 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 of the pre-push review approved with nothing open, Ship: recommended; the host's full pre-commit pass over the changed files passed, every hook, no SKIP, on the code at e826e829, run beside the round 3 review, which added a record commit only)
+**After**: publish
+**Decision**: publish
+
+Three pre-push rounds: round 1 found 2 must-fix and 5 suggestions; round 2 found 3 must-fix and 2 suggestions in the fixes; round 3 (a convergence check, no cross-model reviewers) found every one closed and nothing new. Gemini and Codex ran in rounds 1 and 2 and found must-fix points in both. Main was merged in twice (pull requests 603 and 604); the second merge reconciled review-plan step 1 with pull request 604.
