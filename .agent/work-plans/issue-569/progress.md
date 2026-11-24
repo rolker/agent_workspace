@@ -562,3 +562,20 @@ Recorded here for the part's later merge checkpoint, the owner's answer of 2026-
 - `test_design_anchors.sh`: test_design_anchors: 82 passed, 0 failed
 - `test_skill_paths.sh`: test_skill_paths: 199 passed, 0 failed
 - The other suites the grep names for `adapter.sh` (test_adapter, test_project_file, test_register_project, test_project_registry, test_worktree_create) match the generic file name; none asserts the changed message, so they were left to the host's full pass, as was the full pre-commit pass.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 10:59 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-569 at `062fe620`
+**Base**: origin/main
+**Depth**: Deep (reason: round 4 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 4 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Round 4 of part 2: the round-3 findings and the fix diff 0561a183..062fe620 only (commits 89cc4863, e85f8aaa, 785cd360). All three round-3 findings hold as fixed. Checked against the code: `validate_adapter.sh` runs `project_type_unused_settings_problems` on `<type>/registration_refused` exactly as on `unused_settings` (lines 70-77; a type without the file, single_project, passes, as the header calls the list optional); `register_project.sh` (lines 650-664) refuses a `--set` key the type lists, printing the list's reason, before any write, and `ros2_colcon/registration_refused` lists exactly `source`, `source_ref`, `source_path`; `registration_refused_setting` in `_project_registry.sh` reads it. The script reference rows and the root design's settings paragraph say just that. The adapter's message and its test assert the same new string ("keep it at source_ref by hand before each sync (a git pull for a branch)"), and `docs/manifest/design.md` matches; `git grep "git pull in it"` finds the phrase only in progress.md history. `wc -l docs/design.md` = 1262 = the newest change-log row's count; "Registry and adapters" is 182 lines at HEAD against 176 on origin/main, so "grows by 6 lines" is true. Tests not re-run (the implementation entry records test_ros2_colcon 1203/0/0, test_design_anchors 82/0, test_skill_paths 199/0 at 785cd360; no code changed since). Cross-model: skipped (round-4 convergence check, per handoff).
+
+### Findings
+- [ ] No issues found. LGTM.
