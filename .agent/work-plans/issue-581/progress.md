@@ -521,3 +521,13 @@ Decision summary checked against the branch. Wrong: "as the skills' other worksp
 ### Findings
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 14:43 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner's answer in the dialog, to "How do you want pull request 608 merged?": "Merge when CI is green (Recommended)". The option read: merge as soon as all checks pass; if CI is not green by about 14:57 nothing merges and it stays parked for the next session. No relaxing flag is passed to merge_pr.sh. The dialog put one host decision to him to confirm by merging, and he merged rather than choose "Hold, I want it to work across repositories": the issue's wish that these skills work on another repository's issue from any folder is answered with a clear refusal, under the rule that a session changes only the root it was started in. It also showed: the plan reviewed twice; three pre-push rounds with five must-fix in all, every one fixed; the Codex cold read's must-fix, fixed, and its re-check approved; the final triage (7a28b07f) with nothing open; Gemini and Codex in rounds 1 and 2, Copilot not requested; the title-quoting and wrong-pull-request fixes made on the way; three other skills with bare gh calls not covered and no issue yet; CI restarted at 14:37 and still running; no hosted review or comment.
