@@ -671,3 +671,17 @@ In the same dialog he was asked what follows part 2: part 3 of this issue (remov
 Earlier the same day, on the one design question this part raised (cut now and state that a manifest in a git repo needs a clone kept by hand, or wait for the tool to read from git): "Which ever is easier, I don't think much of this functionality will be used by any other agents until we are done".
 
 Outside reviewers on this pull request: Codex ran in pre-push rounds 1 and 2 and as the cold read of the final diff, and found the points behind the round-1 and round-2 findings and F1 to F3; Gemini failed in rounds 1 and 2 (its headless run denied a tool call); Copilot was requested once and was not available ("insufficient remaining quota").
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 11:42 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: address
+
+"Fix the conflicts (Recommended)"
+
+The merge of pull request 597 on his answer of the same day did not land. `merge_pr.sh --pr 597 --type workspace` passed its review gate ("approved review at head `6771dcb` and a decision summary are present") and its CI wait ("CI checks passed on `6771dcb`"), then stopped with: "ERROR: PR #597 has merge conflicts (mergeable: CONFLICTING) — resolve them before merging". Pull request 568 (issue 551) had merged into main while this one waited on queued CI. The script recorded no merge entry.
+
+The open finding for the fix pass, which the dialog showed him: merge origin/main into this branch and resolve its two conflicts, both in documents. In `.agent/knowledge/script_reference.md` both sides edited the rows for `validate_adapter.sh`, `project_setting.sh` and `register_project.sh`; each row keeps what both sides say. In `docs/design.md` both sides added change-log rows; the rows of both are kept, main's first, with the line counts redone by the change log's own convention for a merge. A trial merge showed no other conflict: the adapter and the tests merged cleanly. A narrow re-review and a triage follow before the merge question is asked again. The other choice offered was stop.
