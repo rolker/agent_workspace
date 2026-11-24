@@ -1435,6 +1435,19 @@ case5 '## Direction\n\n**Acceptance case.** One sentence only.\n'
 case5 '## Direction\n\nNo case here.\n\n## Other\n\n**Acceptance case.** Elsewhere.\n'
 [[ $RC -eq 0 && "$OUT" == $'acceptance_first=\nacceptance_rest=' ]] \
     && pass "(skill 5) no paragraph in the Direction section: empty, so the line is left out" || fail "(skill 5) absent rc=$RC '$OUT'"
+# The text and the path are one paragraph's, both read by the checker: a
+# fenced or continuing **Acceptance case.** line ahead of the real one,
+# under another path, is neither (issue #563).
+acc_rm='## Direction\n\n**Path 1, One.** First.\n\n```md\n**Acceptance case.** Example only.\n```\n\nText that wraps and\n**Acceptance case.** Continued, not one.\n\n**Path 2, Two.** Second.\n\n**Acceptance case.** The real one. More.\n\n## Next\n'
+case5 "$acc_rm"
+[[ $RC -eq 0 && "$OUT" == $'acceptance_first=The real one.\nacceptance_rest=More.' ]] \
+    && pass "(skill 5) a fenced or continuing Acceptance case line ahead of the real one is not read" || fail "(skill 5) fenced acceptance rc=$RC '$OUT'"
+cp "$WS/docs/roadmap.md" "$SB/roadmap.saved"
+printf '%b' "$acc_rm" > "$WS/docs/roadmap.md"
+RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$(skill_step 3 3)" 2>&1)" || RC=$?
+mv "$SB/roadmap.saved" "$WS/docs/roadmap.md"
+[[ $RC -eq 0 && "$OUT" == *$'\nacceptance_path=Path 2, Two' ]] \
+    && pass "(skill 5) ... and step 3 names the same paragraph's path" || fail "(skill 5) fenced acceptance path rc=$RC '$OUT'"
 echo "TEST: sit-rep step 5 prints roadmap text with link text and ADR titles, never raw links or bare numbers"
 case5 '## Direction\n\n**Acceptance case.** A project is used ([Roots](design.md#roots)). Until then,\nADR-0042 stays put\n([Sessions and roots](design.md#sessions-and-roots)); ADR-0042 (Its own words) is not doubled.\n' \
     $'ADR-0042 is promoted (#9)\nSee [the guide](docs/guide.md) and ADR-0043\n\nA plain line'
@@ -2051,9 +2064,16 @@ for hr in '---' '***' '___'; do
     [[ $RC -eq 0 && "$(cut -f1-3 <<< "$OUT")" == $'path\tPath 1, One\ttrue\nline\tA\ttrue\npath\tPath 2, Two\ttrue\nline\tB\tfalse' ]] \
         && pass "(paths) '$hr' above a path paragraph: the path opens, its lines are its own" || fail "(paths) '$hr' rc=$RC '$OUT'"
     RC=0; S="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/root" --list-paths 2>&1)" || RC=$?
-    [[ $RC -eq 0 && "$S" == $'group\tPath 1, One\tFirst.\ngroup\tPath 2, Two\tSecond.\nacceptance\tPath 2, Two' ]] \
+    [[ $RC -eq 0 && "$S" == $'group\tPath 1, One\tFirst.\ngroup\tPath 2, Two\tSecond.\nacceptance\tPath 2, Two\tT.' ]] \
         && pass "(paths) '$hr': --list-paths gives the sentence and the acceptance case's group" || fail "(paths) '$hr' list-paths rc=$RC '$S'"
 done
+
+echo "TEST: --list-paths gives the acceptance case with no path paragraph, without a group"
+run_rm "$(printf '%s\n' '## Direction' '' '```' '**Acceptance case.** Fenced.' '```' '' '**Acceptance case.** No paths' 'here.' '- a list' '' \
+    '| Line | Check |' '|---|---|' "| A | $T |")"
+RC=0; S="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/root" --list-paths 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == $'acceptance\t\tNo paths here.' ]] \
+    && pass "(paths) --list-paths: the first unfenced acceptance paragraph, joined, ending at the list; no group" || fail "(paths) acceptance alone rc=$RC '$S'"
 
 echo "TEST: what cannot be read as a group is a format row, never dropped unseen"
 run_rm "$(printf '%s\n' '## Direction' '' '**Path 1, One.** a' '' '| Line | Check |' '|---|---|' "| A | $T |" '' \

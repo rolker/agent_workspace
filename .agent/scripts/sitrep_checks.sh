@@ -64,14 +64,18 @@
 #              its opening paragraph after the bold name (up to a period
 #              followed by white space or the end, or a period and a
 #              closing `"` followed by either; empty for `no path`); then
-#                acceptance<TAB><name>
-#              when the first `**Acceptance case.**` paragraph (opened by
-#              the same rules as a path's) sits under a path or Across
-#              paragraph: the nearest one above it. Nothing for a section
-#              with no path paragraph, or a roadmap that is missing or
-#              unreadable. Exit 0. The sit-rep reads the paths through
-#              this, so it reads them by the checker's rules, never its
-#              own.
+#                acceptance<TAB><name><TAB><text>
+#              when the section has an `**Acceptance case.**` paragraph
+#              (the first one, opened by the same rules as a path's, so
+#              never one in a fence or continuing other text): the group
+#              it sits under, the nearest path or Across paragraph above
+#              it (empty with none above it, or with no path paragraph in
+#              the section), and the paragraph's text after the bold,
+#              joined into one line. No `group` line for a section with
+#              no path paragraph, and nothing for a roadmap that is
+#              missing or unreadable. Exit 0. The sit-rep reads the paths
+#              and the acceptance case through this, so it reads them by
+#              the checker's rules, never its own.
 #   --next-steps-from <rows-file>
 #              the next step of the root and of each part, from rows saved
 #              by an earlier run (no roadmap is read, no check runs, so it
@@ -846,10 +850,11 @@ scan_roadmap() {
     # still open (wrapped), joined so far; bold_at = the row index the
     # paragraph opened at.
     # ptext_on = the lines of a group's opening paragraph are being read
-    # into GTEXT (path_mark).
-    local open_ok=false bold="" bold_on=false bold_at=0 ptext_on=false
+    # into GTEXT, or the acceptance case's into ACC_TEXT (ptext_to: group
+    # or acc; path_mark).
+    local open_ok=false bold="" bold_on=false bold_at=0 ptext_on=false ptext_to=group
     if [ -n "$part" ]; then kpre=sub; ipre="$part: "; fi
-    GMARKS=(); GRAW=(); GTEXT=(); PENDING=(); ACC_GROUP=""; ACC_SEEN=false
+    GMARKS=(); GRAW=(); GTEXT=(); PENDING=(); ACC_GROUP=""; ACC_TEXT=""; ACC_SEEN=false
     SCAN_SECTION=false
     SCAN_TABLE=false
     while IFS= read -r raw || [ -n "$raw" ]; do
@@ -981,7 +986,9 @@ scan_roadmap() {
             # span still open goes on through paragraph text only, and so
             # does the text of a group's opening paragraph.
             if [ "$ptext_on" = true ]; then
-                if [ "$prev_para" = true ]; then GTEXT[-1]+=" $(trim "$raw")"; else ptext_on=false; fi
+                if [ "$prev_para" = false ]; then ptext_on=false
+                elif [ "$ptext_to" = acc ]; then ACC_TEXT+=" $(trim "$raw")"
+                else GTEXT[-1]+=" $(trim "$raw")"; fi
             fi
             if [ "$bold_on" = true ]; then
                 if [ "$prev_para" = true ]; then bold+=" $(trim "$raw")"; else bold_unclosed; fi
@@ -1034,7 +1041,8 @@ bold_unclosed() {
 # GMARKS ("<row index>\t<path|across>\t<name>"), its bold text in GRAW
 # and its paragraph's text in GTEXT (the rest of the paragraph is read in
 # while ptext_on). The first `Acceptance case` paragraph notes the group
-# it sits in, the last one opened above it (ACC_GROUP). Anything else is
+# it sits in, the last one opened above it (ACC_GROUP), and its text after
+# the bold (ACC_TEXT, read in the same way). Anything else is
 # not a group.
 path_mark() {
     local t
@@ -1052,12 +1060,13 @@ path_mark() {
         if [ "$t" = "Acceptance case" ] && [ "$ACC_SEEN" = false ]; then
             ACC_SEEN=true
             [ "${#GMARKS[@]}" -eq 0 ] || ACC_GROUP="${GMARKS[-1]#*$'\t'*$'\t'}"
+            ACC_TEXT="$(trim "$3")"; ptext_to=acc; ptext_on=true
         fi
         return 0
     fi
     GRAW+=("$t")
     GTEXT+=("$(trim "$3")")
-    ptext_on=true
+    ptext_to=group; ptext_on=true
 }
 
 # first_sentence <text>: up to the first period followed by white space or
@@ -1223,6 +1232,7 @@ follow_pointer() {
 
 POINTERS=()
 FOLLOWED=()
+ACC_SEEN=false; ACC_GROUP=""; ACC_TEXT=""
 [ "$SUMMARY" = false ] || FOLLOW=false
 ROADMAP_STATE="$(roadmap_state "$ROADMAP")"
 if [ "$ROADMAP_STATE" = found ]; then
@@ -1243,8 +1253,9 @@ if [ "$LIST_PATHS" = true ]; then
             k=$((k + 1))
         fi
     done
-    if [ "$g" -gt 0 ] && [ -n "$ACC_GROUP" ]; then
-        printf 'acceptance\t%s\n' "$ACC_GROUP" || exit 1
+    if [ "$ACC_SEEN" = true ]; then
+        [ "$g" -gt 0 ] || ACC_GROUP=""
+        printf 'acceptance\t%s\t%s\n' "$ACC_GROUP" "${ACC_TEXT//$'\t'/ }" || exit 1
     fi
     exit 0
 fi

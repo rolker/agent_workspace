@@ -342,7 +342,7 @@ if [ -f "$rows" ] && [ -r "$rows" ]; then
 elif ! lp="$("$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$ROOT" "${ra[@]}" --list-paths)"; then
     echo "paths: could not be listed (reason above); work is marked path unknown"
     haspaths=unknown
-elif [ -n "$lp" ]; then
+elif grep -q "^group	" <<< "$lp"; then
     haspaths=yes
 fi
 wl="$("$WS_ROOT/.agent/scripts/sitrep_root.sh" --worktrees --rows "$rows")" \
@@ -802,10 +802,15 @@ branch or pull request matches, nothing in flight on this machine
 advances it, and the report says that rather than pick other work.
 
 What the next step is for comes from the Direction section's
-`**Acceptance case.**` paragraph, read by this block, which runs even
-when step 1 printed no rows. The paragraph is joined into one line and
-split after its first sentence (the first period followed by a space or
-the end of the paragraph); nothing is reworded.
+`**Acceptance case.**` paragraph, as the checker reads it
+(`--list-paths`' `acceptance` line: the first such paragraph by the
+checker's fence and paragraph rules, the one whose group step 3 prints
+as `acceptance_path=`), in this block, which runs even when step 1
+printed no rows. The block reads nothing of the roadmap itself. The
+paragraph comes joined into one line and is split after its first
+sentence (the first period followed by a space or the end of the
+paragraph); nothing is reworded. When the checker cannot list it, the
+block says so and `acceptance_first` is empty.
 
 The same block renders every piece of roadmap text the report prints:
 the acceptance case, and the Direction lines and deferrals pasted
@@ -824,13 +829,14 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="
 r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: no root could be decided for this directory (reason above)"; exit 1; }
 ROOT="$(sed -n 's/^root=//p' <<< "$r")"
 roadmap="$(sed -n 's/^roadmap=//p' <<< "$r")"
+ra=(); [ -z "$roadmap" ] || ra=(--roadmap "$roadmap")
 text="$(cat <<'TEXT'
 <the Direction lines and deferrals the report prints, one per line>
 TEXT
 )"
-awk '/^## Direction/ { d = 1; next } d && /^## / { exit }
-     d && /^\*\*Acceptance case\.\*\*/ { s = 1 } s && /^[[:space:]]*$/ { exit } s { print }' \
-    "${roadmap:-/dev/null}" 2>/dev/null | ROOT="$ROOT" TEXT="$text" python3 -c '
+lp="$("$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$ROOT" "${ra[@]}" --list-paths)" \
+    || { echo "acceptance case: could not be read (reason above)"; lp=""; }
+awk -F'\t' '$1 == "acceptance" { print $3; exit }' <<< "$lp" | ROOT="$ROOT" TEXT="$text" python3 -c '
 import glob, os, re, sys
 def title(n):
     # The first line of the ADR file: "# ADR-<NNNN>: <title>".
@@ -848,7 +854,6 @@ def render(t):
         return "%s (%s)" % (m.group(0), n) if n else m.group(0)
     return re.sub(r"\bADR-(\d{4})\b(?!\s*\((?!#))", adr, t)
 p = " ".join(l.strip() for l in sys.stdin.read().splitlines()).strip()
-p = re.sub(r"^\*\*Acceptance case\.\*\*\s*", "", p)
 m = re.match(r"(.+?\.)(?:\s+(.*))?$", p)
 print("acceptance_first=" + render(m.group(1) if m else p))
 print("acceptance_rest=" + render((m.group(2) or "") if m else ""))
