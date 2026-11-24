@@ -3,7 +3,7 @@
 The one definition of the "a pull request ended here" boundary (issue 459),
 read by ``dispatch_phase.sh next`` (round counting, the failed-phase skill
 mapping, the post-merge route) and by ``review_progress.sh`` (``round``,
-``sources``). Both load it with a plain ``from pr_start import ...`` after
+``sources``, ``cold-read``). Both load it with a plain ``from pr_start import ...`` after
 putting this directory on ``sys.path`` from the environment, so
 ``tests/suites_for_files.sh`` maps a change here to their suites.
 
@@ -17,6 +17,9 @@ chronological). One pass over it gives two starts and the armed state:
   restart does not move it). ``review_progress.sh sources`` lists the review
   entries from it, so a restart recorded while a pull request is open keeps
   that pull request's earlier reviews, open boxes included, in triage input.
+  ``review_progress.sh cold-read`` looks for the pull request's cold read
+  (run-issue step 9a, issue 452) only from it, so an earlier merged pull
+  request's cold read never stands for the next one.
 
 The pass:
 

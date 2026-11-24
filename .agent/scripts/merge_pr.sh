@@ -146,7 +146,11 @@ FORCE_UNREVIEWED=false
 # A code-review check-run that is still running (Copilot's, #300) holds the
 # merge by default even when CI is green or absent: merging past an
 # unfinished review is opt-in (--allow-pending-review). --no-wait skips the
-# whole wait and so also opts in.
+# whole wait and so also opts in. Automatic Copilot review is off on every
+# repository (owner, 2026-11-23; issue 452), so such a run is one the loop
+# requested (run-issue step 9a) or one requested by hand. An absent
+# check-run holds nothing, and a concluded one (a failure or a quota notice
+# included) holds nothing either: only a review in flight is waited for.
 ALLOW_PENDING_REVIEW=false
 
 USAGE="Usage: $0 --pr <N|owner/repo#N> [--repo owner/repo] [--project <name>] [--type workspace|project] [--no-roadmap-update] [--no-wait] [--allow-pending-review] [--report-only|--enforce] [--force-unreviewed]"

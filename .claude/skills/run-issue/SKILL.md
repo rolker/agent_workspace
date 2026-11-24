@@ -525,9 +525,12 @@ that sub-review never resumes. Round 1 is never reused (see below), so the
 first read of any branch is always cold.
 
 **Never reuse**: round 1 of any phase; an agent from a different issue; an
-agent already resumed 3 times; or any agent from before a merge of the base
+agent already resumed 3 times; any agent from before a merge of the base
 (step 8: `main`, or a package issue's `<base>`) landed on the branch (its
-view of the diff is stale). A resumed agent is
+view of the diff is stale); or for the cold read (step 9a item 3) and any
+retry of it, whatever its round: a `review-code` agent that already ran
+holds every earlier finding, and the cold read is defined by reading
+none, so it always goes to a fresh agent. A resumed agent is
 held to the *same* exit contract and the same `--check-exit` check as a
 fresh one — nothing about the contract relaxes.
 
@@ -915,35 +918,54 @@ already names `origin/<base>` as the branch to diff against.
 ### 9. Waiting for reviews
 
 After publish, and after every PR-mode `## Local Review` (a re-review of a
-fix, row 22a/22b), wait for the **review sources** to be in before
-dispatching `triage-reviews`:
+fix, row 22a/22b), fetch the **review sources** and dispatch
+`triage-reviews` on the ones that exist:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 $WS_ROOT/.agent/scripts/fetch_pr_reviews.sh --pr <M>
 ```
 
-The wait condition is the reviews, not CI. Wait until the
-`copilot-pull-request-reviewer` check-run has completed (or is confirmed
-absent from the check list entirely) and any requested human reviews are
-in — otherwise `triage-reviews` runs before Copilot's review exists and
-triages a source that lands minutes later. **CI may still be running**:
-that is the wall-clock saving, since a triage of the review sources does
-not depend on the CI verdict. When Copilot cannot review (its quota is
-exhausted, or it hit an error) it still posts a **review** by its own
-account (`copilot-pull-request-reviewer[bot]`) saying it was unable to
-review this pull request, and its check-run completes with it (seen on
-pull request 400: conclusion `failure`, within seconds of the review). So
-the wait ends as for any review; nothing has to recognise the notice for
+**No Copilot review is waited for unless the loop itself requested
+one.** Automatic Copilot review is off on every repository ("I've
+disabled automatic copilot reviews on all repos on github due to not
+having enough quota for more than a few days a month", owner,
+2026-11-23; issue 452), so after a push no Copilot review is on its way,
+and an absent `copilot-pull-request-reviewer` check-run is the ordinary
+case, not a review still to come. With no request of the loop's own
+outstanding, there is nothing to wait for: dispatch `triage-reviews` at
+once with the sources that exist (the local review, any human review
+already in, the CI rollup). A human review the owner asked for is the
+owner's to wait for; the host does not hold triage on it. **CI may still
+be running**: a triage of the review sources does not depend on the CI
+verdict.
+
+The one wait is the one after the loop's own request: one Copilot
+request per pull request, made at the pre-merge point (step 9a), and
+waited for once, in the pass that made it, never again on a later round
+(a request that stays listed on the pull request unanswered is no reason
+to wait). The rules below apply to that wait only.
+
+When Copilot cannot review (its quota is exhausted, or it hit an error)
+it still posts a **review** by its own account
+(`copilot-pull-request-reviewer[bot]`) saying it was unable to review
+this pull request, and its check-run completes with it (seen on pull
+request 400: conclusion `failure`, within seconds of the review). So the
+wait ends as for any review; nothing has to recognise the notice for
 that. Read it like any review: it holds no findings only because its own
-words say it could not review. Say so on the hand-back's
-outside-reviewer line and dispatch `triage-reviews`, which reads it too
-(issue 428, item 5).
+words say it could not review, and say so on the hand-back's
+outside-reviewer line. During step 9a's wait the cold read comes first:
+the notice makes Copilot "not available", 9a dispatches the cold read
+straight away, and `triage-reviews` reads the notice later with the
+cold read's outcome (an approved cold read goes to triage next; one with
+findings reaches it after the fix round). Outside 9a's wait (a notice on
+a review someone requested by hand), dispatch `triage-reviews`, which
+reads it too (issue 428, item 5).
 
 **What ends the wait, and what is read, are two different things** (issue
 428, item 5). `fetch_pr_reviews.sh` returns every review in the pull
 request's history, and its `ci_checks` are those of the current head.
-This round's wait ends when either is true:
+The wait after the request ends when either is true:
 
 - the `copilot-pull-request-reviewer` check-run in `ci_checks` has a
   `conclusion` (any: `success`, `failure` or other), even when no review
@@ -951,22 +973,27 @@ This round's wait ends when either is true:
 - a hosted review whose `commit_id` is the output's `head_sha` has
   arrived.
 
+A check-run that concludes with anything but `failure` and no review on
+the head yet gets one more poll, about 60 s later, before step 9a calls
+Copilot "not available": the review can become visible a few seconds
+after its check-run completes, and a cold read spent on that gap is
+wasted. A `failure` conclusion needs no second poll (the could-not-review
+notice lands with it).
+
 An earlier round's review, a could-not-review one included, is about an
-older commit and does not end this round's wait. Being read is wider:
+older commit and does not end this wait. Being read is wider:
 `triage-reviews` reads every review the pull request holds, whatever its
 `commit_id`, and the re-fetch before every merge checkpoint (below)
 sends any review it has not read to it first.
 
-**The wait is bounded while no review check-run has appeared** (issue
-428, item 5). Poll `fetch_pr_reviews.sh` after publish (or after the
-PR-mode review):
+**The wait is bounded** (issue 428, item 5). Poll `fetch_pr_reviews.sh`
+after the request:
 
 - **No `copilot-pull-request-reviewer` check-run in `ci_checks`**: wait at
   most about 900 s. If none has appeared and no review on the head has
-  arrived by then, record "review never arrived" on the hand-back's
-  outside-reviewer line and dispatch `triage-reviews` with the sources
-  that exist. A review that never starts is an absence, and only time
-  bounds an absence.
+  arrived by then, Copilot is "not available" (step 9a): record "review
+  never arrived" on the hand-back's outside-reviewer line. A review that
+  never starts is an absence, and only time bounds an absence.
 - **The check-run is there with no `conclusion` yet** (running): the
   review has started, so the 900 s does not apply; wait for it to
   complete. What bounds this wait is the merge script's own hold, which
@@ -974,10 +1001,18 @@ PR-mode review):
   and has not finished up to `MERGE_PR_CI_TIMEOUT_SECONDS` (default
   1800 s), then refuses with the review-pending error. A check-run still
   running after about 1800 s of the host's wait is recorded as "review
-  still running after 1800 s" on the outside-reviewer line, and
-  `triage-reviews` is dispatched with the sources that exist. A
-  check-run that never appears holds nothing in `merge_pr.sh`, which is
-  why the first case needs the host's own bound.
+  still running after 1800 s" on the outside-reviewer line and counts as
+  "not available". A check-run that never appears holds nothing in
+  `merge_pr.sh`, which is why the first case needs the host's own bound.
+
+  "Not available" sends 9a on to the cold read, but it does not lift the
+  merge script's hold: while that check-run still runs, `merge_pr.sh`
+  holds on it and then refuses with the review-pending error, even after
+  a clean cold read. Only `--allow-pending-review` merges past it (an
+  earlier checkpoint decision kept the hold), and only the owner grants
+  that flag: the host puts it to him at the merge checkpoint, with the
+  check-run's state on the outside-reviewer line, and never passes it on
+  its own.
 
 Either exit can leave a review that lands after triage, and a later push
 of bookkeeping commits can leave one on an earlier commit of this round;
@@ -992,6 +1027,8 @@ minutes and all but two within 9; the two outliers took 17 and 30
 minutes (commit time precedes push time, so all of these are upper
 bounds). The outliers are why the bound stops once a check-run is
 running: a slow review is still a review on its way, not an absence.
+Those times were measured under the automatic rule; a requested review
+is assumed to take as long, not measured.
 
 When CI has not settled, say so in the dispatch: the `## Integrated
 Review` records `**CI**: pending` (a value in `triage-reviews`' own `**CI**`
@@ -1000,10 +1037,10 @@ gates the merge on CI regardless — triaging early never merges anything
 early.
 
 **Fetch again before every merge checkpoint.** Before presenting any
-`merge` checkpoint, run `fetch_pr_reviews.sh --pr <M>` again, on every
-path (a review that arrived, "review never arrived", "review still
-running after 1800 s", or a head moved by a bookkeeping push). Two
-checks on its output:
+`merge` checkpoint, and so before step 9a, which runs after this check,
+run `fetch_pr_reviews.sh --pr <M>` again, on every path (a review that
+arrived, "review never arrived", "review still running after 1800 s", or
+a head moved by a bookkeeping push). Two checks on its output:
 
 - **A review not yet read.** The latest `## Integrated Review` in
   `progress.md` lists on its `**Reviews-read**` line the `review_id` of
@@ -1060,6 +1097,184 @@ newest entry to route on and no `checkpoint:merge-refused` re-route.
 a source still writes `## Integrated Review` — the only entry type that
 reaches the `findings`/`merge` checkpoints.
 
+### 9a. One Copilot request per pull request, and the cold read
+
+Independent review after publishing is one cold read of the final diff
+(issue 452): Copilot when the loop asks for it and it answers, else one
+cross-model reviewer through `review-code`. Copilot is asked once per pull
+request, at the pre-merge point, and that point comes before **every**
+merge, by either of the two ways to one:
+
+- **`next` prints `action=checkpoint:merge`** (the last fix round and its
+  triage are done): 9a runs after step 9's re-fetch ("A review not yet
+  read", above) and before the checkpoint is presented.
+- **A `findings` checkpoint answered `merge`** (row 21 merges with the
+  `## Integrated Review`'s boxes still open): 9a runs after step 11's
+  re-fetch on the merge answer and before `merge_pr.sh`, which a
+  `findings` checkpoint would otherwise reach with no request and no
+  cold read.
+
+The re-fetch comes first because a review it finds unread goes to
+`triage-reviews`, and its findings to a fix round, before the one request
+or the one cold read is spent: spent first, either would read a diff the
+fix round then changes. When 9a ends with a review or a cold read still
+to route (a Copilot review arrived, or a cold read was dispatched), the
+merge does not go ahead on the earlier answer: the new entry routes
+through `next` as below, and the loop comes back to a `merge` or
+`findings` checkpoint, where the owner answers again. The merge answer
+stands when 9a has nothing to route (step 1 said `yes`, or the Copilot
+review it finds has already been read), and when it was given after 9a
+said no cold read is possible (item 3, neither agent available): 9a does
+not run again for that answer, so the owner is asked once, not in a
+loop.
+
+Nothing new is stored for "asked once": the record is GitHub's state for
+the pull request and the cold read's own entry on the timeline, checked
+in this order.
+
+1. **The cold read already ran for this pull request**:
+
+   ```bash
+   WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+   D="$($WS_ROOT/.agent/scripts/dispatch_phase.sh where --issue <ref> --type <type> [--project <project>])" \
+     && [[ -n "$D" && -d "$D" ]] \
+     || { echo "STOP: dispatch_phase.sh where refused or printed nothing (see above); do not request or dispatch"; exit 1; }
+   PF="$D/.agent/work-plans/issue-<N>/progress.md"
+   [[ -f "$PF" ]] || { echo "STOP: no progress.md at $PF; do not request or dispatch"; exit 1; }
+   $WS_ROOT/.agent/scripts/review_progress.sh cold-read --progress "$PF" --pr <M>
+   ```
+
+   `PF` comes from `where`, as in step 4's `$BEFORE` block, never from
+   the worktree's top folder: for a package issue that folder holds no timeline, and the
+   script reads a missing file as `cold_read=no`, so every merge pass
+   would request again and run a second cold read. The file is checked to
+   exist for the same reason; by this point it always does.
+
+   `cold_read=yes` means a complete `## Local Review` whose `**Depth**:`
+   line carries "cold read, cross-model only" was written after the
+   current pull request's start (`pr_start.py` `pr_start`, the boundary
+   step 13 draws after a `merge` answer). Never a whole-file text match:
+   the same words sit in checkpoint and plan-review text, and an earlier
+   merged pull request's cold read does not count for the next one, and
+   `--pr <M>` keeps a closed and replaced pull request's cold read from
+   counting for its replacement. On
+   `yes`: no request, no wait, no second cold read.
+
+2. **Copilot's state on GitHub**, from `fetch_pr_reviews.sh --pr <M>`
+   (reviews by `copilot-pull-request-reviewer[bot]`, the
+   `copilot-pull-request-reviewer` check-run in `ci_checks`) and
+   `gh pr view <M> --json reviewRequests` (a request whose login names
+   Copilot):
+
+   - **A Copilot review that reviewed** is on the pull request, on any
+     commit of it: Copilot was available. Nothing more is requested; a
+     review not yet read goes to `triage-reviews` by step 9's re-fetch
+     rule. Not only one on the head counts, and that is deliberate: the
+     loop's own request is answered on the head of its pass, and its fix
+     round then moves the head, so a head-only rule would request again
+     (or run a cold read) on every return to this point. The same rule
+     accepts a review someone asked for by hand on an earlier commit as
+     the pull request's one request, though it read an earlier diff:
+     quota is scarce, and the fix rounds since were reviewed by
+     `review-code`'s PR-mode re-reviews.
+   - **A could-not-review notice**; **a concluded
+     `copilot-pull-request-reviewer` check-run with no Copilot review**
+     (step 9's wait ends on any conclusion, so a check-run can finish
+     with nothing posted); or **a request or a running check-run with no
+     Copilot review** (a run resumed during the wait, or an earlier
+     pass's wait that ran out): Copilot is "not available". Go to 3 with
+     no new wait; a request listed on GitHub and never answered is not
+     waited for again. A check-run still running keeps `merge_pr.sh`'s
+     hold whatever the cold read finds; step 9's wait rules say how the
+     owner is asked for `--allow-pending-review`.
+   - **No Copilot request, review or check-run**: request it, once:
+
+     ```bash
+     gh pr edit <M> --add-reviewer "@copilot"
+     ```
+
+     A non-zero exit is "not available" (quote its message on the
+     outside-reviewer line). On exit 0, wait once, by step 9's rules
+     (about 900 s with no check-run, the merge script's 1800 s hold on a
+     running one). A review on the head arrived: dispatch
+     `triage-reviews`, which reads it, and no cold read follows. A
+     could-not-review notice, a check-run that concluded with no review
+     on the head (after step 9's one extra poll on a non-`failure`
+     conclusion), or no answer within the bound: "not available".
+     Verified: `gh` 2.104.0's `gh pr edit --help` documents
+     `--add-reviewer "@copilot"`. Not verified: what the request does
+     under exhausted quota, or when it is accepted and never answered;
+     every outcome that is not a review counts as "not available".
+
+3. **The cold read** (Copilot not available, and step 1 said `no`):
+   dispatch `review-code` for the pull request as in step 4
+   (`dispatch_phase.sh --issue <ref> --skill review-code --pr <M>`), to a
+   fresh agent, never a resumed one (step 4a's never-reuse list), with
+   the task line given the cold-read words and the one agent, Codex, or
+   Gemini when Codex is known to be unavailable:
+   `/review-code <M> (cold read, cross-model only: codex; the final
+   diff only, no earlier review entries or findings)`. Review-code step 2
+   then runs only that agent's 5e read and records the words on its
+   `**Depth**` line, which is what step 1 reads next time.
+
+   **With neither agent available**, there is no cold read. First, a
+   Copilot could-not-review notice that step 9's "A review not yet read"
+   check finds unread goes to `triage-reviews`, as any unread review
+   does; otherwise step 11's re-fetch would find it and block the merge
+   again. Then say "no cold read possible: Codex and Gemini unavailable"
+   on the outside-reviewer line and present the checkpoint (on the
+   `findings` path, the merge question again, before `merge_pr.sh`). The
+   owner decides, and a `merge` answer to that question stands: step 11
+   does not run 9a again for it. The `## Checkpoint` entry's text
+   records "no cold read possible" with the answer. Nothing else records
+   the missing cold read, so a later pass through this point (after a
+   fix round, say) tries again.
+
+   A cold read that ends `partial`, `failed` or with no entry goes to
+   `checkpoint:phase-failed` like any phase (step 4). A `retry` answer
+   re-dispatches it with the cold-read task line above, never the plain
+   step 4 `review-code <M>` line `next` prints (that would run a full
+   review with no cold-read words, and the next pass would run a second
+   cold read); when Codex was the agent that failed, the retry names
+   Gemini. A `takeover` is a cold read only when the host itself runs
+   the one agent's read (`cross_model_review.sh --agents codex`, or
+   `gemini`, title, URL and diff only, as review-code's cold-read mode
+   does); its entry's `**Depth**` line then carries the cold-read words
+   naming that agent. When neither agent can run, a takeover must not
+   write those words, since a Claude-only read is not cross-model. It
+   writes what a taken-over PR-mode `review-code` writes (step 5): a
+   complete `## Local Review` of the host's own read, with `**Depth**:
+   <tier> (reason: no cold read possible: Codex and Gemini unavailable)`
+   and the agents' errors in its cross-model outcome. `cold-read` still
+   says `no`, the entry routes as any PR-mode review, and when the loop
+   comes back to this point 9a takes "With neither agent available"
+   above. (A `failed` entry instead would send `next` back to
+   `checkpoint:phase-failed`, a loop.)
+
+   Its `## Local Review` is routed like any PR-mode review, with no
+   router change: `next` sends an `approved` one to `triage-reviews` (step
+   9 then has nothing outstanding, so no wait) and any other verdict
+   straight to `address-findings`, then the ordinary PR-mode re-review
+   and `triage-reviews`. So a cold read with findings reaches triage only
+   after the fix and its re-review, with review-code's own lead judgment
+   as the filter before the fix (accepted; the issue asked for "through
+   triage like any other source"). When the loop comes back to the
+   `merge` checkpoint, step 1 finds the cold read: no second request, no
+   second cold read, and step 9 does not wait again. A Copilot review's
+   findings likewise go through `triage-reviews` and the ordinary fix
+   round, with no second request.
+
+   The cold read is a complete PR-mode `## Local Review`, so it counts as
+   a PR-mode round for review-code's round-3 convergence check; a fix
+   round after it can reach round 3 one round early and skip
+   cross-model. Accepted: the cold read is itself the cross-model read.
+
+The outside-reviewer line (hand-back and checkpoints) names only the
+reviewers that were asked: Copilot "requested, reviewed" or "not
+available" with the reason, and nothing about Copilot before it is
+requested (`host_standing_rules.md`); the cold read's agent with ran,
+failed or skipped and whether it found anything of substance.
+
 ### 10. The host owns every push
 
 Dispatched phases never push — the exit contract in every handoff says so.
@@ -1108,7 +1323,10 @@ References for the gate rule.
 owner's merge answer, before anything else, run `fetch_pr_reviews.sh
 --pr <M>` once more and apply step 9's "A review not yet read" check: if a
 review landed while he decided, do not merge; send it to `triage-reviews`
-and present the merge checkpoint again. Before
+and present the merge checkpoint again. When the answer was `merge` at a
+`findings` checkpoint, step 9a runs next, before `merge_pr.sh` (step 9a
+says when the answer stands), except for a merge answer given after 9a
+said no cold read is possible, which stands as given. Before
 `action=merge` (row 21), still in the worktree, push the outstanding
 record commits and check that nothing is left unpushed or uncommitted
 (step 10). Then `cd` to this session's root: the `root=`
