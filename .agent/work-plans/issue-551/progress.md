@@ -553,3 +553,13 @@ Rounds 1-3 raised 5 must-fix and 20 suggestions; every one is ticked in its fix 
 
 ### False positives
 - None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 23:02 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: merge
+**Decision**: address
+
+Owner's answer: "Resolve, then merge". PR 567 (issue 545) merged into main after PR 568 was reviewed, and both added a change-log row at the same place in docs/design.md, so PR 568 no longer merges. A fix pass merges origin/main and keeps both rows (no other change), then a narrow review, the host's full pre-commit pass and CI. His answer authorizes the merge (merge commit) once that is clean; anything new found goes back to him.
