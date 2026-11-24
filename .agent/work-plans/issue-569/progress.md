@@ -511,3 +511,22 @@ Suites for the changed scripts (_project_registry.sh, validate_adapter.sh, regis
 - test_capture.sh 41/0; test_discover_governance.sh 32/0; test_dispatch_phase.sh 244/0; test_fresh_clone_no_project.sh 26/0; test_gh_create_issue.sh PASS 88 FAIL 0; test_gh_create_pr.sh PASS 113 FAIL 0; test_merge_pr_gate.sh 213/0; test_merge_pr.sh 175/0; test_merge_pr_skill.sh 132/0; test_precommit_hook_path.sh 19/0; test_project_integration_audit.sh 279/0; test_pr_status.sh 3/0; test_register_session_root.sh 72/0; test_script_tests_hook_scope.sh 358/0; test_session_start_layer.sh 52/0; test_sitrep_checks.sh 253/0; test_sitrep_root.sh 65/0; test_skill_paths.sh 200/0; test_user_tier_guard.sh 64/0; test_validate_workspace_stale.sh 126/0; test_worktree_create.sh PASS 112 FAIL 0; test_worktree_enter_stderr.sh 35/0; test_worktree_remove.sh 136/0
 - test_design_anchors.sh: test_design_anchors: 82 passed, 0 failed (docs changed)
 - The full pre-commit pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 10:55 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-569 at `81c9477d`
+**Base**: origin/main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 1 | **Suggestions**: 2
+**Round**: 3 | **Ship**: recommended — round 3: 1 mechanical must-fix (prev 2), not rising; fix and ship rather than another full round
+
+Round 3 of part 2: the round-2 findings and the fix diff b34cfe6b..a66382af only (the merge 81c9477d's issue-563 work is out of scope). All five round-2 findings hold as fixed. Checked against the code: `register_project.sh` refuses a `--set` key listed in the type's `registration_refused` at line 653, after argument, name and type checks and before any write of the registry, settings file or directory, on a new path, a `--dry-run` and an adoption alike (the only earlier write is the pre-existing registry lock under projects.d, skipped by a dry run); `_project_type_setting_listed` returns 1 for an empty type or a type with no such file, so nothing is refused for single_project; `project_setting.sh set` is untouched and `ros2_colcon/unused_settings` unchanged (owner decision respected). The adapter refusal: each line checked; the distro/role and `unset` fields print exactly under their conditions, the URL line only for `^(https?|file)://`, the old-checkouts line only when `layers/main` or `configs/manifest-resolved` (or a link) exists; `init --distro-dirs` creates only `<root>/<distro>/` (system.py paths_init_creates), so it runs in an old root. `docs/manifest/design.md` "A root that sets `source`", the root routes text and the new change-log row say the clone is kept, never fetched by the tool, and can fall behind until the tool reads a manifest from git (accepted by the owner 2026-11-24). Run: test_register_project.sh 225 passed 0 failed; test_adapter.sh 258 passed 0 failed; test_ros2_colcon.sh 1203 passed 0 failed 0 skipped; test_design_anchors.sh 82 passed 0 failed; validate_adapter.sh both types pass. shellcheck not run (not installed on this machine). Cross-model: skipped (round-3 convergence check, per handoff).
+
+### Findings
+- [ ] (must-fix) The new list is missing from the script reference: the `validate_adapter.sh` row names only the `unused_settings` and `registration.conf` checks, not `registration_refused`; the `register_project.sh` row does not say a `--set` key in the type's `registration_refused` is refused before anything is written. Also name the list beside `unused_settings` in docs/design.md's settings paragraph — `.agent/knowledge/script_reference.md:26`, `.agent/knowledge/script_reference.md:28`, `docs/design.md:450`
+- [ ] (suggestion) "run git pull in it before each sync" fails for a tag `source_ref` (verified: a `git clone --branch v1` is a detached HEAD and `git pull` exits 1, "You are not currently on a branch"); the test itself uses `source_ref=v1`. Say "keep it at `source_ref` by hand (a `git pull` for a branch)" in the message and the design — `.agent/project_types/ros2_colcon/adapter.sh:648`, `docs/manifest/design.md:88`
+- [ ] (suggestion) The newest change-log row's line count says 1258; after the merge of origin/main the file has 1259 lines — `docs/design.md:1205`
