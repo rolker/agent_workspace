@@ -365,3 +365,15 @@ Cross-model: codex ran (EXIT=0) and read the whole diff: 3 files, `.agent/knowle
 - [ ] (suggestion, Local Review @ `4a64c1d`) Valid. A bare `gh issue view 436` resolves in the current checkout's repository, which in a project session or a project worktree is not the workspace, so the expiry check could read the wrong issue 436 or fail. Mechanism text here names no specific project or repository, so the fix is not a literal owner/name: pin it as `gh issue view 436 -R <the workspace repository> --json state,stateReason`, or in words "(issue 436 of the workspace repository, `gh issue view 436 --json state,stateReason` with `-R` set to it)", in the rule row and in the section intro. — `.agent/knowledge/host_standing_rules.md:48` and `:53`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 15:05 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+"Merge, fix F1-F3 later (Recommended)"
+
+Asked at the findings checkpoint for pull request 607 after the Integrated Review at 15ae6aa5, which holds three open suggestions and no must-fix. The dialog showed each verbatim (F1: the duplicate-issue guard does not require the follow-up issue's body to name the pull request; F2: the follow-up issue's suggestions are taken only from the publish checkpoint's body; F3: a bare `gh issue view 436` resolves in the current checkout's repository), the three host readings the rule marks as open to his veto (the host-written publish and plan checkpoints; a reviewer's skip ending the next calendar day; no cold read for a no-code pull request on a day Copilot is skipped), three pre-push rounds and the Codex cold read's approval, 9 of 10 CI checks passed with one documentation check not finished and the merge script waiting for it, mergeable with a clean trial merge against main, and the outside reviewers (Codex in rounds 1 and 2 and as the cold read; Gemini skipped, failed earlier today; Copilot requested and not available for lack of quota). His answer defers F1 to F3 to the next change to the standing rules file; no follow-up issue is opened for them, since this issue is not manifest work. He vetoed none of the three readings. The other choices offered were to fix F1 to F3 first, to hold, and to stop.
