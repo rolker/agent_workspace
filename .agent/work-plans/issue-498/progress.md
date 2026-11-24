@@ -1501,3 +1501,22 @@ Suggestions left open for the one follow-up issue, from the review entry:
 - (suggestion) Pre-existing, now more visible: a `config.yaml` `manifest` string such as `host:m.yaml` is read as a local path (`is_url` looks only for `://`), while the spec calls it a URL — `tools/repos-manifest/src/repos_manifest/system.py:176`
 
 Outside reviewers on the one round: Codex ran (eight points: one became a must-fix, several became suggestions, two were rejected as by design); Gemini skipped, failed earlier today ("empty response; 1 tool action(s) were auto-denied in headless mode (Bash)").
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 14:56 -05:00
+**By**: Claude Code (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #611 at `8ceb46d5`
+**Depth**: Deep (reason: cold read, cross-model only: codex, per handoff)
+**Must-fix**: 0 | **Suggestions**: 3
+
+Codex ran once (`cross_model_review.sh --pr 611 --agents codex --issue 498`, AGENT_TIMEOUT=3000; EXIT=0, review complete). The prompt held the whole diff of the 28 files outside `.agent/work-plans/` (plan.md and progress.md left out, no truncation), so the whole diff was read. Codex also looked at local files, and its points 3, 7, 8, 9 and 10 cite the work plan, which the script did not give it.
+
+Of Codex's ten points: 1 (config.yaml 0644 with the url), 4 (`tags/x` with a branch `x`), 5 (SIGTERM at a terminal ending git by pid), 7 (`host:file` read as a local path) and the quoting part of 2 are known and go to the follow-up issue; 3 (absolute path with `--manifest-path`) and 10 (no line in docs/manifest/roadmap.md) are by design; 8 (the location model not yet shared in one module) is a plan-shape remark with no defect, dropped.
+
+### Findings
+- [ ] (suggestion) The adapter's git-form hint prints the settings file's `source` url unmasked; the line it replaced did too, so not new, but a token in that url reaches stderr — `.agent/project_types/ros2_colcon/adapter.sh:649`
+- [ ] (suggestion) A stop signal in the moment between `mkdtemp` and its `try`, or between `Popen` returning and its `try`, leaves the temporary clone or a git process behind; narrow windows, not covered by the stop tests — `tools/repos-manifest/src/repos_manifest/fetch.py:106`
+- [ ] (suggestion) The comment above `_rc_refuse_removed_source` still says init reads a local file only and the clone is updated by hand, the opposite of the message below it now — `.agent/project_types/ros2_colcon/adapter.sh:615`
