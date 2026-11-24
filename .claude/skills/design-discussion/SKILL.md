@@ -150,8 +150,13 @@ session.
 
     When the user names or confirms a place that is not recorded, offer to record it,
     `"$WS_ROOT/.agent/scripts/project_setting.sh" set <project> "<key>=<value>"` (the
-    value quoted as one argument, `<path>` or `<path>#<heading>`), as a write on its own
-    yes. That settings file lives in the workspace checkout, per machine and untracked;
+    value quoted as one argument, `<path>`, `<path>#<heading>` or `none` when the project
+    keeps no such document), as a write on its own yes. Then run `doc` for that key
+    again: exit 0 is recorded; exit 1 means the file it names is not written yet (say
+    so); exit 2 means the lookup refuses what `set` took (a roadmap that is a symbolic
+    link or reached through one): show the reason, and offer to remove the key
+    (`project_setting.sh unset <project> <key>`) or name another file, each its own yes.
+    That settings file lives in the workspace checkout, per machine and untracked;
     it is the one thing a project session writes outside its root. `set` refuses a value
     a reader cannot follow and says why (the limits are listed in `onboard-project`
     step 3c: inside the project, only ASCII letters, digits, `.`, `_`, `-` and `/` in
