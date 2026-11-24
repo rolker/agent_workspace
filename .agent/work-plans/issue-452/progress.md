@@ -538,3 +538,13 @@ No open findings at this head. `review_progress.sh sources` returns no local fin
 ### Findings
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 21:12 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Owner's answer: "Merge (merge commit)". (His first answer, to a dialog that wrongly said "Squash-merges", was "no squash merging!"; the dialog was corrected and asked again. merge_pr.sh merges with gh pr merge --merge.) Re-fetch before the merge: 0 reviews on the PR, CI passed on all 5 checks.
