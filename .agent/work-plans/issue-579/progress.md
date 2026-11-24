@@ -270,3 +270,21 @@ Host directions (host decisions, listed for the owner's veto): fix the must-fix 
 ### Checks
 - The pinned sentences are unchanged. The issue 579 pin in `test_skill_paths.sh` gained two phrases: "Never search other worktrees or registered projects" and "stop and show git's message; never read another copy".
 - `bash .agent/scripts/tests/test_skill_paths.sh` → `test_skill_paths: 213 passed, 0 failed`. Commits used `SKIP=validate-script-tests`; the full pre-commit pass and the other suites were left to the host.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 13:40 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a14409e982e4e9029, resume 2 of 3)
+**Verdict**: changes-requested
+
+**PR**: #604 at `0ec8c6fb`
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 1 | **Suggestions**: 0
+
+Scope: the cold read's two findings and the fix diff 22d217e3..0ec8c6fb. Cross-model: skipped (round-3 convergence check, per handoff). Cold read's must-fix (fallback searched other worktrees and registered projects): closed; the no-plan-file fallback is now only `$(git rev-parse --show-toplevel)/.agent/work-plans/issue-<issue>/plan.md`, else stop naming the path; the `--issue` form is unchanged (no diff lines in it). Cold read's suggestion (`origin` assumed): closed in wording ("`origin` must be that repository", stop on a failed fetch), but see the finding. The three cases and Step 5's `--ref`/`--plan` comments agree. `test_skill_paths.sh`: 213 passed, 0 failed.
+
+Tried, in this worktree: `git show 95e16bd4…:./.agent/work-plans/issue-582/plan.md` (commit present, path missing) prints `fatal: path '.agent/work-plans/issue-582/plan.md' does not exist in '95e16bd4…'`, exit 128; `git show 0123456789abcdef0123456789abcdef01234567:./.agent/work-plans/issue-582/plan.md` (commit absent) prints the same `fatal: path ... does not exist in '<sha>'`, exit 128. `git cat-file -e "<sha>^{commit}"` tells them apart: 0 when present, 128 "Not a valid object name" when absent.
+
+### Findings
+- [ ] (must-fix) The text's exception "fails for any reason other than the file not existing at that commit" cannot be judged from `git show`: for a full SHA that was never fetched, git prints the same "path ... does not exist in '<sha>'" with the same exit 128 as for a missing file. When the fetch succeeds but does not bring `<headRefOid>` (an `origin` that is another repository holding a pull request with the same number, or the PR force-pushed between `gh pr view` and the fetch), the no-plan-file case reads that as "no plan at the head" and quietly takes the local fallback, the wrong-repository read the cold read's must-fix was about. Mechanical fix: after the fetch, `git cat-file -e "<headRefOid>^{commit}"`, and stop with git's message if it fails; then a failed `git show` really means the file is missing — `.claude/skills/review-plan/SKILL.md:85-92`
