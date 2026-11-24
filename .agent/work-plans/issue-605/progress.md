@@ -227,3 +227,34 @@ Codex findings dismissed: 1 (fix commits reach triage unpushed): run-issue step 
 - [x] Row A rule cell: local-date and first-failure-source parenthesis added after "that calendar day" — `.agent/knowledge/host_standing_rules.md`
 
 Suites run: `bash .agent/scripts/tests/test_skill_paths.sh`: test_skill_paths: 212 passed, 0 failed. Full pre-commit pass left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 14:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-605 at `e48147fe`
+**Base**: main
+**Depth**: Standard (reason: fix round classified on the whole diff: governance files host_standing_rules.md and two skills; docs only)
+**Must-fix**: 2 | **Suggestions**: 1
+**Round**: 2 | **Ship**: recommended — round 2: 2 mechanical must-fix (prev 2), not rising — fix and ship rather than another full round
+
+### Decision summary
+
+**What changed**: Two rows at the end of the host standing rules table (a dated lighter review level for the manifest work until the Rolling test of issue 436 passes, and the standing authorization to open one follow-up issue per pull request for deferred suggestions), a new section saying what the host answers at each checkpoint under that level, and one pointer sentence in `/orchestrator` and two in `/run-issue`. No existing line was edited.
+
+**Reviews and outcomes**: One plan review, ten directions, all applied. Pre-push round 1: 2 must-fix and 3 suggestions, all applied in 2b54b5d3 with the entry's words. Round 2 (this): all five round-1 edits are in place word for word; main's merge (e48147fe) touched none of the three files. Two new must-fix, both exact wording in the `publish` bullet, one of them a contradiction that round 1's own wording created (deferred suggestions are checked boxes, which triage does not read, yet the bullet says they "stay open through triage"); one suggestion. Ship: recommended (fix, then publish without a third round). Codex ran: 5 findings, 1 kept as must-fix, 1 as the suggestion, 3 dismissed. Gemini (agy): skipped, it failed every run today ("empty response; 1 tool action(s) were auto-denied in headless mode (Bash)"). Claude adversarial pass done by the lead, in proportion to a wording re-review.
+
+**Open human calls**: Three host readings the section marks as open to the owner's veto: (1) the host writes the `publish` checkpoint itself in place of a second code review round, and a `plan` checkpoint `proceed` in place of a second plan review after a `revise`; (2) a reviewer's skip ends at the next calendar day (the host machine's local date); (3) on a day Copilot is skipped, a pull request that changes no code gets no cold read, read from his example "one Codex cold read on pull requests that change code".
+
+**Verified**: each round-1 edit compared with `git show 2b54b5d3` against the round-1 entry's wording (5 of 5 in place; the two connective edits read correctly); `git diff 1aa1a988 e48147fe` touches none of host_standing_rules.md, orchestrator/SKILL.md, run-issue/SKILL.md; every owner quote in the two rows and the section found verbatim in `gh issue view 605` (scripted check: 9 of 9 owner quotes; the other quoted strings are row titles and a skill heading); no table row has a bare `|` outside backticks (scripted count, every row 4 separators); deferred boxes are checked (`review_progress.sh check --deferred`) and triage's `sources` reads only unchecked findings (triage-reviews SKILL.md, step "sources"). Suites at e48147fe: test_skill_paths 213 passed, 0 failed; test_package_issue_loop 228 passed, 0 failed; test_dispatch_phase 244 passed, 0 failed.
+
+**Recommendation**: needs-work, then ship: apply the two must-fix wordings (and the suggestion), run the full pre-commit pass, publish; no third round.
+
+### Findings
+- [ ] (must-fix) "The handoff of that fix pass names the must-fix boxes only" now follows the third case, so "that fix pass" reads as the full pre-commit fix pass, and the must-fix fix pass (the one round 1 meant) gets no direction to defer suggestions. Replace "The handoff of that fix pass names the must-fix boxes only" with "The handoff of the one fix pass for a must-fix names the must-fix boxes only". — `.agent/knowledge/host_standing_rules.md:56`
+- [ ] (must-fix) Deferred suggestions vanish: the fix pass defers them with `check --deferred`, which checks the boxes; triage's `sources` imports only unchecked findings of a review that covers the head, so "the review's open suggestions" is empty and "The suggestions stay open through triage." is false, and the `findings` bullet's suggestions never reach the owner. Codex finding 1 (confirmed). In the `publish` bullet replace "the review's open suggestions listed in its body" with "the review's suggestions listed in its body, each with its text and `file:line`, whether still open or deferred by the fix pass", and replace "The suggestions stay open through triage." with "Triage's `sources` reads only unchecked boxes of a review that covers the head, so these suggestions may not reach the integrated review: the host takes them from this checkpoint's body for the `findings` question and the follow-up issue." — `.agent/knowledge/host_standing_rules.md:56`
+- [ ] (suggestion) A run that opens the follow-up issue and stops before recording its number leaves a resumed host to open a duplicate. Codex finding 2. In the `merge` bullet, after "if one is already named for this pull request" add ", and before opening one looks for an open issue that names this pull request (`gh issue list --search`), in case an earlier run opened it and stopped before recording it". — `.agent/knowledge/host_standing_rules.md:59`
+
+Codex findings dismissed: 3 (the no-code cold-read skip has no completion record): the same point as round 1's dismissed Codex 4; a resumed host reaches the same skip by the same rule on the same day, and on a later day the full 9a applies, which is the rule. 4 (a skip recorded in one issue's timeline is not visible to another session): true of any host-session fact, and the row names where the first failure is read; a shared record is a mechanism change outside this issue. 5 (the host `proceed` after a revised plan lets unreviewed plan changes through): it is one of the three host readings the section already marks as open to the owner's veto.
