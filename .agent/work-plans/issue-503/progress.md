@@ -1886,3 +1886,17 @@ Under the manifest-work rule the fix pass after the cold read (merge of origin/m
 - [ ] (suggestion, noticed in main's text by the fix pass, Checkpoint at `90db61ca`) The adapter's git-form line prints the `source` value unmasked, so a credential-bearing source URL shows its user name and token (also in issue 612) — `.agent/project_types/ros2_colcon/adapter.sh`
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 16:48 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+"Merge (Recommended)"
+
+Asked at the findings checkpoint for pull request 610 (part 2: registration from a manifest; it also closes issue 599), together with the merge question as the manifest-work rule says, after the Integrated Review at 354c895b with twelve open suggestions and no must-fix. The dialog gave: what the part does; one plan review with ten directions applied; the one code review round's two must-fix findings and the cold read's one, all fixed with tests; that the last fix pass (the merge of main after pull request 611 landed, and the rewording of the refusal message and documents that merge had made false) was read by the agent's own tests and CI only, not by a reviewer; examples of the twelve suggestions; all 10 CI checks passing on head 1c175e65, mergeable and level with main; the outside reviewers (Codex on the one round and as the cold read; Gemini skipped, failed earlier today; Copilot skipped, failed earlier today for lack of quota); and that issue 503 stays open for a later part. The other choices offered were a cold read of the last edits first, hold, and stop.
+
+The follow-up issue for this pull request's deferred suggestions is #613 (one issue, its body naming pull request 610), opened on this answer under the standing authorization of the manifest-work rule.
