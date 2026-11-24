@@ -233,7 +233,8 @@ GH_URL = re.compile(
     r"|git://(?i:github\.com)/"
     r"|(?:[^@/:\s]+@)?(?i:github\.com):)"
     r"(?![^/]*/\.\.?(?:\.git)?/?$)"
-    r"(" + SLUG + r")(?:\.git)?/?")
+    # SLUG's grammar, with _ in the owner too (a managed user's short code).
+    r"([A-Za-z0-9][A-Za-z0-9_-]*/[A-Za-z0-9_.][A-Za-z0-9_.-]*?)(?:\.git)?/?")
 
 def gh_slug(url):
     m = GH_URL.fullmatch(url or "")

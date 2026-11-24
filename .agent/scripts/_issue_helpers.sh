@@ -22,7 +22,8 @@
 # (issue 428). The grammar is sitrep_root.sh's gh_slug (issue 418):
 #   https?://[user[:token]@]github.com/   ssh://[user@]github.com[:port]/
 #   git://github.com/                     [user@]github.com:   (scp-like)
-# then exactly owner/repo, owner [A-Za-z0-9][A-Za-z0-9-]*, repo
+# then exactly owner/repo, owner [A-Za-z0-9][A-Za-z0-9_-]* (the _ is a
+# managed user's short-code suffix), repo
 # [A-Za-z0-9_.][A-Za-z0-9_.-]*, an optional .git and an optional trailing
 # /; the host in any case, the rest of the URL as written. Anything else
 # gives nothing, so a remote hosted elsewhere is never read as a GitHub
@@ -47,7 +48,7 @@
 # one table through both.
 extract_gh_slug() {
     local url="$1" host='[Gg][Ii][Tt][Hh][Uu][Bb]\.[Cc][Oo][Mm]'
-    local slug_re='([A-Za-z0-9][A-Za-z0-9-]*)/([A-Za-z0-9_.][A-Za-z0-9_.-]*)/?$'
+    local slug_re='([A-Za-z0-9][A-Za-z0-9_-]*)/([A-Za-z0-9_.][A-Za-z0-9_.-]*)/?$'
     local prefix_re="^(https?://([^@/?#[:space:]]+@)?${host}/|ssh://([^@/?#[:space:]]+@)?${host}(:[0-9]+)?/|git://${host}/|([^@/:[:space:]]+@)?${host}:)"
     local owner repo
     if [[ "$url" =~ ${prefix_re}${slug_re} ]]; then
