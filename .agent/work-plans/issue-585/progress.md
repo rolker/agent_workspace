@@ -225,3 +225,24 @@ Suites run (each on its own, final run after the last change to it):
 - `test_skill_paths.sh`: `test_skill_paths: 212 passed, 0 failed`
 - `run_script_tests.sh -j 4 --files <the 12 changed files>`: 57 suites selected, 56 passed (among them `test_worktree_remove.sh`, `test_project_registry.sh`, `test_user_tier_guard.sh`, `test_ros2_colcon.sh`, `test_precommit_hook_path.sh`, `test_merge_pr_skill.sh`, `test_package_issue_loop.sh`, `test_sitrep_root.sh`, `test_merge_pr_root_resolution.sh`, `test_adapter.sh`); `test_script_tests_hook_scope.sh` failed for the missing `ROOT_READERS` entry, fixed in `42e242b6` and rerun on its own (above). Every suite that names one of the five changed scripts was in the selection.
 - The full pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 13:51 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-585 at `00a0130c`
+**Base**: origin/main
+**Depth**: Deep (reason: 969 changed lines in 15 files, including worktree_remove.sh, which deletes)
+**Must-fix**: 1 | **Suggestions**: 4
+**Round**: 1 | **Ship**: continue — round 1: 1 must-fix; first round always re-reviews after fixes
+
+Specialists: static analysis (shellcheck --severity=warning on the 10 changed scripts: clean), governance, plan drift, Claude adversarial (all five touched suites re-run: 131/0, 112/0, 35/0, 181/0, 374/0), cross-model Gemini (ran, complete) and Codex (ran, complete).
+
+### Findings
+- [ ] (must-fix) `wt_main_root` silently returns the linked worktree itself when git's `--path-format=absolute --git-dir`/`--git-common-dir` calls fail (git older than 2.31, or any failure after `--show-toplevel` succeeded): `_registry_main_checkout_status` then prints `<own>\t0`, the same answer as a real main checkout, and the marker file exists in the copy, so the old wrong root comes back with no ERROR line (nested create; remove against the worktree). Refuse instead: when the answer is `$own`, confirm with git that `$own`'s git dir equals its common dir and refuse on any failure; add a case with a git shim that fails those calls. Found by the Claude adversarial pass and Codex, each reproduced with a shim — `.agent/scripts/_worktree_helpers.sh:101` (via `_project_registry.sh:788`)
+- [ ] (suggestion) The rewritten call sites `source "$ROOT_DIR/.agent/scripts/_pr_base.sh"` and the `worktree_env` adapter call (the `--layer` path) have no test as a worktree's copy; only the main checkout's run covers them (`test_package_issue_loop.sh`, `test_ros2_colcon.sh`) — `.agent/scripts/worktree_create.sh:845,1087`
+- [ ] (suggestion) The `merge_pr.sh` self-removal case starts in the main checkout; the usual call is from inside the worktree (merge_pr.sh `cd`s out itself). Start it from `$wt` too — `.agent/scripts/tests/test_merge_pr.sh:901`
+- [ ] (suggestion) The sourced `worktree_enter.sh` refusal check drops stderr and reads only the last stdout line; assert stdout is exactly `survived rc=1` and stderr has `ERROR:` — `.agent/scripts/tests/test_worktree_main_root.sh:369`
+- [ ] (suggestion) design.md Table 1 cites `worktree_enter.sh` 142-176 for the `--type` derivation, true on main and now 146-180 after this change; refresh (the create, remove and list citations there were already off on main) — `docs/design.md:552`
