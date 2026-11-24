@@ -46,7 +46,8 @@ started in.
   questions it would ask and the offers it would make. Write nothing: no
   setting stored, no file, branch, issue or pull request, nothing queued.
 - `--reask <key>` — ask a footprint question again although its answer is
-  recorded. `<key>` is `instructions` or `records`.
+  recorded. `<key>` is `instructions`, `records`, `goals`, `design` or
+  `roadmap`.
 
 ## Overview
 
@@ -150,8 +151,10 @@ the rest of the run.
     `--dry-run`, stop here.
 
     Then make the `--set` list the real call will pass: at most one
-    `--set "build=<command>"` and one `--set "test=<command>"`, each one
-    quoted argument; `build=` and `test=` are the only keys it takes. A key
+    `--set 'build=<command>'` and one `--set 'test=<command>'`, each one
+    argument in single quotes (in double quotes a `` ` `` or `$` in the
+    command would run now; a `'` in it is written `'\''`); `build=` and
+    `test=` are the only keys it takes. A key
     goes on the list only when this first dry run lists it, a kept
     settings file has it, or the folder's type requires it and it has no
     command (below). Pass the detected ones too: without `--set`, the real
@@ -192,7 +195,7 @@ the rest of the run.
 
     ```bash
     WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-    "$WS_ROOT/.agent/scripts/register_session_root.sh" --dry-run --set "build=<command>" --set "test=<command>" 2>&1
+    "$WS_ROOT/.agent/scripts/register_session_root.sh" --dry-run --set 'build=<command>' --set 'test=<command>' 2>&1
     ```
 
     It checks the commands as the real call will. When it refuses (exit 1,
@@ -218,7 +221,7 @@ the rest of the run.
 
     ```bash
     WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-    "$WS_ROOT/.agent/scripts/register_session_root.sh" --set "build=<command>" --set "test=<command>" 2>&1
+    "$WS_ROOT/.agent/scripts/register_session_root.sh" --set 'build=<command>' --set 'test=<command>' 2>&1
     ```
 
     The text question shows everything that is written: the registry line,
@@ -308,7 +311,7 @@ A category 6 `error` means the registration does not work as it stands (a
 missing build or test command, the user tier out of date, a root that does
 not resolve). Name the fix the finding gives. For a `single_project`
 project, a command it lacks is a setting this session may store, after a
-yes (`project_setting.sh set <settings-name> build=<command>` or
+yes (`project_setting.sh set <settings-name> 'build=<command>'` or
 `test=none`). A `ros2_colcon` project has no `build` or `test` setting:
 colcon owns both, and `set` refuses them (the type's
 `$WS_ROOT/.agent/project_types/ros2_colcon/unused_settings` says why), so
@@ -377,8 +380,117 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 "$WS_ROOT/.agent/scripts/project_setting.sh" set <settings-name> location=project tracking=project
 ```
 
+**c. Documents** (`goals`, `design`, `roadmap`) — "Where does this project
+keep its goals? its design? its roadmap?" One key at a time, in that
+order, each only when it has no recorded value. Recorded once, every
+reader looks in the same place: the sit-rep, the design-anchor check,
+`update_roadmap.sh`, the merge gate and design discussions. First see
+what the readers find today:
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/project_setting.sh" doc <settings-name> goals
+"$WS_ROOT/.agent/scripts/project_setting.sh" doc <settings-name> design
+"$WS_ROOT/.agent/scripts/project_setting.sh" doc <settings-name> roadmap
+```
+
+Each prints one line, or nothing with the reason on stderr:
+
+- `set <path>[#<heading>]` or `none` (exit 0): recorded; not asked, unless
+  `--reask` names the key.
+- `fallback <path>` (exit 0): not set; the readers use `<path>`, the first
+  that exists of a fixed list (roadmap: `docs/roadmap.md`,
+  `docs/ROADMAP.md`, `ROADMAP.md`; design: `docs/design.md`). Offer
+  `<path>` as the suggestion.
+- nothing, exit 1: not set and nothing found (goals is never found: there
+  is no fixed place for goals). Offer what the project shows instead: for
+  goals, a goals section of its README or design file (`README.md#<heading>`),
+  only after reading that heading in the file; for design, a design file
+  of another name it has (`ARCHITECTURE.md`, say). Otherwise ask.
+- nothing, exit 1 or 2, for a key `list` shows as stored: the setting is
+  recorded but cannot be read (exit 1: the file it names is missing; exit
+  2: the lookup refuses it, the reason says why). Show the reason and offer
+  to set another value or remove the key (`project_setting.sh unset
+  <settings-name> <key>`), each its own yes.
+- nothing, exit 2 with the reason `the registry <file> has errors`: the
+  registry itself is broken, not this setting. Nothing, exit 3: the
+  project is not registered under that name. Neither is about the
+  document: show the message, ask nothing in 3c, and fix the registry
+  (from a workspace session) or the name first.
+
+The options:
+
+- **A file in the project**, its path relative to the project root: the
+  suggestion, or one the user names. `goals` and `design` may name a
+  section, `<path>#<heading>`; `roadmap` names a whole file, whose
+  `## Direction` section the sit-rep reads.
+- **`none`**: the project keeps no such document, and the readers stop
+  looking: the sit-rep says the project keeps none, `update_roadmap.sh`
+  ticks nothing (`roadmap`), and the design-anchor check reads only parts'
+  designs (`design`). With `roadmap=none`, steps 5 and 6 offer no
+  Direction section and no queue in the roadmap.
+- **Decide later**: nothing stored. With no stored value the readers keep
+  the fixed list, and the question comes back on the next run; under
+  `--reask`, a value already stored stays as it is, and the readers keep
+  following it. The answer holds for the rest of this run: the key is not
+  asked about again (step 5's offer to record a new roadmap included).
+
+What a stored value changes: `goals` and `design` are what the skills
+that read a project's goals and design find through the lookup (this
+skill, `audit-project`, `design-discussion`, `brainstorm`, `plan-task`,
+`review-plan` and `review-issue`), and `goals` is read by no script;
+`design` is also the file the sit-rep and `check_design_anchors.sh` check
+citations against (the whole file, also when a heading is given);
+`roadmap` is the file the sit-rep reads, the one `update_roadmap.sh`
+ticks, the one whose commits after review the merge gate (and
+`triage-reviews`' coverage rule) counts as bookkeeping, the one the
+integration audit's ignore check follows, and the one `audit-project`,
+`design-discussion` and `brainstorm` read.
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/project_setting.sh" set <settings-name> '<key>=<value>'
+```
+
+Quote `<key>=<value>` as one argument in single quotes: a heading may hold
+spaces, and in double quotes a `` ` `` or `$` in it would make the shell
+run a command and store something else. A `'` in the value is written
+`'\''`.
+
+`set` refuses a value one of the readers cannot follow, and says why; show
+its message as printed. It takes only a path inside the project (no
+leading `/` or `~`, no `..`, no URL, not a directory) whose characters are
+ASCII letters, digits, `.`, `_`, `-` and `/` (no space, no other letter or
+sign). A roadmap also must end in `.md`, carry no `#<heading>`, and be
+neither the README nor an agent instruction file (`AGENTS.md`,
+`CLAUDE.md`, `CODEX.md`), nor `docs/design.md` or the file `design`
+names. These are limits of the
+workspace's readers, not of the project: a project that keeps its plans
+in its README, or its documents under other names, keeps working its own
+way. Say so plainly, offer decide later or `none`, and never suggest
+moving or renaming the project's files to fit.
+
+After a value is stored, run `doc` for that key again. Exit 0 is done.
+Exit 1 means the file it names is not written yet: say that it is
+recorded and the readers find nothing until the file exists (a roadmap
+the step 5 offer creates, say). Exit 2 means the lookup refuses what `set`
+took (a roadmap that is a symbolic link or reached through one, which
+`update_roadmap.sh` would replace; a roadmap the design's file links to):
+show the reason and offer to remove the key again or name another file,
+each its own yes.
+
+**The project's roadmap**, in steps 5 and 6, is the file `doc <settings-name>
+roadmap` names (`set` or `fallback`; for a stored key whose file is not
+written yet, the path `project_setting.sh get <settings-name> roadmap`
+prints); with nothing found, a new `docs/roadmap.md`, and
+offer to record it as `roadmap=docs/roadmap.md` (its own yes), unless the
+user chose decide later for the roadmap in 3c this run. With
+`roadmap=none` there is none. When the lookup refuses the setting (exit
+2), there is none until it is fixed: say so.
+
 When a setting changed, run the audit again (step 2's command): severities
-follow `instructions`, and the records checks follow the records settings.
+follow `instructions`, the records checks follow the records settings, and
+the roadmap's ignore check follows `roadmap`.
 
 ### 4. Judge the findings
 
@@ -410,9 +522,9 @@ no:
    `$WS_ROOT/.agent/templates/project_agents_guide.md`, filled in by reading
    the project's code; every claim verified against source
    (`$WS_ROOT/.agent/knowledge/documentation_verification.md`).
-2. **Direction section** — a `## Direction` section in the project's own
-   roadmap: an existing `docs/roadmap.md` or `ROADMAP.md`, else a new
-   `docs/roadmap.md`. Its format is the workspace's (the Format paragraph
+2. **Direction section** — a `## Direction` section in the project's
+   roadmap (step 3c; with `roadmap=none`, or a setting the lookup refuses,
+   this offer is not made: say why). Its format is the workspace's (the Format paragraph
    of the Direction section in `$WS_ROOT/docs/roadmap.md`, the grammar in
    the header of `$WS_ROOT/.agent/scripts/sitrep_checks.sh`): the lines that
    must be true for the project's current goal, each with a check.
@@ -435,8 +547,7 @@ if the user approves, so that it can get tackled maybe as other issues are
 resolved".
 
 **Queue in the roadmap.** Queued items become rows of an `## Onboarding`
-section in the project's roadmap (an existing `docs/roadmap.md` or
-`ROADMAP.md`, else a new `docs/roadmap.md`):
+section in the project's roadmap (step 3c):
 
 ```markdown
 ## Onboarding
@@ -456,6 +567,9 @@ section is itself a write: it waits for the same yes and rides in the same
 batched pull request as the fix-now items. How many queued rows to take on
 alongside other work is a later rule, not this skill's.
 
+With `roadmap=none`, or a roadmap setting the lookup refuses, there is no
+roadmap to queue in: say so, and offer open issue or skip instead.
+
 A zero-footprint project (`instructions=none`) keeps its roadmap with its
 records, so **until the records lookup (#393) lands, queue in the roadmap
 is not offered to it**: say so, and offer open issue or skip instead. For
@@ -464,7 +578,8 @@ file (a setting, a `.git/info/exclude` line).
 
 Fixes that touch no tracked file are made as soon as the user says yes:
 
-- a setting: `project_setting.sh set <settings-name> <key>=<value>`;
+- a setting: `project_setting.sh set <settings-name> '<key>=<value>'`,
+  quoted as in 3c;
 - the worktrees directory: add its line (the finding names it, e.g.
   `worktrees/`) to the file `git rev-parse --git-path info/exclude` prints,
   the same line `worktree_create.sh` adds when it creates the first
@@ -633,6 +748,7 @@ Report, each line saying whether it is done or still to do:
 ### Recorded choices
 - instructions: <value, or not set>
 - records: <location, tracking> (<default, provisional | stored>)
+- goals, design, roadmap: <each: its stored value, none, or not set (the readers use <path> | find nothing)>
 
 ### Done
 - <item> — <PR link | setting stored | exclude line added>

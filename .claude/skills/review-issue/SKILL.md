@@ -135,8 +135,9 @@ If the issue targets a project repo, also check:
   "A safeguard has to earn its cost" has no section name of its own: work
   that serves it writes that phrase, word for word, in its Serves line,
   beside any other goal's section name. For a project issue, use the
-  project's own goals and design document, or write "none"; a project is
-  not asked to keep either.
+  project's own goals and design document, found where
+  `project_setting.sh doc <name> goals|design` says it keeps them (never a
+  guessed path), or write "none"; a project is not asked to keep either.
   Work inside a part that has its own design (ADR-0022) names the root
   goal it serves and may also name the part's own goal, citing the part's
   design section as `<path>/design.md#<section>`, `<path>` being the

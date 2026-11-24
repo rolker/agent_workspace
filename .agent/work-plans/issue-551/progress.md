@@ -741,3 +741,238 @@ Triage after the cold read's fixes (deaa41d7, ff2eae97). The `sources` helper fi
 **Decision**: merge
 
 The owner's answer in the dialog, to "Merge pull request 568 now and carry F1 into part 2 of the same issue?": "Merge, carry F1 (Recommended)". F1 is the open suggestion of the Integrated Review at b523c1bc: the comment on bookkeeping_roadmap_paths in .agent/scripts/_bookkeeping.sh (lines 38-39) says a roadmap value "may hold ( ) | ! @ +", which is untrue since deaa41d7; a comment-only reword, deferred to part 2's pull request on this issue. The dialog showed: the merge answered on 2026-11-23 never landed and the branch then conflicted with main; main merged in today with two documentation conflicts resolved and tests that no reader added by pull request 572 bypasses the lookup; the Codex cold read's must-fix and suggestion, both fixed, and the convergence check that approved them; Copilot not requested because this session's permission check refuses the request command; the new limit on the characters a document path may hold; CI with all 10 checks passed on 7277fdb5; no hosted review or comment; mergeable, clean. The cold read ran for this pull request (cold_read=yes), so step 9a has nothing to route.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 11:35 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (run-issue step 13's conditions hold: plan.md is at 7ab07af2, the commit the newest Plan Review names, and the plan names Part 2, the skills, which is not delivered)
+**After**: plan
+**Decision**: proceed
+
+The owner asked for this drive today: "Can you orchestrate Q1 and Q4?", Q1 being part 2 of this issue. Pull request 568 (Part 1: the settings, the lookup, the script readers) merged today; the issue stays open because Part 2 (the question in the onboard-project and design-discussion skills) is still to come, and its pull request is the one that says Closes #551. The worktree and branch were recreated from main at d2f489ff.
+
+Instructions that bind the implementer (host decisions, listed for the owner's veto):
+- Implement Part 2 only, as the plan gives it.
+- Part 1 changed after the plan was reviewed, and the skill text must match what merged: a goals, design or roadmap path may hold only ASCII letters, digits, ".", "_", "-" and "/" (refused otherwise, at set time and at lookup), and a roadmap setting that is the design's file through a symbolic link is refused. The question the skills ask, and what they do with an answer the setting refuses, follow the merged project_setting.sh, not the plan's older wording; say in the entry where the two differ.
+- Carry the suggestion the owner deferred to this pull request on 2026-11-24 ("Merge, carry F1"): the comment on bookkeeping_roadmap_paths in .agent/scripts/_bookkeeping.sh says a roadmap value "may hold ( ) | ! @ +", which is untrue since those characters are refused; reword the comment only, no code change.
+- Main has moved since the plan (the sit-rep skill was rewritten by pull request 572; onboarding ran on a second machine): read the two skills as they are on this branch before editing.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 11:57 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-551 at `8ad728045b58d562ce405e264941e104686b15a0`
+
+Part 2 of the plan (items 10, 11, 12, 12a, 13) and the carried suggestion F1. Commits: 63b1f867, d1454a85, dd937448, 25ba7201, 077cc77c, 8ad72804.
+
+### Changes
+- (F1, carried at the owner's "Merge, carry F1") `.agent/scripts/_bookkeeping.sh`: the comment on `bookkeeping_roadmap_paths` no longer says a value may hold `( ) | ! @ +`; it says the setting holds no other character than letters, digits and `. _ / -` (refused at set and lookup) and the escape keeps the literal match safe should that set widen. Comment only, no code change.
+- (12a) `.agent/scripts/project_integration_audit.sh`: the category 4 ignore-would-hide check takes the roadmap path from the lookup (`project_document_path`): the file the `roadmap` setting names (also one not written yet), else the first existing candidate, else `docs/roadmap.md`; `roadmap=none` and a setting the lookup refuses check no roadmap path. Header updated. Four new cases in `test_project_integration_audit.sh`.
+- (10) `onboard-project` step 3c: asks "Where does this project keep its goals? its design? its roadmap?", one key at a time, only when unrecorded, after `project_setting.sh doc` shows what the readers find. Options: a file (the `fallback` path as the suggestion; for goals a README/design section after reading the heading; for design a differently named design file), `none`, or decide later (nothing stored). Stored with `project_setting.sh set <settings-name> "<key>=<value>"` on a yes, then `doc` again. `--reask` takes the three keys; steps 5 and 6 use "the project's roadmap" as the lookup names it (no Direction offer and no queue in the roadmap with `roadmap=none` or a refused setting); the summary lists the three.
+- (11) `audit-project` step 3: goals, design and roadmap rows from `doc` (+ `get`); `ARCHITECTURE.md` stays an accepted design name. Findings: a recorded file untracked or missing, a setting the lookup refuses, and a setting naming a sub-roadmap from `sitrep_checks.sh --list-pointers` or the `design.md` beside one. Step 10's queue uses the lookup's roadmap.
+- (12) `design-discussion` step 0 Documents: a project's documents come from `doc`; `set` is used, `none` respected (Step 7's "No document"), `fallback` is a suggestion to ask about, nothing found is said with the reason. An answer not recorded is offered as a setting on its own yes, else kept on the anchor issue. The workspace (no settings) and parts as before. The trial note no longer says the location waits on #551.
+- (13) `test_skill_paths.sh`: pins for the three skills (a new design-discussion section with bash-block parsing) and checks that the guessed `docs/roadmap.md`/`ROADMAP.md` wording is gone.
+
+### Where the plan and the merged Part 1 differ (the skills follow Part 1)
+- Path characters: the plan refused only blanks and backslash; Part 1 accepts only ASCII letters, digits, `.`, `_`, `-`, `/`. The onboarding question names that set, and tells a refusal as a limit of the workspace's readers, offering decide later or `none`, never moving or renaming the project's files.
+- Roadmap rules the plan did not have: a `.md` file, not the README or an agent instruction file, not `docs/design.md` or the design's file. Stated in step 3c.
+- Symbolic links: the plan checked containment at read time; Part 1 also refuses, at lookup only, a roadmap that is a link or reached through one and a roadmap the design's file links to. `set` accepts those, so the skill runs `doc` after storing and offers to remove the key or name another file.
+- `doc` prints nothing on exit 1, also for a recorded key whose file is missing (the plan said it prints the same line as the helper). The skills tell a recorded key with `list`/`get` and take the path from `get`.
+
+### Decisions the plan did not state
+- The integration audit checks an existing fallback candidate when the key is unset (the plan said `docs/roadmap.md` when unset), so an ignored `ROADMAP.md` is reported. A refused setting adds no new finding id there; the skills report it through `doc`.
+- Onboarding offers to record `roadmap=docs/roadmap.md` (own yes) when it creates the roadmap there.
+- audit-project reports all three keys (the plan named the design check), and the pointer-table check covers all three.
+- design-discussion offers to store an answer as a setting (the plan said ask); the anchor issue stays the fallback.
+
+### Not done (outside Part 2's list)
+- `brainstorm` (SKILL.md lines 81-82) still names a project's roadmap as `docs/roadmap.md`, else `ROADMAP.md`, and its design as `docs/design.md` or `ARCHITECTURE.md`; `plan-task`, `review-plan` and `review-issue` cite a project's design as `docs/design.md#<section>`. For the host to decide.
+
+### Tests (each suite on its own)
+test_project_integration_audit: 286 passed, 0 failed; test_skill_paths: 208 passed, 0 failed; test_script_tests_hook_scope: 366 passed, 0 failed; test_user_tier_guard: 64 passed, 0 failed; test_merge_pr_skill: 132 passed, 0 failed; test_merge_pr: 175 passed, 0 failed; test_merge_pr_gate: 213 passed, 0 failed; test_project_documents: 204 passed, 0 failed; test_triage_reviews_integration: 70 passed, 0 failed. `_bookkeeping.sh` has no suite of its own (the five that name it ran). Full pre-commit pass left to the host. Not pushed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 12:03 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-551 at `32c9a35b`
+**Base**: origin/main
+**Depth**: Deep (reason: 414 changed lines; three skill definitions, a governance trigger)
+**Must-fix**: 1 | **Suggestions**: 8
+**Round**: 1 | **Ship**: continue — round 1: 1 must-fix; first round always re-reviews after fixes
+
+Part 2 of issue 551 (the skills, the integration audit's roadmap ignore check, the carried F1 comment). Static: shellcheck clean on the four changed scripts; test_skill_paths 208/0; test_project_integration_audit 286/0 (run by the adversarial pass). Cross-model: Gemini ran (8 findings; its must-fix 1 is a false positive, `project_setting.sh doc` prints nothing on a non-zero exit; its SIGPIPE and instructions=none points do not hold); Codex ran (1 finding, confirmed, kept as a suggestion).
+
+### Findings
+- [x] (must-fix) brainstorm still decides a project's design (`docs/design.md` or `ARCHITECTURE.md`) and roadmap (`docs/roadmap.md`, else `ROADMAP.md`) itself, and says that is what `sitrep_root.sh` reports, which is no longer true: with a `roadmap` or `design` setting naming another file it reads the wrong file or reports the document absent. With `Closes #551` ("followed by every reader") it must read them through `project_setting.sh doc <name> goals|design|roadmap` (or `sitrep_root.sh --dir <root>`'s `design=`/`roadmap=` lines), keeping `ARCHITECTURE.md` as an extra name — `.claude/skills/brainstorm/SKILL.md:80-84`
+- [x] (suggestion) after "Decide later" for the roadmap in 3c, the step 5 Direction offer asks again to record `roadmap=docs/roadmap.md`: one question twice in a run; say a 3c "decide later" holds for the run — `.claude/skills/onboard-project/SKILL.md:478-484`
+- [x] (suggestion) `--reask` on a recorded document key: 3c says "recorded; not asked" with no `--reask` exception, and "Decide later ... readers keep the fixed list" is untrue when a value stays stored; say decide later under `--reask` keeps the stored value — `.claude/skills/onboard-project/SKILL.md:396-441`
+- [x] (suggestion) `doc` exit 2 for a key not stored (registry unreadable) and exit 3 (unknown project) are not mapped in either status list; audit-project would call them "the setting cannot be used" — `.claude/skills/onboard-project/SKILL.md:410-426`, `.claude/skills/audit-project/SKILL.md:224-242`
+- [x] (suggestion) design-discussion stores an answer with `set` but does not run `doc` again, so a value `set` takes and the lookup refuses (a symbolic-link roadmap) stays stored while the user is told it is recorded (onboard-project step 3c does re-check); its value list also omits `none` — `.claude/skills/design-discussion/SKILL.md:152-163`
+- [x] (suggestion) the part-collision check cannot find a `roadmap` collision: `sitrep_checks.sh --list-pointers` drops a pointer at the root's own roadmap ("points at the root's own roadmap"), and the audit passes the recorded roadmap as `--roadmap`; limit the check to goals and design and say the sit-rep reports the roadmap case — `.claude/skills/audit-project/SKILL.md:244-257`
+- [x] (suggestion) the tracked check passes `<path>` from `set <path>[#<heading>]`: say to drop `#<heading>` first, and that a project with no git has no tracked check — `.claude/skills/audit-project/SKILL.md:227-230`
+- [x] (suggestion) triage-reviews still says the merge gate's bookkeeping rule is `ROADMAP.md`, `docs/ROADMAP.md` or `docs/roadmap.md`; since part 1 it also counts the file the `roadmap` setting names — `.claude/skills/triage-reviews/SKILL.md:186-188`
+- [x] (suggestion) plan-task, review-plan and review-issue say "the project's own goals and design document" without saying where to find it; one clause pointing at `project_setting.sh doc <name> goals|design` (they do not guess a path: `docs/design.md#<section>` there is the workspace's form) — `.claude/skills/plan-task/SKILL.md:133`, `.claude/skills/review-plan/SKILL.md:205`, `.claude/skills/review-issue/SKILL.md:142`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 12:12 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-551 at `84f0e726`
+**Addressed**: Local Review (Pre-Push) at `32c9a35b` (2026-11-24 12:03 -05:00)
+**Commits**: f74dc6b1, e0127b6f, cc078d28, c2d723b3, b485f7b4, 0f14e00b, 18a902c4, 84f0e726
+
+Round 1's 1 must-fix and 8 suggestions, all fixed as the host's directions gave them (host decisions, listed for the owner's veto). Text only, no script changed.
+
+### Actions
+- [x] (must-fix M1) brainstorm reads a project's goals, design and roadmap through `project_setting.sh doc <name> goals|design|roadmap` (set / fallback / none / nothing with the reason), never a path it decides; `ARCHITECTURE.md` stays an extra design name when `design` gives nothing and stores nothing; the wrong claim about `sitrep_root.sh` is gone. One pin section in `test_skill_paths.sh` (the three `doc` lines, and the old `docs/roadmap.md`, else `ROADMAP.md` wording absent) — `.claude/skills/brainstorm/SKILL.md:80-99`, f74dc6b1
+- [x] (S1) a 3c "decide later" holds for the rest of the run: step 5's offer to record a new `roadmap=docs/roadmap.md` is not made after it — `.claude/skills/onboard-project/SKILL.md` (3c options, "The project's roadmap"), e0127b6f
+- [x] (S2) a recorded key is asked again when `--reask` names it; decide later under `--reask` keeps the stored value, and the readers keep following it — `.claude/skills/onboard-project/SKILL.md` (3c status list and options), e0127b6f
+- [x] (S3) `doc` exit 2 with "the registry <file> has errors" is the registry, not the setting; exit 3 is a project not registered under that name; both mapped in onboard-project 3c and audit-project step 3 (audit: one registry finding, the three rows unknown) — cc078d28
+- [x] (S4) design-discussion runs `doc` again after `set` (exit 1: file not written yet; exit 2: refused, offer `unset` or another file, each its own yes) and lists `none` among the values it records — `.claude/skills/design-discussion/SKILL.md:151-161`, 0f14e00b
+- [x] (S5) the smaller option: the part-collision check covers `goals` and `design` only, and says the roadmap case is reported by the sit-rep (`points at the root's own roadmap`), since `--list-pointers` leaves that row out; `sitrep_checks.sh` unchanged — `.claude/skills/audit-project/SKILL.md:241-247`, b485f7b4
+- [x] (S6) the tracked check takes `<path>` before any `#<heading>`; a project without git has no tracked check — `.claude/skills/audit-project/SKILL.md:209-212`, c2d723b3
+- [x] (S7) triage-reviews' coverage rule also counts the file the `roadmap` setting names (in a checkout of the project root's own repository), as `_bookkeeping.sh` does — `.claude/skills/triage-reviews/SKILL.md:186-189`, 18a902c4
+- [x] (S8) plan-task, review-plan and review-issue: one clause each, a project's goals and design are found where `project_setting.sh doc <name> goals|design` says (never a guessed path) — `.claude/skills/plan-task/SKILL.md:132`, `.claude/skills/review-plan/SKILL.md:204`, `.claude/skills/review-issue/SKILL.md:137`, 84f0e726
+
+### Notes
+- The brainstorm pin does not call `bash_blocks_parse`: two older blocks in that skill (the issue-create and comment heredocs, indented in a numbered list) do not pass `bash -n` as extracted; they are outside this round.
+- Sweep after the pass: no skill decides a project's goals, design or roadmap path on its own. One script still names fixed design files: `discover_governance.sh` (used by gather-project-knowledge) lists `ARCHITECTURE.md` and `docs/design.md` as `architecture` without reading the `design` setting. It is an inventory, not one of the readers part 1 listed; for the host to decide.
+
+### Tests (each suite on its own)
+test_skill_paths: 210 passed, 0 failed; test_checkpoint_269: 43 passed, 0 failed; test_triage_reviews_integration: 70 passed, 0 failed; test_project_integration_audit: 286 passed, 0 failed. No script changed, so no script suite applies. Full pre-commit pass left to the host. Not pushed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 12:24 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-551 at `e985201b`
+**Base**: origin/main
+**Depth**: Deep (reason: 13 files, +508 -44 on the whole branch; skill definitions and a governance trigger; round 2 classified on the whole diff)
+**Must-fix**: 2 | **Suggestions**: 3
+**Round**: 2 | **Ship**: continue — round 2: must-fix rising (1 -> 2); both are mechanical one-place text fixes
+
+Round 1's M1 and S1 to S8 are all closed; each was checked against the skill text and the scripts on this branch. project_setting.sh doc prints nothing on exit 1 (lines 257-262), exits 2 with "the registry <file> has errors (above); fix it first" (line 140), and exits 3 for an unknown project (_USAGE_RC, line 145). sitrep_checks.sh drops the self-pointer row before --list-pointers prints (line 1242). The merge of main (pull request 597) changes nothing these skills say: registration_refused and unused_settings name no document key, and project_setting.sh and project_document_path are untouched. discover_governance.sh stays as it is: a display inventory, which the plan reviewed and kept untouched (plan.md line 36); the issue does not list it as a reader, and docs/design.md already says it does not know the roles. Name it in the pull request body as display-only. Codex's must-fix (the audit cannot find a roadmap that its own pointer table names) is round 1's S5 decision; the skill says plainly that it cannot handle that case, so it is not a finding here. Static: shellcheck clean on the four changed scripts. Tests: test_skill_paths 210/0, test_project_integration_audit 286/0. Cross-model: Gemini ran with 8 findings. Its must-fix 1 is a false positive, because doc suppresses the set line on exit 1. Its must-fix 2 is confirmed and kept. Its SIGPIPE point does not hold: the script runs without -e and the first line is already read. Its bash_blocks_parse point and its two test-coverage points are known and noted, so they are dropped. Codex ran with 1 finding, covered above.
+
+### Findings
+- [x] (must-fix) the documented set command double-quotes "<key>=<value>", and a #<heading> may hold a backtick or `$` (set accepts any heading without control characters), so bash runs a command substitution and stores a different heading. Use single quotes, and say how to write a `'` (`'\''`) — `.claude/skills/onboard-project/SKILL.md:445-448`, `.claude/skills/design-discussion/SKILL.md:152-153`
+- [x] (must-fix) ADR-0017: docs/design.md's onboarding bullet (Sessions and roots) still lists the footprint questions as `instructions` and the records settings only; add the goals, design and roadmap question, with a change-log row — `docs/design.md:287-289`
+- [x] (suggestion) "What a stored value changes" says goals is read by this skill, audit-project and design-discussion only; since round 1's fixes, brainstorm, plan-task, review-plan and review-issue also read goals and design through the lookup, and the integration audit's ignore check follows roadmap — `.claude/skills/onboard-project/SKILL.md:436-441`
+- [x] (suggestion) design-discussion step 0 and brainstorm read every exit-2 result as a refused setting, and neither handles exit 3. Round 1's S3 mapped both codes in onboard-project and audit-project only. With a broken registry, brainstorm then reads ARCHITECTURE.md as the design. Map the registry reason and exit 3 here too — `.claude/skills/design-discussion/SKILL.md:145-149`, `.claude/skills/brainstorm/SKILL.md:95-98`
+- [x] (suggestion) two brainstorm references are now stale. The path paragraph gives `docs/design.md` "in the project list below" as an example, but the round 1 fix removed that path from the list. The digest line says "#551 may move it", and this pull request closes #551 without moving it — `.claude/skills/brainstorm/SKILL.md:49-50,77`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 12:29 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-551 at `f46d375f`
+**Addressed**: Local Review (Pre-Push) at `e985201b` (2026-11-24 12:24 -05:00)
+**Commits**: 9a06fbdd, 6949cac5, e537dd3b, 17069ea9, f46d375f
+
+Round 2's 2 must-fix and 3 suggestions, all fixed as the host's directions gave them (host decisions, listed for the owner's veto). Text and test pins only, no script changed.
+
+### Actions
+- [x] (must-fix A) the `set` example puts `'<key>=<value>'` in single quotes and says a `'` is written `'\''`, since a backtick or `$` in a heading would run in double quotes. The same fix where a stored or user-given value enters a command in onboard-project: the registration `--set 'build=<command>'` / `--set 'test=<command>'` (the prose and both commands, steps 1-2), step 2's `set <settings-name> 'build=<command>'`, and step 6's fix-now `set` line. Pins in `test_skill_paths.sh` updated to the single-quoted forms, plus the quoting note in both skills — `.claude/skills/onboard-project/SKILL.md:447-453`, `.claude/skills/design-discussion/SKILL.md:152-155`, 9a06fbdd
+- [x] (must-fix B) docs/design.md's onboarding bullet (Sessions and roots) adds `goals`, `design` and `roadmap` to the footprint questions, and a change-log row (1285 lines); `check_design_anchors.sh` exit 0 — `docs/design.md:288-290`, 6949cac5
+- [x] (S1) "What a stored value changes" names the readers as they are: goals and design through the lookup in this skill, audit-project, design-discussion, brainstorm, plan-task, review-plan and review-issue; roadmap also for triage-reviews' coverage rule, the integration audit's ignore check, and the skills that read it — `.claude/skills/onboard-project/SKILL.md:438-448`, e537dd3b
+- [x] (S2) design-discussion and brainstorm map `doc` exit 2 with `the registry <file> has errors` and exit 3 as onboard-project and audit-project do; brainstorm lists the three as unknown and reads no `ARCHITECTURE.md` in their place. Two pins added — `.claude/skills/design-discussion/SKILL.md:150-153`, `.claude/skills/brainstorm/SKILL.md:99-102`, 17069ea9
+- [x] (S3) brainstorm's relative-path example names `docs/decisions/` (still in the list), and the digest line drops "#551 may move it" — `.claude/skills/brainstorm/SKILL.md:49-50,77`, f46d375f
+
+### Notes
+- Quoting checked, not changed: `<settings-name>`, `<name>` and `<project>` are registry names (`[A-Za-z0-9][A-Za-z0-9._-]*`), and a stored `<path>` is limited by `set` to ASCII letters, digits, `.`, `_`, `-` and `/`, so audit-project's `git ls-files -- <path>` and the `doc`/`get`/`unset` lines need no quoting; brainstorm's issue heredocs already read the title from a file. Left as they are, outside this fix: the `--title "<issue title>"` of `review_progress.sh persist` in six skills (plan-task, review-plan, review-issue, triage-reviews, review-code, address-findings), a workspace-wide convention this issue did not touch; and agent-written text in double quotes (onboard-project's `git commit -m "<what changed>"` and `gh issue create --title "<item title>"`, audit-project's `gh label create --description "<what it is>"`). The `ros2_colcon` adapter's own message still prints `project_setting.sh set demo build=<command>` (pinned in `test_adapter.sh`); a script, not changed here.
+
+### Tests (each suite on its own)
+test_skill_paths: 212 passed, 0 failed; test_design_anchors: 82 passed, 0 failed. No script changed, so no script suite applies. Full pre-commit pass left to the host. Not pushed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 12:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a4ea84dfeed164458, resume 1 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-551 at `e8b916e7`
+**Base**: origin/main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — no must-fix findings; round 2's five all closed
+
+Narrow check of round 2's findings and the fix diff b5c9c418..e8b916e7 (9a06fbdd, 6949cac5, e537dd3b, 17069ea9, f46d375f). Cross-model: skipped (round-3 convergence check, per handoff). All five closed:
+- Must-fix A: `set` takes '<key>=<value>' in single quotes, with `'\''` for a `'`, in onboard-project step 3c and design-discussion step 0. The three older onboard-project places read correctly and match the step 1 prose: the registration `--set` in the prose and both commands, step 2's `'build=<command>'`, and step 6's fix-now line. No double-quoted form is left in the skills, and no allow rule pins the old form.
+- Must-fix B: the docs/design.md onboarding bullet is true of the branch. The change-log row is in the table's form, with Sessions and roots +1 line and a count of 1285 (equal to `wc -l`). `check_design_anchors.sh` exits 0.
+- Suggestion 1: the reader list in "What a stored value changes" now matches the branch.
+- Suggestion 2: design-discussion and brainstorm map exit 2 with the registry reason and exit 3 as the other two skills do. Brainstorm reads no `ARCHITECTURE.md` in their place.
+- Suggestion 3: both stale brainstorm references are gone.
+
+Tests: test_skill_paths 212/0, test_design_anchors 82/0. Shellcheck is clean on test_skill_paths.sh.
+
+The three things the fix pass left alone are not must-fix for this pull request:
+- the `--title "<issue title>"` of `review_progress.sh persist` in six skills
+- the agent-written `git commit -m`, `gh issue create --title` and `gh label create --description` text
+- the ros2_colcon adapter's example message
+
+This branch neither added nor changed any of them, so it brings in no broken ordinary case. The persist title is used only when progress.md is first created. The host's parked follow-up is the right home: an issue title holding a backtick or `$` is the one real case.
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 12:39 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 of the pre-push review approved with nothing open, Ship: recommended; the host's full pre-commit pass over the changed files passed, every hook, no SKIP, on b4947dd7)
+**After**: publish
+**Decision**: publish
+
+Part 2 of the issue. Three pre-push rounds: round 1 found 1 must-fix and 8 suggestions, round 2 found 2 must-fix and 3 suggestions, round 3 (a convergence check, no cross-model reviewers) found every one closed and nothing new. Gemini and Codex ran in rounds 1 and 2. Left for the owner as a possible follow-up, in the inbox and not in this pull request: double-quoted free-text arguments in skill text this branch does not otherwise touch.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 12:43 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #602 at `20d8d4a3`
+**Depth**: Deep (reason: cold read, cross-model only: codex, per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Codex ran alone (EXIT=0) on the title, URL and diff only; the prompt carried no work-plan files and no earlier review entry. Its review: no issues found. The lead checked the audit's roadmap case table and the skills' doc/get/set/unset readings against `project_setting.sh` and `_project_registry.sh` as merged and found nothing to add. `test_skill_paths.sh` (212 passed) and `test_project_integration_audit.sh` (286 passed) were run at this head.
+
+### Findings
+- [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 12:46 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #602 at `20d8d4a3`
+**Sources**: 5 (Local Review (Pre-Push) @ `32c9a35b` round 1, @ `e985201b` round 2, @ `e8b916e7` round 3; Local Review @ `20d8d4a3` (Codex cold read); CI rollup). No hosted review, no conversation comment, no Copilot review (not requested; the cold read stands in its place).
+**Cross-source confirmations**: 0
+**CI**: pending (Workspace Validation ran twice on `20d8d4a3`, runs 45451047821 and 45451062272; in each: Validate Documentation pass, Validate Adapter Contract pass, Lint (pre-commit) pending, repos-manifest tests (#267 prototype) (Python 3.10) pending, repos-manifest tests (#267 prototype) (Python 3.14) pending; read 12:45 -05:00)
+
+The `sources` helper found no open local finding at this head and no dropped entry: round 1's 1 must-fix and 8 suggestions and round 2's 2 must-fix and 3 suggestions are all ticked by the fix passes after them, round 3 (convergence check) and the Codex cold read approved with nothing open. Pull request mergeable; main has moved since the round 2 merge (pull request 600: `docs/roadmap.md` and issue 582's progress file only), no overlap with this branch.
+
+Decision summary checked against the branch: the changed files, the roadmap rules it names (`.md` only, not the README, an agent instruction file, `docs/design.md` or the design's file; symbolic-link refusal at lookup only) match `_project_registry.sh` lines 1485-1518 and 1753-1760; the `_bookkeeping.sh` change is comment only; the triage-reviews and `docs/design.md` changes say what it says; the merge of main holds pull request 597. Two wording points, neither wrong in substance: "the plan and both reviews kept it out" (of `discover_governance.sh`) is loose, since the record shows the plan (plan.md line 36), its plan review and pre-push round 2 keeping it out, and round 1 did not address it; and the Review list predates the post-publish Codex cold read (approved, no findings), which it does not mention. "Gemini found the quoting defect" fits round 2's record (Gemini's must-fix 2 confirmed and kept) but the entry does not name which defect that was.
+
+### Findings
+- [x] (suggestion, PR text "Left as they are") `discover_governance.sh` lists design files by fixed name (`ARCHITECTURE.md`, `docs/design.md`) and does not read the `design` setting. Ruling: may stay a listed limit. It is an inventory of governance files under six types, documented in `docs/design.md` (Sessions and roots) as not knowing the roles; issue 551's reader list (item 3) does not include it, and the plan (line 36) kept it untouched after its review. Its one consumer, gather-project-knowledge, could report a project whose design lives under another name as having no architecture file; that is a gap in a summary the pull request names openly, not a wrong action by any reader of the three settings. A possible follow-up for the owner, not a merge blocker. — `.agent/scripts/discover_governance.sh`
+- [x] (suggestion, PR text "Left as they are") double-quoted free-text arguments in skill text this pull request does not otherwise touch (`review_progress.sh persist --title "<issue title>"` in six skills; agent-written `git commit -m`, `gh issue create --title`, `gh label create --description` text). Ruling: may stay a listed limit, parked for the owner. This branch neither adds nor changes any of them, so it breaks no ordinary case; the one real case (an issue title holding a backtick or `$`) predates this branch and is workspace-wide. The quoting fix this branch does make covers every place it writes a stored or user-given value into a command. — skill text outside this pull request's changes
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:00 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner's answer in the dialog, to "Merge pull request 602 now?": "Merge (Recommended)". The dialog showed: what onboarding now asks and that every write waits for a yes; the other skills that follow the lookup and the comment fix carried from part 1; three pre-push rounds with every finding fixed, the Codex cold read with no findings, the final triage (856250b8) with nothing open, Gemini and Codex in rounds 1 and 2, Copilot not requested; the two things left alone on purpose (the inventory script's fixed names; double-quoted free-text arguments in skills outside this change, in his inbox); CI with all 10 checks passed on 20d8d4a3; no hosted review or comment; mergeable, clean; and that merging closes issue 551.

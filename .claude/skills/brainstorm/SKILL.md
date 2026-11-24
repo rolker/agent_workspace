@@ -47,7 +47,7 @@ become `/.agent/...`. With the fallback, `$WS_ROOT` is `.`, which is right in
 a workspace session.
 
 A path written without `$WS_ROOT` (such as `.agents/README.md` or
-`docs/design.md` in the project list below) is relative to the **project
+`docs/decisions/` in the project list below) is relative to the **project
 root**: in a project session, the session's root; in a workspace session on a
 project's topic, that project's registered folder, the `<path>` field of its
 line in `$WS_ROOT/.agent/projects.local` (a relative `<path>` resolves against
@@ -74,14 +74,32 @@ Every source is optional. Read what exists, and say in the output (the
 only when the topic is about a project):
 
 - `.agents/workspace-context/research_digest.md` — the project's research
-  digest (the path `design-discussion` reads; #551 may move it)
+  digest (the path `design-discussion` reads)
 - `.agents/README.md` — the project's agent rules, including what may not be
   written in its public places
-- the project's principles (`PRINCIPLES.md` or `docs/principles.md`), design
-  (`docs/design.md` or `ARCHITECTURE.md`) and ADRs (`docs/decisions/`)
-- the project's roadmap: `docs/roadmap.md`, else `ROADMAP.md` (what
-  `"$WS_ROOT/.agent/scripts/sitrep_root.sh" --dir <project root>` reports as
-  `roadmap=`; without `--dir` it reports the session's own root)
+- the project's principles (`PRINCIPLES.md` or `docs/principles.md`) and
+  ADRs (`docs/decisions/`)
+- the project's goals, design and roadmap, where its settings say it keeps
+  them; never a path this skill decides:
+
+  ```bash
+  WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
+  "$WS_ROOT/.agent/scripts/project_setting.sh" doc <name> goals
+  "$WS_ROOT/.agent/scripts/project_setting.sh" doc <name> design
+  "$WS_ROOT/.agent/scripts/project_setting.sh" doc <name> roadmap
+  ```
+
+  `<name>` is the project's registered name. Each prints `set
+  <path>[#<heading>]` (read that file, the section under the heading when
+  there is one), `fallback <path>` (not recorded; the file the readers find)
+  or `none` (the project keeps none: say so); nothing, with the reason on
+  stderr, when there is nothing to read: list that document as absent with
+  the reason. When `design` gives nothing and `get <name> design` stores
+  nothing, an `ARCHITECTURE.md` the project has is read as its design.
+  Exit 2 with the reason `the registry <file> has errors` (the registry is
+  broken, not a setting) and exit 3 (no project registered under `<name>`)
+  are not about the documents: list all three as unknown with the message,
+  and read no `ARCHITECTURE.md` in their place.
 
 **A part** (ADR-0022): when the topic is about a part of the workspace or a
 project, also read the part's own `design.md`: the `design.md` in the same
