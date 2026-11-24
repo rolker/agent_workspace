@@ -1552,3 +1552,17 @@ The pre-push review (74c89f53 per the host; entry at `c2da3363`) is stale for th
 ### False positives
 - (Local Review (Pre-Push) @ `c2da3363`, Codex) An absolute path with `--manifest-path` refused by `init` — by design: the Plan Review's direction 2 and the design's refusal row make `file://` the local git form (already ruled in that entry).
 - (Local Review @ `8ceb46d5`, Codex) No line in `docs/manifest/roadmap.md` — left out on purpose, per the entry; not a defect.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 15:32 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: findings
+**Decision**: merge
+
+"Merge (Recommended)"
+
+Asked at the findings checkpoint for pull request 611 (part 2b-1: a manifest read from a git repo, for `init` and `sync`), together with the merge question as the manifest-work rule says, after the Integrated Review at 356e7ce3 with thirteen open suggestions and no must-fix. The dialog gave: what the part does; one plan review with fourteen directions applied; the one code review round's two must-fix findings, both reproduced and fixed with tests; the Codex cold read of the whole final diff, approved, with nothing wrong in the two fixes; examples of the thirteen suggestions (a redirect test that passes with the transport rule off; `tags/x` refused when a branch `x` exists; `config.yaml` world-readable with the url in full; two narrow windows for a stop signal; a stale adapter comment); the host's choice open to his veto (a url rewrite to another transport is refused with advice, not honoured); all 10 CI checks passing on head 8ceb46d5, mergeable, a clean trial merge with main; the outside reviewers (Codex on the one round and as the cold read; Gemini skipped, failed earlier today; Copilot skipped, failed earlier today for lack of quota); and that the issue stays open for two later parts. He did not veto the choice. The other choices offered were hold and stop.
+
+The follow-up issue for this pull request's deferred suggestions is #612 (one issue, its body naming pull request 611), opened on this answer under the standing authorization of the manifest-work rule.
