@@ -438,3 +438,28 @@ Run: test_ros2_colcon.sh 1154 passed 0 failed 0 skipped; test_register_project.s
 **Decision**: address
 
 All four suggestions of the round-1 review are fixed before the push, none deferred: the refusal's way on for a URL `source` and for a manifest with no `distros:`; the stale sentence in `docs/manifest/design.md`; `setup` and `sync` added to `test_tool_route_order`; and a test that registering a new path with `--set source=` is refused at setup with the new message and rolled back. The host's full pre-commit pass was not run on this head, since the fix pass changes it. Outside reviewers on round 1: Codex ran and its two points became the first suggestion; Gemini failed (the headless run denied a tool call and returned nothing).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 10:18 -05:00
+**By**: claude-code (claude-opus-5-5)
+
+**Branch**: feature/issue-569 at `deb6660c`
+**Addressed**: Local Review (Pre-Push) at `3ff95fa5` (2026-11-24 10:12 -05:00)
+**Commits**: 07e99799, bdcb8a2b, ee186590, deb6660c
+
+### Actions
+- [x] The refusal's way on now fits the old setups: a line says the manifest must list its distros (init --distro-dirs refuses one that does not, and the adapter refuses a root set up without --distro-dirs), and for a URL source (https, http or file URL, as the registry judges it) a line names the clone at source_ref and the file at source_path inside it (manifest.yaml when unset, the removed route's default), as init reads a local file only (verified in tools/repos-manifest/src/repos_manifest/init.py check_distros and system.py read_manifest); tests assert both lines and the URL case; docs/design.md's sentence quoting the message updated — `.agent/project_types/ros2_colcon/adapter.sh:631`
+- [x] "What the tool has to give" opens with what is true now: the status is given, the rest is what the removed route gave and the tool does not give yet — `docs/manifest/design.md:331`
+- [x] test_tool_route_order runs setup and sync on the tool root with source set, before the settings file is replaced: exit 0, not refused, the tool's sync ran in the root — `.agent/scripts/tests/test_ros2_colcon.sh:2733`
+- [x] New test: `register_project.sh <new path> ros2_colcon --set source=...` writes the line and the settings file, runs setup, which refuses with the new message before making the directory, and the rollback removes the line and the settings file; no directory is left and nothing is named on KEPT=. No defect in register_project.sh — `.agent/scripts/tests/test_register_project.sh:691`
+
+### Checks
+- test_ros2_colcon.sh: === Results: 1183 passed, 0 failed, 0 skipped ===
+- test_register_project.sh: test_register_project: 220 passed, 0 failed
+- test_design_anchors.sh: test_design_anchors: 82 passed, 0 failed
+- test_adapter.sh: === Results: 248 passed, 0 failed ===
+- test_project_registry.sh: === Results: 425 passed, 0 failed ===
+- test_project_file.sh: === Results: 701 passed, 0 failed ===
+- test_worktree_create.sh: PASS: 112, FAIL: 0
+- The full pre-commit pass is left to the host.
