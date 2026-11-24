@@ -1169,6 +1169,16 @@ for f in README.md .claude/skills/review-issue/SKILL.md; do
     fi
 done
 
+# --- review-plan by PR number reads the plan file at the PR head (#579):
+# the PR body is a snapshot plan-task copied once, so a review that reads
+# it can judge stale text. Step 1 and the Step 5 note fetch the same way.
+has "$SKILLS/review-plan/SKILL.md" "review-plan's PR form reads the plan at headRefOid, never the body or a comment" \
+    'headRefName,headRefOid,files,url' \
+    'The PR body is a snapshot of the plan' \
+    'Never review the body, or a PR comment, as the plan' \
+    'git fetch -q origin "pull/<N>/head"' \
+    'git show <headRefOid>:./.agent/work-plans/issue-<issue>/plan.md'
+
 echo ""
 echo "test_skill_paths: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

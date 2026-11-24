@@ -41,7 +41,7 @@ workspace session behaves exactly as it did before this idiom existed.
 /review-plan --issue <N>
 ```
 
-- `<pr-number>` — read the plan from a draft PR (existing behavior)
+- `<pr-number>` — read the plan file at a PR's head commit
 - `<path-to-plan.md>` — read the plan directly from a local file
 - `--issue <N>` — resolve to `$WS_ROOT/.agent/work-plans/issue-<N>/plan.md`
 
@@ -68,15 +68,37 @@ Determine the input form and locate the plan file. Detection heuristic:
 **PR number** (e.g., `/review-plan 127`):
 
 ```bash
-# PR metadata and body (plan is in the PR body)
-gh pr view <N> --json title,body,baseRefName,headRefName,files,url
+# PR metadata (the body is a snapshot, not the plan; see below)
+gh pr view <N> --json title,body,baseRefName,headRefName,headRefOid,files,url
 
-# Get the linked issue
-gh pr view <N> --json body --jq '.body' | grep -o '#[0-9]*' | head -1
+# Plan files the PR changes; each path names its issue as issue-<issue>
+gh pr view <N> --json files --jq '.files[].path | select(test("work-plans/issue-[0-9]+/plan[.]md$"))'
+
+# The issue the PR closes (needed when the line above lists none, or more than one)
+gh pr view <N> --json body --jq '.body' | grep -oiE '(closes|fixes|resolves) #[0-9]+' | head -1
 ```
 
-Find the plan file in the PR's changed files — it will be at
-`$WS_ROOT/.agent/work-plans/issue-*/plan.md`. Read it in full.
+The PR body is a snapshot of the plan, copied once when the PR was opened;
+later edits to the plan file never reach it. Never review the body, or a PR
+comment, as the plan: read the plan file at the PR's head commit.
+
+- **One plan file**: `<issue>` is the number in its `issue-<issue>`
+  directory. From the top folder of the repository the PR belongs to, fetch
+  the head and read the file in full (`<headRefOid>` from the first command;
+  the Step 5 note reads the plan SHA the same way):
+  ```bash
+  git fetch -q origin "pull/<N>/head"
+  git show <headRefOid>:./.agent/work-plans/issue-<issue>/plan.md
+  ```
+- **More than one plan file**: take the one whose `issue-<issue>` matches
+  the issue the PR closes, and read it as above. If none matches, or the PR
+  closes no issue, stop and say which plan files the PR changes.
+- **No plan file** (for example a `[PLAN]` draft opened by
+  `worktree_create.sh --plan-file`, which posts the plan as a PR comment):
+  `<issue>` is the issue the PR closes; find the plan as the **Issue
+  number** form below does for `--issue <issue>` (a plan found that way is
+  a local file, so Step 5 takes its SHA with `--plan <path>`, not `--ref`).
+  If none is found, or the PR closes no issue, stop and say so.
 
 **File path** (e.g., `/review-plan $WS_ROOT/.agent/work-plans/issue-45/plan.md`):
 
@@ -315,9 +337,9 @@ by hand:
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 # Plan checked out locally (worktree / --issue / file path):
 $WS_ROOT/.agent/scripts/review_progress.sh plan-sha --plan <path>
-# PR-number form, reviewing from any tree: fetch the head, then ask by ref —
-# no local checkout of the file is needed.
-git fetch -q origin "<headRefName>"
+# PR-number form, reviewing from any tree: fetch the head (<N> is the PR
+# number), then ask by ref — no local checkout of the file is needed.
+git fetch -q origin "pull/<N>/head"
 $WS_ROOT/.agent/scripts/review_progress.sh plan-sha --plan ./.agent/work-plans/issue-<issue>/plan.md --ref "<headRefOid>"
 ```
 
