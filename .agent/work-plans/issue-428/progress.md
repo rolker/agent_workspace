@@ -1158,3 +1158,19 @@ Summary: no must-fix open. S1 and S2 are valid wording fixes, one phrase or line
 **Decision**: merge
 
 The owner's answer in the dialog, to "Merge pull request 542 now, with F1 and F2 carried into part 2 of the same issue?": "Merge, carry F1 F2 (Recommended)". F1 is the open suggestion on run-issue step 11 ("present the merge checkpoint again" should say "call next again"); F2 is the open suggestion on the worktree_remove.sh header and its script_reference.md row (the refusal of a manifest path containing ".." is not listed). Both are deferred to part 2's pull request on this issue. The dialog showed: six pre-push rounds and five pull-request reviews, the last approved with no must-fix (4bd5eeb0); the Integrated Review at 895aae63; CI settled with all 10 checks passed on 8ce42584; no hosted review ever started; the host's fetch just before asking: no reviews, no comments, mergeable. His direction earlier the same day applies: "Let's not waist too much time going for perfect when we can have agents handle the edge cases."
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 08:23 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (run-issue step 13's conditions hold: plan.md is at 6b241e5d, the commit the newest Plan Review names, and the plan names Part 2, which is not delivered)
+**After**: plan
+**Decision**: proceed
+
+The owner asked for this drive today: "/orchestrator 563 and 428". Pull request 542 (Part 1: items 1, 2, 3 and 5) merged on 2026-11-20; the issue stays open because Part 2 (item 4, the github.com-only slug check) is still to come and its pull request is the one that says Closes #428. The leftover Part 1 worktree and local branch were removed (every commit was on main) and recreated from main at c11c6816.
+
+Instructions that bind the implementer (host decisions, listed for the owner's veto):
+- Implement Part 2 only (item 4 and its rows of item 6). Part 1's files are delivered.
+- The plan was reviewed on 2026-11-19 and main has moved since: before editing, list the call sites again on this branch and work from that list, not from the plan's line numbers; say in the entry where the two differ.
+- Carry the two suggestions the owner deferred to this pull request on 2026-11-20 ("Merge, carry F1 F2"): F1, run-issue step 11 says "present the merge checkpoint again" after a late review's triage and should say to call next again; F2, the worktree_remove.sh header and its script_reference.md row do not list the refusal of a manifest path containing "..".
+- Issue 563 (sit-rep per path) is in flight on its own branch and rewrites parts of test_sitrep_checks.sh and test_sitrep_root.sh: keep this part's edits to those two suites to the fixtures item 4 needs.
