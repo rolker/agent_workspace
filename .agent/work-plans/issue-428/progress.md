@@ -1327,3 +1327,20 @@ Suites run, each on its own (four at a time), all from this worktree:
 - `test_skill_paths.sh`: test_skill_paths: 200 passed, 0 failed
 
 Commits made with `SKIP=validate-script-tests` (issue 465 rule); the full pre-commit pass is left to the host.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 09:10 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #570 at `4070a022`
+**Depth**: Deep (reason: 548 changed lines across 13 files; skill and knowledge files present; fix-round re-review classified on the whole diff)
+**Must-fix**: 0 | **Suggestions**: 0
+
+PR-mode re-review after the fix pass for S1 to S3 (commits 72d77eee, 82603cf2, 1bf11430). Specialists: static analysis (shellcheck 0.9.0 --severity=warning on the 10 changed shell files: clean), governance, plan drift, Claude adversarial (fresh subagent: about 34 extra inputs through both parsers, zero differences; ran test_issue_helpers 130/0, test_worktree_create 112/0, test_merge_pr_gate 213/0, test_sitrep_checks 253/0, test_merge_pr 175/0, test_ros2_colcon 1553/0), cross-model: Gemini ran (1 must-fix and 7 suggestions claimed, none survive: the must-fix is the pre-existing workspace-type gh fallback this pull request does not change, dropped at pre-push too; the rest are the recorded D1 decision, the owner-carried F1/F2, a fixture concern checked and cleared, or below threshold), Codex ran (no issues found).
+
+S1, S2, S3 closed: reproduced on 4070a022, `https://evil.example?@github.com/o/r`, `https://github.com/o/..` and `/home/u/go/src/github.com/o/r` give nothing, `git@github.com:name_short/r.git` gives `name_short/r`; ordinary forms (scp, https with token, ssh with port, trailing /) still give `o/r`. test_package_issue_loop.sh, not run by the fix pass, run here on its own: 228 passed, 0 failed (its `remotes/github.com` local clone feeds `check_branch_updates.sh`, which reads no slug). Known and recorded, not a finding: `ssh.github.com` (port-443 SSH) and `www.github.com` give no slug, where the old parser gave one; the plan lists this for the owner's veto, and the result is a skipped lookup with a note, not a wrong action.
+
+### Findings
+- [ ] No issues found. LGTM.
