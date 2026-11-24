@@ -63,6 +63,14 @@ worktree.
 - **Delete a worktree**: `.agent/scripts/worktree_remove.sh --issue <N> --type
   <type>` (or `--skill <name> --type workspace`). `make merge-pr PR=<N>` also
   removes the worktree as part of the merge flow.
+- **Running the scripts from inside a worktree**: `.agent/scripts/` there is
+  the worktree's own copy, and the four worktree scripts still take the
+  workspace's main checkout as their root (the one git names for their
+  location, `wt_main_root`): they make, find, list and remove worktrees where
+  the main checkout keeps them and read its registry. Where git names no
+  workspace checkout for them they refuse and do nothing. A worktree's copy
+  can remove that worktree itself, run with the shell outside it (removal
+  from inside the worktree is refused).
 
 ## Why Worktrees?
 

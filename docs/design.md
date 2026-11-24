@@ -341,7 +341,9 @@ supersedes ADR-0016 decision 5: a session may register the folder it was started
   not an environment variable: hook output is text for the model and never reaches a tool call's
   shell. Workspace scripts do not read the file; they resolve their own root from their location and the
   project from their `$PWD` (ADR-0016 decision 7; `run-issue/SKILL.md` reads it at the head of a command
-  chain).
+  chain). For the four worktree scripts (create, enter, list, remove) that root is the main checkout git
+  names for their location, so a copy inside a linked worktree acts on the main checkout's worktrees and
+  registry, and a location with no such workspace checkout is refused (`wt_main_root`, issue 585).
 - A workspace with no registered project and no `project/` is a complete workspace (#295): `make
   validate`, `make setup` (no prompt), `make dashboard` and `make sync` succeed and point at
   `register_project.sh`, and the repo-safety check of `gh_create_pr.sh` and `gh_create_issue.sh`
@@ -1229,6 +1231,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-24 | Registry and adapters | What the removal of the manifest route gives up (issue 569 part 2, review fix): a URL `source` was fetched afresh by each `setup` and `sync`, so a root never went on using an old manifest without a word (the 2026-11-13 rows). `init` reads a manifest from a local file only, so such a root is now set up from a clone made by hand that the tool never fetches; it is updated by hand, and can fall behind silently, until the tool reads a manifest from a git repo. The refusal and the text say so; `register_project.sh` refuses a `--set` of `source`, `source_ref` or `source_path` for a `ros2_colcon` project before it writes anything (the type's new `registration_refused` list, named beside `unused_settings` in the settings paragraph). The section grows by 6 lines; the detail is in `docs/manifest/design.md`, under "A root that sets `source`" | #569 | 1262 |
 | 2026-11-24 | Change log | Main merged into issue 569's branch after #551 landed (pull request 568): the rows of both sides are kept, #551's (already on main) before #569's, and their line counts are each side's own file at the time; this row's count is the merged file's | #569 | 1283 |
 | 2026-11-24 | Sessions and roots | The onboarding bullet's footprint questions add where the project keeps its goals, design and roadmap (issue 551 part 2): the `goals`, `design` and `roadmap` settings, each a file in the project or `none`. Sessions and roots grows by 1 line | #551 | 1285 |
+| 2026-11-24 | Sessions and roots | The bullet on the user-tier file says where the four worktree scripts take their root: the main checkout git names for their location, also as the copy inside a linked worktree, refused when there is no such workspace checkout (`wt_main_root`); the other workspace scripts are unchanged. Sessions and roots grows by 2 lines, past the 60-line prompt already: the helper's cases stay in the `_worktree_helpers.sh` header and `script_reference.md` | #585 | 1288 |
 
 ## Glossary
 
