@@ -1402,3 +1402,13 @@ Pull request text checked against the branch, nothing wrong: `extract_gh_slug` m
 ### Findings
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 09:21 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner's answer in the dialog, to "Merge pull request 570 now?": "Merge (Recommended)". The dialog showed: the pre-push review approved with four suggestions, three fixed after publishing and the fourth (five other scripts that read a remote the old loose way) left out of this issue and in his inbox; the re-review approved with no findings; the final triage (a76dfc7c) with nothing open; Gemini ran twice and Codex three times, the last the cold read of the final diff with no findings; Copilot not requested because this session's permission check refused the request command; CI with all 10 checks passed on 4070a022; no hosted review or comment; mergeable, clean; the known limit that ssh.github.com and www.github.com remotes are not recognised.
