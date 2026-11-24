@@ -42,11 +42,18 @@ This section describes the code as it is. It was checked against
   before anything is fetched; the message names `repos-manifest init` in the root and the
   `project_setting.sh unset` of the three keys (the detail is under "A root that sets
   `source`", below). On the tool route `validate` names them as a
-  second record. `register_project.sh` refuses a `--set` of any of them for a `ros2_colcon`
-  project before it writes anything, through the type's `registration_refused` list, since
-  such a registration could never pass. Their removal is a line of [roadmap.md](roadmap.md).
-- `register_project.sh` writes both. A root set up from a manifest in the new format is made
-  with `repos-manifest init` in that directory first, then registered.
+  second record. `register_project.sh` refuses any of them for a `ros2_colcon` project
+  before it writes anything, through the type's `registration_refused` list, whether given
+  with `--set` or set by a settings file kept from an earlier registration (`--remove
+  --keep-settings`), since such a registration could never pass. Their removal is a line of
+  [roadmap.md](roadmap.md).
+- `register_project.sh` writes both. A root in the new format is set up and registered in one
+  step, from a manifest file on the local disk: `register_project.sh <dir> --manifest <file>
+  --distro <distro> [--role <role>] [--with <group>]... [--fetch-from <prefix>]` writes the
+  registry line (name, type and path only) and runs the adapter's `setup` with those options,
+  which runs `repos-manifest init <file> --distro-dirs ... --yes` in the directory (under "The
+  tool route"). Nothing about the manifest is written to the registry or the settings file.
+  A root set up with `init` by hand is registered with `register_project.sh <dir>`.
 
 ### Two routes
 
@@ -81,6 +88,11 @@ manifest tool, in its own directory:
    and `role=` and `distro=` from the registry line, which the tool route refuses as a second
    record.
 
+Or the instance is set up in a new, empty directory and registered there in one step,
+`register_project.sh <dir> --manifest <file> --distro <distro> [--role <role>]`, which the
+refusal names too; the old root is then removed from the registry with `register_project.sh
+--remove <name>`.
+
 `init` reads a manifest from a file on the local disk only. For a URL `source`, the repo is
 cloned by hand at `source_ref`, and `init` is given the file at `source_path` in the clone
 (`manifest.yaml` when it is unset). The tool records that file's path and reads the file
@@ -94,13 +106,22 @@ fetching the manifest afresh on every `setup` and `sync`, did not allow.
 A root the removed route set up holds its checkouts under `layers/main/<layer>_ws/src`, which
 may hold local work, and its generated directories `configs/manifest-resolved*`. `init` in
 that root reads neither: it clones every repo again under `<root>/<distro>/`. Work in the old
-checkouts is pushed first, and they are removed by hand once the new ones are in use. Setting
-the instance up in a new, empty directory instead keeps the two apart, as "A project instance
-is a system directory" describes.
+checkouts is pushed first, and they are removed by hand once the new ones are in use. Package
+worktrees made on the old layout keep the environment script written when they were made,
+with the old `layers/main/<layer>_ws` paths, each behind a guard that passes over a missing
+file without a word: once the old checkouts are removed, a build in such a worktree no longer
+finds the packages of the layers below. The work in those worktrees is saved (committed and
+pushed), and they are made again on the tool's layout before the old checkouts are removed.
+Setting the instance up in a new, empty directory instead keeps the two apart, as "A project
+instance is a system directory" describes.
 
-A new root is never registered with `source`: `register_project.sh` refuses a `--set` of
-`source`, `source_ref` or `source_path` for a `ros2_colcon` project before it writes
-anything. The directory is made, `init` is run in it, and it is registered without them.
+A new root is never registered with `source`: `register_project.sh` refuses `source`,
+`source_ref` or `source_path` for a `ros2_colcon` project before it writes anything, given
+with `--set` or set by a settings file kept from an earlier registration; for a kept file the
+refusal names it and the lines to remove. The new root is registered from the manifest file
+with `--manifest`, as above. A manifest given to `--manifest` as a URL or a git location is
+refused before anything is written, since `init` reads a file on the local disk only: the
+repo is cloned by hand and the file in the clone is given.
 
 ### The tool route
 
@@ -109,6 +130,19 @@ The first cut of the design below (issue 503 part 1): a directory set up by hand
 as one `ros2_colcon` project, from the workspace (`register_project.sh <root>`, the type
 detected from `.repos-manifest/`) or from a session at the root (`register_session_root.sh`).
 The root need not be a git repository. The registry line holds its name, type and path only.
+
+Registration also sets such a root up itself (issue 503 part 2): `register_project.sh <dir>
+--manifest <file> --distro <distro> [--role <role>] [--with <group>]... [--fetch-from
+<prefix>]`, or `register_session_root.sh` with the same options from a session in the folder.
+The directory is new, or empty but for a `.claude/` a session may have written there; one that
+holds anything else, or is set up already, is refused. The type is the one whose
+`registration.conf` says `manifest=local-file`. The adapter's `setup` with those options runs
+`cd <dir> && repos-manifest init <file> --distro-dirs --distro <distro> [--role <role>]
+[--with <group>]... [--fetch-from <prefix>] --yes`: `--yes` because the question before
+fetching is the session's, asked with `repos-manifest show` first. Then the usual gate runs
+the adapter's `validate`. When `init` makes nothing, the directories made for it are removed;
+when it made the system and a clone or a later check failed, nothing in the directory is
+removed and the next step named is the tool's `sync`, then registering the directory without `--manifest`.
 
 - **What it reads.** Only the tool's resolved files for one distro,
   `.repos-manifest/resolved/<distro>/`: `layers.txt` (the layers in order, the unnamed layer
@@ -431,9 +465,11 @@ remotes. After that the tool's record in `.repos-manifest/` is the one record. T
 asks the tool for the role and the distros when it needs them, through `status`, and keeps no
 second copy that could disagree. The one thing it reads from `.repos-manifest/` directly is
 the resolved `.repos` files and layer order, which are the tool's stated output. On the tool
-route none of the five records below is read, and `validate` refuses each one it finds. Until
-every instance is on the tool, the bootstrap route still reads `distro=` from the registry
-line. `source`, `source_ref` and `source_path` are read by no route (the manifest route that
+route none of the five records below is read, and `validate` refuses each one it finds.
+Registration with `--manifest` (under "The tool route") does this today for a manifest file on
+the local disk: the role, the distro, the groups and the fetch prefix go to `init` and nowhere
+else. Until every instance is on the tool, the bootstrap route still reads `distro=` from the
+registry line. `source`, `source_ref` and `source_path` are read by no route (the manifest route that
 read them is removed); they stay accepted in the settings file until all five go together.
 
 The settings keys map onto the manifest's location in its git form, as given to `init`:

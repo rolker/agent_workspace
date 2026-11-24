@@ -449,7 +449,10 @@ Status: `decided`
   project's folder needs a git repository to register (`adapter validate`), although any registered
   folder is a project (owner, 2026-11-12): such a folder in no git repository is refused and rolled
   back, a named gap. A root the manifest tool set up needs none, registered from the workspace or from
-  its own session (issue 503); its type is detected from its `.repos-manifest/`.
+  its own session (issue 503); its type is detected from its `.repos-manifest/`. With `--manifest
+  <file> --distro <d>` (both scripts), registration sets a new or empty root up first: the type's
+  `adapter setup` runs the tool's `init` in it, and nothing about the manifest is recorded in the
+  workspace (issue 503 part 2).
 - A registered project may have a settings file, `.agent/projects.d/<name>` (per machine, gitignored,
   read and never sourced; #332): its own `build`, `test` and `install` commands, `bootstrap_url`,
   `source`, `source_ref` and `source_path` (still accepted by `project_setting.sh` but read by no
@@ -471,7 +474,8 @@ Status: `decided`
   is stored and silently ignored. A second list, `.agent/project_types/<type>/registration_refused`
   in the same grammar, names the keys a project of the type can never be registered with (`ros2_colcon`:
   `source`, `source_ref` and `source_path`, which its adapter refuses at use): `register_project.sh`
-  refuses a `--set` of one before it writes anything, and `validate_adapter.sh` checks both lists.
+  refuses one before it writes anything, given with `--set` or set by a settings file kept from an
+  earlier registration, and `validate_adapter.sh` checks both lists.
   The settings file is a project's only source of commands and URLs (#265 part 4): the legacy `projects.d/<name>.sh` and the shared `.agent/project_config.sh` are
   read by no adapter. A `ros2_colcon` project's distro comes from `distro=` on its registry line or
   its manifest (on the tool route below, from the directory the call comes from), and `ROS_ROOT_DIR` (the underlay root, default `/opt/ros`) from the process
@@ -485,7 +489,8 @@ Status: `decided`
   `REQUIRED_VERBS` in `.agent/scripts/adapter` is the one list, and `validate_adapter.sh` checks that
   every type implements every verb, in pre-commit and in CI. Beside the contract, each type has a
   `registration.conf` (#332): the commands a project of the type must have of its own, whether
-  registration runs `setup` for a missing hosting directory, and the verbs it runs, so
+  registration runs `setup` for a missing hosting directory, the verbs it runs, and whether the type
+  is set up from a manifest file (`manifest=local-file` or `none`, issue 503 part 2), so
   `register_project.sh` names no type; `validate_adapter.sh` checks it too.
 - Workflow scripts call adapter verbs and do not branch on the project type: a grep of `.agent/scripts/`
   for the two type names finds only help text and docstrings, and the dispatcher's one named type,
@@ -517,8 +522,10 @@ Status: `decided`
   fetches it, so it is updated by hand until the tool reads a manifest from a git repo; the removed route
   fetched it afresh on every `setup` and `sync`. `register_project.sh` refuses a `--set` of the three
   keys for a `ros2_colcon` project before it writes anything (the type's `registration_refused` list). A
-  manifest in the new format is registered by running the tool's `init` in the root first, then
-  registering the root; onboarding an empty session folder from a manifest is #473's.
+  manifest in the new format is registered in one step, `register_project.sh <dir> --manifest <file>
+  --distro <d>`, whose `setup` runs the tool's `init` in the new or empty directory (a URL or git
+  location is refused until the tool reads one, issue 498); the skill's part of onboarding an empty
+  session folder from a manifest is #473's.
   Manifest support is a part with its own design (ADR-0022, the rule for parts):
   the routes as built and the design they are moving to (the adapter calling the manifest tool's
   own commands, with a project instance as one of the tool's system directories) are in
@@ -1229,6 +1236,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-24 | Registry and adapters | What the removal of the manifest route gives up (issue 569 part 2, review fix): a URL `source` was fetched afresh by each `setup` and `sync`, so a root never went on using an old manifest without a word (the 2026-11-13 rows). `init` reads a manifest from a local file only, so such a root is now set up from a clone made by hand that the tool never fetches; it is updated by hand, and can fall behind silently, until the tool reads a manifest from a git repo. The refusal and the text say so; `register_project.sh` refuses a `--set` of `source`, `source_ref` or `source_path` for a `ros2_colcon` project before it writes anything (the type's new `registration_refused` list, named beside `unused_settings` in the settings paragraph). The section grows by 6 lines; the detail is in `docs/manifest/design.md`, under "A root that sets `source`" | #569 | 1262 |
 | 2026-11-24 | Change log | Main merged into issue 569's branch after #551 landed (pull request 568): the rows of both sides are kept, #551's (already on main) before #569's, and their line counts are each side's own file at the time; this row's count is the merged file's | #569 | 1283 |
 | 2026-11-24 | Sessions and roots | The onboarding bullet's footprint questions add where the project keeps its goals, design and roadmap (issue 551 part 2): the `goals`, `design` and `roadmap` settings, each a file in the project or `none`. Sessions and roots grows by 1 line | #551 | 1285 |
+| 2026-11-24 | Registry and adapters | Registration from a manifest (issue 503 part 2): `register_project.sh` and `register_session_root.sh` take `--manifest <file> --distro <d>` and `init`'s options, and the type's `adapter setup` runs the tool's `init` in a new or empty root; nothing about the manifest is recorded in the workspace. `registration.conf` gains a required `manifest` key (`local-file` or `none`). A settings file kept from an earlier registration that sets a key of `registration_refused` is refused too (issue 599). The section grows by 7 lines | #503 | 1293 |
 
 ## Glossary
 

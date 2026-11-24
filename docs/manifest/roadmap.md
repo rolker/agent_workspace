@@ -28,7 +28,7 @@ checks are relative to the workspace's root.
 | The tool has the commands the adapter calls: `show`, `init`, `add-distro`, `sync`, `build` and `status` | |
 | The adapter reads a root the tool set up with a directory per distro, its distro from the directory the call comes from, and its `setup` and `sync` run the tool's `sync` (#503 part 1) | `file-contains .agent/project_types/ros2_colcon/adapter.sh .repos-manifest/resolved` |
 | Project11 has a manifest in the new format, with its layers, groups, roles and distros | |
-| Registration passes the manifest's location, role, distro and fetch settings to `init` | |
+| Registration passes the manifest's location, role, distro and fetch settings to `init` | `file-contains .agent/project_types/ros2_colcon/registration.conf manifest=local-file` |
 | The adapter's `setup`, `sync`, `build` and `validate` call the tool's `sync`, `build` and `status` on the tool route (#503 parts 1 and 4) | `file-contains .agent/project_types/ros2_colcon/adapter.sh _rc_nofd "$bin" status --distro` ; `file-contains .agent/project_types/ros2_colcon/adapter.sh _rc_nofd "$bin" build --distro` |
 | The adapter's own manifest fetch and generated directories are removed | |
 | A worktree of a package repo builds against an instance in the tool's layout | |
