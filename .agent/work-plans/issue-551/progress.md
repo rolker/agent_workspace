@@ -693,3 +693,22 @@ Host decisions recorded (listed for the owner's veto): fix the must-fix by refus
 
 ### Tests (each suite on its own, four at a time)
 test_adapter 248/0; test_capture 41/0; test_design_anchors 82/0; test_discover_governance 32/0; test_dispatch_phase 244/0; test_fresh_clone_no_project 26/0; test_gh_create_issue FAIL: 0; test_gh_create_pr FAIL: 0; test_merge_pr_gate 213/0; test_merge_pr 175/0; test_merge_pr_skill 132/0; test_precommit_hook_path 19/0; test_project_documents 204/0; test_project_file 701/0; test_project_integration_audit 279/0; test_project_registry 425/0; test_pr_status 3/0; test_register_project 222/0; test_ros2_colcon 1553/0/0 skipped; test_session_start_layer 52/0; test_sitrep_checks 301/0; test_sitrep_root 82/0; test_skill_paths 199/0; test_user_tier_guard 64/0; test_validate_workspace_stale 126/0; test_worktree_create FAIL: 0; test_worktree_enter_stderr 35/0; test_worktree_remove 138/0. Main has no new commits (no merge). Full pre-commit pass left to the host. Not pushed.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 11:06 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #568 at `7277fdb5`
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Scope: the cold read's two findings (Local Review at `13ef12b2`) and the fix diff `58c2fe4a..7277fdb5` (deaa41d7, ff2eae97). Cross-model: skipped (round-3 convergence check, per handoff). Claude adversarial: fresh sub-agent, ran, no findings (exercised `docs/roadmap.md`, `ROADMAP.md`, `none`, `docs/design.md#Goals`, a heading with a space and a non-ASCII heading, design unset with no `docs/`, a missing design file, `design=none`, a settings file with another bad line). Static analysis: shellcheck not installed here, not run (pre-commit is left to the host).
+
+- Must-fix closed: the allowed path set (ASCII letters, digits, `.`, `_`, `-`, `/`) is inside both of `check_design_anchors.sh`'s path classes (`:524`, `:564`), so no accepted design path can be read short; the check runs in the settings parser (`_project_registry.sh:1025`) and in the lookup's own-line branch (`:1675`). Every reader (check_design_anchors.sh, sitrep_root.sh, sitrep_checks.sh, update_roadmap.sh, _bookkeeping.sh) goes through `project_document_path`/`project_document_for_dir`; `project_setting.sh get/list` read through `project_file_entries`, which validates the whole file. No reader parses the settings file on its own (grep of `.agent/scripts`, `.agent/hooks`, `.claude/skills`).
+- Suggestion closed: `project_document_path` compares the resolved roadmap with the resolved design file (setting's, else `docs/design.md`; skipped for `design=none`); a missing design file or `docs/` directory cannot match an existing roadmap.
+- Tests run on the head: test_design_anchors 82/0, test_project_file 701/0, test_sitrep_root 82/0, test_update_roadmap 16/0, test_sitrep_checks 301/0, test_merge_pr_gate 213/0, test_project_registry 425/0; test_project_documents 204/0 (run by the adversarial sub-agent).
+
+### Findings
+- [ ] No issues found. LGTM.
