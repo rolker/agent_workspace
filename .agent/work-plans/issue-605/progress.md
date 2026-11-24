@@ -331,3 +331,19 @@ The full pass ran with no SKIP over the files changed since origin/main and exit
 - [ ] (suggestion, Local Review (Pre-Push) @ `cd252df`) The `merge` bullet's duplicate-issue guard searches for "an open issue that names this pull request", but nothing requires the follow-up issue's body to name the pull request, so the search can come back empty after the crash it guards against; and the bullet does not say to reuse and record an issue the search finds. Valid on reading line 59: the bullet says "adds to that issue ... if one is already named" but not that the issue body names the pull request, and the search result's use is left implicit. Wording: "opens the one follow-up issue (second row above), its body naming this pull request, ..." and "..., in case an earlier run opened it and stopped before recording it (if found, it is that issue)". — `.agent/knowledge/host_standing_rules.md:59`
 
 ### False positives
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 14:30 -05:00
+**By**: claude-code (claude-sonnet-5-5)
+**Verdict**: approved
+
+**PR**: #607 at `c1c72e5`
+**Depth**: Standard (reason: cold read, cross-model only: codex, per handoff)
+**Must-fix**: 0 | **Suggestions**: 2
+
+Cross-model: codex ran (EXIT=0) and read the whole diff: 3 files, `.agent/knowledge/host_standing_rules.md` and the two skill files; `.agent/work-plans/` was left out of its prompt (no plan file in the diff it was given), and no truncation marker was in it. Codex returned 4 must-fix and 1 suggestion. Kept as suggestions: the follow-up issue is drawn from the `publish` checkpoint body while the deferred tick covers the integrated review's boxes, so a suggestion first raised by a PR reviewer could be ticked deferred without reaching the issue; `gh issue view 436` is unqualified and resolves in the checkout's repository (issue 436 is in rolker/agent_workspace). Dropped: synthetic `publish` needs reconciling of each must-fix (the one-fix-pass-no-second-round design is the owner's recorded yes; the cold read and CI read the fix); revised plan proceeds without a second review (same, the owner's "one plan review"); the open-issue lookup being best-effort (the known duplicate-issue-guard suggestion, already going to the owner).
+
+### Findings
+- [ ] (suggestion) Follow-up issue should also collect suggestions from the integrated review that are ticked deferred, not only the `publish` checkpoint body — `.agent/knowledge/host_standing_rules.md` (`merge` bullet)
+- [ ] (suggestion) Pin the expiry check to the workspace repo: `gh issue view 436 -R rolker/agent_workspace --json state,stateReason` — `.agent/knowledge/host_standing_rules.md` (rule row and section intro)
