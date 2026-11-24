@@ -83,3 +83,11 @@ The owner started this drive with "start those 3" (2026-11-24). Instructions for
 - The references in the issue's text to #445, #470, #473 and #260 were written in the old repository and are not this repository's issues.
 - Issue 579 is driven at the same time and rewrites review-plan step 1 (lines 70 to 79: it reads the plan file at the pull request's head, not the body). In that step this plan only adds the repository to the two gh pr view calls; everything else there is 579's. Whichever of the two merges second takes main in first.
 - Tests: the helper from a second sandbox repository with an upstream remote, and the skill text pinned in test_skill_paths.sh. Say which cases were run.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-24 13:25 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-581/plan.md` at `9c23aa90`
+
+One new script, issue_repo.sh (exit 0 repo printed; 1 bad ref; 2 gh differs from origin; 3 not git; 4 no GitHub remote, ordinary; 5 gh cannot answer), built on extract_gh_slug; the three skills set the repository from it and add -R to every gh issue/pr call. Tested in a two-repository sandbox with a stub gh; skill text pinned in test_skill_paths.sh.
