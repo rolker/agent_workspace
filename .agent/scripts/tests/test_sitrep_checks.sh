@@ -1352,6 +1352,8 @@ grep -qF 'otherwise the mark of the group whose line names its issue, read from 
 # In flight names the groups with no work on this machine (issue #563).
 grep -qF '<path name>: <t> of <n> done. Not yet: <its first unmet line, as written> — <its result in words>.' "$SKILL" \
     && grep -qF -- '- No branch or pull request for the next step of: ' "$SKILL" \
+    && grep -qF -- '- Not looked up for <group>: ' "$SKILL" \
+    && grep -qF 'The report never states an absence it did not check' <<< "$sk_flat" \
     && grep -qF 'There is no single `Next:` and `Running:` pair' <<< "$sk_flat" \
     && grep -qF '"Running: nothing on this machine."' <<< "$sk_flat" \
     && ! grep -qF 'nothing advances it."' <<< "$sk_flat" \
@@ -2067,6 +2069,13 @@ for hr in '---' '***' '___'; do
     [[ $RC -eq 0 && "$S" == $'group\tPath 1, One\tFirst.\ngroup\tPath 2, Two\tSecond.\nacceptance\tPath 2, Two\tT.' ]] \
         && pass "(paths) '$hr': --list-paths gives the sentence and the acceptance case's group" || fail "(paths) '$hr' list-paths rc=$RC '$S'"
 done
+
+echo "TEST: --list-paths: a paragraph whose text starts on the line after its bold name has no leading space"
+run_rm "$(printf '%s\n' '## Direction' '' '**Path 1, One.**' 'First sentence here.' '' '**Acceptance case.**' 'The test.' '' \
+    '| Line | Check |' '|---|---|' "| A | $T |")"
+RC=0; S="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/root" --list-paths 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == $'group\tPath 1, One\tFirst sentence here.\nacceptance\tPath 1, One\tThe test.' ]] \
+    && pass "(paths) --list-paths: text on the next line, no leading space" || fail "(paths) next-line text rc=$RC '$S'"
 
 echo "TEST: --list-paths gives the acceptance case with no path paragraph, without a group"
 run_rm "$(printf '%s\n' '## Direction' '' '```' '**Acceptance case.** Fenced.' '```' '' '**Acceptance case.** No paths' 'here.' '- a list' '' \

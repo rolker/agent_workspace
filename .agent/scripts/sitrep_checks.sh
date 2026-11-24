@@ -987,8 +987,8 @@ scan_roadmap() {
             # does the text of a group's opening paragraph.
             if [ "$ptext_on" = true ]; then
                 if [ "$prev_para" = false ]; then ptext_on=false
-                elif [ "$ptext_to" = acc ]; then ACC_TEXT+=" $(trim "$raw")"
-                else GTEXT[-1]+=" $(trim "$raw")"; fi
+                elif [ "$ptext_to" = acc ]; then ACC_TEXT+="${ACC_TEXT:+ }$(trim "$raw")"
+                else GTEXT[-1]+="${GTEXT[-1]:+ }$(trim "$raw")"; fi
             fi
             if [ "$bold_on" = true ]; then
                 if [ "$prev_para" = true ]; then bold+=" $(trim "$raw")"; else bold_unclosed; fi
