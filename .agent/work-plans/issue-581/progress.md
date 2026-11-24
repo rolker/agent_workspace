@@ -141,3 +141,20 @@ The helper is the right shape and covers the upstream case, but its exit-5 rule 
 - [ ] Exit 3 message names `owner/repo#N`; any other non-zero exit stops the skill and shows stderr
 - [ ] Reword and pin plan-task line 182; take `GH_HOST`, closed stdin and a `GH_REPO` case from `project_integration_audit.sh`
 - [ ] Offer a follow-up issue for the other skills; check `docs/fork_parity.md` row 2
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:21 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review's verdict is needs-work with two real gaps, both inside the agreed scope; neither changes what the work is for)
+**After**: plan
+**Decision**: revise
+
+Revise the plan to answer the Plan Review at f1444d9b. Host decisions on its findings, listed for the owner's veto:
+- Finding 1 (offline): the helper decides locally first. When origin is the only github.com remote, no remote.*.gh-resolved setting names another repository and GH_REPO is unset, gh can only mean origin: print origin's slug with no gh call and no network. gh repo view is asked only when the local facts leave a choice. When gh then cannot answer, the helper says so (exit 5) and the skills carry on as far as they can without the issue's text from GitHub (review-plan on the plan alone, as its step 2 already allows; plan-task --no-pr and review-issue say what they could not read and stop only where they truly need it). Offline use that works today must still work.
+- Finding 2 (package worktree): inside a package worktree the expected repository comes from the .worktree-repos header, as dispatch_phase.sh's resolve_issue_dir takes it, so the helper and the dispatcher cannot disagree; dispatch_phase.sh is not edited. Add a sandbox test with a manifest, including origin being a fork of the repository the header names. The message for a mismatch must not tell the reader to run a gh repo set-default that would make the dispatcher refuse.
+- Finding 3: each later code block that needs the repository gets it again from the helper (one line), since every block is a new shell; pin that no gh issue or gh pr line in the three skills runs with an unset or empty repository.
+- Finding 4: a bare number means the repository of the checkout the skill is run in; that is the session-root rule, and the helper prints the repository so the reader sees it. An issue of another repository is named owner/repo#N. The issue's acceptance test is run in that form, and the plan says the "Overview precondition paragraph" was never ported here, so that box is retired, not done.
+- Finding 5: with no GitHub remote the skill asks the owner for the issue's text; no new git-bug path is added (the owner said on 2026-11-24 that git-bug is not staying). The plan says what plan-task does then about the worktree type, the issue URL in the plan and the draft pull request, and what review-issue records in place of the posted comment.
+- Findings 6, 7, 8, 9: taken as written (the not-a-git-repository message names owner/repo#N; any other non-zero exit stops the skill and shows stderr; plan-task's prose check at line 182 becomes a local comparison; reuse the gh invocation project_integration_audit.sh already uses, and test with GH_REPO set).
+- Finding 10: the other skills with bare gh calls (address-findings, triage-reviews, review-code) are named in the pull request text as not covered; whether they get an issue is the owner's, and the host will put it to him at the merge.
