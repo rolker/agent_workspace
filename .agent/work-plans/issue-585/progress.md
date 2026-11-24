@@ -179,3 +179,49 @@ Implement the plan at 1e8602b7 with these instructions, which answer the Plan Re
 - Finding 10: when git itself fails (a safe.directory refusal, for example), the refusal includes git's own error line.
 - The plan's open question (a project that carries its own copy of the workspace's scripts takes its own main checkout as root) is left as it is: the reviewer found it real but harmless, since projects get the scripts through the plugin and the workspace root, never by copy.
 - worktree_remove.sh deletes: it must never act on a root it did not verify. No flag overrides a refusal.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 13:43 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-585 at `d59c03c6`
+
+Commits (red first, then the fix):
+- `d423a01c` (the red commit): new suite `test_worktree_main_root.sh` and a `test_merge_pr.sh` case (`merge_pr.sh` run as the copy inside the PR's worktree, cwd the main checkout, removes that worktree). Red run against the four scripts as on `main`: `bash .agent/scripts/tests/test_worktree_main_root.sh` gave `test_worktree_main_root: 31 passed, 100 failed` (every `wt_main_root` case: "command not found"; create from worktree 3's copy made `issue-workspace-9` nested under worktree 3; create/remove `--type project` from the copy: "project 'demo' is not registered (registered: none)"; the copy could not remove its own worktree from the main checkout: "refusing to run: <main> is neither inside the workspace (<worktree>)"; each refusal fixture: create made a branch, enter printed the target and the sourced enter returned 0, list printed, and remove from the non-git copy deleted the worktree on its path). `bash .agent/scripts/tests/test_merge_pr.sh` gave `Results: 177 passed, 4 failed` (the new case: "Worktree removal failed").
+- `cae735d5` the fix: `wt_main_root <script_dir> [<name>]` in `_worktree_helpers.sh`; the root line of `worktree_create.sh`, `worktree_enter.sh` (sourced idiom), `worktree_list.sh`, `worktree_remove.sh` (comment corrected) moved below the `source` lines and replaced. `worktree_create.sh` calls the main checkout's adapter and sources the main checkout's `_pr_base.sh` (see Decisions). Updated: `test_worktree_create.sh` (race case and the eight stop messages now name the main checkout `$SB`, the race destination is under `$SB/worktrees/workspace/`), `test_worktree_enter_stderr.sh` (must-be-sourced case: `git init` of the sandbox, so it is a main checkout holding the scripts).
+- `42e242b6` the new suite's `ROOT_READERS` entry in `test_script_tests_hook_scope.sh` (the selection run asked for it).
+- `d59c03c6` docs: `script_reference.md` (four rows, `merge_pr.sh` row), `WORKTREE_GUIDE.md` (Worktree Entry bullet), `docs/design.md` Sessions and roots (one sentence on the four worktree scripts) and its Change log row (1288 lines).
+
+Helper contract: prints the physical main checkout git names for the logical grandparent of `<script_dir>` made physical; never reads the cwd or `~/.claude/agent-workspace-root`. Refuses (exit 1, nothing on stdout, one `ERROR: <name>: ...` line naming the directory, with "run the copy in the workspace's main checkout") when that directory is not the top level of its own git checkout (git's own first error line quoted), is inside another checkout, is a linked worktree whose main checkout git does not name (`registry_main_checkout_fallback`), or has a main checkout without `.agent/scripts/_worktree_helpers.sh`. `registry_require_root` follows in all four scripts.
+
+Checkpoint instructions:
+- F1: both suites updated, each still tests what it tested.
+- F2: every remove refusal case has a real linked worktree on the path the script would act on (`<own>/worktrees/workspace/issue-workspace-3` for the non-git and plain-directory copies, `issue-workspace-4` under the `--separate-git-dir` worktree) and asserts directory, branch and `git worktree list` entry survive, plain and `--force`.
+- F3: tested in both suites with the cwd in the main checkout; stated as intended in `script_reference.md` (`worktree_remove.sh` and `merge_pr.sh` rows) and `WORKTREE_GUIDE.md`.
+- F4: `cd "$(dirname "$(dirname "$script_dir")")" && pwd -P`; tested with a symlinked `.agent/scripts` and a symlinked checkout path.
+- F5: the design sentence is scoped to the four worktree scripts; Change log row added; `test_design_anchors.sh` run.
+- F6: suites selected with `run_script_tests.sh -j 4 --files <changed files>` (the runner is at `.agent/scripts/tests/run_script_tests.sh`; no `--help`, its usage line lists `-j N` and `--files`).
+- F7: follow-up list below, from a grep; none fixed.
+- F8: `script_reference.md` names the `--workflow` files, `check_branch_updates.sh` and the adapter as read from the main checkout.
+- F9: the reference says all four run `registry_require_root` after the root.
+- F10: git's own error line is in the refusal; tested with a `.git` file naming a missing git dir.
+
+Decisions not in the plan or checkpoint:
+- `worktree_create.sh` called `$SCRIPT_DIR/adapter`, and the adapter takes its root from its own location, so from a worktree copy `create --type project` still read the worktree's empty registry (the new suite caught it). Its two adapter calls now use `$ROOT_DIR/.agent/scripts/adapter`, and `_pr_base.sh` (whose `pr_base_for` calls the adapter beside it) is sourced from `$ROOT_DIR/.agent/scripts/`. From the main checkout these are the same files. The adapter itself is unchanged (it is on the follow-up list). The package-worktree path through `_pr_base.sh` from a worktree copy has no test of its own here; `test_package_issue_loop.sh` and `test_ros2_colcon.sh` cover it from the main checkout and pass.
+- The marker check is file existence in the main checkout, not a committed file (the existing suites keep the scripts untracked in their main checkout).
+
+Follow-up list for the pull request text (from `grep -nE 'dirname "\$\(dirname "\$[A-Z_]*(SCRIPT_DIR|_DIR)"\)"|SCRIPT_DIR/\.\./\.\.'` and a grep for `worktree list --porcelain ... head -n1`; none fixed here; several only locate their own files):
+- Same location root: `adapter:77`, `capture.sh:45`, `check_agents_md_budget.sh:19`, `dashboard.sh:28`, `discover_governance.sh:17`, `dispatch_phase.sh:603`, `fetch_pr_reviews.sh:21`, `generate_make_skills.sh:17`, `gh_create_issue.sh:93,128,195`, `gh_create_pr.sh:87,139`, `git_bug_setup.sh:21`, `lock.sh:15`, `unlock.sh:5`, `pr_status.sh:11`, `project_integration_audit.sh:209`, `project_setting.sh:81`, `register_project.sh:154`, `registration_verify.sh:74`, `update_roadmap.sh:97`, `user_tier_install.sh:159`; as a fallback after `git worktree list`: `register_session_root.sh:78`, `session_root.sh:77`, `sitrep_root.sh:200`, `skill_prefix.sh:57`, `sitrep_checks.sh:490`.
+- `git worktree list --porcelain | head -n1` with no checks of its own: `merge_pr.sh:236`, `dispatch_phase.sh:162`, `register_session_root.sh:77`, `session_root.sh:76`, `sitrep_root.sh:199`, `skill_prefix.sh:56`.
+- `dispatch_phase.sh:808` sources its own `_pr_base.sh` (adapter beside it).
+
+Suites run (each on its own, final run after the last change to it):
+- `test_worktree_main_root.sh`: `test_worktree_main_root: 131 passed, 0 failed`
+- `test_worktree_create.sh`: `PASS: 112` / `FAIL: 0`
+- `test_worktree_enter_stderr.sh`: `=== Results: 35 passed, 0 failed ===`
+- `test_merge_pr.sh`: `=== Results: 181 passed, 0 failed ===`
+- `test_script_tests_hook_scope.sh`: `test_script_tests_hook_scope: 374 passed, 0 failed`
+- `test_design_anchors.sh`: `test_design_anchors: 82 passed, 0 failed`
+- `test_skill_paths.sh`: `test_skill_paths: 212 passed, 0 failed`
+- `run_script_tests.sh -j 4 --files <the 12 changed files>`: 57 suites selected, 56 passed (among them `test_worktree_remove.sh`, `test_project_registry.sh`, `test_user_tier_guard.sh`, `test_ros2_colcon.sh`, `test_precommit_hook_path.sh`, `test_merge_pr_skill.sh`, `test_package_issue_loop.sh`, `test_sitrep_root.sh`, `test_merge_pr_root_resolution.sh`, `test_adapter.sh`); `test_script_tests_hook_scope.sh` failed for the missing `ROOT_READERS` entry, fixed in `42e242b6` and rerun on its own (above). Every suite that names one of the five changed scripts was in the selection.
+- The full pass is left to the host.
