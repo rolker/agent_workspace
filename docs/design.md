@@ -839,6 +839,18 @@ sessions walk the same order by hand, one `SKILL.md` at a time
   the standing rules in `.agent/knowledge/host_standing_rules.md`. An answer outside a checkpoint's
   fixed vocabulary routes to `unexpected`. No phase advances on its own judgment, and a host answer
   never lets the host do a phase's work (`review_loop_lifecycle.md`).
+- **A draft can be reviewed in a local window** (issue 545). A session that wants the owner's answer on
+  a draft (an issue, a plan, a comment) may launch `review_viewer.py <draft>` as a background command.
+  The owner selects passages and adds notes, adds one note on the whole draft, and records a decision:
+  `approve`, `changes requested`, or `none (notes only)` when he closes without one. The window closing
+  is the signal: the session then reads the notes file (`<draft>.notes.md` beside the draft, or the path
+  `--notes` names), where each note quotes its passage from the file with its line range. A second round
+  on the same notes path highlights the lines changed since the text the first round showed (a
+  `.reviewed` snapshot beside the notes file) and carries no notes over; the earlier notes file is kept
+  as `.prev`. Exit 2 means no window can open; the session then runs the same review in chat (the draft
+  with line numbers) and writes the same notes format. The decision reaches the timeline only through
+  the host's existing `## Checkpoint` entry; there is no new entry type (ADR-0013). No skill launches
+  it yet.
 - **One driver per issue.** There is no lock; a second driver or a hand edit shows only as an unexpected
   entry at the next check (ADR-0014).
 
@@ -1184,6 +1196,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-23 | Review loop and timeline | Independent review bullet: Gemini and Codex before the push, one cold read after (Copilot asked once before every merge, after the re-fetch for unread reviews, and waited for once, else one cross-model `review-code` read recorded on its `**Depth**` line); no wait for a review the loop did not request, since automatic Copilot review is off everywhere | #452 | 1240 |
 | 2026-11-23 | Merge gate | The running review check-run that holds a merge is one the loop or a person requested; an absent or concluded one holds nothing | #452 | 1240 |
 | 2026-11-23 | Sessions and roots | The hygiene checklist's Copilot review item becomes independent review (a review by someone other than the author's own session; Copilot one way, asked by hand); no finding without the automatic rule | #452 | 1240 |
+| 2026-11-23 | Review loop and timeline | Local draft review bullet: `review_viewer.py` as a way the owner answers on a draft (notes file, decision, window close as the signal, changes since the last round from a `.reviewed` snapshot, exit 2 to a chat review in the same format; no new entry type). The section is past 60 lines: the mechanics stay in the script header and only how it fits the loop is here | #545 | 1253 |
 
 ## Glossary
 
