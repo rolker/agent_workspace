@@ -1818,3 +1818,30 @@ Pull request 611 (issue 498 part 2b-1: the manifest tool reads a manifest from a
 - This part refuses a manifest given as a URL or a file in a git repo with a message that says the manifest tool reads a manifest from the local disk only and that issue 498 will add the rest. That is now false: the tool reads the git form. The refusal stays (registration still takes a local file only in this part; handing the git form through is the small later change the plan names), but its message and the documents that repeat it say what is true now and what to do: set the root up with the tool's `init <repo url> --manifest-path <file>` and register it without `--manifest`.
 
 The ten suggestions of the Integrated Review at d092c02b stay open for the one follow-up issue; this pass does not touch them.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 15:42 -05:00
+**By**: claude-code (claude-opus-5-5)
+
+**PR**: #610 at `90db61ca`
+**Addressed**: Checkpoint (After: findings, Decision: address) at `23a745d3` (2026-11-24 15:33 -05:00); the ten suggestions of the Integrated Review at `d092c02b` stay open for the follow-up issue, untouched
+**Commits**: `90b32eab` (merge of origin/main), `43f03f13`, `90db61ca`
+
+### Actions
+- [x] Merged origin/main (pull request 611, issue 498 part 2b-1) with a real merge commit, `90b32eab`. Conflicts: `docs/design.md` change log (main's #498 row first, then this branch's #503 row, each with its own count, 1286 and 1293, then a merge row in the earlier merge rows' words with the merged file's count, 1295); `docs/manifest/design.md` "A root that sets `source`" (this branch's new-directory paragraph kept, followed by main's git-form paragraph in place of the old clone-by-hand one). Files both sides touched that merged cleanly, checked: `adapter.sh` (route read once, `setup --manifest`, masking of `--manifest` and `--fetch-from` on the `Running:` line, and main's git-form URL line with the commit sentence all present), `test_ros2_colcon.sh` (both sides' assertions present and passing), `script_reference.md` (main's `issue_repo.sh` row and this branch's `register_project.sh` text both present)
+- [x] The `--manifest` URL / git-location refusal stays, before anything is written, with the value masked; its message now says registration takes a file on the local disk, names `<tool> init <repo url> --manifest-path <file in the repo> [--manifest-ref <branch or tag>] --distro-dirs --distro <d> [--role <r>]` (with the `--with` and `--fetch-from` given, the prefix masked) in the new directory, then re-running without `--manifest`, `--distro`, `--role`, `--with` and `--fetch-from`, and says a manifest at an http(s) URL that is not a git repo is saved to the local disk — `.agent/scripts/register_project.sh:851`; header and `manifest_is_remote` comment updated — `.agent/scripts/register_project.sh:60`, `:816`
+- [x] The adapter's source refusal offered a URL source a one-step `--manifest <file>` registration, which registration refuses for a URL: for a URL source the "Or" line now says to run the git-form init in the new directory and register it without `--manifest`; the header comment's stale "reads a local file only ... updated by hand" (main left it) is corrected — `.agent/project_types/ros2_colcon/adapter.sh:620`, `:671` (`43f03f13`)
+- [x] Same account in `docs/manifest/design.md` (What is recorded, A root that sets `source`, The tool route, What the tool has to give, What the workspace records), root `docs/design.md` registry paragraph plus a change-log row (count 1298), `registration.conf`, `.agent/projects.local.example`, `.agent/knowledge/script_reference.md`; the onboard-project skill does not repeat the claim, unchanged
+- [x] Tests: `test_register_project.sh` asserts the new message (with and without `--dry-run`, URL and git location, nothing written, the masked-credentials case, and a git location with `--role`, `--with` and a credentialed `--fetch-from`); `test_ros2_colcon.sh` asserts both forms of the adapter's "Or" line
+
+### Checks
+- `test_register_project.sh`: `test_register_project: 308 passed, 0 failed`
+- `test_register_session_root.sh`: `test_register_session_root: 87 passed, 0 failed`
+- `test_ros2_colcon.sh`: `=== Results: 1256 passed, 0 failed, 0 skipped ===` (no real-tool test SKIPPED)
+- `test_adapter.sh`: `=== Results: 260 passed, 0 failed ===`
+- `test_design_anchors.sh`: `test_design_anchors: 82 passed, 0 failed`
+- `test_skill_paths.sh`: `test_skill_paths: 261 passed, 0 failed`
+- `test_script_tests_hook_scope.sh`: `test_script_tests_hook_scope: 374 passed, 0 failed`
+- `validate_adapter.sh`: exit 0, all 13 verbs implemented for both types
+- `shellcheck --severity=warning` clean on the four changed scripts; the full pre-commit pass is left to the host
