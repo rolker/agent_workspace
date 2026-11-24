@@ -206,3 +206,21 @@ Outside reviewers in round 1: Gemini ran (three points kept); Codex did not run,
 
 ### Checks
 - `bash .agent/scripts/tests/test_skill_paths.sh` → `test_skill_paths: 213 passed, 0 failed` (the 579 pin now also holds the body-free field list, the anchored filter, the `closingIssuesReferences` call and "Only when that file does not exist at the head"). Commit hooks ran with `SKIP=validate-script-tests`; the full pre-commit pass and the other suites were left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 13:29 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a14409e982e4e9029, resume 1 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-579 at `c6ffd39c`
+**Base**: origin/main
+**Depth**: Deep (reason: whole-diff classification as in round 1; run as a convergence check on round 1's four suggestions and the fix diff f3476f54..c6ffd39c, per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 2 | **Ship**: recommended — no must-fix findings; all four round-1 suggestions closed
+
+Round 1's four, each closed: (1) `closingIssuesReferences` replaces the body grep and `body` is gone from the first call; (2) the filter is anchored, `^[.]agent/...`, the same regex as `^\.agent/...`, and the `[.]` form is the right way around the BAD_RE path rule; (3) with no plan file the head is read first, and the local `--issue` lookup only when the file is missing there, with Step 5's `--ref`/`--plan` comments matching; (4) three `gh` calls recorded in the Implementation entry for the pull request text. The extra stop for a pull request into a branch other than the default one is right: PR 211 (into feature/issue-172) says "Closes #210" in its body and GitHub lists no closed issue; such a PR with no plan file now stops with a message, and with one plan file (211 itself) it still reads it. Tries, read-only: 602 (no plan file, closes 551, plan read at head 95e16bd4, plan-sha --ref 7ab07af2), 568 (one plan, closes none, read), 600 (none, closes none: stops), 326 (two plans, closes 317: issue-317 read), 211 (one plan, into a feature branch: read). `test_skill_paths.sh`: 213 passed, 0 failed. Claude adversarial, Gemini and Codex not run this round (convergence check; per handoff, no Gemini and no Codex; Codex also at its usage limit).
+
+### Findings
+- [ ] No issues found. LGTM.
