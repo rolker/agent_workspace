@@ -288,3 +288,23 @@ Tried, in this worktree: `git show 95e16bd4…:./.agent/work-plans/issue-582/pla
 
 ### Findings
 - [x] (must-fix) The text's exception "fails for any reason other than the file not existing at that commit" cannot be judged from `git show`: for a full SHA that was never fetched, git prints the same "path ... does not exist in '<sha>'" with the same exit 128 as for a missing file. When the fetch succeeds but does not bring `<headRefOid>` (an `origin` that is another repository holding a pull request with the same number, or the PR force-pushed between `gh pr view` and the fetch), the no-plan-file case reads that as "no plan at the head" and quietly takes the local fallback, the wrong-repository read the cold read's must-fix was about. Mechanical fix: after the fetch, `git cat-file -e "<headRefOid>^{commit}"`, and stop with git's message if it fails; then a failed `git show` really means the file is missing — `.claude/skills/review-plan/SKILL.md:85-92`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 13:41 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a6b043f1791fcc0ee, resume 2 of 3)
+
+**PR**: #604 at `e01d7bf3`
+**Addressed**: Local Review at `0ec8c6fb` (2026-11-24 13:40 -05:00)
+**Commits**: e01d7bf3
+
+Host direction (listed for the owner's veto): after the fetch, verify the commit is present with `git cat-file -e "<headRefOid>^{commit}"`, and stop with git's message if it is not; only then does a failing `git show` mean the file does not exist at the head. Put the check in the code block between the fetch and the show, say in one sentence why, rest the "other than the file not existing" clause on the check, make the Step 5 note's fetch agree, and add the phrase to the wording pin.
+
+### Actions
+- [x] (must-fix) A commit that was never fetched and a file missing at a fetched commit now give different results. Step 1's block runs `git cat-file -e "<headRefOid>^{commit}"` between the fetch and the `git show`. The sentence before the block says why: `git show` prints the same "does not exist" message for both, and once the check passes, a failing `git show` can only mean the file is not at the head. If the fetch or the check fails, the reviewer stops and shows git's message, and never reads another copy. The Step 5 note runs the same check between its fetch and `plan-sha --ref`. The `cat-file` line is added to the wording pin in `test_skill_paths.sh` — `.claude/skills/review-plan/SKILL.md:86-97,361-366`
+
+### Checks
+- Tried read-only on pull request 602: the fetch exited 0, and `git cat-file -e "95e16bd4…^{commit}"` exited 0. `git show 95e16bd4…:./.agent/work-plans/issue-551/plan.md` exited 0 and printed "# Plan: Where a project keeps its goals, design and roadmap (#551)".
+- Tried the check on an absent full SHA: `git cat-file -e "0123456789abcdef0123456789abcdef01234567^{commit}"` printed `fatal: Not a valid object name 0123456789abcdef0123456789abcdef01234567^{commit}` and exited 128.
+- `bash .agent/scripts/tests/test_skill_paths.sh` → `test_skill_paths: 213 passed, 0 failed`. Commits used `SKIP=validate-script-tests`; the full pre-commit pass and the other suites were left to the host.
