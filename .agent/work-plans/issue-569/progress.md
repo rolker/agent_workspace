@@ -844,3 +844,22 @@ Part 3 of 3 (remove the earlier format's reader). Checked: (a) every `repos_mani
 **Decision**: address
 
 All four suggestions of part 3's round-1 review are fixed before the push: tests of the earlier-format refusal for `init`, `sync` and `status`; a test for the `packages:` key; the test comment that misstates when a manifest is refused; and the package description and module docstring that still name the workspace's issue. The host's full pre-commit pass was not run on this head, since the fix pass changes it. Outside reviewers on round 1: Codex ran, one edge-case point, dropped by the reviewer (a file with only `layers:` or `roles:` gets the new reader's own error); Gemini failed (its headless run denied a tool call).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 12:48 -05:00
+**By**: claude-code (claude-opus-5-5)
+
+**Branch**: feature/issue-569 at `707033b7`
+**Addressed**: Local Review (Pre-Push) at `85fd5b9e` (2026-11-24 12:44 -05:00)
+**Commits**: 0ef6f8f5, 745899c9, 1aef015d, 707033b7
+
+### Actions
+- [x] Earlier-format refusal tested beyond resolve/show/validate: `init` exits 1 with the exact one-line message and changes nothing (`test_init_refusals.py`, via `refused`); `sync` and `status` on a system whose recorded manifest is now in the earlier format exit 1 with the message and change nothing (`test_cli.py`). A `base:` pointing at an earlier-format manifest was already covered (`test_base_reading.py` `test_a_parent_in_the_earlier_format_is_refused`); it now checks the whole message — `tools/repos-manifest/tests/test_cli.py:39`
+- [x] `packages:` tested: the CLI refusal (resolve/show/validate) and the parent-refusal test are parametrized over `_EARLIER_FORMAT_KEYS` itself, so a fifth key cannot be added untested — `tools/repos-manifest/src/repos_manifest/manifest.py:34`
+- [x] Test comment now says what `Reader.part` does (no `repositories:` plus an earlier-format key, with or without `base:`); a `base:` + `repos:` manifest added to the cases — `tools/repos-manifest/tests/test_cli.py:46`
+- [x] Package description and module docstring reworded to say what the tool is, without the workspace's issues #267/#497 or its `tools/` path. Other workspace mentions in `tools/repos-manifest`, not rewritten by this branch and left unchanged: `docs/design.md:954` (the workspace makes linked work trees), `docs/design.md:1730-1731` (the workspace's `validate` runs `status --json`, its issue 503), `tests/test_documents.py` (checks the documents do not name the workspace's adapter). Other "workspace" hits are colcon workspaces — `tools/repos-manifest/pyproject.toml:8`, `tools/repos-manifest/src/repos_manifest/__init__.py:6`
+
+### Checks
+- pytest (worktree src on PYTHONPATH, main .venv): `tests/test_cli.py tests/test_init_refusals.py tests/test_base_reading.py tests/test_documents.py` — 150 passed in 3.76s
+- flake8 clean on the changed files; black ran in the commit hooks. Full pre-commit pass and the whole tool suite left to the host / CI.
