@@ -1247,3 +1247,13 @@ Part 2 only (plan item 4, plus F1 and F2 carried from part 1). Specialists: stat
 - [ ] (suggestion) The local-path fixture form accepts any absolute path ending `/github.com/<o>/<r>`, so a local origin under a GOPATH/ghq-style layout is read as GitHub `o/r`; could be narrowed to `fake_remotes/github.com/` — `.agent/scripts/_issue_helpers.sh:70`
 - [ ] (suggestion) Owner pattern excludes `_`, so a github.com Enterprise Managed User owner (`name_shortcode`) gives no slug and worktree_create.sh's note says the origin is "hosted elsewhere"; same limit as gh_slug — `.agent/scripts/_issue_helpers.sh:65`
 - [ ] (suggestion) The PR closes issue 428 while the same loose host parsing stays in gh_create_pr.sh:136,141, gh_create_issue.sh:130,191,197,249, pr_status.sh:37, git_bug_setup.sh:93, _project_registry.sh:784, and worktree_enter.sh:323-327 still looks a project worktree's bare issue up in the workspace repository first (pre-existing); name these in the PR text or a follow-up issue — `.agent/scripts/worktree_enter.sh:323`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 08:54 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 1 of the pre-push review approved with no must-fix, Ship: recommended; the host's full pre-commit pass over the 12 changed files passed, every hook, no SKIP, on e64aeefd)
+**After**: publish
+**Decision**: publish
+
+The review's four suggestions stay open and are listed in the pull request text for the owner at the merge question: (1) the slug parser accepts a crafted user part with ? or #, and a repository named . or .., as sitrep_root.sh's gh_slug does; (2) the local test-path form accepts any absolute path ending /github.com/<owner>/<repo>; (3) an owner name with _ gives no slug; (4) five other scripts keep the old loose parsing (captured in the inbox for the owner). Reason for not fixing before the push: each needs an unusual or crafted origin, and the owner's direction on this issue (2026-11-20) is "Let's not waist too much time going for perfect when we can have agents handle the edge cases". Outside reviewers: Gemini ran, found (1), which it rated must-fix and the lead rated a suggestion; Codex ran, found nothing.
