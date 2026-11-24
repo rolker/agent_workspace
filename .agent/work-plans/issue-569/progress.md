@@ -1041,3 +1041,20 @@ Codex ran (`cross_model_review.sh --pr 603 --agents codex`, AGENT_TIMEOUT=3000, 
 
 ### Findings
 - [ ] (suggestion) The new CLI module docstring "Every command reads a manifest in the format of docs/spec.md" is not true of `build`, which reads `sync`'s resolved files; it is shown by `--help`. Scope it to the commands that read a manifest — `tools/repos-manifest/src/repos_manifest/cli.py:6`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 13:35 -05:00
+**By**: claude-code (claude-sonnet-5-5)
+**Reviews-read**: 6044708190
+
+**PR**: #603 at `7de6d53`
+**Sources**: 3 (Local Review @ `7de6d53` Codex cold read, approved; CI rollup; Copilot @ `7de6d53` could-not-review notice, no findings). The two earlier failed Local Review entries (Codex usage limit, Gemini tool denial) are records of a read that did not happen and are not sources.
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+### Findings
+- [ ] (suggestion, Local Review @ `7de6d53`) The module docstring in `tools/repos-manifest/src/repos_manifest/cli.py` (line 6, printed by `--help`) says "Every command reads a manifest in the format of docs/spec.md", but `build` works from its own saved resolution (`build.py`: "Nothing is resolved again"); reword it as "Every command that reads a manifest ...", as already done in the README and the tool's design — `tools/repos-manifest/src/repos_manifest/cli.py`
+
+### False positives
+- (Copilot @ `7de6d53`) The `copilot-pull-request-reviewer` check-run reports failure — it is the reviewer's quota notice, not a failure of the change; the 10 other checks (lint, documentation, adapter contract, tests on Python 3.10 and 3.14) pass on the head.
