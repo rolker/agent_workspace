@@ -744,3 +744,15 @@ Scope: the merge of origin/main (pull request 568, issue 551) into the branch. C
 - [x] No open findings. The three low findings of the Local Review @ `860476c` were ruled on in the previous Integrated Review (deferred by the owner to issue 599) and are not carried forward; the `sources` helper lists that entry as stale at this head.
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 12:09 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+"Merge (Recommended)"
+
+Asked at the merge checkpoint for pull request 597 (part 2 of 3: the cut of the adapter's manifest route) after the Integrated Review at d53f7f7f with nothing open (its one box, a "No open findings." line, was ticked by the host as a placeholder, not a finding). The dialog gave: main merged into the branch and the two document conflicts resolved, with no code changed; the re-review of that merge approved with no findings; all 10 CI checks passing on the pushed head aa47b9cd, the pull request mergeable and main unmoved since; the three low cold-read findings still deferred to issue 599 as he chose; the outside reviewers (Codex in pre-push rounds 1 and 2 and as the cold read, Gemini failed in rounds 1 and 2, Copilot requested and not available for lack of quota, none on the re-review of the merge); and that the issue stays open with part 3 next. The other choices offered were hold and stop.
