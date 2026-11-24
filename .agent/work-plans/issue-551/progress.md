@@ -459,7 +459,7 @@ Merge: script_reference.md keeps main's #452 rows and this branch's #551 rows; t
 
 ### Findings
 - [x] (suggestion) An in-root symlinked candidate (key unset) is now edited through the link and reported under the target's path; when the target is not one of the fixed three (e.g. `ROADMAP.md -> notes/plan.md`), merge_pr.sh commits a path the bookkeeping list does not name, so the review goes stale; on main the link was replaced by `ROADMAP.md`, which is bookkeeping. Edit through only when the target is a fixed candidate, else as on main — `update_roadmap.sh` candidate loop
-- [ ] (suggestion) `project_document_query`'s once-per-shell check uses the warning text unquoted as a `case` pattern, so a warning holding `*`, `?` or `[` (a path) may print twice; quote `"$line"` in the pattern — `_project_registry.sh` `project_document_query`
+- [x] (suggestion) `project_document_query`'s once-per-shell check uses the warning text unquoted as a `case` pattern, so a warning holding `*`, `?` or `[` (a path) may print twice; quote `"$line"` in the pattern — `_project_registry.sh` `project_document_query` (deferred: already quoted: the pattern is *$'\n'"$line"$'\n'*, so the text matches literally; a test now pins it (warnings aZZb, a*b, a*b, a?b print once each))
 
 ## Checkpoint
 **Status**: complete
@@ -473,3 +473,33 @@ Address both round-3 suggestions before publish:
 - Suggestion 1: with the key unset, `update_roadmap.sh` edits through a symlinked fallback roadmap only when the link's target is one of the fixed bookkeeping roadmap paths; otherwise it behaves as on main (the edited copy replaces the link, which counts as bookkeeping) and says so. A test with `ROADMAP.md -> notes/plan.md`.
 - Suggestion 2: quote the warning text in `project_document_query`'s `case` match; a test with a warning holding `*`.
 The full pre-commit pass has not run yet; it runs when publish is raised again.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 22:12 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a5c9a1e1d1aa2635c, resume 3 of 3)
+
+**Branch**: feature/issue-551 at `6f9732f5`
+**Addressed**: Local Review (Pre-Push) at `61623b58` (2026-11-23 22:05 -05:00)
+**Commits**: 6f9732f5
+
+### Actions
+- [x] (suggestion) When the roadmap key is unset, `update_roadmap.sh` now edits through a symlinked fallback only when the link's target is one of the fixed roadmap paths (`ROADMAP.md`, `docs/ROADMAP.md`, `docs/roadmap.md`), which the merge gate counts as bookkeeping. A link to any other path inside the root is handled as on main: the edited copy replaces the link and the target is untouched. The script then prints "is a link to <target>, not a fixed roadmap path; edited as before". Test with `ROADMAP.md -> notes/plan.md`: the script reports `ROADMAP.md`, the link becomes a ticked regular file, `notes/plan.md` is untouched, and the message is printed. The existing `ROADMAP.md -> docs/roadmap.md` test still edits through the link — `update_roadmap.sh` candidate loop
+- [x] (suggestion) Warning text in `project_document_query`'s `case` pattern — `_project_registry.sh` `project_document_query` (deferred: already quoted. The pattern is `*$'\n'"$line"$'\n'*`, so the text matches literally, and no code changed. A new test pins it: the warnings `aZZb`, `a*b`, `a*b` and `a?b` in turn print `aZZb`, `a*b` and `a?b`, once each)
+
+### Checks
+Each suite was run on its own from the worktree. The full pre-commit pass is left to the host.
+- test_update_roadmap.sh: `test_update_roadmap:16 passed, 0 failed`
+- test_project_documents.sh: `test_project_documents: 180 passed, 0 failed`
+- test_script_tests_hook_scope.sh: `test_script_tests_hook_scope: 359 passed, 0 failed`
+- The other suites that name update_roadmap.sh: test_merge_pr_skill.sh `132 passed, 0 failed`, test_merge_pr_gate.sh `213 passed, 0 failed`
+
+### Decision summary
+- This round changes one earlier decision: with the key unset, a symlinked fallback is edited through the link only when the target is a fixed roadmap path. Any other target is handled as on main (the edited copy replaces the link), so `merge_pr.sh` never commits a roadmap path that the bookkeeping list does not name.
+- Every other decision from round 2 and the merge stands:
+  - Only a set key that cannot be used makes a reader fail.
+  - Writers do nothing when they cannot tell whether the key is set.
+  - The roadmap path is matched literally, and the names it may not use are refused.
+  - The Target stays `proposed`.
+  - Each change-log row keeps its own line count; the merge row has the merged file's count.
