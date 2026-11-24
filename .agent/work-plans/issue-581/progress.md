@@ -451,3 +451,31 @@ Dropped (Codex 1, issue_repo.sh:141, a package worktree whose issue checkout fol
 
 ### Findings
 - [x] (must-fix) review-plan's file path form never checks which checkout the plan file is in: step 0 passes the path's bare `issue-<N>` to issue_repo.sh in the session's checkout, so a plan path in another repository's checkout (the skill's own example `$WS_ROOT/.agent/work-plans/issue-45/plan.md` is the workspace checkout in a project session) is read, reviewed against this checkout's issue N fetched with `-R` this repository, and recorded on this checkout's issue N timeline with no refusal. Check that the path's checkout (`git -C <dir> rev-parse --show-toplevel`) is this checkout's repository (or run the helper from there) and refuse otherwise, with a test — `.claude/skills/review-plan/SKILL.md:72` (step 0, file path form) and `:184` (File path)
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 14:36 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent adcf9fb69aa534953, resume 2 of 3)
+
+**PR**: #608 at `0c180902`
+**Addressed**: Local Review at `1c2193eb` (2026-11-24 14:33 -05:00)
+**Commits**: 0c180902
+
+The cold read of the final diff found one must-fix in review-plan's file path form. The host's direction, listed for the owner's veto: apply the same rule as everywhere else in this change, narrow and refusing. Before the plan is read, the form checks that the plan file is in the checkout the skill runs in, and stops otherwise, naming the file's checkout.
+- The form now has a block behind the records guard. The path comes in through a quoted heredoc.
+- The block compares two physically resolved top folders: the plan file's own checkout (its folder's `git rev-parse --show-toplevel`) and this checkout's. Comparing the file's own checkout, rather than "is it under this folder", also refuses a checkout nested in this one's tree, the way worktrees sit inside the workspace checkout.
+- A missing file stops the block. So does a symbolic link, which is not followed.
+- The example path is now `./.agent/work-plans/issue-45/plan.md`; the path rule in `test_skill_paths.sh` passes.
+- `test_issue_repo.sh` runs the block as written from a sandbox checkout. Its own plan goes on. A plan in another checkout is refused, and so is one in a checkout nested in its tree.
+- `test_skill_paths.sh` pins the block and the example. `test_script_tests_hook_scope.sh`'s note on what `test_issue_repo.sh` reads now names the review-plan file; its `.claude/skills` prefix already covered it.
+
+### Actions
+- [x] (must-fix) The file path form never checked which checkout the plan file is in — `.claude/skills/review-plan/SKILL.md` file path form (0c180902)
+
+Suites run, each on its own, in the foreground, after the commit:
+- `test_issue_repo.sh`: "test_issue_repo: 116 passed, 0 failed"
+- `test_skill_paths.sh`: "test_skill_paths: 261 passed, 0 failed"
+- `test_script_tests_hook_scope.sh`: "test_script_tests_hook_scope: 374 passed, 0 failed"
+
+The full pre-commit pass is left to the host. No command was refused.
