@@ -2,6 +2,7 @@ import pytest
 
 from repos_manifest import cli
 from repos_manifest.cli import main
+from repos_manifest.manifest import _EARLIER_FORMAT_KEYS
 
 from helpers import make_remote, make_system, repo, run, snapshot
 
@@ -59,6 +60,23 @@ def test_a_manifest_in_the_earlier_format_is_refused_naming_the_format(
         " this tool reads it only in the format of the specification, docs/spec.md\n"
     )
     assert not out.exists()
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["old.yaml"]
+
+
+@pytest.mark.parametrize("key", _EARLIER_FORMAT_KEYS)
+@pytest.mark.parametrize("command", ["resolve", "show", "validate"])
+def test_each_key_of_the_earlier_format_is_refused(command, key, tmp_path, capsys, monkeypatch):
+    # Every key of the tuple the tool checks, alone, so a key added to it is tested too.
+    (tmp_path / "old.yaml").write_text(f"{key}: {{}}\n")
+    monkeypatch.chdir(tmp_path)
+    out = tmp_path / "out"
+    assert main(_argv(command, "old.yaml", out)) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        f"ERROR: old.yaml: is in the earlier format (it has `{key}:` and no `repositories:`);"
+        " this tool reads it only in the format of the specification, docs/spec.md\n"
+    )
     assert sorted(p.name for p in tmp_path.iterdir()) == ["old.yaml"]
 
 

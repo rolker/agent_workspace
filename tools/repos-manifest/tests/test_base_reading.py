@@ -11,6 +11,7 @@ import pytest
 from repos_manifest import base
 from repos_manifest.base import load_manifest
 from repos_manifest.cli import main
+from repos_manifest.manifest import _EARLIER_FORMAT_KEYS
 from repos_manifest.yamlload import ManifestError
 
 REPO = "    type: git\n    url: https://example.org/{name}.git\n"
@@ -276,13 +277,21 @@ def test_every_check_on_one_manifest_applies_to_a_parent(tmp_path, parent, match
         load_manifest(leaf)
 
 
+# Each top-level key of the earlier format alone, so a key added to the tuple is tested too,
+# and two together.
 @pytest.mark.parametrize(
-    "keys", ["repos: {}\n", "extends: {path: x.yaml}\n", "optional_layers: []\nrepos: {}\n"]
+    "keys,named",
+    [(f"{key}: {{}}\n", f"`{key}:`") for key in _EARLIER_FORMAT_KEYS]
+    + [("optional_layers: []\nrepos: {}\n", "`repos:`, `optional_layers:`")],
 )
-def test_a_parent_in_the_earlier_format_is_refused(tmp_path, keys):
+def test_a_parent_in_the_earlier_format_is_refused(tmp_path, keys, named):
     path = _write(tmp_path, "p.yaml", keys)
     leaf = _write(tmp_path, "m.yaml", "base: p.yaml\n" + _repos("m"))
-    with pytest.raises(ManifestError, match=f"^{re.escape(_real(path))}: is in the earlier format"):
+    message = (
+        f"{_real(path)}: is in the earlier format (it has {named} and no `repositories:`); this"
+        " tool reads it only in the format of the specification, docs/spec.md"
+    )
+    with pytest.raises(ManifestError, match=f"^{re.escape(message)}$"):
         load_manifest(leaf)
 
 
