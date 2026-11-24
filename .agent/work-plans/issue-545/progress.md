@@ -355,3 +355,13 @@ None open.
 
 ### False positives
 None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 22:34 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+Owner's answer, after trying the viewer on his display (a copy of this issue's plan; two notes and an Approve decision were recorded correctly): "It worked well, go ahead with the merge". Re-fetch before the merge: 0 reviews on the PR. CI was still running (Validate Documentation and Adapter Contract passed; Lint and the repos-manifest tests pending); merge_pr.sh waits for it and refuses on a failure.
