@@ -199,7 +199,7 @@ test_grammar_errors() {
     rc=0; out="$(ps_run "$sb" check alpha 2>&1)" || rc=$?
     assert_eq "unknown key: exit 2" "2" "$rc"
     assert_contains "unknown key named with file:line" "$f:2: unknown key 'buld'" "$out"
-    assert_contains "known keys listed" "known keys: build test install bootstrap_url source source_ref source_path location location_path tracking instructions" "$out"
+    assert_contains "known keys listed" "known keys: build test install bootstrap_url source source_ref source_path location location_path tracking instructions goals design roadmap" "$out"
 
     printf 'build=make\nbuild=make all\n' | write_pfile "$sb" alpha
     rc=0; out="$(ps_run "$sb" check alpha 2>&1)" || rc=$?

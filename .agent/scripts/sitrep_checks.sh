@@ -14,7 +14,21 @@
 #              repo-root `scripts/` link finds it). Relative paths in checks
 #              resolve against it, and gh-issue takes its repo from its
 #              `origin` remote.
-#   --roadmap  default <root>/docs/roadmap.md
+#   --roadmap  default: the root's roadmap as project_document_path
+#              (_project_registry.sh) gives it -- the file the project's
+#              `roadmap` setting names, else the first of docs/roadmap.md,
+#              docs/ROADMAP.md and ROADMAP.md that exists (issue #551); a
+#              root that is not a registered project's (the workspace)
+#              reads the candidates. A setting of `none` gives the section
+#              row `(roadmap not found: <root> keeps no roadmap
+#              (roadmap=none))`; a roadmap key that is itself unusable
+#              (set twice, an invalid value, a symbolic link), or a file
+#              that resolves outside the root, gives `(roadmap not readable:
+#              <reason>)` (control characters in the reason made blanks). A
+#              registry or settings file that cannot be read for another
+#              reason gives a warning on stderr and the candidates. With
+#              nothing found the path shown is the set file, else
+#              <root>/docs/roadmap.md
 #   --summary  print one line instead of rows:
 #                lines <true>/<total> deferrals <true>/<total>
 #              (a deferral whose check is true is due), and, when the
@@ -73,7 +87,8 @@
 #              the section), and the paragraph's text after the bold,
 #              joined into one line. No `group` line for a section with
 #              no path paragraph, and nothing for a roadmap that is
-#              missing or unreadable. Exit 0. The sit-rep reads the paths
+#              missing or unreadable, a `roadmap` setting of `none`, or one
+#              that cannot be read (--roadmap above). Exit 0. The sit-rep reads the paths
 #              and the acceptance case through this, so it reads them by
 #              the checker's rules, never its own.
 #   --next-steps-from <rows-file>
@@ -474,7 +489,26 @@ fi
 
 [ -n "$ROOT" ] || ROOT="$SCRIPT_DIR/../.."
 ROOT="$(cd "$ROOT" 2>/dev/null && pwd -P)" || { echo "root not found" >&2; exit 2; }
-[ -n "$ROADMAP" ] || ROADMAP="$ROOT/docs/roadmap.md"
+# The default roadmap (header, --roadmap): through the one document lookup.
+ROADMAP_NOTE=""   # "none: <why>" or "error: <why>" when the lookup says so
+if [ -z "$ROADMAP" ]; then
+    ROADMAP="$ROOT/docs/roadmap.md"
+    if [ "$REGISTRY_OK" = true ]; then
+        _ws="$(registry_main_checkout "$SCRIPT_DIR/../..")"
+        # A registry or settings file that cannot be read for a reason
+        # outside the roadmap key: a warning on stderr, the candidates.
+        project_document_query project_document_for_dir "$_ws" "$ROOT" roadmap
+        if [ "$PROJECT_DOC_RC" -eq 0 ] && [ "$PROJECT_DOC_LINE" = none ]; then
+            ROADMAP_NOTE="none: $ROOT keeps no roadmap (roadmap=none)"
+        elif [ "$PROJECT_DOC_RC" -eq 0 ] || { [ "$PROJECT_DOC_RC" -eq 1 ] && [ -n "$PROJECT_DOC_LINE" ]; }; then
+            # Found, or a set file that is missing: the file the setting names.
+            ROADMAP="$ROOT/${PROJECT_DOC_LINE#* }"
+        elif [ "$PROJECT_DOC_RC" -ne 1 ]; then
+            ROADMAP_NOTE="error: ${PROJECT_DOC_WHY:-the roadmap setting cannot be read}"
+        fi
+        unset _ws
+    fi
+fi
 TODAY="$(date +%Y-%m-%d)"
 
 TIMEOUT_BIN=""
@@ -1234,7 +1268,11 @@ POINTERS=()
 FOLLOWED=()
 ACC_SEEN=false; ACC_GROUP=""; ACC_TEXT=""
 [ "$SUMMARY" = false ] || FOLLOW=false
-ROADMAP_STATE="$(roadmap_state "$ROADMAP")"
+case "$ROADMAP_NOTE" in
+    none:*)  ROADMAP_STATE=none ;;
+    error:*) ROADMAP_STATE=error ;;
+    *)       ROADMAP_STATE="$(roadmap_state "$ROADMAP")" ;;
+esac
 if [ "$ROADMAP_STATE" = found ]; then
     scan_roadmap "$ROADMAP" ""
     group_rows
@@ -1262,8 +1300,12 @@ fi
 
 if [ "$ROADMAP_STATE" = missing ]; then
     emit section "(roadmap not found: $ROADMAP)" unchecked ""
+elif [ "$ROADMAP_STATE" = none ]; then
+    emit section "(roadmap not found: ${ROADMAP_NOTE#none: })" unchecked ""
 elif [ "$ROADMAP_STATE" = unreadable ]; then
     emit section "(roadmap not readable: $ROADMAP)" unknown ""
+elif [ "$ROADMAP_STATE" = error ]; then
+    emit section "(roadmap not readable: ${ROADMAP_NOTE#error: })" unknown ""
 elif [ "$SCAN_SECTION" = false ]; then
     emit section "(no Direction section)" unchecked ""
 elif [ "$SCAN_TABLE" = false ]; then

@@ -99,6 +99,12 @@
 #   tracking              project | untracked | repo   timelines live
 #   instructions          none | tracked  (may the workspace offer agent
 #                         instructions in tracked project files)
+#   goals, design,        where the project keeps those documents (#551):
+#   roadmap               'none', or a file inside the project relative to
+#                         its root (goals and design may add #<heading>);
+#                         unset, readers use docs/roadmap.md, docs/ROADMAP.md
+#                         or ROADMAP.md, and docs/design.md; goals has no
+#                         default. Every type reads these keys.
 #
 # Lines starting with '#' are comments (no trailing comments: a command may
 # contain '#'). An unknown or duplicate key or an empty value is an error,

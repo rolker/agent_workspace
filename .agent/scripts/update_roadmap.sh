@@ -9,11 +9,34 @@
 #   - Table format: changes the Status column to "done"
 #   - Checklist format: changes "- [ ]" to "- [x]"
 #
-# Discovers roadmap files at: ROADMAP.md, docs/ROADMAP.md, docs/roadmap.md
-# (every one that exists; a path that is the same file as one already
-# processed — case-insensitive filesystems — is skipped). A file is read,
-# written and reported under its stored name, whichever candidate spelling
-# found it.
+# Which file is the roadmap (issue #551) comes from project_document_path
+# (_project_registry.sh), for the project --root belongs to: --root is its
+# registered root, or a worktree of the root's own repository (merge_pr.sh
+# passes the feature branch's worktree), found with
+# project_document_name_for_root against the main checkout's registry.
+#   - the project's `roadmap` setting names a file: that file only (a file
+#     it names that does not exist: nothing is updated, with a message);
+#   - the setting is `none`: nothing is updated, with a message;
+#   - unset, or --root belongs to no registered project (the workspace):
+#     every one of the candidates docs/roadmap.md, docs/ROADMAP.md,
+#     ROADMAP.md that exists (a path that is the same file as one already
+#     processed -- case-insensitive filesystems -- is skipped). A candidate
+#     that is a symbolic link to another candidate path is edited through
+#     the link (the link stays); one that leads anywhere else is handled as
+#     before the setting existed (the edited copy replaces the link; the
+#     target is not touched), with a message (a warning when it leads
+#     outside --root);
+#   - another key's bad line in the settings file: a warning, then the
+#     roadmap key from its own line if valid, else the candidates;
+#   - whether the key is set cannot be told (the registry cannot be parsed,
+#     the settings file cannot be read): nothing is updated, with "cannot
+#     be told: <reason>" -- a writer never ticks a file the project may not
+#     have chosen (PROJECT_DOC_STRICT=1);
+#   - the roadmap key itself is unusable (set twice, an invalid value, a
+#     file outside --root, a symbolic link): nothing is updated, with the
+#     reason.
+# A file is read, written and reported under its stored name, whichever
+# candidate spelling found it.
 # Both formats are tried against each file found.
 #
 # Only matches explicit #<N> references (no fuzzy matching).
@@ -161,12 +184,59 @@ _try_checklist_format() {
     done < <(grep -nE "#${ISSUE_NUM}([^[:alnum:]_]|$)" "$roadmap" 2>/dev/null | cut -d: -f1)
 }
 
+# --- Which files: the project's roadmap setting, else the candidates ---
+# The shared list (project_document_candidates), walked last to first:
+# every candidate that exists is processed, so the order only sets the
+# order of the printed paths and which spelling the same-file guard keeps
+# (the first), and both stay as they were before the list was shared.
+# This script never blocks a merge, so without the registry helper it uses
+# the same list as written here and says why.
+ROADMAP_CANDIDATES=("ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md")
+# The candidate the lookup chose (it has warned about that one already).
+LOOKUP_FALLBACK=""
+REGISTRY_HELPER="$SCRIPT_DIR/_project_registry.sh"
+# shellcheck source=_project_registry.sh
+if [[ -f "$REGISTRY_HELPER" ]] && source "$REGISTRY_HELPER" 2>/dev/null \
+        && declare -F project_document_query >/dev/null; then
+    mapfile -t _shared < <(project_document_candidates roadmap)
+    ROADMAP_CANDIDATES=()
+    for ((_i = ${#_shared[@]} - 1; _i >= 0; _i--)); do ROADMAP_CANDIDATES+=("${_shared[_i]}"); done
+    _ws="$(registry_main_checkout "$SCRIPT_DIR/../..")"
+    # A writer: when whether the key is set cannot be told, it does nothing
+    # (return 3); another key's bad line leaves a warning and the key's own
+    # line, else the candidates; an unusable roadmap key stops here.
+    PROJECT_DOC_STRICT=1 project_document_query project_document_for_dir "$_ws" "$ROOT_DIR" roadmap
+    if [[ $PROJECT_DOC_RC -eq 0 && "$PROJECT_DOC_LINE" == none ]]; then
+        echo "  This project keeps no roadmap (roadmap=none in its settings); nothing to update for #${ISSUE_NUM}" >&2
+        exit 0
+    elif [[ $PROJECT_DOC_RC -eq 0 && "$PROJECT_DOC_LINE" == "set "* ]]; then
+        ROADMAP_CANDIDATES=("${PROJECT_DOC_LINE#set }")
+    elif [[ $PROJECT_DOC_RC -eq 1 && "$PROJECT_DOC_LINE" == "set "* ]]; then
+        # The setting names a file that does not exist: say so rather than
+        # tick a candidate the project did not choose.
+        echo "  ⚠️  roadmap=${PROJECT_DOC_LINE#set } names a file not in $ROOT_DIR; nothing updated for #${ISSUE_NUM}" >&2
+        exit 0
+    elif [[ $PROJECT_DOC_RC -eq 3 ]]; then
+        echo "  ⚠️  which file is the roadmap cannot be told: ${PROJECT_DOC_WHY:-unknown error}; nothing updated for #${ISSUE_NUM}" >&2
+        exit 0
+    elif [[ $PROJECT_DOC_RC -ne 0 && $PROJECT_DOC_RC -ne 1 ]]; then
+        echo "  ⚠️  the roadmap setting cannot be used (${PROJECT_DOC_WHY:-unknown error}); nothing updated for #${ISSUE_NUM}" >&2
+        exit 0
+    elif [[ "$PROJECT_DOC_LINE" == "fallback "* ]]; then
+        LOOKUP_FALLBACK="${PROJECT_DOC_LINE#fallback }"
+    fi
+else
+    echo "  ⚠️  _project_registry.sh could not be loaded next to update_roadmap.sh; using the candidate roadmap files" >&2
+fi
+
+# The fixed candidates, whatever the setting chose: a link edited through
+# must lead to one of them.
+ROADMAP_CANDIDATES_ALL=("ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md")
+
 # --- Discover and process roadmap files ---
-# Check every candidate location; try both formats against each file.
-# docs/roadmap.md is the workspace's own spelling; the uppercase paths stay
-# so project repos keep their existing convention.
+# Check every chosen location; try both formats against each file.
 PROCESSED_ROADMAPS=()
-for rel_path in "ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md"; do
+for rel_path in "${ROADMAP_CANDIDATES[@]}"; do
     roadmap="$ROOT_DIR/$rel_path"
     [[ -f "$roadmap" ]] || continue
     # Use the stored name: on a case-insensitive filesystem the
@@ -175,6 +245,32 @@ for rel_path in "ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md"; do
     # file onto the path) must use the name the file really has.
     rel_path="$(real_case_relpath "$ROOT_DIR" "$rel_path")"
     roadmap="$ROOT_DIR/$rel_path"
+    # A candidate that is a symbolic link: edit the file it leads to when
+    # that is one of the fixed roadmap paths inside --root (the candidates,
+    # which the merge gate counts as bookkeeping), so the link stays a link.
+    # Any other target is edited as before (the copy replaces the link, the
+    # target is untouched): reporting the target would hand merge_pr.sh a
+    # path the bookkeeping list does not name. One that leads outside gets a
+    # warning unless the lookup gave one. (Messages wait for the same-file
+    # guard below, so a link to a file already processed says nothing.)
+    _link_note=""
+    if [[ -L "$roadmap" ]]; then
+        _root_abs="$(cd "$ROOT_DIR" && pwd -P)"
+        _real="$(readlink -f -- "$roadmap" 2>/dev/null)" || _real=""
+        _fixed=false
+        for _c in "${ROADMAP_CANDIDATES_ALL[@]}"; do
+            [[ -n "$_real" && "$_real" == "$_root_abs/$_c" ]] && _fixed=true
+        done
+        if $_fixed; then
+            roadmap="$_real"
+            _link_note="  ${rel_path} is a link: editing ${_real#"$_root_abs"/} through it"
+            rel_path="${_real#"$_root_abs"/}"
+        elif [[ -n "$_real" && "$_real" == "$_root_abs/"* ]]; then
+            _link_note="  ${rel_path} is a link to ${_real#"$_root_abs"/}, not a fixed roadmap path; edited as before: the edited copy replaces the link"
+        elif [[ "$rel_path" != "$LOOKUP_FALLBACK" ]]; then
+            _link_note="  ⚠️  ${rel_path} leads outside $ROOT_DIR (${_real:-unresolved}); edited as before: the edited copy replaces the link"
+        fi
+    fi
     # On a case-insensitive filesystem docs/ROADMAP.md and docs/roadmap.md
     # are one file — process it once.
     already=false
@@ -183,6 +279,7 @@ for rel_path in "ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md"; do
     done
     $already && continue
     PROCESSED_ROADMAPS+=("$roadmap")
+    [[ -z "$_link_note" ]] || echo "$_link_note" >&2
 
     _try_table_format "$roadmap" "$rel_path"
     _try_checklist_format "$roadmap" "$rel_path"

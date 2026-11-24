@@ -116,7 +116,9 @@ names it.
 |------|-------|
 | The sit-rep reports each path on its own, and its marks for work in flight follow the paths as written here | `file-contains .agent/scripts/sitrep_checks.sh a path row governs the line rows up to the next path row` |
 
-**Format.** `sitrep_checks.sh` has the full grammar in its header.
+**Format.** `sitrep_checks.sh` has the full grammar in its header. In a
+project the grammar applies to the file its `roadmap` setting names, else
+the first of `docs/roadmap.md`, `docs/ROADMAP.md` and `ROADMAP.md` (#551).
 
 - Three tables, picked by their header: `| Line | Check |`,
   `| Deferral | Revisit check |` and `| Sub-roadmap | Root |`. Any other

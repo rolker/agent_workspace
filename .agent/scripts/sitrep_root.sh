@@ -18,10 +18,28 @@
 #                                          registered name for a project, and
 #                                          `project:workspace` for a project
 #                                          literally named `workspace`
-#         roadmap=<path>                   the first of <root>/docs/roadmap.md
-#                                          and <root>/ROADMAP.md that exists
-#                                          (the two places onboard-project
-#                                          looks), else empty
+#         roadmap=<path>                   the absolute path of the root's
+#                                          roadmap, from project_document_path
+#                                          (_project_registry.sh): the file the
+#                                          project's `roadmap` setting names,
+#                                          else the first of docs/roadmap.md,
+#                                          docs/ROADMAP.md and ROADMAP.md that
+#                                          exists; empty when there is none, the
+#                                          setting is `none`, or it cannot be
+#                                          read (the workspace, unregistered,
+#                                          uses the candidates)
+#         roadmap_why=<why>                empty with a roadmap, else why not
+#         design=<path>                    the absolute path of the root's
+#                                          design, the same way: the `design`
+#                                          setting's file (a #<heading> is
+#                                          dropped), else docs/design.md --
+#                                          printed even when the working tree
+#                                          lacks it, since the checks below
+#                                          read the default branch; empty for
+#                                          a setting of `none` or one that
+#                                          cannot be read
+#         design_why=<why>                 empty when the file is in the
+#                                          working tree, else why not
 #         own_repo=yes|no                  yes only when the root is the top
 #                                          of its own git repository; a
 #                                          hosting directory, or a registered
@@ -50,10 +68,13 @@
 #                                          one line per check the sit-rep's
 #                                          Problems step makes from files a
 #                                          root may not have:
-#                                            decision_register  docs/design.md
+#                                            decision_register  the design file
 #                                            research_digest    .agent/knowledge/research_digest.md
-#                                            design_anchors     docs/design.md
-#                                            documentation      docs/design.md
+#                                            design_anchors     the design file
+#                                            documentation      the design file
+#                                          (the design file is design= above;
+#                                          without one the three are skipped
+#                                          with design_why)
 #                                          design_anchors reads the file as it
 #                                          is in the root. The other three
 #                                          read it from the default branch, so
@@ -328,10 +349,43 @@ if [[ "$WORKTREES" != true ]]; then
         record_name="$PROJECT"
         [[ "$PROJECT" == workspace ]] && record_name="project:workspace"
     fi
-    roadmap=""
-    for f in docs/roadmap.md ROADMAP.md; do
-        [[ -e "$ROOT/$f" ]] && { roadmap="$ROOT/$f"; break; }
-    done
+    # doc_lookup <key>: DOC_REL (the root-relative file, no #heading) and
+    # DOC_WHY (why there is none), from project_document_path; the
+    # workspace (no project name) reads the candidates only.
+    doc_lookup() {
+        DOC_REL=""; DOC_WHY=""; DOC_MISSING=""
+        # A registry or settings file that cannot be read for a reason
+        # outside this key: a warning on stderr, the candidates.
+        project_document_query project_document_path "$WS_ROOT" "$PROJECT" "$1" "$ROOT"
+        if [[ $PROJECT_DOC_RC -eq 0 ]]; then
+            case "$PROJECT_DOC_LINE" in
+                none) DOC_WHY="this project keeps no $1 document ($1=none in its settings)" ;;
+                *) DOC_REL="${PROJECT_DOC_LINE#* }"; DOC_REL="${DOC_REL%%#*}" ;;
+            esac
+            return 0
+        fi
+        if [[ $PROJECT_DOC_RC -eq 1 ]]; then
+            DOC_WHY="${PROJECT_DOC_WHY:-no $1 file}"
+            # Not in the working tree: the file it would be (the setting's,
+            # else the first candidate), which the checks that read the
+            # default branch may still find there.
+            DOC_MISSING="${PROJECT_DOC_LINE#set }"
+            [[ -n "$DOC_MISSING" ]] || DOC_MISSING="$(project_document_candidates "$1" | head -n1)"
+            DOC_MISSING="${DOC_MISSING%%#*}"
+        else
+            DOC_WHY="the $1 setting cannot be read: ${PROJECT_DOC_WHY:-unknown error}"
+        fi
+    }
+    doc_lookup roadmap
+    roadmap=""; [[ -n "$DOC_REL" ]] && roadmap="$ROOT/$DOC_REL"
+    roadmap_why="$DOC_WHY"
+    doc_lookup design
+    # The design checks take the file even when only the default branch
+    # has it (check() tells); only `none` or a setting that cannot be read
+    # leaves no file at all.
+    design_rel="${DOC_REL:-$DOC_MISSING}"
+    design=""; [[ -n "$design_rel" ]] && design="$ROOT/$design_rel"
+    design_why="$DOC_WHY"
     # check <name> <file> <reads the default branch: yes|no>
     check() {
         local on_db=no
@@ -355,14 +409,21 @@ if [[ "$WORKTREES" != true ]]; then
     echo "project=$PROJECT"
     echo "record_name=$record_name"
     echo "roadmap=$roadmap"
+    echo "roadmap_why=$roadmap_why"
+    echo "design=$design"
+    echo "design_why=$design_why"
     echo "own_repo=$OWN_REPO"
     echo "default_branch=$DEFAULT_BRANCH"
     echo "pr_source=$PR_SOURCE"
     echo "pr_source_why=$PR_SOURCE_WHY"
-    check decision_register docs/design.md yes
+    # design_check <name> <reads the default branch: yes|no>
+    design_check() {
+        if [[ -n "$design_rel" ]]; then check "$1" "$design_rel" "$2"; else echo "check_$1=skipped ($design_why)"; fi
+    }
+    design_check decision_register yes
     check research_digest .agent/knowledge/research_digest.md yes
-    check design_anchors docs/design.md no
-    check documentation docs/design.md yes
+    design_check design_anchors no
+    design_check documentation yes
     exit 0
 fi
 
