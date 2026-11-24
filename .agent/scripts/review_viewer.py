@@ -70,6 +70,7 @@ status line; closing again retries, and the owner may close anyway.
 # pylint: disable=too-many-lines
 
 import argparse
+import contextlib
 import dataclasses
 import datetime
 import difflib
@@ -655,6 +656,9 @@ class ViewerApp:  # pragma: no cover - needs a display; smoke-tested under xvfb
         # Set when the window failed; main() then exits 1, not 0.
         self.failed: Optional[str] = None
         self._closing = False
+        # Dialogs open now. The window manager's close button is not held off
+        # by a dialog's grab, so on_close ignores it while this is above 0.
+        self._modal_depth = 0
         root.report_callback_exception = self._callback_error
         root.title(f"Review: {session.draft.name}")
         root.geometry("1200x800")
@@ -735,6 +739,14 @@ class ViewerApp:  # pragma: no cover - needs a display; smoke-tested under xvfb
 
     # -- helpers ----------------------------------------------------------
 
+    @contextlib.contextmanager
+    def _modal(self):
+        self._modal_depth += 1
+        try:
+            yield
+        finally:
+            self._modal_depth -= 1
+
     def _callback_error(self, exc_type, exc, tb) -> None:
         """An exception in a Tk callback: report it and make the exit non-zero.
 
@@ -781,7 +793,8 @@ class ViewerApp:  # pragma: no cover - needs a display; smoke-tested under xvfb
         except OSError as exc:
             from tkinter import messagebox  # pylint: disable=import-outside-toplevel
 
-            messagebox.showerror("Notes not saved", str(exc), parent=self.root)
+            with self._modal():
+                messagebox.showerror("Notes not saved", str(exc), parent=self.root)
             self.status.set(f"NOT SAVED: {one_line(str(exc))}")
             return False
         self.status.set(message)
@@ -811,7 +824,8 @@ class ViewerApp:  # pragma: no cover - needs a display; smoke-tested under xvfb
         box.focus_set()
         dialog.wait_visibility()
         dialog.grab_set()
-        self.root.wait_window(dialog)
+        with self._modal():
+            self.root.wait_window(dialog)
         return result["value"]
 
     # -- actions ----------------------------------------------------------
@@ -865,7 +879,9 @@ class ViewerApp:  # pragma: no cover - needs a display; smoke-tested under xvfb
             self.status.set("Pick a note in the list first.")
             return
         label = "the whole-draft note" if idx == -1 else f"note {idx + 1}"
-        if not messagebox.askyesno("Delete note", f"Delete {label}?", parent=self.root):
+        with self._modal():
+            sure = messagebox.askyesno("Delete note", f"Delete {label}?", parent=self.root)
+        if not sure:
             return
         if idx == -1:
             self.session.review.set_whole(None)
@@ -915,10 +931,13 @@ class ViewerApp:  # pragma: no cover - needs a display; smoke-tested under xvfb
         row.pack(padx=8)
         dialog.wait_visibility()
         dialog.grab_set()
-        self.root.wait_window(dialog)
+        with self._modal():
+            self.root.wait_window(dialog)
         return choice["value"]
 
     def on_close(self) -> None:
+        if self._modal_depth:  # a dialog is open: finish or cancel it first
+            return
         decision = self.session.review.decision or self._ask_decision()
         if decision is None:  # the dialog was dismissed: keep reviewing
             return
@@ -936,14 +955,15 @@ class ViewerApp:  # pragma: no cover - needs a display; smoke-tested under xvfb
         from tkinter import messagebox  # pylint: disable=import-outside-toplevel
 
         self.status.set(f"NOT SAVED on close: {reason}. Close again to retry.")
-        give_up = messagebox.askyesno(
-            "Notes not saved",
-            f"Could not save on close:\n{reason}\n\n"
-            "Close anyway? The notes file may not hold the decision, "
-            "and the viewer exits with an error.",
-            default="no",
-            parent=self.root,
-        )
+        with self._modal():
+            give_up = messagebox.askyesno(
+                "Notes not saved",
+                f"Could not save on close:\n{reason}\n\n"
+                "Close anyway? The notes file may not hold the decision, "
+                "and the viewer exits with an error.",
+                default="no",
+                parent=self.root,
+            )
         if give_up:
             self.failed = f"could not save on close: {reason}"
             print(f"review_viewer: {self.failed}", file=sys.stderr)

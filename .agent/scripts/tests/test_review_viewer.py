@@ -553,6 +553,7 @@ class CloseAndErrorTest(TempDirTest):
         app = rv.ViewerApp.__new__(rv.ViewerApp)
         app.root, app.status, app.session = FakeRoot(), FakeVar(), session
         app.failed, app._closing = None, False  # pylint: disable=protected-access
+        app._modal_depth = 0  # pylint: disable=protected-access
         session.review.decide("approve")
         return app
 
@@ -569,6 +570,17 @@ class CloseAndErrorTest(TempDirTest):
         self.assertTrue(app.root.destroyed)
         self.assertIsNone(app.failed)
         self.assertTrue((self.dir / "plan.md.reviewed").exists())
+
+    def test_close_ignored_while_a_dialog_is_open(self):
+        app = self.app()
+        with app._modal():  # pylint: disable=protected-access
+            ask, _ = self.close(app, True)
+        ask.assert_not_called()
+        self.assertFalse(app.root.destroyed)
+        self.assertFalse((self.dir / "plan.md.reviewed").exists())
+        self.assertEqual(app._modal_depth, 0)  # pylint: disable=protected-access
+        self.close(app, True)
+        self.assertTrue(app.root.destroyed)
 
     def test_failed_save_keeps_window_open_with_status(self):
         app = self.app(OSError("No space left on device"))
