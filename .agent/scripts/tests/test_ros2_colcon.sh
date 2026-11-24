@@ -2776,8 +2776,9 @@ test_source_without_tool_root_refused() {
         assert_contains "$label: says source selects no route" "source no longer selects a route" "$out"
         assert_contains "$label: names the manifest tool's init" "init <manifest> --distro-dirs --distro <distro>" "$out"
         assert_contains "$label: names the unset" "project_setting.sh unset tiered source source_ref source_path" "$out"
-        assert_contains "$label: says the manifest must list distros" "The manifest must list its distros (a distros: key)" "$out"
-        assert_not_contains "$label: a path source gets no clone step" "init reads a file on this machine only" "$out"
+        assert_contains "$label: says the manifest must list distros" "from a manifest that lists its distros (the adapter refuses a root set up without --distro-dirs)" "$out"
+        assert_contains "$label: points at the design's section" "More in docs/manifest/design.md, under \"A root that sets source\"" "$out"
+        assert_not_contains "$label: a path source gets no clone step" "init reads a local file only" "$out"
     done
     assert_eq "nothing imported: vcs not run" "" "$(cat "$sb/vcs.log" 2>/dev/null)"
     assert_eq "nothing built or tested: colcon not run" "false" "$([ -e "$sb/colcon.log" ] && echo true || echo false)"
@@ -2806,16 +2807,17 @@ test_source_without_tool_root_refused() {
     assert_contains "a dangling manifest-resolved link alone: named too" "init does not read the old checkouts" "$out"
     rm -rf "$fresh/configs"
     # A URL source: init reads a local file only, so the message names the
-    # clone at source_ref and the file at source_path inside it.
+    # clone at source_ref and the file at source_path inside it, and says
+    # the clone is kept and updated by hand (the tool never fetches it).
     printf 'source=https://example.invalid/m.git\nsource_ref=v1\nsource_path=sys/m.yaml\n' > "$sb/.agent/projects.d/tiered"
     rc=0; out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
     assert_eq "URL source, setup: exit 1" "1" "$rc"
     assert_contains "URL source: names the clone and the file" \
-        "init reads a file on this machine only: clone https://example.invalid/m.git at v1 and give init the file sys/m.yaml inside the clone" "$out"
+        "init reads a local file only: clone https://example.invalid/m.git at v1 and give init sys/m.yaml in the clone; the clone is kept and never fetched by the tool, so run git pull in it before each sync" "$out"
     printf 'source=https://example.invalid/m.git\nsource_ref=v1\n' > "$sb/.agent/projects.d/tiered"
     out="$(run_adapter "$sb" setup 2>&1)" || true
     assert_contains "URL source without source_path: the file is manifest.yaml" \
-        "give init the file manifest.yaml inside the clone" "$out"
+        "give init manifest.yaml in the clone;" "$out"
     printf 'source=%s\n' "$sb/m.yaml" > "$sb/.agent/projects.d/tiered"
     # The registry line's distro and role go into the init command, and
     # the unset names them as fields to remove; without them, placeholders
@@ -2824,11 +2826,11 @@ test_source_without_tool_root_refused() {
     sed -i 's|^tiered ros2_colcon projects/tiered$|tiered ros2_colcon projects/tiered distro=fakefox role=sim|' "$sb/.agent/projects.local"
     rc=0; out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
     assert_eq "distro and role on the line, setup: exit 1" "1" "$rc"
-    assert_contains "the line's distro and role in the init command" "init <manifest> --distro-dirs --distro fakefox --role sim;" "$out"
+    assert_contains "the line's distro and role in the init command" "init <manifest> --distro-dirs --distro fakefox --role sim" "$out"
     assert_contains "the line's fields named to remove" "unset tiered source source_ref source_path, and role= and distro= from its line in .agent/projects.local" "$out"
     sed -i 's|^tiered ros2_colcon projects/tiered distro=fakefox role=sim$|tiered ros2_colcon projects/tiered distro=fakefox|' "$sb/.agent/projects.local"
     out="$(run_adapter "$sb" setup 2>&1)" || true
-    assert_contains "distro only: the distro, and a placeholder role" "init <manifest> --distro-dirs --distro fakefox [--role <role>];" "$out"
+    assert_contains "distro only: the distro, and a placeholder role" "init <manifest> --distro-dirs --distro fakefox [--role <role>]" "$out"
     assert_contains "distro only: distro= named to remove" "source_path, and distro= from its line" "$out"
     sed -i 's|^tiered ros2_colcon projects/tiered distro=fakefox$|tiered ros2_colcon projects/tiered|' "$sb/.agent/projects.local"
     assert_eq "nothing fetched: curl not run" "false" "$([ -e "$sb/curl.log" ] && echo true || echo false)"

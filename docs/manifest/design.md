@@ -40,7 +40,8 @@ This section describes the code as it is. It was checked against
   read by no route. A `ros2_colcon` root without `.repos-manifest/` whose settings file sets
   them is refused at use, by every verb that reads the manifest and by `setup` and `sync`,
   before anything is fetched; the message names `repos-manifest init` in the root and the
-  `project_setting.sh unset` of the three keys. On the tool route `validate` names them as a
+  `project_setting.sh unset` of the three keys (the detail is under "A root that sets
+  `source`", below). On the tool route `validate` names them as a
   second record. `register_project.sh` refuses a `--set` of any of them for a `ros2_colcon`
   project before it writes anything, through the type's `registration_refused` list, since
   such a registration could never pass. Their removal is a line of [roadmap.md](roadmap.md).
@@ -64,6 +65,41 @@ The `ros2_colcon` adapter has two routes to the list of repos, taken in this ord
   layer in order, with `/opt/ros/<distro>` and the layers before it sourced. `validate`
   fails when the distro cannot be worked out, or when a layer file or a checkout the
   directory calls for is missing (a layer marked optional is passed over).
+
+### A root that sets `source`
+
+A `ros2_colcon` root whose settings file sets `source` and that holds no `.repos-manifest/` is
+refused by the adapter, by every verb that reads the manifest and by `setup` and `sync`: the
+manifest route that `source` selected is removed (issue 569). It is set up again with the
+manifest tool, in its own directory:
+
+1. Run `repos-manifest init <manifest> --distro-dirs --distro <distro> [--role <role>]` in
+   the root. The manifest has to list its distros (a `distros:` key): `init --distro-dirs`
+   refuses one that does not, and the adapter refuses a root set up without `--distro-dirs`.
+   The refusal fills in the distro and the role from the registry line when it has them.
+2. Remove the old keys with `project_setting.sh unset <name> source source_ref source_path`,
+   and `role=` and `distro=` from the registry line, which the tool route refuses as a second
+   record.
+
+`init` reads a manifest from a file on the local disk only. For a URL `source`, the repo is
+cloned by hand at `source_ref`, and `init` is given the file at `source_path` in the clone
+(`manifest.yaml` when it is unset). The tool records that file's path and reads the file
+again on every `sync`, but it never fetches the clone. The clone is kept, since `sync` fails
+without it, and it is brought up to date by hand, with a `git pull` in it before `sync`.
+Until the tool reads a manifest from a git repo itself (see "What the tool has to give"),
+such a root can go on using an old manifest without a word, which the removed route, by
+fetching the manifest afresh on every `setup` and `sync`, did not allow.
+
+A root the removed route set up holds its checkouts under `layers/main/<layer>_ws/src`, which
+may hold local work, and its generated directories `configs/manifest-resolved*`. `init` in
+that root reads neither: it clones every repo again under `<root>/<distro>/`. Work in the old
+checkouts is pushed first, and they are removed by hand once the new ones are in use. Setting
+the instance up in a new, empty directory instead keeps the two apart, as "A project instance
+is a system directory" describes.
+
+A new root is never registered with `source`: `register_project.sh` refuses a `--set` of
+`source`, `source_ref` or `source_path` for a `ros2_colcon` project before it writes
+anything. The directory is made, `init` is run in it, and it is registered without them.
 
 ### The tool route
 
@@ -351,12 +387,20 @@ design does not give yet, so a root on the tool route goes without it until the 
   before it resolves, so a manifest that does not resolve can leave that clone moved
   forward; the resolved output and every other repo have to stay as they were, and `sync`
   has to say that the manifest is what failed.
+- **A manifest read from a git repo.** The removed manifest route fetched a URL `source`
+  afresh on every `setup` and `sync`, so a root could not go on using an old manifest
+  without a word. `init` reads a manifest from a file on the local disk only, so such a root
+  is set up from a clone made by hand that the tool never fetches, and that clone is
+  updated by hand (under "A root that sets `source`"). The tool's design gives the manifest
+  as a file in a git repo, whose clone `sync` updates before it resolves; until the tool
+  does, that clone is the person's to keep up to date.
 - **A manifest named by a commit.** `source_ref` could name a commit on the removed manifest
   route. The tool's git form takes a branch or a tag, so a manifest pinned to a commit is set
   up with a branch or tag until the tool takes a commit.
 
 Three of the removed manifest route's guarantees are covered by the tool's design as it is:
-it reads the manifest again on every `sync`, its `sync` deletes nothing and leaves local work alone, and an
+it reads the manifest file again on every `sync` (for a manifest on the local disk; a URL
+`source` is the case above, read again from a clone nothing fetches), its `sync` deletes nothing and leaves local work alone, and an
 interrupted `init` leaves either nothing, in which case registration is run again, or a
 system whose first sync `sync` finishes.
 
@@ -395,7 +439,7 @@ The settings keys map onto the manifest's location in its git form, as given to 
 
 | Settings key | Target, as given to `init` |
 |---|---|
-| `source` (a URL) with `source_ref` and `source_path` | The manifest as a file in a git repo: its URL, `--manifest-ref` (a branch or a tag; see "What the tool has to give" for a commit) and `--manifest-path`. The path is always passed, `manifest.yaml` when none was given, because the tool takes a URL with no path as the file itself |
+| `source` (a URL) with `source_ref` and `source_path` | The target: the manifest as a file in a git repo, its URL, `--manifest-ref` (a branch or a tag; see "What the tool has to give" for a commit) and `--manifest-path`. The path is always passed, `manifest.yaml` when none was given, because the tool takes a URL with no path as the file itself. `init` takes neither option today: the repo is cloned by hand at `source_ref` and `init` is given the file at `source_path` in the clone, which is then updated by hand (under "A root that sets `source`") |
 | `source` (a path) | The manifest as a path on the local disk |
 | `role=` and `distro=` on the registry line | `--role` and `--distro` |
 | nothing | `--with`, `--fetch-from`, `--remote` |

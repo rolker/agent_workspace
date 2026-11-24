@@ -493,9 +493,12 @@ Status: `decided`
   anything is fetched, and the message names `repos-manifest init --distro-dirs` in the root (for a
   manifest that lists its distros; for a URL `source`, on the file at `source_path` in a clone at
   `source_ref`, as `init` reads a local file only) and
-  `project_setting.sh unset <name> source source_ref source_path`. A manifest in the new format is
-  registered by running the tool's `init` in the root first, then registering the root; onboarding an
-  empty session folder from a manifest is #473's.
+  `project_setting.sh unset <name> source source_ref source_path`. That clone is kept and the tool never
+  fetches it, so it is updated by hand until the tool reads a manifest from a git repo; the removed route
+  fetched it afresh on every `setup` and `sync`. `register_project.sh` refuses a `--set` of the three
+  keys for a `ros2_colcon` project before it writes anything (the type's `registration_refused` list). A
+  manifest in the new format is registered by running the tool's `init` in the root first, then
+  registering the root; onboarding an empty session folder from a manifest is #473's.
   Manifest support is a part with its own design (ADR-0022, the rule for parts):
   the routes as built and the design they are moving to (the adapter calling the manifest tool's
   own commands, with a project instance as one of the tool's system directories) are in
@@ -1197,7 +1200,8 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-23 | Merge gate | The running review check-run that holds a merge is one the loop or a person requested; an absent or concluded one holds nothing | #452 | 1240 |
 | 2026-11-23 | Sessions and roots | The hygiene checklist's Copilot review item becomes independent review (a review by someone other than the author's own session; Copilot one way, asked by hand); no finding without the automatic rule | #452 | 1240 |
 | 2026-11-23 | Review loop and timeline | Local draft review bullet: `review_viewer.py` as a way the owner answers on a draft (notes file, decision, window close as the signal, changes since the last round from a `.reviewed` snapshot, exit 2 to a chat review in the same format; no new entry type). The section is past 60 lines: the mechanics stay in the script header and only how it fits the loop is here | #545 | 1253 |
-| 2026-11-24 | Registry and adapters | The `ros2_colcon` manifest route is cut (issue 569 part 2): two routes, the tool route and the bootstrap route. The settings keys `source`, `source_ref` and `source_path` stay accepted but are read by no route; a root without `.repos-manifest/` that sets `source` is refused at every manifest-reading verb and at `setup` and `sync`, naming `repos-manifest init` and the `unset`. The rows of 2026-11-13 and 2026-11-18 about the manifest route stay as history. |
+| 2026-11-24 | Registry and adapters | The `ros2_colcon` manifest route is cut (issue 569 part 2): two routes, the tool route and the bootstrap route. The settings keys `source`, `source_ref` and `source_path` stay accepted but are read by no route; a root without `.repos-manifest/` that sets `source` is refused at every manifest-reading verb and at `setup` and `sync`, naming `repos-manifest init` and the `unset`. The rows of 2026-11-13 and 2026-11-18 about the manifest route stay as history. | #569 | 1252 |
+| 2026-11-24 | Registry and adapters | What the removal of the manifest route gives up (issue 569 part 2, review fix): a URL `source` was fetched afresh by each `setup` and `sync`, so a root never went on using an old manifest without a word (the 2026-11-13 rows). `init` reads a manifest from a local file only, so such a root is now set up from a clone made by hand that the tool never fetches; it is updated by hand, and can fall behind silently, until the tool reads a manifest from a git repo. The refusal and the text say so; `register_project.sh` refuses a `--set` of `source`, `source_ref` or `source_path` for a `ros2_colcon` project before it writes anything (the type's new `registration_refused` list). The section grows by 3 lines; the detail is in `docs/manifest/design.md`, under "A root that sets `source`" | #569 | 1258 |
 
 ## Glossary
 
