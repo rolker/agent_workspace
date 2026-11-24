@@ -1567,3 +1567,15 @@ The design reading is right: options handed to `init`, nothing recorded, `setup`
 - [ ] F8: when `KEPT` holds `.repos-manifest`, the next step is "cd <root> && <tool> sync --distro <d> when the sync did not finish, then register_project.sh <root> without --manifest". Test it on a gate failure after a successful stub `init`.
 - [ ] F9: add `manifest=` to `docs/design.md` line 487 and a Change log row for the Registry and adapters change.
 - [ ] F10: refuse `--role`/`--distro` without `--manifest` on a root that holds `.repos-manifest/`, before anything is written. Test with and without `--dry-run`.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:25 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the Plan Review at 0d355d61 finds the plan ready on the condition that its ten directions are followed; each is exact and leaves no design choice open, and none of the plan's questions needs the owner by the review's reading of the design)
+**After**: plan
+**Decision**: proceed
+
+This answer starts part 2: registration from a manifest (`register_project.sh <path> --manifest <file> --distro <d> ...`, handed to the adapter's `setup`, which runs the tool's `init`; nothing about the manifest recorded in the workspace). The implement handoff quotes the review's directions F1 to F10 in full and tells the implementer to follow them where they differ from the plan's text. The part also fixes the three findings of issue 599, so its pull request says "Closes #599" and "Part of #503".
+
+Host decisions, listed for the owner's veto, each answered by the design as the review quotes it: a directory that holds anything but `.claude` is refused for registration with a manifest; `--dry-run` does not run the tool's `show`; `role=` and `distro=` stay accepted on the registry line for a root set up by hand, and are refused with no `--manifest` on a root the tool set up; `--yes` is always passed to `init`; one `--distro` at registration, a second distro being the later part's `add-distro`; adopting an already registered name with `--manifest` is refused; a manifest given as a URL or a git location is refused until issue 498 lands.
