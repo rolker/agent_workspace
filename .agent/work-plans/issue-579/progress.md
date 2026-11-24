@@ -181,3 +181,28 @@ Address the four suggestions of the Local Review at f3476f54 before publishing (
 - 3: for a pull request that changes no plan file, first try the plan at the pull request's head (git show <headRefOid>:./.agent/work-plans/issue-<issue>/plan.md), and only then the local --issue lookup; a checkout behind the pull request must not quietly supply an older copy.
 - 4: the block now has three gh calls; say so in the entry, for the pull request text, so the repository flag issue 581 adds reaches all three whichever merges second.
 Outside reviewers in round 1: Gemini ran (three points kept); Codex did not run, it hit its usage limit.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 13:28 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-579 at `b8fcca14`
+**Addressed**: Local Review (Pre-Push) at `d4c93c8c` (2026-11-24 13:25 -05:00)
+**Commits**: b8fcca14
+
+### Actions
+- [x] Closed issues from GitHub's parse: `gh pr view <N> --json closingIssuesReferences --jq '.closingIssuesReferences[].number'` replaces the body grep, and `body` is out of the first call's field list. Several closed issues: with several plan files, take the one plan file whose issue is among them if exactly one is, else stop and name the plan files and the closed issues; with no plan file, stop. One clause added from the tries: GitHub lists no closed issue for a PR into a branch other than the default one (PRs 211, 131, 130, into feature branches, say "Closes" in the body and list none), so such a PR with no plan file stops, loudly — `.claude/skills/review-plan/SKILL.md:72,78,93-101`
+- [x] Plan-file filter anchored: `select(test("^[.]agent/work-plans/issue-[0-9]+/plan[.]md$"))`, the same regex as the review's `^\.agent/...`, written `[.]` because the jq string would need `\\.` and `test_skill_paths.sh`'s workspace-relative path rule (BAD_RE) flags `\.agent/` preceded by a backslash — `.claude/skills/review-plan/SKILL.md:75`
+- [x] No plan file: read `git show <headRefOid>:./.agent/work-plans/issue-<issue>/plan.md` at the head first (the fetch and the read now sit in one block above the three cases); only when that file does not exist at the head, the local `--issue` lookup. Step 5 note's two comment lines say which case takes `--ref` (a plan read at the head) and which `--plan <path>` (the `--issue` fallback); the case text says the same — `.claude/skills/review-plan/SKILL.md:96-111,338-343`
+- [x] Three `gh` calls, for the pull request text: "The PR-number block of review-plan step 1 now has three `gh pr view` calls (metadata, plan files, closed issues), not the two issue 581's plan names; whichever of 579 and 581 merges second adds the repository flag to all three." — `.claude/skills/review-plan/SKILL.md:72,75,78`
+
+### Tries (read-only, this repository, each head fetched with `pull/<N>/head`)
+- 602: plan files none; closes 551; `git show` at 95e16bd4 reads the plan of 551 (194 lines). Found at the head, no local lookup.
+- 572: plan file issue-563; closes 563; read at 4e26d6d9 (137 lines).
+- 568: plan file issue-551; closes none ("Part of"); one plan file needs no closed issue, read at 865c944b (194 lines).
+- 600: plan files none; closes none: stops before any read (for the record, `git show` of a guessed issue-582 path prints `fatal: path ... does not exist`, the "not at the head" signal).
+- 326: plan files issue-265 and issue-317; closes 317: exactly one matches, issue-317 read at 0eec16a6 (450 lines).
+
+### Checks
+- `bash .agent/scripts/tests/test_skill_paths.sh` → `test_skill_paths: 213 passed, 0 failed` (the 579 pin now also holds the body-free field list, the anchored filter, the `closingIssuesReferences` call and "Only when that file does not exist at the head"). Commit hooks ran with `SKIP=validate-script-tests`; the full pre-commit pass and the other suites were left to the host.
