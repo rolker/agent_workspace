@@ -77,11 +77,25 @@ only when the topic is about a project):
   digest (the path `design-discussion` reads; #551 may move it)
 - `.agents/README.md` — the project's agent rules, including what may not be
   written in its public places
-- the project's principles (`PRINCIPLES.md` or `docs/principles.md`), design
-  (`docs/design.md` or `ARCHITECTURE.md`) and ADRs (`docs/decisions/`)
-- the project's roadmap: `docs/roadmap.md`, else `ROADMAP.md` (what
-  `"$WS_ROOT/.agent/scripts/sitrep_root.sh" --dir <project root>` reports as
-  `roadmap=`; without `--dir` it reports the session's own root)
+- the project's principles (`PRINCIPLES.md` or `docs/principles.md`) and
+  ADRs (`docs/decisions/`)
+- the project's goals, design and roadmap, where its settings say it keeps
+  them; never a path this skill decides:
+
+  ```bash
+  WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
+  "$WS_ROOT/.agent/scripts/project_setting.sh" doc <name> goals
+  "$WS_ROOT/.agent/scripts/project_setting.sh" doc <name> design
+  "$WS_ROOT/.agent/scripts/project_setting.sh" doc <name> roadmap
+  ```
+
+  `<name>` is the project's registered name. Each prints `set
+  <path>[#<heading>]` (read that file, the section under the heading when
+  there is one), `fallback <path>` (not recorded; the file the readers find)
+  or `none` (the project keeps none: say so); nothing, with the reason on
+  stderr, when there is nothing to read: list that document as absent with
+  the reason. When `design` gives nothing and `get <name> design` stores
+  nothing, an `ARCHITECTURE.md` the project has is read as its design.
 
 **A part** (ADR-0022): when the topic is about a part of the workspace or a
 project, also read the part's own `design.md`: the `design.md` in the same

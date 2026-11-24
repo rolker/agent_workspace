@@ -730,6 +730,24 @@ else
     fail "design-discussion skill is missing: .claude/skills/design-discussion/SKILL.md"
 fi
 
+# --- brainstorm (issue 551 part 2): a project's goals, design and roadmap
+# come from the lookup, never a path the skill decides.
+BS="$SKILLS/brainstorm/SKILL.md"
+if [[ -f "$BS" ]]; then
+    has "$BS" "brainstorm: a project's goals, design and roadmap come from the lookup" \
+        '"$WS_ROOT/.agent/scripts/project_setting.sh" doc <name> goals' \
+        '"$WS_ROOT/.agent/scripts/project_setting.sh" doc <name> design' \
+        '"$WS_ROOT/.agent/scripts/project_setting.sh" doc <name> roadmap' \
+        'never a path this skill decides'
+    if grep -qF '`docs/roadmap.md`, else `ROADMAP.md`' "$BS"; then
+        fail "brainstorm still decides a project's roadmap as docs/roadmap.md, else ROADMAP.md"
+    else
+        pass "brainstorm no longer decides a project's roadmap path"
+    fi
+else
+    fail "brainstorm skill is missing: .claude/skills/brainstorm/SKILL.md"
+fi
+
 # Where onboard-project's and audit-project's GitHub calls and pushes go
 # (#332 PR 4): every gh call names github.com (a bare <owner>/<repo>
 # goes to $GH_HOST when that is set), and no push names origin (the
