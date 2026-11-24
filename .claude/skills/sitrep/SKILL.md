@@ -1,6 +1,6 @@
 ---
 name: sitrep
-description: "Use when asked 'what's next?', 'what should I work on?' or 'where are we?'. Situation report for the session's own root (the workspace, or the project the session was started in) from checked facts, easy to take in: what the acceptance case is for, the next step towards it (the first Direction line not yet true, checked this run, and the work in flight for it), where work in flight stands, and problems to know about (an audit or research due, documentation that may have fallen behind, judged by dates and commits since, and deferrals that are due), then the counts and the inbox; each piece of work in flight is marked with the path it serves, and the closing question asks which path to focus on. Reads only, except one line to a machine-local run record; in a workspace session it may start a due read-only check in the background and says so."
+description: "Use when asked 'what's next?', 'what should I work on?' or 'where are we?'. Situation report for the session's own root (the workspace, or the project the session was started in) from checked facts, easy to take in: what the acceptance case is for, the next step of each path as the roadmap's Direction section writes them (each path's first line not yet true, checked this run, the paths in no fixed order, and the work in flight for it), where work in flight stands, and problems to know about (an audit or research due, documentation that may have fallen behind, judged by dates and commits since, and deferrals that are due), then the counts and the inbox; each piece of work in flight is marked with the path whose line names it, and the closing question asks which path to focus on. Reads only, except one line to a machine-local run record; in a workspace session it may start a due read-only check in the background and says so."
 session_scope: both
 ---
 
@@ -59,8 +59,8 @@ the order the owner needs them: what to work on next towards the goals,
 where the work in flight stands, and problems he should know about. It
 replaces the old what-next skill, which ranked roadmap rows; this one
 answers from checked facts instead. The skill formats and proposes; it
-decides nothing. The "Next:" line (Suggested next) and the inbox sort are
-proposals for the owner to accept or change. The one thing it starts on
+decides nothing. The "Next:" line (Suggested next, when there is one)
+and the inbox sort are proposals for the owner to accept or change. The one thing it starts on
 its own is a read-only check that is due (step 7), and the report says
 so. Every statement in the report comes from a command run in this
 invocation: the check runner's rows, the roadmap's acceptance-case
@@ -145,10 +145,21 @@ trap - INT TERM
 ```
 
 Rows are `kind`, `item`, `result`, `check`, `date`, TAB-separated. Kinds:
-`line`, `deferral`, `format` (a checklist item in the section, which breaks
-the section's rules; report it), `section` (nothing to check, and why: no
+`line`, `deferral`, `format` (a checklist item in the section, or a path
+paragraph the checker cannot read as one, which break the section's
+rules; report it), `section` (nothing to check, and why: no
 roadmap file, a roadmap that could not be read, no Direction section, or a
-section with no table). A root's Direction section may point at the
+section with no table), and `path`. When the root's Direction section is
+written as paths (a paragraph opening with a bold `Path <n>`), the rows
+come in groups: a `path` row names the group, by the path's name as
+written (`Path 2, modular workflows`), and the `line` rows after it, up to
+the next `path` row, are that path's lines, in no fixed order. A table
+belongs to the nearest path or Across paragraph above it. The group
+`Across the paths` holds the lines that cross every path; the group `no
+path` holds lines above the first path paragraph. A `path` row whose
+result is `unchecked` has no lines: its check reads `no lines (no design
+yet)` for a path. Deferrals belong to no path. A section with no path
+paragraph has no `path` row, and is one group, as before. A root's Direction section may point at the
 roadmaps of its parts (a `| Sub-roadmap | Root |` table, ADR-0022); each
 is followed one level, and its rows come after the root's: a `part` row
 for the pointer, then `subline`, `subdeferral` and `subformat` rows whose
@@ -162,10 +173,15 @@ pointer inside a sub-roadmap, which the checker does not follow) goes on
 a separate "Not followed" line, never under Problems. After `---` comes
 the summary, `lines <true>/<total> deferrals <true>/<total>`: the root's
 own lines only, since a part's progress is the part's (the run record
-keeps the root's counts). Then `--- next steps`: one line for the root,
-`(root)` with its first line not true and that line's result, or `(root)
-none open`, and one per followed part, by its sub-roadmap path, the same
-way; step 5 uses them. Then `rows_file=`, which step 4 needs. When the block prints `checks failed` or `no summary` instead,
+keeps the root's counts); with paths it goes on ` paths ` and one count
+per group in roadmap order (`P1 1/4 P2 0/4 ... P5 none across 0/1`;
+`none` for a group with no lines, `nopath` for the `no path` group).
+Then `--- next steps`: with paths, one line per group, by its name, with
+its first line not true and that line's result, or `none open`, or its
+`no lines` text; without paths, one line for the root, `(root)` with its
+first line not true and that line's result, or `(root) none open`. Then
+one per followed part, by its sub-roadmap path, the same way; steps 5
+and 8 use them. Then `rows_file=`, which step 4 needs. When the block prints `checks failed` or `no summary` instead,
 report that the Direction lines were not checked this run, with the reason
 printed, and that the run record was not written, and skip step 4.
 
@@ -268,7 +284,8 @@ carries `own`: `yes` for a checkout of the root's own repository, whose
 issues are this root's. It also carries the GitHub repository its issue
 belongs to (`repository`, with the checkouts of it, and why there is none),
 the branch its pull request would have (`pr_branch`), and, with step 1's
-rows, whether a Direction line names it (`named`); the helper's header
+rows, whether a Direction line names it (`named`) and which path's line
+does (`named_path`, the group's name); the helper's header
 has the rules, and a check is read as the check runner reads it. The rows of step 1 tell the named ones apart, so
 put step 1's `rows_file` value in place of the placeholder (leave it as
 it is when step 1 printed none: then only the root's own worktrees are
@@ -302,22 +319,30 @@ workspace session the list includes the main checkout (`type: "main"`);
 it is not work in flight and is left out of the report. For each other worktree with an
 issue, where the work stands is the issue's title and the latest entry on
 its timeline (`progress.md`, read by `progress_read.py`), and which path
-it serves (the root's roadmap's Paths paragraphs, under `## Direction`).
-Put step 1's `rows_file` value in place of the placeholder (leave it as
-it is when step 1 printed none):
+it serves (the path whose line names it, as step 1's rows group the
+lines). Put step 1's `rows_file` value in place of the placeholder
+(leave it as it is when step 1 printed none):
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
 source "$WS_ROOT/.agent/scripts/_issue_helpers.sh"
 r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: no root could be decided for this directory (reason above)"; exit 1; }
 stype="$(sed -n 's/^type=//p' <<< "$r")"
+ROOT="$(sed -n 's/^root=//p' <<< "$r")"
 roadmap="$(sed -n 's/^roadmap=//p' <<< "$r")"
+ra=(); [ -z "$roadmap" ] || ra=(--roadmap "$roadmap")
 rows="<rows_file printed in step 1>"
-# With no **Path <n>** paragraph in the root's Direction section (the
-# last block of this step prints paths=none), no path word is printed.
+# The section is written as paths when step 1's rows hold a path row; with
+# no rows, when the checker finds a path in it (--list-paths: its own
+# rules, no check run), and "unknown" when it could not tell. Without
+# paths, no path word is printed.
 haspaths=no
-if [ -n "$roadmap" ] && awk '/^## Direction/ { d = 1; next } d && /^## / { exit }
-        d && /^\*\*Path [0-9]+/ { f = 1; exit } END { exit !f }' "$roadmap" 2>/dev/null; then
+if [ -f "$rows" ] && [ -r "$rows" ]; then
+    ! grep -q $'^path\t' "$rows" || haspaths=yes
+elif ! lp="$("$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$ROOT" "${ra[@]}" --list-paths)"; then
+    echo "paths: could not be listed (reason above); work is marked path unknown"
+    haspaths=unknown
+elif grep -q $'^group\t' <<< "$lp"; then
     haspaths=yes
 fi
 wl="$("$WS_ROOT/.agent/scripts/sitrep_root.sh" --worktrees --rows "$rows")" \
@@ -336,11 +361,12 @@ while IFS= read -r w; do
     # title cache and the timeline come from that repository's checkouts
     # only: work plans are written at the issue's checkout, and another
     # repository can have its own issue <N>. "named" is "yes" when one of
-    # the root's own Direction lines names this work (Path 1), and is
-    # absent when step 1 saved no rows. "named_part" is the path of a
+    # the root's own Direction lines names this work, and is absent when
+    # step 1 saved no rows; "named_path" is the name of the path (group)
+    # whose line names it (issue #563). "named_part" is the path of a
     # followed sub-roadmap whose lines name it (issue #488).
     slug="$(field repository)"; dirs="$(field repository_dirs)"; why="$(field repository_why)"
-    named="$(field named)"; npart="$(field named_part)"
+    named="$(field named)"; npath="$(field named_path)"; npart="$(field named_part)"
     cache="$(head -n1 <<< "$dirs")"; latest="no progress record yet"
     [ -n "$slug" ] || [ ! -f "$path/.worktree-repos" ] || latest="unknown (no repository to read it from)"
     title="unknown ($why)"
@@ -411,22 +437,14 @@ try:
 except ValueError:
     print("progress record unreadable")')"
     fi
-    # Path 3 is work whose newest complete Issue Review has a Serves line
-    # carrying the README line's opening words, "A safeguard has to earn
-    # its cost" (any case, matched as plain text; review-issue writes them
-    # for work that serves that line). Path 2 is any other work whose
-    # newest complete Issue Review has a Serves line naming a goal (every
-    # Issue Review writes one, naming the README goals it serves). A
-    # project worktree's Serves line names the project's own goals
-    # (review-issue), not the workspace README's that Path 2 and Path 3
-    # are defined by, so it is never Path 2 or Path 3, and in a project
-    # session nothing is. Only the newest complete Issue Review counts,
-    # so a later "none" outranks an older goal, and a partial or failed one
-    # (which may have stopped before its Serves line) changes nothing;
-    # "none" means no path, even when the line goes on to quote the
-    # phrase. With no complete Issue Review, or one with no
-    # Serves line, nothing was said either way: the path is unknown, never
-    # "no path". Fenced lines are not headings or fields.
+    # Work no path's line names says what its issue review says it serves:
+    # the newest complete Issue Review's Serves line names a goal, or is
+    # "none" (review-issue's word for no goal, even when the line goes on
+    # to quote a goal). Only the newest complete Issue Review counts, so a
+    # later "none" outranks an older goal, and a partial or failed one
+    # (which may have stopped before its Serves line) changes nothing.
+    # With no complete Issue Review, or one with no Serves line, nothing
+    # was said either way. Fenced lines are not headings or fields.
     serves="unreviewed"
     [ -z "$f" ] || serves="$(awk 'function done_ir() { if (ir && tolower(st) ~ /^complete[[:space:]]*$/) { s = cs; seen = 1 }; ir = 0 }
         /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
@@ -439,59 +457,57 @@ except ValueError:
               if (!seen) print "unreviewed"
               else if (s !~ /[^[:space:]]/) print "unstated"
               else if (tolower(s) ~ /^["\047`*_]*none([^[:alnum:]_]|$)/) print "none"
-              else if (index(tolower(s), "a safeguard has to earn its cost")) print "path3"
               else print "goal" }' "$f")"
-    if [ -n "$named" ] && [ "$named" != yes ] && [ -n "$npart" ]; then wpath="$npart"
-    elif [ "$haspaths" != yes ]; then wpath=""
+    if [ "$haspaths" = yes ] && [ "$npath" = "no path" ]; then wpath="no path (a line names it)"
+    elif [ "$haspaths" = yes ] && [ -n "$npath" ]; then wpath="$npath"
+    elif [ -n "$named" ] && [ "$named" != yes ] && [ -n "$npart" ]; then wpath="$npart"
+    elif [ "$haspaths" = no ]; then wpath=""
     elif [ -z "$named" ]; then wpath="path unknown (steps not checked)"
-    elif [ "$named" = yes ]; then wpath="Path 1"
-    elif { [ "$serves" = goal ] || [ "$serves" = path3 ]; } && { [ "$type" = project ] || [ "$stype" = project ]; }; then wpath="no path (serves a project goal)"
-    elif [ "$serves" = path3 ]; then wpath="Path 3"
-    elif [ "$serves" = goal ]; then wpath="Path 2"
-    elif [ "$serves" = none ]; then wpath="no path"
-    elif [ "$serves" = unstated ]; then wpath="path unknown (its issue review has no Serves line)"
-    else wpath="path unknown (no complete issue review)"; fi
+    elif [ "$serves" = goal ]; then wpath="no path line (serves a goal)"
+    elif [ "$serves" = none ]; then wpath="no path line (serves no goal)"
+    elif [ "$serves" = unstated ]; then wpath="no path line (its issue review has no Serves line)"
+    else wpath="no path line (no complete issue review)"; fi
     printf '%s\t%s\t%s\tissue %s\t%s\t%s\t%s\n' "$type" "${repo:-workspace}" "${branch:-(no branch)}" "$issue" "$title" "$latest" "$wpath"
 done
 ```
 
 Rows are `type`, `repo`, `branch`, `issue <N>`, title, state, path,
 TAB-separated; a worktree with no branch (a detached HEAD, e.g. mid-rebase)
-reads `(no branch)`. Work that no root line names but a line of a
-followed sub-roadmap does, by the same rules as a root line (`(#N)` in
-its item, a `gh-issue` check or an `adapter --project` check;
-`named_part`), is marked with that sub-roadmap's path, such as
-`tools/repos-manifest/docs/roadmap.md`, whether or not the root has Paths
-paragraphs: the path stands for the part (issue #488). Otherwise the path
-is empty when the root's Direction section
-has no Paths paragraph (the last block of this step prints `paths=none`):
-no path word is printed then. Otherwise it is `Path 1` (`named` is
-`yes`: a Direction line names the issue, in its own cells, or a check
-names the project the worktree belongs to; a bare `(#N)` or `gh-issue N` names an issue of the
-root's own repository, so it matches only a worktree whose `own` is
-`yes`, and another repository's worktree is named only by its
-`<owner/repo>#N` or `adapter --project` check), else `Path 3` (the newest
-complete Issue Review on its timeline has a `**Serves**:` line carrying
-the README line's opening words, "A safeguard has to earn its cost", in
-any case, which review-issue writes for work that serves that line), else
-`Path 2` (that Serves line names a goal), else `no path` when
-that Serves line is `none` (the review template's word for no goal, even
-when the line goes on to quote that phrase),
-which is itself worth seeing: work that serves no goal. Only the newest
-complete Issue Review's Serves line counts, so a re-review that found the
-issue serves nothing outranks an older one that named a goal, and a
-partial or failed Issue Review leaves the older one's Serves in place.
-`no path` is said only on that evidence. With no complete Issue Review
-(no timeline yet, or only partial or failed ones) the path is
-"path unknown (no complete issue review)", and with a complete one that
-has no Serves line it is "path unknown (its issue review has no Serves
-line)". It is `path unknown (steps not checked)` when step 1 printed no
-rows. A project worktree is never `Path 2` or `Path 3`, and in a project
-session neither is: review-issue writes a project issue's Serves line
-from the project's own goals, and Path 2 and Path 3 are work that serves
-a goal in the workspace README. With such a goal (or the phrase) it reads
-"no path (serves a project goal)", which says what it serves and that no
-Direction line names it.
+reads `(no branch)`. The path mark follows the paths as the root's
+Direction section writes them (issue #563):
+
+- A line of a path names the work (`named_path`: a `(#N)` in the line's
+  item, a `gh-issue` check, or an `adapter --project` check naming the
+  project the worktree belongs to; a bare `(#N)` or `gh-issue N` names an
+  issue of the root's own repository, so it matches only a worktree whose
+  `own` is `yes`, and another repository's worktree is named only by its
+  `<owner/repo>#N` or `adapter --project` check): the path's name as the
+  roadmap writes it, such as `Path 2, modular workflows`; `Across the
+  paths` for the Across group; `no path (a line names it)` for a line
+  above the first path paragraph. When lines of two paths name it, the
+  first path in roadmap order.
+- No root line names it but a line of a followed sub-roadmap does, by the
+  same rules (`named_part`): that sub-roadmap's path, such as
+  `tools/repos-manifest/docs/roadmap.md`, whether or not the root has
+  paths: the path stands for the part (issue #488).
+- No line names it: `no path line`, then in brackets what the newest
+  complete Issue Review on its timeline says it serves: `(serves a goal)`
+  when its `**Serves**:` line names one (a project's Serves line names
+  the project's own goals; either way it is a goal), `(serves no goal)`
+  when that line is `none` (the review template's word for no goal, even
+  when the line goes on to quote a goal), `(its issue review has no
+  Serves line)`, or `(no complete issue review)` (no timeline yet, or
+  only partial or failed ones). Only the newest complete Issue Review's
+  Serves line counts, so a re-review that found the issue serves nothing
+  outranks an older one that named a goal, and a partial or failed Issue
+  Review leaves the older one's Serves in place.
+- Step 1 printed no rows: `path unknown (steps not checked)`, also when
+  the checker's `--list-paths` failed (the block says so, and the last
+  block of this step prints `paths=unknown`).
+- The root's Direction section is not written as paths (step 1's rows
+  hold no `path` row; with no rows, the checker's `--list-paths` prints
+  no `group` line, and the last block of this step prints `paths=none`):
+  no path word is printed, except a sub-roadmap's path.
 
 The state is the latest timeline entry in words, so the report needs no
 entry names. The entry is looked up by its base type
@@ -563,31 +579,38 @@ for it when it is empty. Within each group, branches with a worktree come
 first, in the worktree list's order, then branches with only a pull
 request, in the order `gh pr list` printed them.
 
-The paths themselves, for the report's closing question: each paragraph of
-the root's Direction section that opens with `**Path <n>`, printed as its
-number, its bold name and its first sentence, as written. A sentence ends
-at a period followed by white space or the paragraph's end, or at a period
-and a closing double quotation mark followed by either (a quoted sentence).
+The paths themselves, for the report's closing question. The roadmap's
+structure is read by the checker only, so the question offers exactly
+the groups the report shows: this block formats what the checker's
+`--list-paths` prints (the same rules as step 1's rows, no check run),
+and reads nothing of the roadmap itself. Each path is printed on a
+`path` line with its name as the roadmap writes it (`Path 2, modular
+workflows`) and the first sentence of its paragraph, after the bold
+name, as written; then, when there is an Across group, its first
+sentence on an `across` line (the `no path` group is not offered). A
+sentence ends at a period followed by white space or the paragraph's
+end, or at a period and a closing double quotation mark followed by
+either (a quoted sentence). An `acceptance_path=` line names the group
+the `**Acceptance case.**` paragraph sits in: the nearest path or Across
+paragraph above it, as the checker groups tables. With none above it,
+there is no such line. When the checker cannot list the paths, the
+block prints `paths=unknown`.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
 r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: no root could be decided for this directory (reason above)"; exit 1; }
+ROOT="$(sed -n 's/^root=//p' <<< "$r")"
 roadmap="$(sed -n 's/^roadmap=//p' <<< "$r")"
-awk '/^## Direction/ { d = 1; next } d && /^## / { exit }
-     d && /^\*\*Path [0-9]+/ { p = 1; s = "" }
-     p && /^[[:space:]]*$/ { print s; p = 0; next }
-     p { s = s (s == "" ? "" : " ") $0 }
-     END { if (p) print s }' "${roadmap:-/dev/null}" 2>/dev/null | python3 -c '
-import re, sys
-n = 0
-for l in sys.stdin:
-    m = re.match(r"\*\*(Path \d+)[,.:]?\s*(.*?)\.?\*\*\s*(.*)", l.strip())
-    if m:
-        n += 1
-        first = re.match(r"(.+?\.\x22?)(?:\s|$)", m.group(3))
-        print("path\t%s\t%s\t%s" % (m.group(1), m.group(2), first.group(1) if first else m.group(3)))
-if not n:
-    print("paths=none (no **Path <n>** paragraph in the Direction section)")'
+ra=(); [ -z "$roadmap" ] || ra=(--roadmap "$roadmap")
+if ! lp="$("$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$ROOT" "${ra[@]}" --list-paths)"; then
+    echo "paths=unknown (the checker could not list them; reason above)"; exit 0
+fi
+awk -F'\t' '$1 == "group" && $2 == "Across the paths" { if (a == "") a = "across\t" $2 "\t" $3; next }
+     $1 == "group" && $2 != "no path" { print "path\t" $2 "\t" $3; n++ }
+     $1 == "acceptance" { acc = $2 }
+     END { if (a != "") print a
+           if (!n) print "paths=none (no **Path <n>** paragraph in the Direction section)"
+           else if (acc != "") print "acceptance_path=" acc }' <<< "$lp"
 ```
 
 ### 4. Write the run record
@@ -649,28 +672,42 @@ printed.
 
 ### 5. Find the next step
 
-The next step is the first Direction line that is not `true`, in roadmap
-order: the first `line` row of step 1 whose result is anything else.
-`unchecked` and `unknown` count as not true and are not skipped, because
-the lines are an ordered chain and a line that cannot be checked is
-still in the way. When step 1 printed no rows (`checks failed`, `no
-summary`), there is no next line; skip this step and say so in the
-report.
+Each path has its own next step: the first `line` row of that path's
+group, in roadmap order, whose result is anything else than `true`. The
+paths themselves move in no fixed order. `unchecked` and `unknown` count
+as not true and are not skipped, because a line that cannot be checked is
+still open. The `--- next steps` lines of step 1 give each group's,
+by its name: its first line not true and that line's result, `none open`,
+or `no lines (no design yet)` (a path with no lines, which is not behind;
+`no lines` for an Across group with none). A section with no path
+paragraph has one next step, the `(root)` line. When step 1 printed no
+rows (`checks failed`, `no summary`), there is no next line; skip this
+step and say so in the report.
 
-In every run, beside the root's next step, report each followed part's
+In every run, beside the root's next steps, report each followed part's
 next step: the `--- next steps` lines of step 1, one per sub-roadmap
 path (a part whose lines are all true says "nothing open"). They come
 from the saved rows, so they agree with the rows shown; they are never
 left out because the root still has lines open, and never stand in for
-the root's next step. A part that was not followed has no line there:
+the root's. A part that was not followed has no line there:
 its `part` row is under Problems or Not followed (step 1).
 
-Look up what that line's own cells name: the title of each issue it names,
-and the branch of the root's own worktree and the open pull request for
-that issue (an ADR it names gets its title from the next block). Paste the row's `item` and `check` fields
-between the `ROW` markers, as step 1 printed them (the check is `none`
-when the cell was empty; leave it empty here). The quoted here-document
-keeps any quote or `$` in the text as written.
+For each next-steps line that names a line not true (the root's groups
+and `(root)`; a part's lines are reported, not looked up), run the block
+below once, to look up what that line's own cells name: the title of each
+issue it names, and the branch of the root's own worktree and the open
+pull request for that issue (an ADR it names gets its title from the next
+block). Its `item` and `check` come from the rows step 1 printed (the
+rows file is removed in step 4): the `line` row of that group, after its
+`path` row, with that item. Paste both fields between the `ROW` markers,
+as step 1 printed them (the check is `none` when the cell was empty;
+leave it empty here). The quoted here-document keeps any quote or `$` in
+the text as written. The pull requests are the list step 3's first block
+printed, pasted between the `PRS` markers as printed (the JSON array);
+nothing is fetched again, so five paths cost one title lookup per issue
+named and no further `gh pr list` (issue #563). Leave the `PRS`
+placeholder as it is when step 3 printed no list: no pull request is
+then looked up, and the block says so.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
@@ -681,6 +718,10 @@ ROW
 check="$(cat <<'ROW'
 <check of that row, or nothing>
 ROW
+)"
+prs="$(cat <<'PRS'
+<the pull request list step 3 printed>
+PRS
 )"
 source "$WS_ROOT/.agent/scripts/_issue_helpers.sh"
 r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: no root could be decided for this directory (reason above)"; exit 1; }
@@ -707,6 +748,15 @@ nums="$( { grep -oE '\(#[0-9]+(,[[:space:]]*#[0-9]+)*[,)]' <<< "$item" | grep -o
                       if (split(p, w, /[ \t]+/) == 3 && w[1] == "gh-issue" && w[2] ~ /^[0-9]+$/ && tolower(w[3]) ~ /^(open|closed)$/) print w[2] + 0
                   } }' <<< "$check"; } | sort -un)"
 echo "issues_named=$(echo ${nums:-none})"
+# The pull requests step 3 listed: a JSON array, else none are looked up.
+prs_ok=no
+if [ -n "$src" ] && [ "$src" != none ] && [ -n "$nums" ]; then
+    if jq -e 'type == "array"' >/dev/null 2>&1 <<< "$prs"; then
+        prs_ok=yes
+    else
+        echo "pull_requests=not looked up (no list from step 3)"
+    fi
+fi
 for n in $nums; do
     t=""
     if [ -z "$src" ] || [ "$src" = none ]; then
@@ -729,33 +779,41 @@ for w in json.load(sys.stdin).get("worktrees", []):
         # this repository, not every checkout branch joined by commas
         # (the joined list only when they disagree).
         print("branch\t%s\t%s" % (w.get("pr_branch") or w.get("branch"), w.get("path")))' <<< "$wl"
-    [ -z "$src" ] || [ "$src" = none ] || gh pr list -R "$src" --state open \
-        --json number,title,headRefName,isCrossRepository,isDraft,closingIssuesReferences \
-        --jq ".[] | select(.isCrossRepository | not)
+    [ -z "$src" ] || [ "$src" = none ] || [ "$prs_ok" != yes ] || jq -r \
+        ".[] | select(.isCrossRepository | not)
             | select(.headRefName == \"feature/issue-$n\"
                 or ([(.closingIssuesReferences // [])[] | select(.repository != null)
                     | select((.repository.owner.login + \"/\" + .repository.name | ascii_downcase) == (\"$src\" | ascii_downcase)) | .number] | index($n)))
-            | \"pull_request\t\(.number)\t\(.title)\t\(if .isDraft then \"draft\" else \"ready\" end)\""
+            | \"pull_request\t\(.number)\t\(.title)\t\(if .isDraft then \"draft\" else \"ready\" end)\"" <<< "$prs"
 done
 ```
 
 A `branch` row is in-flight work for that line, in one of the root's own
 worktrees; a `pull_request` row is its open pull request (ready or
-draft), from the root's pull-request source. With no pull-request source
-the title is "unknown (no repository to read it from)" and no pull
-request is looked up. A pull request with no closing
+draft), from the list step 3 printed for the root's pull-request source.
+With no pull-request source the title is "unknown (no repository to read
+it from)" and no pull request is looked up; with no list from step 3,
+`pull_requests=not looked up (no list from step 3)` says so. A pull request with no closing
 references (`null` or empty), or a reference without its repository, is
 matched by its branch name only. Matching is by the issue number
 only, through `feature/issue-<N>` worktrees and pull requests that close
-`#<N>` or come from that branch. When the line names no issue, or no
-branch or pull request matches, nothing in flight advances it, and the
-report says that rather than pick other work.
+`#<N>` or come from that branch. When no branch or pull request
+matches an issue it looked up, nothing in flight on this machine
+advances it, and the report says that rather than pick other work. When
+the line names no issue of this repository, or the branches or the pull
+request list could not be read, it was not looked up, and the report
+says so and why, never that nothing exists.
 
 What the next step is for comes from the Direction section's
-`**Acceptance case.**` paragraph, read by this block, which runs even
-when step 1 printed no rows. The paragraph is joined into one line and
-split after its first sentence (the first period followed by a space or
-the end of the paragraph); nothing is reworded.
+`**Acceptance case.**` paragraph, as the checker reads it
+(`--list-paths`' `acceptance` line: the first such paragraph by the
+checker's fence and paragraph rules, the one whose group step 3 prints
+as `acceptance_path=`), in this block, which runs even when step 1
+printed no rows. The block reads nothing of the roadmap itself. The
+paragraph comes joined into one line and is split after its first
+sentence (the first period followed by a space or the end of the
+paragraph); nothing is reworded. When the checker cannot list it, the
+block says so and `acceptance_first` is empty.
 
 The same block renders every piece of roadmap text the report prints:
 the acceptance case, and the Direction lines and deferrals pasted
@@ -774,13 +832,14 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="
 r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: no root could be decided for this directory (reason above)"; exit 1; }
 ROOT="$(sed -n 's/^root=//p' <<< "$r")"
 roadmap="$(sed -n 's/^roadmap=//p' <<< "$r")"
+ra=(); [ -z "$roadmap" ] || ra=(--roadmap "$roadmap")
 text="$(cat <<'TEXT'
 <the Direction lines and deferrals the report prints, one per line>
 TEXT
 )"
-awk '/^## Direction/ { d = 1; next } d && /^## / { exit }
-     d && /^\*\*Acceptance case\.\*\*/ { s = 1 } s && /^[[:space:]]*$/ { exit } s { print }' \
-    "${roadmap:-/dev/null}" 2>/dev/null | ROOT="$ROOT" TEXT="$text" python3 -c '
+lp="$("$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$ROOT" "${ra[@]}" --list-paths)" \
+    || { echo "acceptance case: could not be read (reason above)"; lp=""; }
+awk -F'\t' '$1 == "acceptance" { print $3; exit }' <<< "$lp" | ROOT="$ROOT" TEXT="$text" python3 -c '
 import glob, os, re, sys
 def title(n):
     # The first line of the ADR file: "# ADR-<NNNN>: <title>".
@@ -798,7 +857,6 @@ def render(t):
         return "%s (%s)" % (m.group(0), n) if n else m.group(0)
     return re.sub(r"\bADR-(\d{4})\b(?!\s*\((?!#))", adr, t)
 p = " ".join(l.strip() for l in sys.stdin.read().splitlines()).strip()
-p = re.sub(r"^\*\*Acceptance case\.\*\*\s*", "", p)
 m = re.match(r"(.+?\.)(?:\s+(.*))?$", p)
 print("acceptance_first=" + render(m.group(1) if m else p))
 print("acceptance_rest=" + render((m.group(2) or "") if m else ""))
@@ -1028,9 +1086,9 @@ git -C "$WS_ROOT" worktree list --porcelain | sed -n '1s/^worktree //p'
 
 ### 8. Print the report
 
-The top part (what the next step is for, the next step, Suggested next,
-In flight, Problems) comes first and fits in about 20 lines with its blank
-lines; the counts, the inbox and the deferrals follow. Plain words: the
+The top part (what the next step is for, the next step of each path,
+Suggested next, In flight, Problems) comes first and fits in about 20
+lines with its blank lines; the counts, the inbox and the deferrals follow. Plain words: the
 top part names no mechanism (no "Direction lines", "result", "timeline
 entry" or "Decision register"); the facts the steps above print are
 translated by the rules below. No count without what it counts (never a
@@ -1054,12 +1112,20 @@ structure"):
 ```markdown
 ## Sit-rep, <date>
 
-<acceptance_first from step 5>
+<acceptance_first from step 5; with paths, named as the test of step 3's acceptance_path>
 
+<with paths: one line per group, in roadmap order, from step 1's next steps:>
+<path name>: <t> of <n> done. Not yet: <its first unmet line, as written> — <its result in words>.
+<path name>: <n> of <n> done, nothing open.
+<path name>: no design yet.
+
+<without paths:>
 Done: <t> of <n> steps.
 Not yet: <first unmet line, as written> — <its result in words>.
 Next: <the line's text as an action>.
 Running: <branch>: <its state>.
+Running: nothing on this machine.
+Running: not looked up for the next step: <why: its line names no issue of this repository | the branches could not be listed | the pull request list could not be read>.
 
 <one line per followed part, from step 1's next steps:>
 <sub-roadmap path>: Not yet: <its first unmet line> — <its result in words>.
@@ -1070,6 +1136,8 @@ Running: <branch>: <its state>.
 - Running: <name>: <issue title> (issue <N>)<, the next step>: <state>. <path>.
 - And <k> more:
   - <name>
+- No branch or pull request for the next step of: <the groups whose next step step 5 looked up and matched nothing for>.
+- Not looked up for <group>: <why: its line names no issue of this repository | the branches could not be listed | the pull request list could not be read>.
 
 **Problems**:
 
@@ -1096,11 +1164,17 @@ follows one level.
 
 **Steps**: <t> of <n> done.
 
+<with paths, a heading line per group, then its lines:>
+<path name>: <t> of <n> done.
+
 - Done: <line, as written>.
 - Not yet: <line, as written> — <result in words>.
 
 <What moved: compare the summary with the last run record's, in words,
-e.g. "steps done: 3 of 6 on 2026-10-10, 4 of 6 now"; "first run" when
+e.g. "steps done: 3 of 6 on 2026-10-10, 4 of 6 now", per path when both
+records carry the same path labels and neither repeats a label (a
+path number used twice, a `format` row under Problems: then the totals
+only) ("Path 2: 0 of 4 on 2026-11-20, 1 of 4 now"); "first run" when
 there is no earlier line.>
 
 <acceptance_rest, when not empty>
@@ -1125,7 +1199,15 @@ Rules for the report:
   rows.
 - **The line after the heading** is step 5's `acceptance_first`, so the
   reader sees what the next step is for. When it is empty, the line is
-  left out.
+  left out. With paths, the acceptance case is the test of the group
+  its paragraph sits in (the nearest path or Across paragraph above
+  it), which step 3's last block prints as `acceptance_path=`, and the
+  line says so: "The test of <acceptance_path>: <acceptance_first>",
+  e.g. "The test of Path 1, ROS 2 projects: ..." or, under the Across
+  paragraph, "The test of Across the paths: ...". With no
+  `acceptance_path=` line (the paragraph sits above every path, or step
+  3 printed `paths=none` or `paths=unknown`), the line is
+  `acceptance_first` alone.
 - **Result words** are translated, and always printed, so a step that
   could not be checked never reads as one that failed:
 
@@ -1140,14 +1222,37 @@ Rules for the report:
 - **The `Done:` and `Not yet:` lines** give the count of steps done, then
   the first unmet line as written, and its result in words. An issue number in the line,
   written `(#<N>`, reads `(issue <N>`.
+- **With paths** (step 1's rows hold `path` rows), there is one line per
+  group instead, in roadmap order, from step 1's `--- next steps`: the
+  group's name as written, how many of its lines are true ("<t> of <n>
+  done", from the summary step 1 printed: its ` paths` part has one
+  count per group in the same order as the next-steps lines, `none`
+  for a group with no lines), and its first line not yet true as
+  written with its result in words, or "nothing open", or "no design yet" for a path with no lines
+  (an Across group with none is left out). No group is "behind" another:
+  the paths move in no fixed order, and a path with no design yet is not
+  late. There is no single `Next:` and `Running:` pair: the work in
+  flight for each group's line is in In flight.
 - **Suggested next** is the `Next:` line: it restates that line as
   something to do, keeping its own words and names ("X is onboarded
   through Y" becomes "Onboard X through Y"). The `Running:` line under it
   gives the branch step 5 matched and step 3's state for it, then, when
   step 5 matched one, "; pull request <M>: <draft or ready>". It does not
-  print the issue's title. When step 5 matched nothing, it reads
-  "Running: nothing advances it."
-- Only when every line is `true` does Suggested next come from
+  print the issue's title. When step 5 looked and matched nothing, it
+  reads "Running: nothing on this machine." Step 5 looked when its block
+  printed `issues_named=` with a number, listed the branches, and read
+  the pull request list (with no pull-request source for the root, the
+  branches alone). The report never states an absence it did not check,
+  so when step 5 did not look, the line reads "Running: not looked up
+  for the next step: <why>", one per reason, the reasons of In flight's
+  "Not looked up for <group>:" lines: its line names no issue of this
+  repository (`issues_named=none`), the branches could not be listed
+  (`branches: could not be listed`), or the pull request list could not
+  be read (`pull_requests=not looked up`). When step 5 looked up no line
+  (step 1 printed no rows, or every line is true), there is no
+  `Running:` line under `Next:`: the work in flight is in In flight.
+- Only when every line is `true` (with paths, every line of every group)
+  does Suggested next come from
   elsewhere, from the first of these with an item: a due deferral; work
   in flight (a branch with a ready pull request first, step 3's order);
   the proposed inbox "now" bin, which says "this rests on the proposed
@@ -1168,7 +1273,27 @@ Rules for the report:
 - **In flight** has one line per branch, in step 3's order, at most
   five. More than five: the first five, then "And <k> more:" with one
   bullet per name under it. The next step's branch is always among the five shown (it
-  takes the fifth place when it would fall below). A line is filled in
+  takes the fifth place when it would fall below). With paths, the
+  branches step 5 matched to any group's first unmet line come first,
+  and each of them is among the five shown, except when more than five
+  are matched: then the first five of them, in step 3's order, are
+  shown, and the rest are named under "And <k> more:" with the others;
+  then one bullet "No branch or pull request for the next step of:"
+  names the groups whose first unmet line step 5 looked up and matched
+  no branch of the root's own worktrees and no open pull request for
+  (left out when there is none). The report never states an absence it
+  did not check, so a group is named there only when step 5 looked:
+  its block printed `issues_named=` with a number, listed the branches,
+  and read the pull request list. With no pull-request source for the
+  root, the bullet reads "No branch for the next step of:" and says
+  nothing about pull requests. A group step 5 did not look up for gets
+  one short line instead, "Not looked up for <group>: <why>", one per
+  reason: its line names no issue of this repository (`issues_named=none`;
+  another repository's issue is not looked up), the branches could not
+  be listed (`branches: could not be listed`), or the pull request list
+  could not be read (`pull_requests=not looked up`). Neither says
+  anything about the group's other lines: work for them can be in
+  flight above, marked with the group. A line is filled in
   part by part, and a part the branch does not have is left out:
   - `<name>` is the branch, or for a worktree that is not the root's
     own (`own` is `no`: another repository's work a Direction line of
@@ -1190,20 +1315,31 @@ Rules for the report:
     the root, no line says anything about pull requests.
   - A pull request with no worktree: its title, "(pull request <M>)",
     then the same draft, fork and review words.
-  - Last, after a period, the path step 3 printed: `Path 1`, `Path 2`,
-    `Path 3`, a sub-roadmap path (work a part's line names, e.g.
-    `tools/repos-manifest/docs/roadmap.md`), `no path` or one of its
-    "path unknown (...)" labels; nothing when
-    step 3 printed an empty path (the root's Direction section has no
-    Paths paragraph). A branch with only a
-    pull request has no timeline here, so no Serves line was read: with
-    no Paths paragraph it gets no path word either, like every other
-    line; otherwise `Path 1` when a Direction line names its issue, else
-    "path unknown (no worktree, timeline not read)". Its issue is the `<N>` of a
+  - Last, after a period, the path step 3 printed: a path's name as
+    the roadmap writes it (`Path 2, modular workflows`), `Across the
+    paths`, `no path (a line names it)`, a sub-roadmap path (work a
+    part's line names, e.g. `tools/repos-manifest/docs/roadmap.md`), one
+    of the `no path line (...)` labels, or `path unknown (steps not
+    checked)`; nothing when step 3 printed an empty path (the root's
+    Direction section is not written as paths).
+  - A branch with only a pull request has no timeline here, so no Serves
+    line was read: with no path paragraph it gets no path word either,
+    like every other line; otherwise the mark of the group whose line
+    names its issue, read from the rows step 1 printed (the `line` row
+    whose item names `#<N>` in brackets as step 5 reads an item:
+    `(#<N>)`, `(#<N>,` or any number of a list such as `(#208, #209)`;
+    or whose check is `gh-issue <N>`; under its `path` row; the rows
+    file itself is gone after step 4), written as step 3 writes it: the
+    path's name, `Across the paths`, or `no path (a line names it)` for
+    the `no path` group; else "path unknown (no worktree, timeline not
+    read)". Its issue is the `<N>` of a
     `feature/issue-<N>` head branch, or an issue in step 3's
     `closingIssuesReferences` whose repository is this one (the match
-    step 5 makes); with neither, it is path unknown. Never `no path`,
-    which says the work serves none of the paths.
+    step 5 makes); with neither, it is path unknown. Never a `no path
+    line (...)` label, which needs the timeline that was not read.
+    When step 1 printed no rows there are none to read it from, so it is
+    "path unknown (steps not checked)", as for a worktree (no path word
+    when step 3 printed `paths=none`).
 - **Problems** in words: the Decision register's newest `yes <date>` is
   the "last design-decision review", its `not yet` rows "design
   decisions not yet reviewed"; digest entries are "research topics".
@@ -1235,11 +1371,14 @@ Rules for the report:
   changes the most. The suggestion proposes an action; the question asks
   the owner to decide something. By default it is the focus: one of the
   paths step 3 printed, or several, each named as step 3's last block
-  printed it (its number, name and first sentence). Beside them, each
+  printed it (its name, as the roadmap writes it, and its first
+  sentence), with Across the paths as a focus too when that block
+  printed an `across` line. Beside them, each
   followed part is a focus of its own, named by its sub-roadmap path:
   the work step 3 marked with that path, and the part's next step. A
   sub-roadmap's own Paths paragraphs are not read; the part is one
   focus. The owner decides the focus when he asks for
   a sit-rep, and it is never stored. Ask something else only when the
   owner already named the focus in this session, or when step 3 printed
-  `paths=none` and no part was followed.
+  `paths=none` or `paths=unknown` (said under Problems) and no part was
+  followed.

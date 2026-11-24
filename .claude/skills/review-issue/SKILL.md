@@ -134,8 +134,7 @@ If the issue targets a project repo, also check:
   `$WS_ROOT/docs/design.md#the-design`). The README line
   "A safeguard has to earn its cost" has no section name of its own: work
   that serves it writes that phrase, word for word, in its Serves line,
-  beside any other goal's section name (the sit-rep marks such work by
-  that phrase). For a project issue, use the
+  beside any other goal's section name. For a project issue, use the
   project's own goals and design document, or write "none"; a project is
   not asked to keep either.
   Work inside a part that has its own design (ADR-0022) names the root

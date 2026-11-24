@@ -6,6 +6,7 @@
 #
 # Usage: sitrep_checks.sh [--root <dir>] [--roadmap <file>] [--summary] [--no-follow]
 #        sitrep_checks.sh [--root <dir>] [--roadmap <file>] --list-pointers
+#        sitrep_checks.sh [--root <dir>] [--roadmap <file>] --list-paths
 #        sitrep_checks.sh --summary-from <rows-file>
 #        sitrep_checks.sh --next-steps-from <rows-file>
 #   --root     the roadmap's repository root (default: this script's own
@@ -16,8 +17,10 @@
 #   --roadmap  default <root>/docs/roadmap.md
 #   --summary  print one line instead of rows:
 #                lines <true>/<total> deferrals <true>/<total>
-#              (a deferral whose check is true is due). The sit-rep stores
-#              this line in its run record.
+#              (a deferral whose check is true is due), and, when the
+#              section is written as paths, ` paths ...` after it (see
+#              Paths below). The sit-rep stores this line in its run
+#              record.
 #   --summary-from <rows-file>
 #              the same line, counted from rows saved by an earlier run; no
 #              roadmap is read and no check runs. The sit-rep runs the checks
@@ -33,7 +36,8 @@
 #              is no 0/0 to record. A roadmap that was read and has no
 #              section or no rows still counts, as 0/0. `--summary` exits
 #              3 the same way. Only `line` and `deferral` rows count: a
-#              part's rows (below) never enter the root's totals.
+#              part's rows (below) never enter the root's totals. A rows
+#              file saved before path rows existed is read as it was.
 #   --no-follow
 #              read the root's roadmap only: no `Sub-roadmap | Root` table
 #              is followed and no `part` row is printed. The pointer table
@@ -51,6 +55,27 @@
 #              check_design_anchors.sh reads the pointer table through
 #              this, so both scripts share one parser and one set of
 #              validity rules.
+#   --list-paths
+#              run no check, follow no pointer and print no row: one
+#              TAB-separated line per group the rows would hold (Paths
+#              below), in roadmap order,
+#                group<TAB><name><TAB><first sentence>
+#              the name as its `path` row gives it, the first sentence of
+#              its opening paragraph after the bold name (up to a period
+#              followed by white space or the end, or a period and a
+#              closing `"` followed by either; empty for `no path`); then
+#                acceptance<TAB><name><TAB><text>
+#              when the section has an `**Acceptance case.**` paragraph
+#              (the first one, opened by the same rules as a path's, so
+#              never one in a fence or continuing other text): the group
+#              it sits under, the nearest path or Across paragraph above
+#              it (empty with none above it, or with no path paragraph in
+#              the section), and the paragraph's text after the bold,
+#              joined into one line. No `group` line for a section with
+#              no path paragraph, and nothing for a roadmap that is
+#              missing or unreadable. Exit 0. The sit-rep reads the paths
+#              and the acceptance case through this, so it reads them by
+#              the checker's rules, never its own.
 #   --next-steps-from <rows-file>
 #              the next step of the root and of each part, from rows saved
 #              by an earlier run (no roadmap is read, no check runs, so it
@@ -58,7 +83,8 @@
 #                (root)<TAB><item><TAB><result>   the first `line` row
 #                                                 whose result is not true
 #                (root)<TAB>none open             when every one is true
-#              then, for each `part` row whose result is `true` (a followed
+#              (with path rows, one line per group in place of `(root)`;
+#              see Paths below), then, for each `part` row whose result is `true` (a followed
 #              sub-roadmap), in order, the same with the sub-roadmap path
 #              in place of `(root)`, from that part's `subline` rows (item
 #              without the path prefix). Parts that were not followed have
@@ -113,6 +139,63 @@
 # A bare `gh-issue N` in a sub-roadmap takes its repository from the
 # Root's `origin`, as --root does for the root.
 #
+# Paths (issue #563). The root's Direction section may be written as paths,
+# each a paragraph with its lines in a table under it. Rows are read in
+# order, and
+# a path row governs the line rows up to the next path row
+# (a part's rows go by their item's `<sub-roadmap>: ` prefix instead).
+# A table belongs to the nearest path or Across paragraph above it:
+#   - A paragraph opens a path when its first line starts at column 0 with
+#     a bold span whose text starts `Path <n>` (`**Path 1, Name.** ...`;
+#     `**Paths.**` is not one), and the paragraph is not the continuation
+#     of other text: the line before is blank, a table, a heading, a fence,
+#     a thematic break or the section's start, never paragraph or list
+#     text. A bold span wrapped over several lines is joined first, up to
+#     its closing `**`. The path's name is the bold text, white space
+#     collapsed, with a trailing `.` or `,` dropped (`Path 1, Name`).
+#   - A paragraph opening with a bold `Across the paths` opens the group
+#     `Across the paths` in the same way.
+#   - Any other paragraph, list or table (the acceptance case, Format, a
+#     deferral table) opens nothing: a Line table after it belongs to the
+#     group above it.
+#   - Line rows above the first path or Across paragraph are a group of
+#     their own, `no path`.
+#   - What would open a group but cannot be read as one is a `format` row,
+#     `unchecked`, never a silent drop or a guess: a bold `Path <n>` or
+#     `Across the paths` span at a paragraph's start that never closes
+#     (the paragraph opens no group); bold text that goes on after
+#     `Across the paths` (the group is still `Across the paths`); a path
+#     number used twice, or a second Across paragraph (both are read, the
+#     row follows the second; the summary's two `P<n>` or `across` counts
+#     are not told apart). The Across ones only beside a path: a section
+#     with no path paragraph gets none of these rows for Across.
+# Only `line` rows are counted for a group; deferral, format and part rows
+# keep their places and belong to none. A section with no path paragraph
+# has no groups at all, whatever else it holds (an Across paragraph alone
+# opens none), and its rows are exactly as before paths were read. A
+# sub-roadmap's own path paragraphs are not read (they are prose).
+# With groups, one row ahead of each group's rows:
+#   path   item = the group's name. Results:
+#            true       check `lines` (a path, or `no path`) or `group`
+#                       (Across): line rows came under it
+#            unchecked  check `no lines (no design yet)` (a path) or
+#                       `no lines` (Across): no line row came under it
+# Path rows never count as table rows (a section of paths with empty
+# tables still gives `(no rows in the Line or Deferral tables)`), are not
+# printed under --list-pointers, and enter neither total of --summary.
+# With groups, --summary and --summary-from append to the line
+#   ` paths <label> <true>/<total> ...`, one per group in roadmap order
+# (`<label> none` for a group with no lines), the label `P<n>` for
+# `Path <n>`, `across` for Across, `nopath` for `no path`; the part before
+# ` paths` is unchanged. --next-steps-from prints one line per group in
+# place of `(root)`, by the group's name:
+#   <name><TAB><item><TAB><result>   its first line row not true
+#   <name><TAB>none open             every one true
+#   <name><TAB><its path row's check> no line row under it
+# A `gh-issue N closed` line whose fact is true while its issue stays open
+# reads `false` here; the roadmap uses another check kind for such a line
+# (or an empty cell), the checker does not guess.
+#
 # What is read: only the `## Direction` section (up to the next level-1 or
 # level-2 heading: `#` or `##` with up to 3 spaces of indent, or a setext
 # `===`/`---` underline under paragraph text; `###` stays inside), outside
@@ -136,7 +219,8 @@
 #
 # Output: one TAB-separated row per item:
 #   <kind>  <item>  <result>  <check>  <date>
-# <check> is the cell text, or `none` when the cell is empty. `section` rows,
+# Kinds: line, deferral, format, section, path (Paths above), and a part's
+# kinds (Sub-roadmaps above). <check> is the cell text, or `none` when the cell is empty. `section` rows,
 # result `unchecked`, say why there is nothing to check: the item is
 # `(roadmap not found: <path>)`, `(no Direction section)`, `(no Line or
 # Deferral table)` for a section that has none of the three tables (an
@@ -229,6 +313,7 @@ source "$SCRIPT_DIR/_project_registry.sh" 2>/dev/null || REGISTRY_OK=false
 usage() {
     echo "usage: sitrep_checks.sh [--root <dir>] [--roadmap <file>] [--summary] [--no-follow]" >&2
     echo "       sitrep_checks.sh [--root <dir>] [--roadmap <file>] --list-pointers" >&2
+    echo "       sitrep_checks.sh [--root <dir>] [--roadmap <file>] --list-paths" >&2
     echo "       sitrep_checks.sh --summary-from <rows-file>" >&2
     echo "       sitrep_checks.sh --next-steps-from <rows-file>" >&2
     exit 2
@@ -240,6 +325,7 @@ SUMMARY=false
 SUMMARY_FROM=""
 NEXT_FROM=false
 LIST_POINTERS=false
+LIST_PATHS=false
 FOLLOW=true
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -248,6 +334,7 @@ while [ $# -gt 0 ]; do
         --summary) SUMMARY=true; shift ;;
         --no-follow) FOLLOW=false; shift ;;
         --list-pointers) LIST_POINTERS=true; shift ;;
+        --list-paths) LIST_PATHS=true; shift ;;
         --summary-from|--next-steps-from)
             [ $# -ge 2 ] || usage
             [ -z "$SUMMARY_FROM" ] || usage
@@ -259,48 +346,93 @@ while [ $# -gt 0 ]; do
     esac
 done
 if [ "$LIST_POINTERS" = true ]; then
-    [ -z "$SUMMARY_FROM" ] && [ "$SUMMARY" = false ] && [ "$FOLLOW" = true ] || usage
+    [ -z "$SUMMARY_FROM" ] && [ "$SUMMARY" = false ] && [ "$FOLLOW" = true ] && [ "$LIST_PATHS" = false ] || usage
+fi
+if [ "$LIST_PATHS" = true ]; then
+    [ -z "$SUMMARY_FROM" ] && [ "$SUMMARY" = false ] || usage
+    FOLLOW=false
 fi
 
-# summarize: the summary line of the rows in ROWS.
-summarize() {
-    local r k res lt=0 ln=0 dt=0 dn=0
-    for r in "${ROWS[@]}"; do
-        k="${r%%$'\t'*}"
-        res="${r#*$'\t'}"
-        res="${res#*$'\t'}"
-        res="${res%%$'\t'*}"
-        case "$k" in
-            line) ln=$((ln + 1)); [ "$res" = true ] && lt=$((lt + 1)) ;;
-            deferral) dn=$((dn + 1)); [ "$res" = true ] && dt=$((dt + 1)) ;;
-        esac
-    done
-    echo "lines $lt/$ln deferrals $dt/$dn"
-}
-
-# fields <row>: sets F_K, F_I, F_R to its kind, item and result (an item
-# may be empty, so the row is not split with read, which joins TABs).
+# fields <row>: sets F_K, F_I, F_R, F_C to its kind, item, result and
+# check (an item may be empty, so the row is not split with read, which
+# joins TABs).
 fields() {
     local r="$1"
     F_K="${r%%$'\t'*}"; r="${r#*$'\t'}"
     F_I="${r%%$'\t'*}"; r="${r#*$'\t'}"
-    F_R="${r%%$'\t'*}"
+    F_R="${r%%$'\t'*}"; r="${r#*$'\t'}"
+    F_C="${r%%$'\t'*}"
+}
+
+# group_label <name>: a group's label in the summary (Paths in the header).
+group_label() {
+    if [[ "$1" =~ ^Path[[:space:]]+([0-9]+) ]]; then
+        printf 'P%s' "${BASH_REMATCH[1]}"
+    elif [ "$1" = "no path" ]; then
+        printf 'nopath'
+    else
+        printf 'across'
+    fi
+}
+
+# summarize: the summary line of the rows in ROWS.
+summarize() {
+    local r lt=0 ln=0 dt=0 dn=0 g=-1 i out
+    local -a gl=() gt=() gn=()
+    for r in "${ROWS[@]}"; do
+        fields "$r"
+        case "$F_K" in
+            line)
+                ln=$((ln + 1)); [ "$F_R" = true ] && lt=$((lt + 1))
+                if [ "$g" -ge 0 ]; then
+                    gn[g]=$((gn[g] + 1)); [ "$F_R" = true ] && gt[g]=$((gt[g] + 1))
+                fi ;;
+            deferral) dn=$((dn + 1)); [ "$F_R" = true ] && dt=$((dt + 1)) ;;
+            path) g=$((g + 1)); gl[g]="$(group_label "$F_I")"; gt[g]=0; gn[g]=0 ;;
+        esac
+    done
+    out="lines $lt/$ln deferrals $dt/$dn"
+    if [ "$g" -ge 0 ]; then
+        out+=" paths"
+        for ((i = 0; i <= g; i++)); do
+            if [ "${gn[i]}" -eq 0 ]; then out+=" ${gl[i]} none"; else out+=" ${gl[i]} ${gt[i]}/${gn[i]}"; fi
+        done
+    fi
+    echo "$out"
 }
 
 # next_steps: the --next-steps-from lines for the rows in ROWS.
 next_steps() {
-    local r p first="" fres="" found
-    local -a parts=()
+    local r p first="" fres="" found g=-1 i
+    local -a parts=() gname=() gfirst=() gres=() gn=() gcheck=()
     for r in "${ROWS[@]}"; do
         fields "$r"
+        if [ "$F_K" = path ]; then
+            g=$((g + 1)); gname[g]="$F_I"; gcheck[g]="$F_C"; gn[g]=0; gfirst[g]=""; gres[g]=""
+            continue
+        fi
         # fres, not the item, marks "chosen": an item (the Line cell) may be
         # empty, and a result never is.
         if [ "$F_K" = line ] && [ "$F_R" != true ] && [ -z "$fres" ]; then
             first="$F_I"; fres="$F_R"
         fi
+        if [ "$F_K" = line ] && [ "$g" -ge 0 ]; then
+            gn[g]=$((gn[g] + 1))
+            if [ "$F_R" != true ] && [ -z "${gres[g]}" ]; then gfirst[g]="$F_I"; gres[g]="$F_R"; fi
+        fi
         [ "$F_K" = part ] && [ "$F_R" = true ] && parts+=("$F_I")
     done
-    if [ -n "$fres" ]; then
+    if [ "$g" -ge 0 ]; then
+        for ((i = 0; i <= g; i++)); do
+            if [ -n "${gres[i]}" ]; then
+                printf '%s\t%s\t%s\n' "${gname[i]}" "${gfirst[i]}" "${gres[i]}"
+            elif [ "${gn[i]}" -gt 0 ]; then
+                printf '%s\tnone open\n' "${gname[i]}"
+            else
+                printf '%s\t%s\n' "${gname[i]}" "${gcheck[i]}"
+            fi
+        done
+    elif [ -n "$fres" ]; then
         printf '(root)\t%s\t%s\n' "$first" "$fres"
     else
         printf '(root)\tnone open\n'
@@ -321,7 +453,7 @@ next_steps() {
 ROWS=()
 if [ -n "$SUMMARY_FROM" ]; then
     [ -f "$SUMMARY_FROM" ] && [ -r "$SUMMARY_FROM" ] || { echo "rows file not readable: $SUMMARY_FROM" >&2; exit 2; }
-    ROW_RE=$'^(line|deferral|format|section|part|subline|subdeferral|subformat)\t[^\t]*\t(true|false|unknown|unchecked|partial|not-followed)\t[^\t]+\t[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+    ROW_RE=$'^(line|deferral|format|section|path|part|subline|subdeferral|subformat)\t[^\t]*\t(true|false|unknown|unchecked|partial|not-followed)\t[^\t]+\t[0-9]{4}-[0-9]{2}-[0-9]{2}$'
     n=0
     not_read=""
     while IFS= read -r r || [ -n "$r" ]; do
@@ -664,7 +796,7 @@ START_RE='^ {0,3}##[[:space:]]+Direction([[:space:]]+#+)?[[:space:]]*$'
 END_RE='^ {0,3}##?([[:space:]]|$)'
 SETEXT_RE='^ {0,3}(=+|-+)[[:space:]]*$'
 NOT_PARA_RE='^[[:space:]]*$|^ {0,3}(#|>|[-*+]([[:space:]]|$)|[0-9]+[.)]([[:space:]]|$))'
-THEMATIC_RE='^ {0,3}([*_][[:space:]]*){3,}$'
+THEMATIC_RE='^ {0,3}((\*[[:space:]]*){3,}|(-[[:space:]]*){3,}|(_[[:space:]]*){3,})$'
 FENCE_RE='^ {0,3}(`{3,}|~{3,})(.*)$'
 
 # roadmap_state <file>: found | missing | unreadable. A file that exists but
@@ -712,7 +844,17 @@ scan_roadmap() {
     local after_header=false   # the last table line was a header (the delimiter row is next)
     local prev_para=false # the line before was paragraph text (a setext underline may follow)
     local start_rows="${#ROWS[@]}" pointers=0 nested=0
+    # Paths (root only): open_ok = a paragraph may open on this line (the
+    # line before was blank, a table, a heading, a fence, a thematic break
+    # or the section's start); bold = a bold span at a paragraph's start
+    # still open (wrapped), joined so far; bold_at = the row index the
+    # paragraph opened at.
+    # ptext_on = the lines of a group's opening paragraph are being read
+    # into GTEXT, or the acceptance case's into ACC_TEXT (ptext_to: group
+    # or acc; path_mark).
+    local open_ok=false bold="" bold_on=false bold_at=0 ptext_on=false ptext_to=group
     if [ -n "$part" ]; then kpre=sub; ipre="$part: "; fi
+    GMARKS=(); GRAW=(); GTEXT=(); PENDING=(); ACC_GROUP=""; ACC_TEXT=""; ACC_SEEN=false
     SCAN_SECTION=false
     SCAN_TABLE=false
     while IFS= read -r raw || [ -n "$raw" ]; do
@@ -731,6 +873,7 @@ scan_roadmap() {
                 in_fence=false
             fi
             prev_table_line=false; table=none; prev_para=false
+            open_ok=true; ptext_on=false; bold_unclosed
             continue
         fi
         [ "$in_fence" = true ] && continue
@@ -738,6 +881,7 @@ scan_roadmap() {
             if [[ "$raw" =~ $START_RE ]]; then
                 in_section=true
                 SCAN_SECTION=true
+                open_ok=true
             fi
             continue
         fi
@@ -749,6 +893,7 @@ scan_roadmap() {
         fi
         if [[ "$raw" =~ ^[[:space:]]*\| ]]; then
             prev_para=false
+            open_ok=true; ptext_on=false; bold_unclosed
             if [ "$prev_table_line" = false ]; then
                 split_row "$raw"
                 table=other
@@ -813,7 +958,7 @@ scan_roadmap() {
                 emit "$kpre$table" "$ipre$item" unchecked "(${#CELLS[@]} cells) $extra"
                 continue
             fi
-            if [ -z "$(trim "$cell")" ] || [ "$LIST_POINTERS" = true ]; then
+            if [ -z "$(trim "$cell")" ] || [ "$LIST_POINTERS" = true ] || [ "$LIST_PATHS" = true ]; then
                 emit "$kpre$table" "$ipre$item" unchecked ""
             else
                 # Read through a pipe, not $(...), so a signal is handled
@@ -836,11 +981,168 @@ scan_roadmap() {
         else
             prev_para=true
         fi
+        if [ -z "$part" ]; then
+            # A path or Across paragraph (Paths in the header). A bold
+            # span still open goes on through paragraph text only, and so
+            # does the text of a group's opening paragraph.
+            if [ "$ptext_on" = true ]; then
+                if [ "$prev_para" = false ]; then ptext_on=false
+                elif [ "$ptext_to" = acc ]; then ACC_TEXT+="${ACC_TEXT:+ }$(trim "$raw")"
+                else GTEXT[-1]+="${GTEXT[-1]:+ }$(trim "$raw")"; fi
+            fi
+            if [ "$bold_on" = true ]; then
+                if [ "$prev_para" = true ]; then bold+=" $(trim "$raw")"; else bold_unclosed; fi
+            elif [ "$open_ok" = true ] && [ "$prev_para" = true ] && [[ "$raw" == '**'* ]]; then
+                bold="${raw:2}"; bold_on=true; bold_at="${#ROWS[@]}"
+            fi
+            if [ "$bold_on" = true ] && [[ "$bold" == *'**'* ]]; then
+                bold_on=false
+                path_mark "${bold%%\*\**}" "$bold_at" "${bold#*\*\*}"
+            fi
+            # Only a blank line, a heading or a thematic break lets the
+            # next line open a paragraph; text and list items do not.
+            if [[ "$raw" =~ ^[[:space:]]*$ ]] || [[ "$raw" =~ ^\ {0,3}# ]] || [[ "$raw" =~ $THEMATIC_RE ]]; then
+                open_ok=true
+            else
+                open_ok=false
+            fi
+        fi
         if [[ "$raw" =~ ^[[:space:]]*[-*+][[:space:]]+\[[[:space:]xX]\][[:space:]]*(.*)$ ]]; then
             emit "${kpre}format" "$ipre${BASH_REMATCH[1]}" unchecked ""
         fi
     done < "$file"
+    bold_unclosed
     SCAN_ROWS=$(( ${#ROWS[@]} - start_rows - nested + pointers ))
+}
+
+# bold_unclosed: ends a bold span still open at a paragraph's start (the
+# caller's bold_on and bold). One that would have named a path or Across
+# but never closed opens no group: a format row says so, so the path is
+# never dropped unseen.
+bold_unclosed() {
+    local t
+    local -a w
+    [ "$bold_on" = true ] || return 0
+    bold_on=false
+    read -ra w <<< "$bold"
+    t="${w[*]-}"
+    t="(a bold **${w[*]:0:6} at a paragraph's start never closes: it opens no group)"
+    if [[ "${w[*]-}" =~ ^Path\ [0-9]+ ]]; then
+        emit format "$t" unchecked ""
+    elif [[ "${w[*]-}" == "Across the paths"* ]]; then
+        # An Across paragraph matters only beside a path: group_rows shows
+        # this row only then, so a section with no path keeps its rows.
+        PENDING+=("${#ROWS[@]}"$'\t'"format"$'\t'"${t//$'\t'/ }"$'\t'"unchecked"$'\t'"none"$'\t'"$TODAY")
+    fi
+}
+
+# path_mark <bold text> <row index> <text after the bold>: when the bold
+# text at a paragraph's start names a path or Across, note the group in
+# GMARKS ("<row index>\t<path|across>\t<name>"), its bold text in GRAW
+# and its paragraph's text in GTEXT (the rest of the paragraph is read in
+# while ptext_on). The first `Acceptance case` paragraph notes the group
+# it sits in, the last one opened above it (ACC_GROUP), and its text after
+# the bold (ACC_TEXT, read in the same way). Anything else is
+# not a group.
+path_mark() {
+    local t
+    local -a w
+    read -ra w <<< "$1"
+    t="${w[*]-}"
+    t="${t%[.,]}"
+    if [[ "$t" =~ ^Path\ [0-9]+ ]]; then
+        GMARKS+=("$2"$'\t'path$'\t'"$t")
+    elif [[ "$t" == "Across the paths"* ]]; then
+        # The group is `Across the paths` whatever follows; group_rows
+        # shows more words, never takes them into its name.
+        GMARKS+=("$2"$'\t'across$'\t'"Across the paths")
+    else
+        if [ "$t" = "Acceptance case" ] && [ "$ACC_SEEN" = false ]; then
+            ACC_SEEN=true
+            [ "${#GMARKS[@]}" -eq 0 ] || ACC_GROUP="${GMARKS[-1]#*$'\t'*$'\t'}"
+            ACC_TEXT="$(trim "$3")"; ptext_to=acc; ptext_on=true
+        fi
+        return 0
+    fi
+    GRAW+=("$t")
+    GTEXT+=("$(trim "$3")")
+    ptext_to=group; ptext_on=true
+}
+
+# first_sentence <text>: up to the first period followed by white space or
+# the end, or a period and a closing double quotation mark followed by
+# either (a quoted sentence); all of it when there is none.
+first_sentence() {
+    local t="$1" i n="${#1}" c
+    for ((i = 1; i < n; i++)); do
+        [ "${t:i:1}" = . ] || continue
+        c="${t:i+1:1}"
+        if [ -z "$c" ] || [[ "$c" == [[:space:]] ]]; then printf '%s' "${t:0:i+1}"; return; fi
+        if [ "$c" = '"' ]; then
+            c="${t:i+2:1}"
+            if [ -z "$c" ] || [[ "$c" == [[:space:]] ]]; then printf '%s' "${t:0:i+2}"; return; fi
+        fi
+    done
+    printf '%s' "$t"
+}
+
+# group_rows: put a path row ahead of each group's rows in ROWS (the
+# root's rows only; it runs before anything else is added). Nothing when
+# no path paragraph was found: an Across paragraph alone opens no group.
+group_rows() {
+    local m i k n="${#ROWS[@]}" lo hi c pn p first=-1 has_path=false across=false
+    local -a at=() kind=() name=() cnt=() out=()
+    local -A seen=()
+    for m in ${GMARKS[@]+"${GMARKS[@]}"}; do
+        at+=("${m%%$'\t'*}"); m="${m#*$'\t'}"
+        kind+=("${m%%$'\t'*}"); name+=("${m#*$'\t'}")
+        [ "${kind[-1]}" != path ] || has_path=true
+    done
+    [ "$has_path" = true ] || return 0
+    for ((k = 0; k < ${#at[@]}; k++)); do
+        lo="${at[k]}"
+        if [ $((k + 1)) -lt "${#at[@]}" ]; then hi="${at[k+1]}"; else hi="$n"; fi
+        c=0
+        for ((i = lo; i < hi; i++)); do [[ "${ROWS[i]}" == line$'\t'* ]] && c=$((c + 1)); done
+        cnt+=("$c")
+    done
+    for ((i = 0; i < at[0]; i++)); do
+        if [[ "${ROWS[i]}" == line$'\t'* ]]; then first="$i"; break; fi
+    done
+    k=0
+    for ((i = 0; i <= n; i++)); do
+        [ "$i" -ne "$first" ] || out+=("path"$'\t'"no path"$'\t'"true"$'\t'"lines"$'\t'"$TODAY")
+        while [ "$k" -lt "${#at[@]}" ] && [ "${at[k]}" -eq "$i" ]; do
+            if [ "${cnt[k]}" -gt 0 ] && [ "${kind[k]}" = path ]; then m=$'true\tlines'
+            elif [ "${cnt[k]}" -gt 0 ]; then m=$'true\tgroup'
+            elif [ "${kind[k]}" = path ]; then m=$'unchecked\tno lines (no design yet)'
+            else m=$'unchecked\tno lines'; fi
+            out+=("path"$'\t'"${name[k]//$'\t'/ }"$'\t'"$m"$'\t'"$TODAY")
+            # Two paths with one number share a summary label (P<n>): shown,
+            # never told apart by guessing.
+            if [ "${kind[k]}" = path ] && [[ "${name[k]}" =~ ^Path\ ([0-9]+) ]]; then
+                pn="${BASH_REMATCH[1]}"
+                [ -z "${seen[$pn]:-}" ] \
+                    || out+=("format"$'\t'"(path number $pn is used twice: ${name[k]//$'\t'/ }; the summary's P$pn counts are not told apart)"$'\t'"unchecked"$'\t'"none"$'\t'"$TODAY")
+                seen[$pn]=1
+            fi
+            # Likewise a second Across paragraph (two `across` labels), and
+            # bold text that goes on after `Across the paths`.
+            if [ "${kind[k]}" = across ]; then
+                [ "$across" = false ] \
+                    || out+=("format"$'\t'"(a second Across the paths paragraph; the summary's two across counts are not told apart)"$'\t'"unchecked"$'\t'"none"$'\t'"$TODAY")
+                across=true
+                [ "${GRAW[k]}" = "Across the paths" ] \
+                    || out+=("format"$'\t'"(the Across paragraph's bold text is not just \"Across the paths\": ${GRAW[k]//$'\t'/ })"$'\t'"unchecked"$'\t'"none"$'\t'"$TODAY")
+            fi
+            k=$((k + 1))
+        done
+        for p in ${PENDING[@]+"${PENDING[@]}"}; do
+            [ "${p%%$'\t'*}" -ne "$i" ] || out+=("${p#*$'\t'}")
+        done
+        [ "$i" -eq "$n" ] || out+=("${ROWS[i]}")
+    done
+    ROWS=("${out[@]}")
 }
 
 # real_path <absolute path>: the path with its directory resolved, and the
@@ -930,10 +1232,32 @@ follow_pointer() {
 
 POINTERS=()
 FOLLOWED=()
+ACC_SEEN=false; ACC_GROUP=""; ACC_TEXT=""
 [ "$SUMMARY" = false ] || FOLLOW=false
 ROADMAP_STATE="$(roadmap_state "$ROADMAP")"
 if [ "$ROADMAP_STATE" = found ]; then
     scan_roadmap "$ROADMAP" ""
+    group_rows
+fi
+
+if [ "$LIST_PATHS" = true ]; then
+    k=0; g=0
+    for r in ${ROWS[@]+"${ROWS[@]}"}; do
+        fields "$r"
+        [ "$F_K" = path ] || continue
+        g=$((g + 1))
+        if [ "$F_I" = "no path" ]; then
+            printf 'group\tno path\t\n' || exit 1
+        else
+            printf 'group\t%s\t%s\n' "$F_I" "$(first_sentence "${GTEXT[k]//$'\t'/ }")" || exit 1
+            k=$((k + 1))
+        fi
+    done
+    if [ "$ACC_SEEN" = true ]; then
+        [ "$g" -gt 0 ] || ACC_GROUP=""
+        printf 'acceptance\t%s\t%s\n' "$ACC_GROUP" "${ACC_TEXT//$'\t'/ }" || exit 1
+    fi
+    exit 0
 fi
 
 if [ "$ROADMAP_STATE" = missing ]; then
