@@ -99,3 +99,45 @@ Plan from the owner's Q1-Q4 answers as recorded, without reopening them. The iss
 **Plan**: `.agent/work-plans/issue-545/plan.md` at `354d2251`
 
 Single-PR plan: a stdlib review_viewer.py whose logic (notes format, line ranges, light-format spans, changed lines, display check) is pure and unit-tested, with a thin tkinter layer; design section and script_reference row in the same PR.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-23 21:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #545 — A simple local viewer for reviewing a draft and sending annotations back to the agent
+**Plan**: `.agent/work-plans/issue-545/plan.md` at `354d2251`
+**Branch**: `feature/issue-545`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One script, one test module plus wrapper, two doc edits; a fallback split (side list and changes-only to a second PR) is named. |
+| Issue alignment | Needs work | All four owner answers and every Checkpoint mechanism decision are carried. Serves: "Trust, control and information (the owner reviews drafts and records approval) and "A safeguard has to earn its cost" in `README.md#workspace-goals`; `docs/design.md#review-loop-and-timeline`" (goal section exists; the safeguard line is a bullet under Quality of the work; anchor exists). Gaps: the `Tk()` failure path (finding 2) and what text the snapshot holds (finding 1). |
+| File targeting | Good | `test_progress_read.py` is a `ROOT_READERS` key (`[test_progress_read.py]=".agent/scripts"`), so `test_review_viewer.py` will almost certainly need the same entry; the plan already lists the file conditionally and verifies by running the suite. |
+| Consequences | Good | Script row, design section, hook-scope map, exec bit, skill wiring deferred to a follow-up as the Checkpoint decided. |
+| Principle alignment | Good | Pure core and thin GUI (Test what breaks); design section in the same PR; prior art (trial, `progress_read.py` pattern) named with rejections. `parse_notes` is borderline Only what's needed (suggestion 3). |
+| ADR compliance | Good | 0003 (notes path is an argument), 0009 (stdlib), 0013 (no new entry type), 0017 (step 5). |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[Issue alignment]** — The snapshot is defined as "the shown text", and the passage quote is unspecified, but the display text differs from the file: table rows are padded to align pipes (step 1, `light_format_spans`). If the `.reviewed` snapshot holds display text and round two diffs the raw draft against it, every table line shows as changed (owner Q3 "highlight what changed" becomes wrong); if both sides are display text, a change to one cell re-pads and marks the whole table. Likewise the trial quoted `st.get(a, b)`; with padding the blockquote no longer matches the file text the agent edits. Resolution: state that the snapshot is the raw draft text as read at launch, `changed_lines` runs on raw texts, and the passage quote is taken from the raw file (lines a-b, or the selected span mapped back to file columns), and add a test with a table row so a display-text snapshot fails it.
+2. **[Issue alignment]** — The Checkpoint (and issue review) require exit 2 when `Tk()` fails, not only when the env vars are missing or the import fails. `check_display` covers env and import only; step 3's "Unhandled GUI exceptions after `Tk()` succeeds" implies the `Tk()` failure is handled but no step says so, and the tests list only the empty-environment case. This path is real: a Wayland-only session (`WAYLAND_DISPLAY` set, no `DISPLAY`/XWayland) or a dead forwarded X display passes the env check and then raises `TclError` with a traceback. Resolution: catch `tkinter.TclError` from `Tk()` and exit 2 with the one-line message; test it with a bogus `DISPLAY` (e.g. `DISPLAY=:9999`) in the subprocess test.
+
+**Suggestions (do not by themselves need another plan round)**
+
+3. **[Principle alignment]** — `.prev` rename: sound, keep it. It keeps the host's "read the notes after exit" reading only this round (owner Q3), loses nothing on a relaunch before the host read the old file, and covers a chat-fallback notes file too. Make it happen at the first write (as the plan says), not at start, so a window killed before any change leaves the old file in place; use `os.replace` so an existing `.prev` is overwritten (one level of history is enough, since the host acts between rounds). Given the rename, `parse_notes` and "the file is read at start" serve nothing at run time; keep a parser only if it is used for the writer round-trip test, and say so, or drop it.
+4. **[Issue alignment]** — `snapshot_path` assumes the notes path ends in `.notes.md`; say what happens otherwise (e.g. append `.reviewed` to the full notes path) and test it. Also say what a `--previous` path that does not exist does (exit 1 with one line, like a missing draft, seems right).
+5. **[Consequences]** — When a launcher later puts notes under `.agent/work-plans/issue-<N>/reviews/` (tracked, not ignored), the `.reviewed` and `.prev` files land there too. Not this PR's change, but the follow-up issue for skill wiring should note it.
+
+### Summary
+
+The plan carries the owner's four answers and the host's mechanism decisions faithfully and is well structured. Two small gaps would make the implementation wrong in reachable cases: the snapshot and passage must be raw file text (display padding breaks the changes-only highlight), and a `Tk()` failure must exit 2 rather than traceback. Both are one-line plan edits plus a test each.
+
+### Recommended Actions
+
+- [ ] Specify that the `.reviewed` snapshot, the `changed_lines` inputs and the noted passage use the raw draft text, not the padded display text; add a table-row test.
+- [ ] Add `Tk()` `TclError` handling to the exit-2 path and a subprocess test with an unreachable `DISPLAY`.
