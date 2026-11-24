@@ -3,54 +3,80 @@ import pytest
 from repos_manifest import cli
 from repos_manifest.cli import main
 
+# A manifest in the earlier format, in the shape of the project11 manifest it was used for: no
+# `repositories:` and no `base:` key, its repos under `repos:` by layer, each with a `ref`.
+EARLIER_FORMAT = """\
+layers:
+  - core
+repos:
+  core:
+    a:
+      url: https://example.org/a.git
+      ref: jazzy
+roles:
+  dev:
+    subtract: []
+    add: []
+"""
 
-def test_cli_resolve_writes_files(fixtures_dir, tmp_path, capsys):
-    manifest = fixtures_dir / "p11" / "manifest.yaml"
+# A manifest in the earlier format that gives no repos of its own, only the one it extends.
+EARLIER_FORMAT_EXTENDS = """\
+extends:
+  path: base.yaml
+layers: [core]
+optional_layers: [core]
+"""
+
+
+def _argv(command, manifest, out):
+    if command == "show":
+        return ["show", str(manifest), "--role", "dev", "--distro", "jazzy"]
+    argv = [command, "--manifest", str(manifest), "--role", "dev", "--distro", "jazzy"]
+    return argv + (["--out", str(out)] if command == "resolve" else [])
+
+
+@pytest.mark.parametrize(
+    "text,keys",
+    [(EARLIER_FORMAT, "`repos:`"), (EARLIER_FORMAT_EXTENDS, "`extends:`, `optional_layers:`")],
+)
+@pytest.mark.parametrize("command", ["resolve", "show", "validate"])
+def test_a_manifest_in_the_earlier_format_is_refused_naming_the_format(
+    command, text, keys, tmp_path, capsys, monkeypatch
+):
+    # The tool reads one format. A manifest with no `repositories:` or `base:` key and the keys
+    # of the earlier format is refused, naming that format and the specification, and nothing
+    # is written.
+    (tmp_path / "old.yaml").write_text(text)
+    monkeypatch.chdir(tmp_path)
     out = tmp_path / "out"
-    rc = main(
-        [
-            "resolve",
-            "--manifest",
-            str(manifest),
-            "--role",
-            "dev",
-            "--distro",
-            "jazzy",
-            "--out",
-            str(out),
-        ]
-    )
-    assert rc == 0
-    assert (out / "core.repos").is_file()
+    assert main(_argv(command, "old.yaml", out)) == 1
     captured = capsys.readouterr()
-    assert "wrote" in captured.out
-
-
-def test_cli_resolve_unknown_role_errors(fixtures_dir, tmp_path, capsys):
-    manifest = fixtures_dir / "p11" / "manifest.yaml"
-    out = tmp_path / "out"
-    rc = main(
-        [
-            "resolve",
-            "--manifest",
-            str(manifest),
-            "--role",
-            "nope",
-            "--distro",
-            "jazzy",
-            "--out",
-            str(out),
-        ]
+    assert captured.out == ""
+    assert captured.err == (
+        f"ERROR: old.yaml: is in the earlier format (it has {keys} and no `repositories:`);"
+        " this tool reads it only in the format of the specification, docs/spec.md\n"
     )
-    assert rc == 1
-    assert "unknown role" in capsys.readouterr().err
+    assert not out.exists()
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["old.yaml"]
 
 
-def test_cli_validate_clean(fixtures_dir, capsys):
-    manifest = fixtures_dir / "p11" / "manifest.yaml"
-    rc = main(["validate", "--manifest", str(manifest), "--role", "dev", "--distro", "jazzy"])
-    assert rc == 0
-    assert "no dependency violations" in capsys.readouterr().out
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["resolve", "--layout", "manifest-dir"],
+        ["resolve", "--layout", "flat"],
+        ["resolve", "--cache-dir", "c"],
+        ["validate", "--cache-dir", "c"],
+    ],
+)
+def test_the_options_of_the_earlier_format_are_not_accepted(argv, tmp_path, capsys):
+    rest = ["--manifest", str(tmp_path / "m.yaml")]
+    rest += ["--out", str(tmp_path / "out")] if argv[0] == "resolve" else []
+    with pytest.raises(SystemExit) as excinfo:
+        main(argv + rest)
+    assert excinfo.value.code == 2
+    assert f"unrecognized arguments: {' '.join(argv[1:])}" in capsys.readouterr().err
+    assert not (tmp_path / "out").exists()
 
 
 def test_cli_manifest_error_reported(tmp_path, capsys):
@@ -70,39 +96,27 @@ def test_cli_manifest_error_reported(tmp_path, capsys):
         ]
     )
     assert rc == 1
-    assert "ERROR" in capsys.readouterr().err
+    assert capsys.readouterr().err == f"ERROR: {bad}: has no `repositories:`\n"
 
 
+# `show` is left out: it reports an OSError of its own (``reporting_oserror``).
 @pytest.mark.parametrize("command", ["resolve", "validate"])
 @pytest.mark.parametrize("error", [ValueError, KeyError, TypeError, OSError, RuntimeError])
 def test_cli_any_other_exception_is_one_fixed_line(command, error, tmp_path, capsys, monkeypatch):
-    # The backstop: a route the loader does not turn into a ManifestError prints the exception's
-    # type only, never its text (which can quote manifest content) and never a traceback.
+    # The backstop: a route the reader does not turn into a ManifestError prints the exception's
+    # type only, never its text (which can quote manifest content) and never a traceback. The
+    # reader is the first thing each command calls, so the manifest need not exist.
     marker = "M4RK3R-s3cr3t"
 
     def boom(*_args, **_kwargs):
         raise error(f"value {marker}")
 
-    monkeypatch.setattr(cli, "resolve_chain", boom)
-    argv = [command, "--manifest", str(tmp_path / "m.yaml"), "--role", "dev", "--distro", "jazzy"]
-    if command == "resolve":
-        argv += ["--out", str(tmp_path / "o")]
-    rc = main(argv)
+    monkeypatch.setattr(cli, "read_manifest", boom)
+    rc = main(_argv(command, tmp_path / "m.yaml", tmp_path / "o"))
     captured = capsys.readouterr()
     assert rc == 1
     assert captured.err == f"ERROR: internal error ({error.__name__})\n"
     assert marker not in captured.out
-
-
-def test_cli_resolve_out_that_cannot_be_created_is_one_line(fixtures_dir, tmp_path, capsys):
-    # Round 4: a FileNotFoundError traceback from the emitter.
-    (tmp_path / "a-file").write_text("")
-    out = tmp_path / "a-file" / "out"
-    manifest = fixtures_dir / "p11" / "manifest.yaml"
-    argv = ["resolve", "--manifest", str(manifest), "--role", "dev", "--distro", "jazzy"]
-    rc = main(argv + ["--out", str(out), "--cache-dir", str(tmp_path / "cache")])
-    assert rc == 1
-    assert capsys.readouterr().err == f"ERROR: --out {out}: cannot be written (Not a directory)\n"
 
 
 # --- show ------------------------------------------------------------------------------------

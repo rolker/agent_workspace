@@ -1,7 +1,7 @@
 """Loading a manifest's YAML safely, and the character rules for its text.
 
-Shared by both readers: the earlier one (``schema.py``) and the one for the format in
-``docs/spec.md`` (``manifest.py``). Loading never runs code: the loader is PyYAML's safe loader,
+Used by the reader for the format in ``docs/spec.md`` (``manifest.py``) and by the other modules
+that read text from a manifest. Loading never runs code: the loader is PyYAML's safe loader,
 which also refuses aliases and repeated keys.
 """
 
