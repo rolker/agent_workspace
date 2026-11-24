@@ -503,3 +503,24 @@ Each suite was run on its own from the worktree. The full pre-commit pass is lef
   - The roadmap path is matched literally, and the names it may not use are refused.
   - The Target stays `proposed`.
   - Each change-log row keeps its own line count; the merge row has the merged file's count.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-23 22:13 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a6ccd3d48db033a11, resume 3 of 3)
+
+**Branch**: feature/issue-551 at `bdcc27e3`
+**Base**: main
+**Depth**: Deep (reason: round 4 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 4 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Scope: the round-3 review's two suggestions and the fix diff since `28f5462f` (6f9732f5). Cross-model: skipped (round-4 convergence check, per handoff). Suites run: test_project_documents 180/0, test_update_roadmap 16/0.
+
+- Round-3 suggestion 1 (symlinked fallback roadmap): fixed. `update_roadmap.sh` edits through a link only when its target is one of `ROADMAP.md`, `docs/ROADMAP.md`, `docs/roadmap.md` inside `--root` (all three in the bookkeeping list); a link to any other in-root path is edited as on main (the copy replaces the link, reported under the candidate's own name, which is bookkeeping) with a message; one leading outside keeps the round-3 behaviour. The new `candplan` test (`ROADMAP.md -> notes/plan.md`) and the existing `candin` test cover both branches.
+- Round-3 suggestion 2 (unquoted `case` pattern): my round-3 reading was wrong. At `28f5462f` the pattern was already `*$'\n'"$line"$'\n'*` (`_project_registry.sh:1765`), so the warning text matched literally; no code change was needed. The new test (warnings `aZZb`, `a*b`, `a*b`, `a?b` print three lines, once each) pins it.
+
+### Findings
+- [ ] No issues found. LGTM.
