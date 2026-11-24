@@ -326,3 +326,13 @@ Scope: the round-2 review's 7 findings and the fix diff since `0c509811` (7 comm
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 22:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (round-3 pre-push review approved with nothing open; the host's full pre-commit pass passed, exit 0)
+**After**: publish
+**Decision**: publish
+
+Pushing and opening the pull request. The GUI window has not been run on a display; that is stated in the Decision summary and offered to the owner before the merge.
