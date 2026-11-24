@@ -166,3 +166,76 @@ Revise the plan to answer the Plan Review at f1444d9b. Host decisions on its fin
 **Plan**: `.agent/work-plans/issue-581/plan.md` at `a3b24fcd`
 
 Revision answering the Plan Review: the helper decides locally first and asks gh only when local facts leave a choice; in a package worktree the .worktree-repos header is the expected repository (no set-default to a fork); each code block re-asks the helper; a bare number means the checkout's repository, other repositories as owner/repo#N; with no GitHub remote the owner gives the issue text; contract and per-exit skill behaviour given as tables.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-24 13:26 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a24d46bf9103a8049, resume 1 of 3)
+**Verdict**: ready
+
+**Issue**: #581 — review-issue: make owning-repo resolution cwd-independent (defer follow-up from #473)
+**Plan**: `$WS_ROOT/.agent/work-plans/issue-581/plan.md` at `a3b24fcd`
+**Branch**: `feature/issue-581`
+
+Round 2. Each of the ten findings of the review at f1444d9b is checked against the Checkpoint's decisions (After: plan, Decision: revise).
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Still one pull request, about 9 files. `dispatch_phase.sh` and `_worktree_helpers.sh` are not edited. |
+| Issue alignment | Good | Serves: "Quality of the work: `docs/design.md#review-loop-and-timeline`" (checked in round 1). Approach 3 reports the acceptance boxes one by one; the precondition box is retired. Offline single-remote runs keep working (contract case 2). |
+| File targeting | Good | As in round 1. It adds review-issue step 8's wording and the Usage/Overview lines. |
+| Consequences | Good | The fork_parity rows are checked. The other skills are named in the pull request, and the owner decides at the merge, as the Checkpoint said. |
+| Principle alignment | Good | The ordinary case makes no `gh` call; the safeguard prints what it chose. |
+| ADR compliance | Good | ADR-0012: the header is the expected repository, read as `resolve_issue_dir` reads it. ADR-0010: no new git-bug path. ADR-0016: any non-zero exit, including 127, stops the skill. A small condition is left (finding A). |
+| ROS conventions | N/A | Workspace plan. |
+
+### Round-1 findings
+
+1. Offline: answered. Decision step b and contract case 2 make no `gh` call and get a test with no gh on PATH. Exit 5 never blocks review-plan.
+2. Package worktree: answered. Step a reads the header as `resolve_issue_dir` does (`*/*#*` only). Case 7's message offers `gh repo set-default H` and never origin's slug. The fork-origin sandbox case is planned.
+3. Shell state: answered. Each block repeats the head, a pin checks it, and a mutation case proves the pin fails without it.
+4. Acceptance: answered. A bare number means the checkout's repository (the session-root rule); the scenario is run as `owner/repo#N`; box (b) is retired.
+5. No GitHub remote: answered. The owner gives the text. Each skill's exit-4 behaviour is given, including plan-task's type, issue line and draft pull request, and review-issue's step 8.
+6. Exit 3's message names `owner/repo#N`. 7. Any other non-zero exit stops the skill. 8. Line 182 becomes a local comparison and is pinned. 9. `GH_HOST` is pinned, stdin is closed and a `GH_REPO` case is added. All answered.
+10. Answered as the Checkpoint decided: named in the pull request, and the owner decides at the merge.
+
+### The planner's three departures
+
+- (a) Accepted. Taking the header only when it is `owner/repo#<N>` for this number matches `resolve_issue_dir`, which checks only when the header is `*/*#*`. Dispatch never meets another number, because it resolves the worktree from that number. Letting origin decide otherwise is right. One condition is missing (finding A).
+- (b) Accepted. Any `gh-resolved` setting triggers the `gh` call: one call, plus exit 5 when offline, but only in a checkout where `gh repo set-default` was run. In practice that is a checkout with several remotes, which asks `gh` anyway. A sharper rule is optional, not required: read the setting locally (`base` gives that remote's slug; `owner/repo` gives itself) and decide locally when the result equals origin.
+- (c) Accepted. On exit 5 the repository is undecided and nothing is posted (review-issue records the review with no comment; plan-task skips the draft pull request), so asking the owner for the text carries no risk of the wrong repository. The case needs wording for a dispatched phase (finding C).
+
+### The local decision checked
+
+The local "origin, no `gh` call" rule does not name a wrong repository in any setting checked:
+- A `gh repo set-default` run earlier writes `remote.<r>.gh-resolved` into the repository's config, which a linked worktree shares. That triggers the `gh` call.
+- An `upstream` on another host: `extract_gh_slug` gives nothing for it, and `gh` run with `GH_HOST=github.com` filters it out too. Every skill call now carries `-R`, so `gh`'s own choice of remote no longer matters.
+- An enterprise origin: `extract_gh_slug` accepts only github.com, so the result is exit 4, as in `worktree_create.sh`.
+- An enterprise `upstream` beside a github.com origin: decided locally as origin; the calls carry `-R`. The one leak left is `GH_HOST` in the environment (finding D).
+
+### New findings
+
+A. **[ADR compliance — medium]** The header must count only when the cwd's checkout is the manifest's issue checkout.
+   - Step a takes the header for any checkout below a manifest, including a sibling repository's checkout. There, a bare matching number gives exit 2 with the advice `gh repo set-default H`, which would point the sibling's `gh` at an unrelated repository.
+   - Fix: take the header only when the cwd's top-level is `issue_checkout_of "$wt" <N>`, which `issue_checkout_guard` already compares; otherwise origin decides.
+   - Find the manifest with `_wpd_enclosing_manifest` (`_resolve_work_plans_dir.sh`) instead of a new walk.
+   - Add a sibling-checkout test case.
+B. **[Approach — low]** The contract table does not cover the package worktree's top folder, which is not a git repository but holds a matching header. Under A it falls to exit 3; the message there should name `H#N`, and a test should cover it.
+C. **[Approach — low]** A dispatched phase cannot ask the owner. On exit 4 or 5 the skill text must say that a dispatched review-issue or plan-task ends with **Status**: partial, naming the text it needs, and the host asks. How run-issue then passes the text is outside this issue; name it in the pull request.
+D. **[Approach — low]** The skills' `-R "$_REPO"` takes its host from `GH_HOST` when that is set in the environment, while the helper's slug is always github.com. Write `-R "github.com/$_REPO"` (prior art: onboard-project's `gh pr create -R github.com/<owner>/<repo>`), or have the helper print that form, and pin it.
+E. **[Approach — low]** The guard line's text, "no repository: stop", is wrong for exit 4, which is an ordinary case. It should print the exit code and send the reader to the per-exit table.
+
+### Summary
+
+All ten round-1 findings are answered as the Checkpoint decided. The three departures are sound. What is left (A to E) is one condition, one message and some wording, each with a test or pin. The implementer can take them as instructions without a third plan round.
+
+### Recommended Actions
+
+- [ ] Apply the header only when the cwd's top-level is the manifest's issue checkout (`issue_checkout_of`), find the manifest with `_wpd_enclosing_manifest`, and test a sibling checkout
+- [ ] Cover the package worktree's top folder (exit 3 naming `H#N`) in the table and tests
+- [ ] On exit 4 or 5, a dispatched phase ends with Status partial and names the issue text it needs; say so in the skill text and the pull request
+- [ ] Name the host on every skill `gh` call (`-R "github.com/$_REPO"`) and pin it
+- [ ] Make the guard's message name the exit code and point to the per-exit table
