@@ -2730,6 +2730,15 @@ test_tool_route_order() {
     assert_eq "validate: exit 1" "1" "$rc"
     assert_contains "validate names role= and distro= on the registry line" "carries role=dev distro=fakefox" "$out"
     assert_contains "validate names source and how to remove it" "project_setting.sh unset toolsys source" "$out"
+    local verb
+    for verb in setup sync; do
+        rc=0; out="$(run_tool "$sb" "$sb" "$verb" 2>&1)" || rc=$?
+        assert_eq "$verb with source set: exit 0" "0" "$rc"
+        assert_not_contains "$verb with source set: not refused" "source no longer selects a route" "$out"
+        assert_eq "$verb with source set: the tool's sync ran in the root" \
+            "TOOL_RAN_IN:$root ARGS:sync --distro fakefox EXIT:0" "$(cat "$sb/tool.log" 2>/dev/null)"
+        rm -f "$sb/tool.log"
+    done
     printf 'bootstrap_url=file:///nonexistent/bootstrap.yaml\n' > "$sb/.agent/projects.d/toolsys"
     rc=0; out="$(run_tool "$sb" "$sb" setup 2>&1)" || rc=$?
     assert_eq "setup with bootstrap_url set: the tool's sync, exit 0" "0" "$rc"
