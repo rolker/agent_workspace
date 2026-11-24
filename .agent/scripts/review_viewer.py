@@ -720,7 +720,8 @@ class ViewerApp:  # pragma: no cover - needs a display; smoke-tested under xvfb
         for line, a, b, tag in fmt.spans:
             st.tag_add(tag, f"{line}.{a}", f"{line}.{b}")
         for line in sorted(self.session.changed):
-            st.tag_add("changed", f"{line}.0", f"{line}.0 lineend")
+            # Through the newline, so a changed blank line still shows.
+            st.tag_add("changed", f"{line}.0", f"{line}.0 lineend +1c")
         # Tags configured after the widget was made sit above "sel"; the
         # selection must stay visible over every one of them, so it goes last.
         for tag in ("changed", "noted", "flash", "sel"):
