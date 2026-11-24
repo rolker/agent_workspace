@@ -756,3 +756,13 @@ Scope: the merge of origin/main (pull request 568, issue 551) into the branch. C
 "Merge (Recommended)"
 
 Asked at the merge checkpoint for pull request 597 (part 2 of 3: the cut of the adapter's manifest route) after the Integrated Review at d53f7f7f with nothing open (its one box, a "No open findings." line, was ticked by the host as a placeholder, not a finding). The dialog gave: main merged into the branch and the two document conflicts resolved, with no code changed; the re-review of that merge approved with no findings; all 10 CI checks passing on the pushed head aa47b9cd, the pull request mergeable and main unmoved since; the three low cold-read findings still deferred to issue 599 as he chose; the outside reviewers (Codex in pre-push rounds 1 and 2 and as the cold read, Gemini failed in rounds 1 and 2, Copilot requested and not available for lack of quota, none on the re-review of the merge); and that the issue stays open with part 3 next. The other choices offered were hold and stop.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 12:10 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan checkpoint after a merge, under run-issue step 13's conditions: the plan is unchanged since its last review, 6530c842 reviewed at 99202142, and it names a part not yet delivered)
+**After**: plan
+**Decision**: proceed
+
+Pull request 597 (part 2 of 3, the cut of the adapter's manifest route) merged on 2026-11-24. The issue is still open because part 3 is to come. Delivered: part 1 (pull request 571) and part 2 (pull request 597). Not delivered: part 3, the removal of the old reader from `tools/repos-manifest`, which closes the issue. The third Plan Review found part 3 sound enough to follow part 2 and left no finding on it. The owner chose on 2026-11-24 that part 3 comes next ("Part 3 first"). The implement handoff tells the implementer that part 2 as merged differs from the plan's text in places (the fix rounds added the `registration_refused` list, rewrote the refusal message and added the section "A root that sets `source`" to `docs/manifest/design.md`), so every file and line the plan names for part 3 is re-read from this branch.
