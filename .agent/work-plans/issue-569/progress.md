@@ -1054,7 +1054,7 @@ Codex ran (`cross_model_review.sh --pr 603 --agents codex`, AGENT_TIMEOUT=3000, 
 **CI**: all-pass
 
 ### Findings
-- [ ] (suggestion, Local Review @ `7de6d53`) The module docstring in `tools/repos-manifest/src/repos_manifest/cli.py` (line 6, printed by `--help`) says "Every command reads a manifest in the format of docs/spec.md", but `build` works from its own saved resolution (`build.py`: "Nothing is resolved again"); reword it as "Every command that reads a manifest ...", as already done in the README and the tool's design — `tools/repos-manifest/src/repos_manifest/cli.py`
+- [x] (suggestion, Local Review @ `7de6d53`) The module docstring in `tools/repos-manifest/src/repos_manifest/cli.py` (line 6, printed by `--help`) says "Every command reads a manifest in the format of docs/spec.md", but `build` works from its own saved resolution (`build.py`: "Nothing is resolved again"); reword it as "Every command that reads a manifest ...", as already done in the README and the tool's design — `tools/repos-manifest/src/repos_manifest/cli.py` (deferred: owner, 2026-11-24, at the findings checkpoint: Merge, F1 goes into 498; fixed in the first part of issue 498)
 
 ### False positives
 - (Copilot @ `7de6d53`) The `copilot-pull-request-reviewer` check-run reports failure — it is the reviewer's quota notice, not a failure of the change; the 10 other checks (lint, documentation, adapter contract, tests on Python 3.10 and 3.14) pass on the head.
