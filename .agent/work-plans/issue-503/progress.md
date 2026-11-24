@@ -1759,3 +1759,20 @@ Codex (EXIT=0, AGENT_TIMEOUT=3000) read the whole diff: the prompt held all 17 n
 New: test_register_project.sh, a manifest URL with `user:secret@` (bare host and with a path), real run and `--dry-run`: refused, masked, `secret` nowhere on stdout or stderr, no tool run; test_ros2_colcon.sh, `adapter setup --manifest https://user:secret@...` with the stub tool: masked in `Running:`, `secret` nowhere in the output, the tool given it unmasked. Without the fix: test_register_project 302 passed, 4 failed (the four new checks); test_ros2_colcon 1247 passed, 2 failed (masked line, no secret).
 
 Suites run with the fix, each on its own: test_register_project: 306 passed, 0 failed; test_register_session_root: 87 passed, 0 failed; test_ros2_colcon: 1249 passed, 0 failed, 0 skipped; test_script_tests_hook_scope: 366 passed, 0 failed; test_adapter: 260 passed, 0 failed; test_fresh_clone_no_project: 26 passed, 0 failed; test_project_registry: 425 passed, 0 failed; test_worktree_create: PASS 112, FAIL 0; test_project_file: 701 passed, 0 failed; test_project_integration_audit: 286 passed, 0 failed; test_skill_paths: 213 passed, 0 failed; test_validate_workspace_stale: 126 passed, 0 failed. shellcheck --severity=warning clean on the four changed files; the adapter does not name register_project.sh. The full pre-commit pass is left to the host.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 15:04 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (manifest-work rule: fix pass for the cold read's must-fix, no re-review round)
+**After**: publish
+**Decision**: publish
+
+Written by the host where `next` would start a PR-mode re-review (`action=review-code` after the fix pass at f880cbc2), under the lighter review level the owner approved for the manifest work on 2026-11-24. The Codex cold read of pull request 610 (cb054bca) found 1 must-fix and 2 suggestions. The must-fix is fixed in 3a08a7b3: a manifest argument that is a URL with credentials was printed verbatim by the remote-manifest refusal and by the adapter's `Running:` line; both now print it masked, the two other `--manifest` refusals too, with tests that fail without the fix (4 in `test_register_project.sh`, 2 in `test_ros2_colcon.sh`). After a published pull request, CI on the push is the check on a fix pass; the fix goes to the owner with the merge question.
+
+Suggestions open for the one follow-up issue: the eight listed in the earlier publish checkpoint of this part, and two from the cold read:
+
+- A relative manifest path given straight to `adapter setup` is anchored to the caller's directory only if the file exists there; otherwise `init` reads it relative to the root, so a mistyped path could pick up a same-named file in the root. Registration always passes a checked absolute path. — `.agent/project_types/ros2_colcon/adapter.sh`
+- Repeated `--distro` or `--role` options silently use the last value in registration, while `adapter setup` run directly rejects duplicates. — `.agent/scripts/register_project.sh`
+
+Outside reviewers on this pull request: Codex ran on the one pre-push round and as the cold read of the final diff; Gemini skipped, failed earlier today; Copilot skipped, failed earlier today (insufficient remaining quota).
