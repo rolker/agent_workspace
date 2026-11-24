@@ -1520,3 +1520,35 @@ Of Codex's ten points: 1 (config.yaml 0644 with the url), 4 (`tags/x` with a bra
 - [ ] (suggestion) The adapter's git-form hint prints the settings file's `source` url unmasked; the line it replaced did too, so not new, but a token in that url reaches stderr — `.agent/project_types/ros2_colcon/adapter.sh:649`
 - [ ] (suggestion) A stop signal in the moment between `mkdtemp` and its `try`, or between `Popen` returning and its `try`, leaves the temporary clone or a git process behind; narrow windows, not covered by the stop tests — `tools/repos-manifest/src/repos_manifest/fetch.py:106`
 - [ ] (suggestion) The comment above `_rc_refuse_removed_source` still says init reads a local file only and the clone is updated by hand, the opposite of the message below it now — `.agent/project_types/ros2_colcon/adapter.sh:615`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 15:12 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Reviews-read**: none
+
+**PR**: #611 at `8ceb46d5`
+**Sources**: 3 (Local Review (Pre-Push) @ `c2da3363`, read through the host's `## Checkpoint`; Local Review @ `8ceb46d5` (Codex cold read); CI rollup). Copilot: skipped, failed earlier today (insufficient remaining quota).
+**Cross-source confirmations**: 0
+**CI**: pending (6 check-runs pending at 15:12, after about 6 minutes of polling: `Lint (pre-commit)`, `repos-manifest tests (#267 prototype) (Python 3.10)` and `repos-manifest tests (#267 prototype) (Python 3.14)`, each on two workflow runs (45475185677 and 45475197676); `Validate Adapter Contract` and `Validate Documentation` pass on both; no failure so far)
+
+The pre-push review (74c89f53 per the host; entry at `c2da3363`) is stale for the helper because the fix pass changed code, so its ten open suggestions are carried from the entry and the Checkpoint, which lists them as left open on purpose for one follow-up issue at merge (lighter review level approved 2026-11-24: one round, suggestions deferred). Its two must-fix findings are ticked and fixed (`06c3446a`); the fix commits are in the PR. The three Codex-read suggestions were re-read against the code at the head: `adapter.sh:615-620` still says init "reads a local file only" and the clone "the tool never fetches" while the message below it prints the git form; `adapter.sh:645-652` prints `ACTIVE_PROJECT_SOURCE` unmasked; `fetch.py:106` (`mkdtemp` before the `try` at 107) and `fetch.py:253` (`Popen` before the `try` at 264) have the windows described. No finding is classified must-fix: each is a narrow window, a stale comment, or a hardening that no code path at the head makes exploitable, and the merge gate needs none fixed. 13 open findings, 0 must-fix; all deferred to the one follow-up issue.
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) @ `c2da3363`) The redirect test proves nothing about `GIT_ALLOW_PROTOCOL`: with the env set to `https:http:ssh:file` it still passes; only the unit test of `allowed_protocols` covers the rule. Test the effect, e.g. an `insteadOf` from the served http url to `file://` that must fail — `tools/repos-manifest/tests/test_fetch_git.py:250`
+- [ ] (suggestion, Local Review (Pre-Push) @ `c2da3363`) `tags/x` when the repo has both a branch and a tag `x` is refused; fetching `refs/tags/x` exactly would read what was asked — `tools/repos-manifest/src/repos_manifest/fetch.py:100`
+- [ ] (suggestion, Local Review (Pre-Push) @ `c2da3363`) With no terminal, `GIT_ASKPASS`/`SSH_ASKPASS` are left as set, so a desktop askpass can still put up a dialog until the 60 s limit; the design's "does not wait" is a little strong — `fetch.py:93`
+- [ ] (suggestion, Local Review (Pre-Push) @ `c2da3363`) A run backgrounded at a terminal (`sync &`) has a terminal it cannot read; `has_terminal` could also require `os.tcgetpgrp(fd) == os.getpgrp()` — `fetch.py:60`
+- [ ] (suggestion, Local Review (Pre-Push) @ `c2da3363`) With a terminal, a SIGTERM to the tool alone ends git by pid and can leave ssh at a passphrase prompt; say so in the design — `fetch.py:264`
+- [ ] (suggestion, Local Review (Pre-Push) @ `c2da3363`) A second size guard on the bytes `cat-file` returns, and a bound on the clone itself at a terminal — `fetch.py:112`
+- [ ] (suggestion, Local Review (Pre-Push) @ `c2da3363`) `config.yaml` records the url in full and is written 0644; the design could say that, or write 0600 when the url carries a password — `tools/repos-manifest/src/repos_manifest/system.py:122`
+- [ ] (suggestion, Local Review (Pre-Push) @ `c2da3363`) The status safety walk (`STATUS_MAY_CALL`) does not reach `fetch.py`, whose git commands `status` now runs; add a walk or test that they write only the temporary directory — `tools/repos-manifest/tests/test_update_safety.py:446`
+- [ ] (suggestion, Local Review (Pre-Push) @ `c2da3363`) The adapter's printed `init` command interpolates `source`, `source_ref` and `source_path` unquoted; the hint covers only `^(https?|file)://` sources and the commit sentence only 40-hex refs — `.agent/project_types/ros2_colcon/adapter.sh:647`
+- [ ] (suggestion, Local Review (Pre-Push) @ `c2da3363`) Pre-existing: a `config.yaml` `manifest` string such as `host:m.yaml` is read as a local path (`is_url` looks only for `://`) — `tools/repos-manifest/src/repos_manifest/system.py:176`
+- [ ] (suggestion, Local Review @ `8ceb46d5`) The adapter's git-form hint prints the settings file's `source` url unmasked (the replaced line did too), so a token in that url reaches stderr — `.agent/project_types/ros2_colcon/adapter.sh:649`
+- [ ] (suggestion, Local Review @ `8ceb46d5`) A stop signal between `mkdtemp` and its `try`, or between `Popen` returning and its `try`, leaves the temporary clone or a git process behind; not covered by the stop tests — `tools/repos-manifest/src/repos_manifest/fetch.py:106`
+- [ ] (suggestion, Local Review @ `8ceb46d5`) The comment above `_rc_refuse_removed_source` says init reads a local file only and the clone is updated by hand, the opposite of the message below it — `.agent/project_types/ros2_colcon/adapter.sh:615`
+
+### False positives
+- (Local Review (Pre-Push) @ `c2da3363`, Codex) An absolute path with `--manifest-path` refused by `init` — by design: the Plan Review's direction 2 and the design's refusal row make `file://` the local git form (already ruled in that entry).
+- (Local Review @ `8ceb46d5`, Codex) No line in `docs/manifest/roadmap.md` — left out on purpose, per the entry; not a defect.
