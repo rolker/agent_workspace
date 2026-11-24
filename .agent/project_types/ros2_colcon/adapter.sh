@@ -108,6 +108,13 @@
 # tool's `status --json` (_rc_tool_status). `env` sources each built
 # layer's install/local_setup.bash, which the tool's colcon writes there.
 #
+# A new root from a manifest (issue 503 part 2): `setup --manifest <file>
+# --distro <d> [--role <r>] [--with <group>]... [--fetch-from <prefix>]`
+# runs the tool's init --distro-dirs --yes in a root that is not set up
+# yet, making the root when missing (_rc_setup_from_manifest);
+# register_project.sh --manifest calls it. Nothing about the manifest is
+# kept outside the tool's .repos-manifest/.
+#
 # Fresh hosting dir (#237, step 6 phase 2): `setup` bootstraps the manifest
 # when configs/manifest is absent, porting ros2's setup_layers.sh flow
 # non-interactively. The bootstrap URL (a remote bootstrap.yaml) resolves
@@ -625,11 +632,14 @@ _rc_route() {
 # detail (docs/manifest/design.md, "A root that sets source"). Run first by every
 # verb that reads the manifest (_rc_require_manifest) and by setup and
 # sync, before anything is fetched. On the tool route the keys are
-# validate's to name (_rc_tool_validate: a second record).
+# validate's to name (_rc_tool_validate: a second record). setup and sync
+# pass the route they read once ($1), so the refusal and the branch they
+# take answer from one reading (issue 599); with none, it is read here.
 _rc_refuse_removed_source() {
-    local name root init line=""
+    local name root init line="" route="${1:-}"
     [ -n "${ACTIVE_PROJECT_SOURCE:-}" ] || return 0
-    [ "$(_rc_route)" = tool ] && return 0
+    [ -n "$route" ] || route="$(_rc_route)"
+    [ "$route" = tool ] && return 0
     name="$(_rc_name)"
     root="$(_rc_root)" || return 1
     # The registry line's distro and role, when it has them, else
@@ -651,6 +661,7 @@ _rc_refuse_removed_source() {
         echo "init does not read the old checkouts under $root/layers/main/<layer>_ws/src or $root/configs/manifest-resolved*: it clones again under $root/<distro>/, so push work in them first" >&2
     fi
     echo "Then remove the old keys: .agent/scripts/project_setting.sh unset $name source source_ref source_path${line:+, and $line from its line in .agent/projects.local}" >&2
+    echo "Or set the instance up in a new, empty directory and register it in one step: .agent/scripts/register_project.sh <dir> --manifest <file> --distro ${ACTIVE_PROJECT_DISTRO:-<distro>}${ACTIVE_PROJECT_ROLE:+ --role $ACTIVE_PROJECT_ROLE}" >&2
     echo "More in docs/manifest/design.md, under \"A root that sets source\"" >&2
     return 1
 }
@@ -1257,13 +1268,120 @@ adapter_env() {
     done < <(_rc_layers)
 }
 
+# `setup --manifest <file> --distro <d> [--role <r>] [--with <group>]...
+# [--fetch-from <prefix>]` (issue 503 part 2): a new root set up from a
+# manifest file by the manifest tool's init, run in the root as
+# `<tool> init <file> --distro-dirs --distro <d> [--role <r>] [--with
+# <group>]... [--fetch-from <prefix>] --yes` (--yes: the question before
+# fetching is the session's, asked with the tool's show first), its output
+# and exit status passed through. register_project.sh --manifest calls it
+# for a missing or empty root, after its own checks (a URL or git location
+# refused there; the tool refuses one too). Refused here, before anything
+# is made: a root that holds .repos-manifest/ (set up already: setup with
+# no arguments is the tool's sync), and a project whose settings file or
+# registry line holds what the tool's record replaces (source, source_ref,
+# source_path, bootstrap_url, role=, distro=), which validate would refuse
+# as a second record after the clones. The root, and each directory above
+# it, made here when missing; when init fails having made nothing
+# (.repos-manifest is not there), they are removed again, deepest first,
+# with rmdir alone, so nothing that holds anything is removed. The adapter
+# has no signal trap: a signal ends it before that removal, and
+# register_project.sh's rollback removes the empty directories then.
+_rc_setup_from_manifest() {
+    local manifest="" distro="" role="" fetch="" root bin d rc=0 rec="" second=""
+    local -a with=() args=() made=()
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --manifest|--distro|--role|--with|--fetch-from)
+                if [ $# -lt 2 ] || [ -z "$2" ]; then
+                    echo "ERROR: setup: $1 needs a value" >&2
+                    return 2
+                fi
+                case "$1" in
+                    --manifest) [ -z "$manifest" ] || { echo "ERROR: setup: --manifest given twice" >&2; return 2; }; manifest="$2" ;;
+                    --distro) [ -z "$distro" ] || { echo "ERROR: setup: one --distro only (a second distro is the tool's add-distro)" >&2; return 2; }; distro="$2" ;;
+                    --role) [ -z "$role" ] || { echo "ERROR: setup: --role given twice" >&2; return 2; }; role="$2" ;;
+                    --with) with+=(--with "$2") ;;
+                    --fetch-from) [ -z "$fetch" ] || { echo "ERROR: setup: --fetch-from given twice" >&2; return 2; }; fetch="$2" ;;
+                esac
+                shift 2 ;;
+            *)
+                echo "ERROR: setup takes no arguments, or --manifest <file> --distro <distro> [--role <role>] [--with <group>]... [--fetch-from <prefix>]; got '$1'" >&2
+                return 2 ;;
+        esac
+    done
+    if [ -z "$manifest" ] || [ -z "$distro" ]; then
+        echo "ERROR: setup from a manifest needs --manifest <file> and --distro <distro>" >&2
+        return 2
+    fi
+    root="$(_rc_root)" || return 1
+    if [ "$(_rc_route)" = tool ]; then
+        echo "ERROR: $root is set up already (it holds .repos-manifest/): the manifest tool's init is for a directory that is not set up yet. Setup with no arguments runs the tool's sync there: $(_rc_tool_sync_step "$distro")" >&2
+        return 1
+    fi
+    [ -n "${ACTIVE_PROJECT_SOURCE:-}" ] && second="${second:+$second, }source"
+    [ -n "${ACTIVE_PROJECT_SOURCE_REF:-}" ] && second="${second:+$second, }source_ref"
+    [ -n "${ACTIVE_PROJECT_SOURCE_PATH:-}" ] && second="${second:+$second, }source_path"
+    [ -n "${ACTIVE_PROJECT_BOOTSTRAP_URL:-}" ] && second="${second:+$second, }bootstrap_url"
+    [ -n "$second" ] && rec="${ACTIVE_PROJECT_FILE:-its settings file} sets $second"
+    if [ -n "${ACTIVE_PROJECT_ROLE:-}" ] || [ -n "${ACTIVE_PROJECT_DISTRO:-}" ]; then
+        rec="${rec:+$rec, and }its line in .agent/projects.local carries${ACTIVE_PROJECT_ROLE:+ role=$ACTIVE_PROJECT_ROLE}${ACTIVE_PROJECT_DISTRO:+ distro=$ACTIVE_PROJECT_DISTRO}"
+    fi
+    if [ -n "$rec" ]; then
+        echo "ERROR: project '$(_rc_name)': $rec; on a root the manifest tool sets up, the tool's record is the one record, so validate would refuse these as a second record. Remove them first, then run setup again" >&2
+        return 1
+    fi
+    bin="$(_rc_resolver_bin)"
+    if [ ! -x "$bin" ]; then
+        echo "ERROR: the manifest tool is not installed at $bin; run: make install-repos-manifest (from the workspace main checkout)" >&2
+        return 1
+    fi
+    # The tool records the location as given and reads a relative one from
+    # where it runs (the root), so an existing file is passed absolute.
+    if [ -f "$manifest" ] && [[ "$manifest" != /* ]]; then
+        manifest="$(cd "$(dirname "$manifest")" && pwd -P)/$(basename "$manifest")"
+    fi
+    # The directories made here, the shallowest first.
+    d="$root"
+    while [ ! -e "$d" ] && [ ! -L "$d" ]; do
+        made=("$d" ${made[@]+"${made[@]}"})
+        d="$(dirname "$d")"
+    done
+    if [ "${#made[@]}" -gt 0 ]; then
+        mkdir -p "$root" || return 1
+    fi
+    args=(init "$manifest" --distro-dirs --distro "$distro")
+    [ -n "$role" ] && args+=(--role "$role")
+    args+=(${with[@]+"${with[@]}"})
+    [ -n "$fetch" ] && args+=(--fetch-from "$fetch")
+    args+=(--yes)
+    echo "Running: $bin ${args[*]} (in $root)"
+    (cd "$root" && _rc_nofd "$bin" "${args[@]}") || rc=$?
+    if [ "$rc" -ne 0 ] && [ ! -e "$root/.repos-manifest" ] && [ ! -L "$root/.repos-manifest" ]; then
+        local i
+        for (( i=${#made[@]}-1; i>=0; i-- )); do
+            rmdir -- "${made[$i]}" 2>/dev/null || break
+        done
+    fi
+    return "$rc"
+}
+
 adapter_setup() {
     # Bootstrap the manifest into a fresh hosting dir when needed, then
     # import each layer's repos with vcs. Optional layers
     # (optional_layers.txt) may fail — e.g. private repos; everything else
     # aborts loudly. On the tool route: the tool's sync, nothing else.
-    _rc_refuse_removed_source || return 1
-    if [ "$(_rc_route)" = tool ]; then
+    # With arguments (--manifest <file> ...): a new root set up from a
+    # manifest by the tool's init (_rc_setup_from_manifest).
+    local route
+    if [ $# -gt 0 ]; then
+        _rc_setup_from_manifest "$@"
+        return
+    fi
+    # The route is read once, for the refusal and the branch (issue 599).
+    route="$(_rc_route)"
+    _rc_refuse_removed_source "$route" || return 1
+    if [ "$route" = tool ]; then
         _rc_tool_sync
         return
     fi
@@ -1531,9 +1649,12 @@ adapter_sync() {
     # branch; fetch otherwise. Never touches dirty or detached checkouts.
     # On the tool route: the tool's sync, nothing else (the adapter pulls
     # and fetches nothing itself; the tool's sync clones and updates by its
-    # own rules).
-    _rc_refuse_removed_source || return 1
-    if [ "$(_rc_route)" = tool ]; then
+    # own rules). The route is read once, for the refusal and the branch
+    # (issue 599).
+    local route
+    route="$(_rc_route)"
+    _rc_refuse_removed_source "$route" || return 1
+    if [ "$route" = tool ]; then
         _rc_tool_sync
         return
     fi

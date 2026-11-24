@@ -3997,6 +3997,136 @@ if [ -f $wt/core_ws/install/local_setup.bash ]; then source $wt/core_ws/install/
     assert_not_contains "env.sh names nothing of fakefox2" "fakefox2" "$(cat "$wt/env.sh" 2>/dev/null)"
 }
 
+# `setup --manifest ...` (issue 503 part 2): a root that is not set up yet,
+# registered as "fresh", and a stub tool at <sb>/.venv/bin/repos-manifest
+# that records where it ran and its arguments, then by STUB_INIT refuses
+# with nothing made (early), makes .repos-manifest/ and fails (made-fail),
+# or makes .repos-manifest/ and exits 0 (the default).
+make_manifest_stub() {  # <sb>
+    local sb="$1"
+    mkdir -p "$sb/.venv/bin"
+    cat > "$sb/.venv/bin/repos-manifest" <<EOF
+#!/usr/bin/env bash
+echo "TOOL_RAN_IN:\$(pwd -P) ARGS:\$*" >> "$sb/tool.log"
+case "\${STUB_INIT:-made}" in
+    early) exit 1 ;;
+    made-fail) mkdir .repos-manifest; exit 1 ;;
+    *) mkdir .repos-manifest; exit 0 ;;
+esac
+EOF
+    chmod +x "$sb/.venv/bin/repos-manifest"
+}
+
+test_setup_from_manifest() {
+    echo "TEST: setup --manifest runs the manifest tool's init in the root, made when missing, and removes what it made when init makes nothing (issue 503 part 2)"
+    local sb out rc root
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    make_manifest_stub "$sb"
+    printf '#!/usr/bin/env bash\necho "CURL_RAN:$*" >> "%s"\nexit 1\n' "$sb/curl.log" > "$sb/bin/curl"; chmod +x "$sb/bin/curl"
+    mkdir -p "$sb/m"
+    printf 'format: 1\n' > "$sb/m/m.yaml"
+    mkdir -p "$sb/roots"
+    root="$sb/roots/deep/fresh"
+    echo "fresh ros2_colcon $root" >> "$sb/.agent/projects.local"
+    run_fresh() { (cd "$sb" && PATH="$sb/bin:$PATH" "$sb/.agent/scripts/adapter" --project fresh "$@"); }
+    # init refuses: the root and the directory above it, both made here, are removed.
+    rc=0; out="$(STUB_INIT=early run_fresh setup --manifest m/m.yaml --distro fakefox --role dev --with g1 --with g2 --fetch-from git@example.invalid:field/ 2>&1)" || rc=$?
+    assert_eq "init refused: exit 1, passed through" "1" "$rc"
+    assert_eq "init ran in the root, the manifest made absolute, --distro-dirs, each option, --yes" \
+        "TOOL_RAN_IN:$root ARGS:init $sb/m/m.yaml --distro-dirs --distro fakefox --role dev --with g1 --with g2 --fetch-from git@example.invalid:field/ --yes" \
+        "$(cat "$sb/tool.log" 2>/dev/null)"
+    assert_eq "the root and the directory made above it are removed; the one that was there stays" \
+        "gone gone kept" "$([ -e "$root" ] && echo kept || echo gone) $([ -e "$sb/roots/deep" ] && echo kept || echo gone) $([ -d "$sb/roots" ] && echo kept || echo gone)"
+    rm -f "$sb/tool.log"
+    # A root that existed, empty: init refusing leaves it.
+    mkdir -p "$root"
+    rc=0; out="$(STUB_INIT=early run_fresh setup --manifest "$sb/m/m.yaml" --distro fakefox 2>&1)" || rc=$?
+    assert_eq "an existing empty root, init refused: exit 1" "1" "$rc"
+    assert_eq "an existing root is never removed" "true" "$([ -d "$root" ] && echo true || echo false)"
+    rm -f "$sb/tool.log"
+    rmdir "$root"
+    # init made the system, then failed: nothing removed.
+    rc=0; out="$(STUB_INIT=made-fail run_fresh setup --manifest "$sb/m/m.yaml" --distro fakefox 2>&1)" || rc=$?
+    assert_eq "init made the system and failed: exit 1" "1" "$rc"
+    assert_eq "the root it made the system in is kept" "true" "$([ -d "$root/.repos-manifest" ] && echo true || echo false)"
+    rm -f "$sb/tool.log"
+    # The root set up already: refused, naming the tool's sync, init not run.
+    rc=0; out="$(run_fresh setup --manifest "$sb/m/m.yaml" --distro fakefox 2>&1)" || rc=$?
+    assert_eq "a root set up already: exit 1" "1" "$rc"
+    assert_contains "a root set up already: says so, naming the tool's sync" \
+        "is set up already (it holds .repos-manifest/)" "$out"
+    assert_contains "a root set up already: the sync step" "cd $root && $sb/.venv/bin/repos-manifest sync --distro fakefox" "$out"
+    assert_eq "a root set up already: init not run" "false" "$([ -e "$sb/tool.log" ] && echo true || echo false)"
+    rm -rf "$root"
+    # A second record beside the tool's: refused before anything is made.
+    for rec in "bootstrap_url=file:///nonexistent/b.yaml" "source=$sb/m/m.yaml"; do
+        printf '%s\n' "$rec" > "$sb/.agent/projects.d/fresh"
+        rc=0; out="$(BOOTSTRAP_URL=file:///nonexistent/b.yaml run_fresh setup --manifest "$sb/m/m.yaml" --distro fakefox 2>&1)" || rc=$?
+        assert_eq "${rec%%=*} in the settings file: exit 1" "1" "$rc"
+        assert_contains "${rec%%=*} in the settings file: named as a second record" "sets ${rec%%=*}; on a root the manifest tool sets up" "$out"
+        assert_eq "${rec%%=*} in the settings file: nothing made, init and curl not run" "false false false" \
+            "$([ -e "$root" ] && echo true || echo false) $([ -e "$sb/tool.log" ] && echo true || echo false) $([ -e "$sb/curl.log" ] && echo true || echo false)"
+    done
+    rm -f "$sb/.agent/projects.d/fresh"
+    sed -i "s|^fresh ros2_colcon $root\$|fresh ros2_colcon $root distro=fakefox|" "$sb/.agent/projects.local"
+    rc=0; out="$(run_fresh setup --manifest "$sb/m/m.yaml" --distro fakefox 2>&1)" || rc=$?
+    assert_eq "distro= on the registry line: exit 1" "1" "$rc"
+    assert_contains "distro= on the registry line: named as a second record" "its line in .agent/projects.local carries distro=fakefox" "$out"
+    sed -i "s|^fresh ros2_colcon $root distro=fakefox\$|fresh ros2_colcon $root|" "$sb/.agent/projects.local"
+    # Usage.
+    for args in "--manifest $sb/m/m.yaml" "--distro fakefox" "--manifest" "extra" "--manifest $sb/m/m.yaml --distro a --distro b"; do
+        rc=0
+        # shellcheck disable=SC2086  # each case is a word list
+        out="$(run_fresh setup $args 2>&1)" || rc=$?
+        assert_eq "setup $args: a usage error, exit 2" "2" "$rc"
+    done
+    assert_eq "usage errors: nothing made, init not run" "false false" \
+        "$([ -e "$root" ] && echo true || echo false) $([ -e "$sb/tool.log" ] && echo true || echo false)"
+    # The default: init makes the system, exit 0.
+    rc=0; out="$(run_fresh setup --manifest "$sb/m/m.yaml" --distro fakefox 2>&1)" || rc=$?
+    assert_eq "init succeeds: exit 0, the root set up" "0 true" "$rc $([ -d "$root/.repos-manifest" ] && echo true || echo false)"
+    assert_eq "nothing fetched by the adapter: curl not run" "false" "$([ -e "$sb/curl.log" ] && echo true || echo false)"
+}
+
+# Issue 599, finding 1: setup and sync decide the route once. _rc_route is
+# replaced (in the sandbox's copy of the adapter) by one that answers
+# ROUTE_FIRST on its first call and bootstrap on every later one, counting
+# its calls in a file. Before the fix, setup and sync read it twice: the
+# refusal of a root that sets source saw "tool" and passed, and the branch
+# then saw "bootstrap" and fetched with curl.
+test_route_read_once_in_setup_and_sync() {
+    echo "TEST: setup and sync read the route once: the refusal of source and the branch they take agree (issue 599)"
+    local sb root out rc verb
+    sb="$(make_sandbox)"
+    make_toolchain_stubs "$sb"
+    root="$(make_tool_root "$sb" fakefox)"
+    printf 'source=%s\n' "$root/m.yaml" > "$sb/.agent/projects.d/toolsys"
+    cat >> "$sb/.agent/project_types/ros2_colcon/adapter.sh" <<'EOF'
+_rc_route() {
+    local n
+    n="$(cat "$ROUTE_COUNT" 2>/dev/null || echo 0)"
+    n=$((n + 1))
+    echo "$n" > "$ROUTE_COUNT"
+    if [ "$n" -eq 1 ]; then echo "${ROUTE_FIRST:-tool}"; else echo bootstrap; fi
+}
+EOF
+    for verb in setup sync; do
+        rm -f "$sb/tool.log" "$sb/curl.log" "$sb/route.count"
+        rc=0; out="$(ROUTE_COUNT="$sb/route.count" ROUTE_FIRST=tool BOOTSTRAP_URL=file:///nonexistent/b.yaml run_tool "$sb" "$sb" "$verb" 2>&1)" || rc=$?
+        assert_eq "$verb, the route first read as tool: the tool's sync ran" \
+            "TOOL_RAN_IN:$root ARGS:sync --distro fakefox EXIT:0" "$(cat "$sb/tool.log" 2>/dev/null)"
+        assert_eq "$verb, the route first read as tool: exit 0, nothing fetched (curl not run)" \
+            "0 false" "$rc $([ -e "$sb/curl.log" ] && echo true || echo false)"
+        rm -f "$sb/tool.log" "$sb/curl.log" "$sb/route.count"
+        rc=0; out="$(ROUTE_COUNT="$sb/route.count" ROUTE_FIRST=bootstrap BOOTSTRAP_URL=file:///nonexistent/b.yaml run_tool "$sb" "$sb" "$verb" 2>&1)" || rc=$?
+        assert_eq "$verb, the route first read as bootstrap: refused, exit 1" "1" "$rc"
+        assert_contains "$verb, the route first read as bootstrap: the source refusal" "source no longer selects a route" "$out"
+        assert_eq "$verb, the route first read as bootstrap: nothing fetched, the tool not run" "false false" \
+            "$([ -e "$sb/curl.log" ] && echo true || echo false) $([ -e "$sb/tool.log" ] && echo true || echo false)"
+    done
+}
+
 test_bootstrap_no_url_names_the_tool() {
     echo "TEST: bootstrap route: the no-URL error also names setting the root up with the manifest tool (issue 503)"
     local sb out rc=0
@@ -4311,6 +4441,8 @@ mr_test test_tool_sync_steps_run_literally
 mr_test test_tool_quoted_keys_from_the_tool
 mr_test test_tool_package_worktree_two_distros
 test_bootstrap_no_url_names_the_tool
+test_setup_from_manifest
+mr_test test_route_read_once_in_setup_and_sync
 mr_test test_tool_real_init_and_sync
 mr_test test_tool_real_status_and_build
 if [ "$TOOL_SKIPPED" -gt 0 ]; then
