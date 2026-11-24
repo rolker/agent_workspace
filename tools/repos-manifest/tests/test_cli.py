@@ -74,6 +74,12 @@ def test_a_manifest_in_the_earlier_format_is_refused_naming_the_format(
     assert sorted(p.name for p in tmp_path.iterdir()) == ["old.yaml"]
 
 
+def test_the_earlier_format_keys_are_the_four_the_format_had():
+    # Written out, not taken from the code under test, so dropping or renaming one fails.
+    assert set(_EARLIER_FORMAT_KEYS) == {"repos", "extends", "optional_layers", "packages"}
+    assert len(_EARLIER_FORMAT_KEYS) == 4
+
+
 @pytest.mark.parametrize("key", _EARLIER_FORMAT_KEYS)
 @pytest.mark.parametrize("command", ["resolve", "show", "validate"])
 def test_each_key_of_the_earlier_format_is_refused(command, key, tmp_path, capsys, monkeypatch):
