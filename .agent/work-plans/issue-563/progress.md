@@ -438,3 +438,31 @@ Specialists: static analysis (shellcheck not installed, not run; test_sitrep_che
 - test_update_roadmap.sh: "test_update_roadmap:16 passed, 0 failed"
 - test_skill_paths.sh: "test_skill_paths: 199 passed, 0 failed"
 - The full pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 09:10 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aca953caa507aacb5, resume 2 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-563 at `2416a866`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Scope: the round 2 findings and the fix diff 49066d17..2416a866. Cross-model: skipped (round-3 convergence check, per handoff). Specialists run: governance and plan drift (the decisions recorded beyond the directions read; none conflicts with the plan or the owner's directions), Claude adversarial (fresh; no findings), static analysis (shellcheck not installed, not run).
+
+All six round 2 findings are closed:
+- `---` rule above a path: THEMATIC_RE takes `---`, `***`, `___`; a setext `---` under paragraph text still ends the section.
+- Second reader: gone; `--list-paths` prints each group's name, first sentence and the acceptance group, and step 3's last block only formats it. On the real roadmap it gives the six groups with the right sentences and `acceptance Path 1, ROS 2 projects`.
+- Failed `--list-paths`: `haspaths=unknown`, said, and work reads `path unknown (steps not checked)`.
+- The In flight bullet now says what it checks.
+- Across rows are held back in a section with no path paragraph (the adversarial reviewer found rows byte-identical to main's checker on three such roadmaps); a second Across paragraph is a `format` row.
+- `acceptance_path=` is described the same way in steps 3 and 8, with the Across case.
+
+Committed tree: `git status` is clean (no untracked or modified file) and the suites pass run from the worktree: test_sitrep_checks 295/0, test_sitrep_root 69/0, test_skill_paths 199/0, test_design_anchors 82/0, test_update_roadmap 16/0. The full suite is left to the host.
+
+### Findings
+- [ ] No issues found. LGTM.
