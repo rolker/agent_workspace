@@ -7,8 +7,9 @@
 # contract table in the script's header:
 #   - a qualified owner/repo#N is printed as given only when owner/repo is
 #     this checkout's repository (no gh call); another repository, or none,
-#     is refused (exit 6: the session-root rule), and an origin no local
-#     rule reads as GitHub (an SSH host alias) is confirmed with gh once;
+#     is refused (exit 6: the session-root rule), and so is any qualified
+#     ref where no GitHub repository is read from origin (another host, an
+#     SSH host alias, no origin), with no gh call;
 #   - a bare number in a checkout whose only GitHub remote is origin, with
 #     no gh default and no GH_REPO, is decided with no gh call (offline);
 #   - another GitHub remote (upstream), a gh default or GH_REPO makes it ask
@@ -33,9 +34,7 @@
 # <sandbox>/fake_remotes/github.com/<owner>/<repo>.git, the only local form
 # extract_gh_slug reads as a GitHub repository; a stub gh on the PATH
 # answers `gh repo view` the way real gh picks a remote (GH_REPO, a remote
-# with gh-resolved=base, upstream, github, origin; the SSH host alias
-# github-work read as github.com, as gh reads ~/.ssh/config) and logs every
-# call. No network, no real repository touched.
+# with gh-resolved=base, upstream, github, origin) and logs every call. No network, no real repository touched.
 #
 # Run: bash .agent/scripts/tests/test_issue_repo.sh
 
@@ -91,12 +90,7 @@ if [ -z "$pick" ]; then
     done
 fi
 [ -n "$pick" ] || { echo "no git remotes found" >&2; exit 1; }
-url=$(git remote get-url "$pick")
-case "$url" in
-    git@github-work:*) nwo="${url#*:}" ;;
-    *) nwo="${url#*github.com[:/]}" ;;
-esac
-echo "${nwo%.git}"
+url=$(git remote get-url "$pick"); nwo="${url#*github.com[:/]}"; echo "${nwo%.git}"
 EOF
 chmod +x "$STUB/gh"
 STUB_PATH="$STUB:$PATH"
@@ -129,6 +123,7 @@ GITLAB="$SANDBOX/gitlab"; mkrepo "$GITLAB" "origin=git@gitlab.com:o/r.git"
 GLUP="$SANDBOX/glup";    mkrepo "$GLUP" "origin=git@gitlab.com:o/r.git" "upstream=$(fr own/glup)"
 PLAIN="$SANDBOX/plain";  mkdir -p "$PLAIN"
 ALIAS="$SANDBOX/alias";  mkrepo "$ALIAS" "origin=git@github-work:own/alias.git"
+ALIASUP="$SANDBOX/aliasup"; mkrepo "$ALIASUP" "origin=git@github-work:own/aliasup.git" "upstream=$(fr other/x)"
 CHARS="$SANDBOX/chars";  mkrepo "$CHARS" "origin=$(fr Own-x_1/re_po.x-1)"
 
 # Package worktree PW for up/pkg#7: the issue checkout src/pkg (origin the
@@ -236,28 +231,26 @@ run "$PW/src/sib" "$STUB_PATH" -- "up/pkg#7"
 expect "up/pkg#7 in the sibling checkout: refused" "" 6 0
 run "$PW/src/sib" "$NOGH" -- "own/sib#7"
 expect "own/sib#7 in the sibling checkout: its own" "own/sib" 0 0
-echo "--- an origin no local rule reads as GitHub: gh confirms a qualified ref ---"
+echo "--- no GitHub repository read from origin: a qualified ref is refused, no gh call ---"
 run "$ALIAS" "$STUB_PATH" -- 7
 expect "SSH host alias origin, bare 7: exit 4, no gh call" "" 4 0
-err_has "exit 4 names the SSH alias case and the qualified form" "SSH host alias" "ssh.github.com:443" "pass owner/repo#7"
+err_has "exit 4 names the SSH alias case" "SSH host alias" "ssh.github.com:443" "only an origin URL on github.com"
 run "$ALIAS" "$STUB_PATH" -- "own/alias#7"
-expect "SSH host alias origin, own/alias#7: gh confirms it" "own/alias" 0 1
-if [[ "$(head -n1 "$GH_LOG")" == "$(printf "$PINNED" "$ALIAS") stdin="* ]]; then
-    pass "alias: gh asked once, the pinned invocation in the checkout"
-else
-    fail "alias: unexpected gh call: $(head -n1 "$GH_LOG")"
-fi
+expect "SSH host alias origin, its own repository's ref: cannot be shown, refused" "" 6 0
+err_has "no GitHub origin: says why and what works" "cannot be shown to be its repository" "whose origin is on github.com" "pass the bare number 7"
 run "$ALIAS" "$STUB_PATH" -- "own/other#7"
-expect "SSH host alias origin, another repository: refused" "" 6 1
-err_has "alias, another repository: names what gh resolves" "gh, run here, resolves own/alias"
-run "$ALIAS" "$NOGH" -- "own/alias#7"
-expect "SSH host alias origin, no gh: cannot be confirmed, refused" "" 6 0
-err_has "alias, no gh: says why" "gh is not installed"
+expect "SSH host alias origin, another repository: refused" "" 6 0
+# The two cases where gh, asked, would answer with upstream, not origin.
+run "$GLUP" "$STUB_PATH" -- "own/glup#7"
+expect "origin on another host beside a GitHub upstream: upstream's ref refused, no gh call" "" 6 0
+run "$ALIASUP" "$STUB_PATH" -- "other/x#7"
+expect "SSH alias origin beside a GitHub upstream: upstream's ref refused, no gh call" "" 6 0
+run "$ALIASUP" "$STUB_PATH" -- "own/aliasup#7"
+expect "SSH alias origin beside a GitHub upstream: origin's own ref refused too (cannot be shown), no gh call" "" 6 0
 run "$NOREM" "$STUB_PATH" GH_REPO=own/x -- "own/x#7"
-expect "no remote, GH_REPO naming the ref: GH_REPO is no fact about the checkout, refused" "" 6 1
-if grep -qF 'GH_REPO' <<< "$(cat "$GH_LOG")"; then fail "GH_REPO reached gh"; else pass "GH_REPO unset for the confirming call"; fi
+expect "no remote, GH_REPO naming the ref: refused, no gh call" "" 6 0
 run "$GITLAB" "$STUB_PATH" -- "o/r#7"
-expect "origin on another host: a qualified ref is refused" "" 6 1
+expect "origin on another host: a qualified ref is refused, no gh call" "" 6 0
 
 echo "=== case 2: origin is the only GitHub remote: decided locally ==="
 run "$ALPHA" "$STUB_PATH" -- 7;  expect "alpha, bare 7: origin, no gh call" "own/alpha" 0 0

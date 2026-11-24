@@ -1295,7 +1295,7 @@ for name in review-issue plan-task review-plan; do
         '| 6 | Stops before' 'names another repository than this checkout'"'"'s' \
         'from a checkout of that repository (the session-root rule)'
     has "$f" "$name: the exit-4 row names the SSH host alias case" \
-        'An origin through an SSH host alias (`git@<alias>:owner/repo.git`) or `ssh.github.com:443` lands here too although `gh` resolves it: `owner/repo#N` names the repository explicitly'
+        'An origin through an SSH host alias (`git@<alias>:owner/repo.git`) or `ssh.github.com:443` lands here too although `gh` resolves it: only an origin URL on github.com is read as a GitHub repository, so use the bare number there'
     # An issue title is anyone's text: never inside double quotes in a
     # shell command, always through a quoted heredoc.
     if grep -qF '"<issue title>"' "$f"; then

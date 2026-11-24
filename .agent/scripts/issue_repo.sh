@@ -36,13 +36,12 @@
 #      checkout and is ignored. Otherwise it is origin's slug
 #      (extract_gh_slug: only a github.com remote names a GitHub
 #      repository).
-#   b. A qualified ref is compared with it (case ignored): the same, exit
-#      0, no gh call; another, exit 6. When origin names no GitHub
-#      repository that can be read here (an SSH host alias such as
-#      git@<alias>:owner/repo.git, or ssh.github.com:443), gh, which reads
-#      such aliases, is asked once in the checkout (GH_REPO unset for the
-#      call, since it is no fact about the checkout): the same repository,
-#      exit 0; anything else, or no answer, exit 6.
+#   b. A qualified ref is compared with it (case ignored), with no gh call:
+#      the same, exit 0; another, exit 6. When no GitHub repository is read
+#      from this checkout (no origin, an origin on another host, an SSH
+#      host alias such as git@<alias>:owner/repo.git, ssh.github.com:443),
+#      a qualified ref cannot be shown to be this checkout's: exit 6. gh is
+#      not asked: it answers with the remote it prefers, not the checkout's.
 #   c. A bare number is decided locally, no gh call and no network, when
 #      the repository is origin's slug, GH_REPO is unset, no other remote
 #      names a different GitHub repository and no remote.*.gh-resolved is
@@ -72,13 +71,13 @@
 #      or an origin not on github.com, and no header repository. An
 #      ordinary case, not an error: the caller makes no gh call. An origin
 #      through an SSH host alias or ssh.github.com:443 lands here too,
-#      although gh resolves it; owner/repo#N then names the repository
-#      explicitly (case b confirms it with gh).
+#      although gh resolves it: only a github.com origin URL is read as a
+#      GitHub repository (owner/repo#N is refused there, case b).
 #   5  a bare number, gh had to be asked and could not answer (missing,
 #      not logged in, offline, silent); its message is quoted
 #   6  a qualified owner/repo#N that is not this checkout's repository, or
-#      could not be confirmed as it: the message names both and says to
-#      run from a checkout of owner/repo
+#      in a checkout from which no GitHub repository is read (so it cannot
+#      be shown to be this checkout's): the message says why and what works
 #
 # user-tier: inert -- read-only: prints a repository on stdout (or the
 # reason on stderr) and writes nothing; its one gh call is `gh repo view`.
@@ -185,8 +184,7 @@ EXPECTED="${HDR_REPO:-$ORIGIN_SLUG}"
 ERRF=""
 trap '[[ -n "$ERRF" ]] && rm -f "$ERRF"' EXIT
 # ask_gh: GOT and GHERR from one `gh repo view` in this checkout; returns
-# non-zero when gh is missing, fails or is silent. GH_REPO is unset for
-# the call when $1 is "noenv".
+# non-zero when gh is missing, fails or is silent.
 ask_gh() {
     GOT=""
     GHERR=""
@@ -196,7 +194,7 @@ ask_gh() {
     fi
     ERRF=$(mktemp) || { GHERR="could not create a temporary file for gh's stderr"; return 1; }
     local rc
-    GOT=$(cd "$TOP" && { [[ "$1" == noenv ]] && unset GH_REPO; GH_HOST=github.com GH_PROMPT_DISABLED=1 gh repo view --json nameWithOwner --jq .nameWithOwner 2>"$ERRF" </dev/null; }); rc=$?
+    GOT=$(cd "$TOP" && GH_HOST=github.com GH_PROMPT_DISABLED=1 gh repo view --json nameWithOwner --jq .nameWithOwner 2>"$ERRF" </dev/null); rc=$?
     GHERR=$(head -c 600 "$ERRF" | tr '\n' ' ')
     [[ $rc -eq 0 && -n "$GOT" ]] || { GHERR="${GHERR:-gh gave no answer}"; return 1; }
 }
@@ -216,20 +214,14 @@ if [[ -n "$REF_REPO" ]]; then
         } >&2
         exit 6
     fi
-    # No GitHub repository read from origin: gh may still read it (an SSH
-    # host alias, ssh.github.com:443).
-    if ask_gh noenv && [[ "${GOT,,}" == "${REF_REPO,,}" ]]; then
-        echo "$REF_REPO"
-        exit 0
-    fi
+    # No GitHub repository is read from this checkout, so nothing here can
+    # show the ref to be its own (gh would answer with the remote it
+    # prefers, not the checkout's).
     {
-        echo "error: $REF is an issue of $REF_REPO, but this checkout ($TOP) has no origin on github.com,"
-        if [[ -n "$GOT" ]]; then
-            echo "  and gh, run here, resolves $GOT: this is no checkout of $REF_REPO."
-        else
-            echo "  and gh could not say which repository this is ($GHERR): it is not known to be a checkout of $REF_REPO."
-        fi
-        echo "  Run this from a checkout of $REF_REPO."
+        echo "error: $REF names $REF_REPO, but this checkout ($TOP) has no origin on github.com,"
+        echo "  so $REF_REPO cannot be shown to be its repository (an SSH host alias or ssh.github.com:443 origin is not read as one)."
+        echo "  Run from a checkout whose origin is on github.com, or pass the bare number $N here: this checkout then takes"
+        echo "  the no-GitHub-remote path (exit 4: no gh call, the issue's text from the owner)."
     } >&2
     exit 6
 fi
@@ -237,7 +229,8 @@ fi
 if [[ -z "$EXPECTED" ]]; then
     {
         echo "note: $TOP has no GitHub repository (no origin on github.com), so issue $N is not a GitHub issue here: no gh call will be made."
-        echo "  An origin through an SSH host alias (git@<alias>:owner/repo.git) or ssh.github.com:443 is not read as GitHub here although gh resolves it: pass owner/repo#$N to name the repository explicitly."
+        echo "  An origin through an SSH host alias (git@<alias>:owner/repo.git) or ssh.github.com:443 lands here too although gh resolves it:"
+        echo "  only an origin URL on github.com is read as a GitHub repository, and owner/repo#$N is refused here (exit 6)."
     } >&2
     exit 4
 fi
@@ -265,7 +258,7 @@ if [[ $local_ok -eq 1 ]]; then
 fi
 
 # --- d. ask gh once ---
-if ! ask_gh keepenv; then
+if ! ask_gh; then
     {
         if [[ "$GHERR" == "gh is not installed" ]]; then
             echo "error: gh is not installed, and in $TOP it must be asked which repository issue $N is in"
