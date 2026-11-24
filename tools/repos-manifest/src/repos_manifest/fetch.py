@@ -137,7 +137,8 @@ def _clone_failed(label: str, location: GitLocation, code: int, err: str) -> str
             " is not read at a commit in this version)"
         )
     elif _NOT_ALLOWED.search(err):
-        command = f"git ls-remote --get-url {shlex.quote(mask_url(location.url))}"
+        shown = mask_url(location.url)
+        command = f"git ls-remote --get-url {shlex.quote(shown)}"
         said += (
             "; the read allows only the transport the url names, and a url rewrite in git's"
             " configuration (url.<base>.insteadOf) can lead git to another; give as the"
