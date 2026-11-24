@@ -1013,19 +1013,29 @@ if [ "$CONF_SETUP" = "when-missing" ] && [ ! -e "$PROJECT_ROOT" ] && [ "$NO_SETU
     RUN_SETUP=1
 fi
 SETUP_ARGS=()
+# SETUP_ARGS as printed: a --fetch-from prefix with its user name and
+# password masked (mask_url_userinfo); SETUP_ARGS passes it as given.
+SETUP_SHOWN=()
 SETUP_WHY="$PROJECT_ROOT does not exist"
 if [ -n "$MANIFEST" ]; then
     RUN_SETUP=1
     SETUP_ARGS=(--manifest "$M_ABS" --distro "$M_DISTRO")
     [ -n "$M_ROLE" ] && SETUP_ARGS+=(--role "$M_ROLE")
     for _g in ${M_WITH[@]+"${M_WITH[@]}"}; do SETUP_ARGS+=(--with "$_g"); done
-    [ -n "$M_FETCH" ] && SETUP_ARGS+=(--fetch-from "$M_FETCH")
+    SETUP_SHOWN=("${SETUP_ARGS[@]}")
+    [ -n "$M_FETCH" ] && SETUP_ARGS+=(--fetch-from "$M_FETCH") \
+        && SETUP_SHOWN+=(--fetch-from "$(mask_url_userinfo "$M_FETCH")")
     SETUP_WHY="from the manifest; $PROJECT_ROOT $([ "$ROOT_EXISTED" -eq 1 ] && echo "is empty" || echo "does not exist")"
     # What the adapter's setup runs in the root, for the dry run.
     INIT_LINE="cd $(printf '%q' "$PROJECT_ROOT") && $(printf '%q' "$TOOL_BIN") init $(printf '%q' "$M_ABS") --distro-dirs --distro $(printf '%q' "$M_DISTRO")"
     [ -n "$M_ROLE" ] && INIT_LINE="$INIT_LINE --role $(printf '%q' "$M_ROLE")"
     for _g in ${M_WITH[@]+"${M_WITH[@]}"}; do INIT_LINE="$INIT_LINE --with $(printf '%q' "$_g")"; done
-    [ -n "$M_FETCH" ] && INIT_LINE="$INIT_LINE --fetch-from $(printf '%q' "$M_FETCH")"
+    if [ -n "$M_FETCH" ]; then
+        # Masked, the value is shown, not quoted: it is not run as printed.
+        _f="$(mask_url_userinfo "$M_FETCH")"
+        [ "$_f" = "$M_FETCH" ] && _f="$(printf '%q' "$M_FETCH")"
+        INIT_LINE="$INIT_LINE --fetch-from $_f"
+    fi
     INIT_LINE="$INIT_LINE --yes"
 fi
 # The directories setup would make (the root, and each missing one above
@@ -1091,7 +1101,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
         else echo "no settings file (nothing to write)"; fi
     fi
     if [ "$RUN_SETUP" -eq 1 ]; then
-        echo "would run: adapter --project $NAME setup${SETUP_ARGS[*]:+ ${SETUP_ARGS[*]}} ($SETUP_WHY)"
+        echo "would run: adapter --project $NAME setup${SETUP_SHOWN[*]:+ ${SETUP_SHOWN[*]}} ($SETUP_WHY)"
         [ -n "$MANIFEST" ] && echo "    which runs: $INIT_LINE"
     fi
     echo "would run: registration_verify.sh $NAME"
@@ -1434,7 +1444,7 @@ fi
 
 if [ "$RUN_SETUP" -eq 1 ]; then
     echo ""
-    echo "== adapter --project $NAME setup${SETUP_ARGS[*]:+ ${SETUP_ARGS[*]}} ($SETUP_WHY)"
+    echo "== adapter --project $NAME setup${SETUP_SHOWN[*]:+ ${SETUP_SHOWN[*]}} ($SETUP_WHY)"
     SETUP_RAN=1
     if [ -n "$MANIFEST" ]; then
         "$ADAPTER" --from "$ROOT" --project "$NAME" setup "${SETUP_ARGS[@]}" 8>&- || failed "adapter setup failed (above)" "fix what the manifest tool reports"

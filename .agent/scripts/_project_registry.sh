@@ -2956,3 +2956,29 @@ project_file_unset() {
     for k in "$@"; do args+=("-$k"); done
     project_file_set "$root" "$name" ${args[@]+"${args[@]}"}
 }
+
+# A url as it is printed, its user name and password replaced by ***
+# (https://user:token@host/p -> https://***@host/p): the text between the
+# first scheme:// and the last @ after it; an ssh url's bare user name
+# (ssh://git@host/...) is kept, and in a file:// url only the authority's
+# user:password is masked. Anything else (git@host:path, a local path) is
+# printed as given. A short form of the manifest tool's mask_url
+# (tools/repos-manifest/src/repos_manifest/masking.py), which is the
+# fuller one; only what is printed is masked, never the value passed on.
+# Usage: mask_url_userinfo <url>
+mask_url_userinfo() {
+    local url="$1" pre rest scheme info=""
+    [[ "$url" == *://* ]] || { printf '%s\n' "$url"; return 0; }
+    pre="${url%%://*}"; rest="${url#*://}"
+    [[ "$pre" =~ [A-Za-z][A-Za-z0-9+.-]*$ ]] || { printf '%s\n' "$url"; return 0; }
+    scheme="$(printf '%s' "${BASH_REMATCH[0]}" | tr '[:upper:]' '[:lower:]')"
+    if [ "$scheme" = file ]; then
+        [[ "${rest%%/*}" == *@* ]] && info="${rest%%/*}" && info="${info%@*}"
+        [[ "$info" == *:* ]] || info=""
+    else
+        [[ "$rest" == *@* ]] && info="${rest%@*}"
+        [[ "$scheme" == *ssh* && "$info" != *:* ]] && info=""
+    fi
+    if [ -z "$info" ] || [ "$info" = '***' ]; then printf '%s\n' "$url"; return 0; fi
+    printf '%s\n' "$pre://***@${rest:${#info}+1}"
+}

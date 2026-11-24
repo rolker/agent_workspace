@@ -4101,6 +4101,14 @@ test_setup_from_manifest() {
             "TOOL_RAN_IN:$root ARGS:init $sb/m/${rel#./} --distro-dirs --distro fakefox --yes" "$(cat "$sb/tool.log" 2>/dev/null)"
         rm -rf "$root"; rm -f "$sb/tool.log"
     done
+    # A --fetch-from prefix with a user name and password: masked in the
+    # Running: line, given to the tool as it was.
+    rc=0; out="$(STUB_INIT=early run_fresh setup --manifest "$sb/m/m.yaml" --distro fakefox --fetch-from https://user:secret@example.invalid/field/ 2>&1)" || rc=$?
+    assert_contains "--fetch-from with a password: the Running: line shows it masked" \
+        "--fetch-from https://***@example.invalid/field/ --yes (in $root)" "$out"
+    assert_eq "--fetch-from with a password: the password is nowhere in the output" "false" "$([[ "$out" == *secret* ]] && echo true || echo false)"
+    assert_contains "--fetch-from with a password: the tool is given it unmasked" \
+        "--fetch-from https://user:secret@example.invalid/field/ --yes" "$(cat "$sb/tool.log" 2>/dev/null)"
 }
 
 # Issue 599, finding 1: setup and sync decide the route once. _rc_route is

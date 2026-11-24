@@ -796,6 +796,19 @@ for _case in "./-m.yaml|" "-m.yaml|" "sub/m.yaml|$SANDBOX/cdpath"; do
 done
 rm -rf "$MD/-m.yaml" "$MD/sub" "$SANDBOX/cdpath"
 
+echo "TEST: --manifest: a --fetch-from prefix's user name and password are masked where they are printed, and the tool is given the prefix as it was"
+MSECRET="https://user:secret@example.invalid/field/"
+out="$(mreg "$MR1" --manifest "$MD/m.yaml" --distro fakefox --fetch-from "$MSECRET" --dry-run)"; rc=$?
+check "dry run: exit 0, the prefix masked in the setup line and in the init line, the password nowhere in the output" \
+    bash -c '[ "$1" -eq 0 ] && [[ "$2" == *"setup --manifest $3 --distro fakefox --fetch-from https://***@example.invalid/field/ ("* && "$2" == *"--fetch-from https://***@example.invalid/field/ --yes"* && "$2" != *secret* ]]' \
+    _ "$rc" "$out" "$MD/m.yaml"
+MRF="$SANDBOX/mroots/fetch"
+out="$(export STUB_INIT=early; mreg "$MRF" --manifest "$MD/m.yaml" --distro fakefox --fetch-from "$MSECRET")"; rc=$?
+check "real run: the setup banner and the adapter's Running: line show the prefix masked, the password nowhere in the output" \
+    bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"== adapter --project fetch setup --manifest $3 --distro fakefox --fetch-from https://***@example.invalid/field/ ("* && "$2" == *"Running: "*"--fetch-from https://***@example.invalid/field/ --yes"* && "$2" != *secret* ]]' \
+    _ "$rc" "$out" "$MD/m.yaml"
+check "real run: the tool was given the prefix unmasked" has "$(cat "$MLOG")" "--fetch-from $MSECRET --yes"
+
 echo "TEST: --manifest: each refusal comes before anything is written, a dry run too"
 mkdir -p "$SANDBOX/mroots/setup/.repos-manifest" "$SANDBOX/mroots/full" "$SANDBOX/mroots/afile"
 echo notes > "$SANDBOX/mroots/full/README"

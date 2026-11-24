@@ -1289,7 +1289,7 @@ adapter_env() {
 # registration's rollback removes the empty directories then.
 _rc_setup_from_manifest() {
     local manifest="" distro="" role="" fetch="" root bin d rc=0 rec="" second=""
-    local -a with=() args=() made=()
+    local -a with=() args=() made=() shown=()
     while [ $# -gt 0 ]; do
         case "$1" in
             --manifest|--distro|--role|--with|--fetch-from)
@@ -1358,7 +1358,12 @@ _rc_setup_from_manifest() {
     args+=(${with[@]+"${with[@]}"})
     [ -n "$fetch" ] && args+=(--fetch-from "$fetch")
     args+=(--yes)
-    echo "Running: $bin ${args[*]} (in $root)"
+    # Printed with a --fetch-from prefix's user name and password masked
+    # (mask_url_userinfo, from the dispatcher's _project_registry.sh); the
+    # tool is handed the value as given.
+    shown=("${args[@]}")
+    [ -n "$fetch" ] && shown[${#shown[@]}-2]="$(mask_url_userinfo "$fetch")"
+    echo "Running: $bin ${shown[*]} (in $root)"
     (cd "$root" && _rc_nofd "$bin" "${args[@]}") || rc=$?
     if [ "$rc" -ne 0 ] && [ ! -e "$root/.repos-manifest" ] && [ ! -L "$root/.repos-manifest" ]; then
         local i
