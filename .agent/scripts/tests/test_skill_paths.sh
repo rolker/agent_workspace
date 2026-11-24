@@ -1309,9 +1309,12 @@ done
 has "$SKILLS/plan-task/SKILL.md" "plan-task: the draft PR's head names origin's owner when origin is a fork of \$_REPO" \
     '_HEAD="${_ORIGIN_SLUG%%/*}:$CURRENT_BRANCH"' \
     'gh pr create -R "github.com/$_REPO" --draft --head "$_HEAD"'
-has "$SKILLS/review-plan/SKILL.md" "review-plan: step 0 names both branch forms and the PR placeholder" \
-    '`feature/ISSUE-<N>-<description>` (case ignored), else `<PR>`, the pull request number' \
-    '`<N>` is the issue number everywhere except step 1'"'"'s PR number block'
+has "$SKILLS/review-plan/SKILL.md" "review-plan: step 0 names both branch forms and which number <N> is in the PR form" \
+    '`feature/ISSUE-<issue>-<description>` (case ignored), else the pull request number `<N>`' \
+    '`<N>` is the issue number everywhere except in step 1'"'"'s **PR number** form and the Step 5 note'"'"'s PR lines, where `<N>` is the pull request number and `<issue>` the issue number'
+has "$SKILLS/review-plan/SKILL.md" "review-plan: the PR number form stops where origin is not \$_REPO (it fetches the head from origin)" \
+    'if [ "${_ORIGIN_SLUG,,}" != "${_REPO,,}" ]; then' \
+    'the PR number form is not supported in this checkout'
 # The pin itself catches a block that lost its guard or a gh line that lost
 # its -R (a mutation of review-issue's text).
 MUT="$(mktemp)"
@@ -1335,6 +1338,22 @@ else
     fail "the gh-block pin did not notice a gh line whose -R was removed"
 fi
 rm -f "$MUT"
+
+# --- review-plan by PR number reads the plan file at the PR head (#579):
+# the PR body is a snapshot plan-task copied once, so a review that reads
+# it can judge stale text. Step 1 and the Step 5 note fetch the same way.
+has "$SKILLS/review-plan/SKILL.md" "review-plan's PR form reads the plan at headRefOid, never the body or a comment" \
+    '--json title,baseRefName,headRefName,headRefOid,files,url' \
+    'select(test("^[.]agent/work-plans/issue-[0-9]+/plan[.]md$"))' \
+    "--json closingIssuesReferences --jq '.closingIssuesReferences[].number'" \
+    'Only when that file does not exist at the head' \
+    'Never search other worktrees or registered projects' \
+    "stop and show git's message; never read another copy" \
+    'git cat-file -e "<headRefOid>^{commit}"' \
+    'The PR body is a snapshot of the plan' \
+    'Never review the body, or a PR comment, as the plan' \
+    'git fetch -q origin "pull/<N>/head"' \
+    'git show <headRefOid>:./.agent/work-plans/issue-<issue>/plan.md'
 
 echo ""
 echo "test_skill_paths: $PASS passed, $FAIL failed"
