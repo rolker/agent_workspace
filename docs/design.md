@@ -451,8 +451,11 @@ Status: `decided`
   project's type never reads is refused the same way: each type lists such keys in
   `.agent/project_types/<type>/unused_settings` (`ros2_colcon`: `build` and `test`, which colcon
   owns; `single_project`: `bootstrap_url`, `source`, `source_ref` and `source_path`), so no setting
-  is stored and silently ignored. The settings file is a project's only source of commands and
-  URLs (#265 part 4): the legacy `projects.d/<name>.sh` and the shared `.agent/project_config.sh` are
+  is stored and silently ignored. A second list, `.agent/project_types/<type>/registration_refused`
+  in the same grammar, names the keys a project of the type can never be registered with (`ros2_colcon`:
+  `source`, `source_ref` and `source_path`, which its adapter refuses at use): `register_project.sh`
+  refuses a `--set` of one before it writes anything, and `validate_adapter.sh` checks both lists.
+  The settings file is a project's only source of commands and URLs (#265 part 4): the legacy `projects.d/<name>.sh` and the shared `.agent/project_config.sh` are
   read by no adapter. A `ros2_colcon` project's distro comes from `distro=` on its registry line or
   its manifest (on the tool route below, from the directory the call comes from), and `ROS_ROOT_DIR` (the underlay root, default `/opt/ros`) from the process
   environment, the one value an adapter reads there.
