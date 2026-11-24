@@ -95,7 +95,25 @@ mkroot host/inst https://github.com/acme/inst.git
 mkdir -p "$R/fam"
 mkroot fam/fam1 https://github.com/acme/fam1.git
 mkroot fam/fam2 https://github.com/acme/fam2.git
+# Issue #551: roots whose settings name their documents.
+mkroot keyed https://github.com/acme/keyed.git
+mkdir -p "$R/keyed/docs/arch" "$R/keyed/notes"
+printf '# Arch\n' > "$R/keyed/docs/arch/design.md"
+printf '# Plan\n\n## Direction\n' > "$R/keyed/notes/plan.md"
+printf 'decoy\n' > "$R/keyed/docs/roadmap.md"; printf 'decoy\n' > "$R/keyed/docs/design.md"
+g -C "$R/keyed" add -A && g -C "$R/keyed" commit -q -m docs
+mkroot nonedoc https://github.com/acme/nonedoc.git
+mkdir -p "$R/nonedoc/docs"
+printf 'r\n' > "$R/nonedoc/docs/roadmap.md"; printf 'd\n' > "$R/nonedoc/docs/design.md"
+g -C "$R/nonedoc" add -A && g -C "$R/nonedoc" commit -q -m docs
+mkroot upper https://github.com/acme/upper.git
+mkdir -p "$R/upper/docs"; printf 'u\n' > "$R/upper/docs/ROADMAP.md"
+mkroot gone https://github.com/acme/gone.git
 cat > "$WSC/.agent/projects.local" <<REG
+keyed       single_project  $R/keyed
+nonedoc     single_project  $R/nonedoc
+upper       single_project  $R/upper
+gone        single_project  $R/gone
 proj        single_project  $R/proj
 noroad      single_project  $R/noroad
 both        single_project  $R/both
@@ -184,6 +202,39 @@ root_of "$R/onlyr"
 OUTR="$(bash "$WSC/.agent/scripts/sitrep_checks.sh" --root "$R/onlyr" --roadmap "$(val roadmap)" 2>&1)"
 [[ "$(cut -f1-3 <<< "$OUTR")" == $'section\t(no Direction section)\tunchecked' ]] \
     && pass "no Direction section: one section row, no line invented" || fail "onlyr rows: '$OUTR'"
+
+echo "TEST: the goals/design/roadmap settings (issue #551)"
+mkdir -p "$WSC/.agent/projects.d"
+printf 'design=docs/arch/design.md#Overview\nroadmap=notes/plan.md\n' > "$WSC/.agent/projects.d/keyed"
+printf 'design=none\nroadmap=none\n' > "$WSC/.agent/projects.d/nonedoc"
+printf 'design=docs/gone.md\n' > "$WSC/.agent/projects.d/gone"
+root_of "$R/keyed"
+[[ $RC -eq 0 && "$(val roadmap)" == "$R/keyed/notes/plan.md" && "$(val design)" == "$R/keyed/docs/arch/design.md" \
+    && "$(val roadmap_why)" == "" && "$(val design_why)" == "" ]] \
+    && pass "set: roadmap= and design= are the settings' files (the #heading dropped), not the candidates" || fail "keyed: rc=$RC '$OUT' err='$ERR'"
+[[ "$(grep -c '^check_.*=run$' <<< "$OUT")" -eq 3 && "$(val check_research_digest)" == "skipped (.agent/knowledge/research_digest.md not in this root)" ]] \
+    && pass "set: the design checks run on the setting's file" || fail "keyed checks: '$OUT'"
+root_of "$R/nonedoc"
+[[ $RC -eq 0 && "$(val roadmap)" == "" && "$(val design)" == "" \
+    && "$(val roadmap_why)" == *"roadmap=none"* && "$(val design_why)" == *"design=none"* \
+    && "$(val check_design_anchors)" == "skipped (this project keeps no design document (design=none in its settings))" \
+    && "$(val check_documentation)" == skipped* && "$(val check_decision_register)" == skipped* ]] \
+    && pass "none: empty roadmap= and design= with the reason; the design checks are skipped though the candidates exist" || fail "nonedoc: '$OUT'"
+OUTR="$(bash "$WSC/.agent/scripts/sitrep_checks.sh" --root "$R/nonedoc" 2>&1)"
+[[ "$(cut -f1-2 <<< "$OUTR")" == $'section\t(roadmap not found: '"$R"'/nonedoc keeps no roadmap (roadmap=none))' ]] \
+    && pass "none: the check runner, given no roadmap, does not read the candidate either" || fail "nonedoc rows: '$OUTR'"
+root_of "$R/upper"
+[[ "$(val roadmap)" == "$R/upper/docs/ROADMAP.md" ]] && pass "unset: docs/ROADMAP.md is a candidate (the shared list)" || fail "upper: '$OUT'"
+root_of "$R/gone"
+[[ "$(val design)" == "$R/gone/docs/gone.md" && "$(val design_why)" == *"docs/gone.md does not exist"* \
+    && "$(val check_design_anchors)" == "skipped (docs/gone.md not in this root)" ]] \
+    && pass "a setting naming a missing file: that file is named, not docs/design.md" || fail "gone: '$OUT'"
+printf 'design=../x.md\n' > "$WSC/.agent/projects.d/gone"
+root_of "$R/gone"
+[[ $RC -eq 0 && "$(val design)" == "" && "$(val design_why)" == "the design setting cannot be read: "* \
+    && "$(val check_documentation)" == "skipped (the design setting cannot be read: "* ]] \
+    && pass "an invalid settings file: no design, the checks skipped with the reason" || fail "gone invalid: '$OUT' err='$ERR'"
+rm -f "$WSC/.agent/projects.d/gone"
 
 echo "TEST: a project's roadmap points at a sub-roadmap (issue #488): one code path for every root"
 # A stub gh for the checks below: no network; issue 8 is closed.

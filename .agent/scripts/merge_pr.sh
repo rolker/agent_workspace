@@ -1658,9 +1658,15 @@ fi
 # head needs no new CI round. Any issue's work-plan dir (a CI question, not
 # a review one: a document commit needs no new CI round whoever's timeline
 # it is), plus the roadmap set shared with the review policy
-# (_bookkeeping.sh). One definition, read by Step 2's allowed set and by the
-# walk-back below.
-MERGE_PR_CI_BOOKKEEPING_PATTERNS=(".agent/work-plans/*" "${BOOKKEEPING_ROADMAP_PATHS[@]}")
+# (_bookkeeping.sh; with the PR's worktree, bookkeeping_roadmap_paths adds
+# the file the project's `roadmap` setting names, issue #551). One
+# definition, read by Step 2's allowed set and by the walk-back below.
+MERGE_PR_CI_BOOKKEEPING_PATTERNS=(".agent/work-plans/*")
+if [[ -n "$_ci_wt" ]]; then
+    mapfile -t -O 1 MERGE_PR_CI_BOOKKEEPING_PATTERNS < <(bookkeeping_roadmap_paths "$_ci_wt")
+else
+    MERGE_PR_CI_BOOKKEEPING_PATTERNS+=("${BOOKKEEPING_ROADMAP_PATHS[@]}")
+fi
 
 # --- Step 2: Decide the CI target (issue #284) ---
 # The naive target is "whatever the head is right now", but Step 1.5's own

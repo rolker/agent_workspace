@@ -15,6 +15,19 @@
 #                                                   resolved records settings
 #   project_setting.sh check <name>                 validate the file and its
 #                                                   records settings
+#   project_setting.sh doc   <name> <goals|design|roadmap>
+#                                                   where the project keeps
+#                                                   that document, one line:
+#                                                   `set <path>[#<heading>]`,
+#                                                   `fallback <path>` (unset;
+#                                                   the first candidate that
+#                                                   exists) or `none`
+#
+# Document keys (goals, design, roadmap; issue #551) take 'none' or a path
+# inside the project, relative to its root, optionally #<heading> (not on
+# roadmap); unset, readers use the candidates docs/roadmap.md,
+# docs/ROADMAP.md, ROADMAP.md (roadmap) and docs/design.md (design); goals
+# has none. Paths outside the project, URLs and repositories are refused.
 #
 # Records keys (location, location_path, tracking) are set and removed
 # together, e.g. `set <name> location=project tracking=project`. Until the
@@ -43,6 +56,10 @@
 #      .agent/projects.local is malformed (every command, before the
 #      project is looked up)
 #   3  check only: valid, but records settings not yet honoured (#393)
+# doc: 0 an answer printed; 1 nothing to read (goals unset, no candidate
+# exists, or the file a set key names is missing; the reason on stderr);
+# 2 the settings file or registry is invalid, or the path resolves outside
+# the project root.
 
 set -euo pipefail
 
@@ -71,7 +88,7 @@ CMD="$1"
 shift
 case "$CMD" in
     -h|--help) usage; exit 0 ;;
-    get|set|unset|list|check) ;;
+    get|set|unset|list|check|doc) ;;
     *) echo "ERROR: unknown command '$CMD'" >&2; usage; exit 1 ;;
 esac
 [ $# -ge 1 ] || { echo "ERROR: $CMD needs a project name" >&2; usage; exit 1; }
@@ -222,6 +239,15 @@ case "$CMD" in
         echo "# records: location=$_loc tracking=$_track${_lpath:+ location_path=$_lpath}$_note"
         [ "$_RC" -eq 3 ] && echo "# records: not yet honoured ($PROJECT_RECORDS_LOOKUP_ISSUE)"
         exit 0
+        ;;
+    doc)
+        [ $# -eq 1 ] || { echo "ERROR: doc takes one document: goals, design or roadmap" >&2; exit 1; }
+        case "$1" in goals|design|roadmap) ;; *)
+            echo "ERROR: doc: unknown document '$1' (goals, design or roadmap)" >&2; exit 1 ;;
+        esac
+        _RC=0
+        project_document_path "$MAIN_ROOT" "$NAME" "$1" || _RC=$?
+        exit "$_RC"
         ;;
     check)
         [ $# -eq 0 ] || { echo "ERROR: check takes no arguments" >&2; exit 1; }

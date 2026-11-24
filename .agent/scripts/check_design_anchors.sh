@@ -4,6 +4,22 @@
 # every cited section of a part's design to a heading in that design
 # (issue #488).
 #
+# The root's design (issue #551) is the file the project's `design` setting
+# names (a #<heading> on it is ignored: the file is the unit), else
+# docs/design.md, from project_document_for_dir in _project_registry.sh
+# (beside this script) against the main checkout's registry: <root> must be
+# a registered project's root or a worktree of its own repository for the
+# setting to apply; any other root, the workspace included, reads
+# docs/design.md without reading the registry. Below, "docs/design.md"
+# means that file. When it is not named design.md (ARCHITECTURE.md, say),
+# a citation `<path>ARCHITECTURE.md#<fragment>` is read too, and counts
+# only when it resolves, by the rules below, to the root's design; one that
+# resolves elsewhere is not a citation. A design.md at another path than
+# the setting's is a part's design, as below. `design=none`: no root design
+# is checked (no in-file links, no register guards), parts' designs still
+# are. The roadmap whose pointer table is read is the `roadmap` setting's
+# file, else the first of docs/roadmap.md, docs/ROADMAP.md, ROADMAP.md.
+#
 # Purpose: renaming or dropping a design section must not silently break the
 # skills, README, roadmap and knowledge files that cite it by anchor. This is
 # a grep/awk check, cheap enough to run on every docs commit through the
@@ -98,7 +114,7 @@
 # own anchors are checked as in-file links), .claude/skills/*/SKILL.md and
 # .agent/knowledge/*.md (those that exist); every tracked (`git ls-files`)
 # design.md or roadmap.md under a docs/ directory, so a part's design and
-# roadmap; and each sub-roadmap docs/roadmap.md (else ROADMAP.md) names in
+# roadmap; and each sub-roadmap the root's roadmap (above) names in
 # its `## Direction` section's `| Sub-roadmap | Root |` table, with the
 # design.md beside it, in any directory. The table is read by
 # `sitrep_checks.sh --list-pointers` (beside this script), so the pointers
@@ -132,7 +148,9 @@
 # Exit codes:
 #   0  no findings
 #   1  one or more findings
-#   2  usage error, root is not a directory, or <root>/docs/design.md missing
+#   2  usage error, root is not a directory, the root's design file missing
+#      (or its setting names a missing file), the settings or registry
+#      cannot be read, or _project_registry.sh cannot be loaded
 
 set -uo pipefail
 LC_ALL=C
@@ -171,10 +189,46 @@ if [[ ! -d "$ROOT" ]]; then
 fi
 cd "$ROOT" || exit 2
 
-DESIGN="docs/design.md"
-if [[ ! -f "$DESIGN" ]]; then
-    echo "error: $DESIGN not found under $ROOT" >&2
+# The root's design file (issue #551): project_document_for_dir
+# (_project_registry.sh) against the main checkout's registry. A registered
+# project's root (or a worktree of its own repository) reads its `design`
+# setting; any other root, the workspace included, reads docs/design.md.
+# A #<heading> on the setting is dropped: the file is the unit here. The
+# roadmap whose pointer table is followed comes from the same lookup.
+DESIGN=""
+ROADMAP_FILE=""
+# shellcheck source=_project_registry.sh
+if ! source "$SELF_DIR/_project_registry.sh" 2>/dev/null || ! declare -F project_document_for_dir >/dev/null; then
+    echo "error: could not load _project_registry.sh beside $0" >&2
     exit 2
+fi
+DOC_WS="$(registry_main_checkout "$SELF_DIR/../..")"
+doc_rc=0
+doc_line="$(project_document_for_dir "$DOC_WS" "$ROOT" design 2>&1)" || doc_rc=$?
+if [[ $doc_rc -ne 0 ]]; then
+    echo "error: no design file under $ROOT: ${doc_line%%$'\n'*}" >&2
+    exit 2
+fi
+if [[ "$doc_line" == none ]]; then
+    echo "check_design_anchors: $ROOT keeps no design (design=none); only parts' designs are checked" >&2
+else
+    DESIGN="${doc_line#* }"
+    DESIGN="${DESIGN%%#*}"
+fi
+doc_rc=0
+doc_line="$(project_document_for_dir "$DOC_WS" "$ROOT" roadmap 2>&1)" || doc_rc=$?
+if [[ $doc_rc -eq 2 ]]; then
+    echo "error: the roadmap of $ROOT cannot be told: ${doc_line%%$'\n'*}" >&2
+    exit 2
+fi
+[[ $doc_rc -eq 0 && "$doc_line" != none ]] && ROADMAP_FILE="${doc_line#* }"
+unset doc_rc doc_line
+# The root design's file name when it is not design.md (ARCHITECTURE.md,
+# say): citations `<path>ARCHITECTURE.md#x` are read too, and count only
+# when they resolve to the root's design.
+DESIGN_ALT=""
+if [[ -n "$DESIGN" && "${DESIGN##*/}" != design.md ]]; then
+    DESIGN_ALT="${DESIGN##*/}"
 fi
 
 ANCHOR_RE='^[a-z0-9][a-z0-9_-]*$'
@@ -291,7 +345,8 @@ design_records() {
 
 # Run awk first so its failure is seen: a failing process substitution would
 # otherwise leave the tables half-filled and the checker exiting 0.
-if ! RECORDS="$(design_records)"; then
+RECORDS=""
+if [[ -n "$DESIGN" ]] && ! RECORDS="$(design_records)"; then
     echo "error: could not read headings and links from $DESIGN" >&2
     exit 2
 fi
@@ -327,7 +382,7 @@ check_anchor() {
     local file="$1" line="$2" frag="$3" target="$4"
     if [[ ! "$frag" =~ $ANCHOR_RE ]]; then
         finding "$file" "$line" "malformed anchor '#$frag' (must match [a-z0-9][a-z0-9_-]*)"
-    elif [[ "$target" == "$DESIGN" ]]; then
+    elif [[ -n "$DESIGN" && "$target" == "$DESIGN" ]]; then
         [[ -n "${SLUGS[$frag]+x}" ]] || finding "$file" "$line" "broken anchor '#$frag' (no such heading in $DESIGN)"
     elif [[ -z "${PSLUGS["$target"$'\t'"$frag"]+x}" ]]; then
         finding "$file" "$line" "broken anchor '#$frag' (no such heading in $target)"
@@ -351,7 +406,7 @@ done
 # than the root's own, wherever it is (ADR-0022 decision 6: `<path>` is the
 # design file's directory). Its headings are read with the same slug()
 # rule, once, and its own in-file links are checked then.
-is_part_design() { [[ "$1" != "$DESIGN" && ( "$1" == design.md || "$1" == */design.md ) ]]; }
+is_part_design() { [[ "$1" != "${DESIGN:-}" && ( "$1" == design.md || "$1" == */design.md ) ]]; }
 declare -A PSLUGS=()
 declare -A LOADED=()
 # A part's design that cannot be read is reported once, here: the citer
@@ -416,21 +471,22 @@ add_citer() {
     CITERS+=("$NORM")
 }
 shopt -s nullglob
-for f in README.md .agent/AGENT_ONBOARDING.md docs/roadmap.md "$DESIGN" \
-         .claude/skills/*/SKILL.md .agent/knowledge/*.md; do
+for f in README.md .agent/AGENT_ONBOARDING.md docs/roadmap.md ${ROADMAP_FILE:+"$ROADMAP_FILE"} \
+         ${DESIGN:+"$DESIGN"} .claude/skills/*/SKILL.md .agent/knowledge/*.md; do
     add_citer "$f"
 done
 shopt -u nullglob
 while IFS= read -r -d '' f; do
     [[ "$f" =~ ^(.*/)?docs/(.*/)?(design|roadmap)\.md$ ]] && add_citer "$f"
 done < <(git ls-files -z 2>/dev/null)
-# The pointer table: `| Sub-roadmap | Root |` in docs/roadmap.md's (else
-# ROADMAP.md's) `## Direction` section, read by sitrep_checks.sh
-# --list-pointers, so the pointers followed here are exactly the ones the
-# sit-rep follows (same parser, same rules: inside the root through links,
-# inside its Root, the same repository, no repeat). Each sub-roadmap and
-# the design.md beside it, wherever it is, are citers.
-for rm_file in docs/roadmap.md ROADMAP.md; do
+# The pointer table: `| Sub-roadmap | Root |` in the root's roadmap's
+# `## Direction` section (ROADMAP_FILE: the `roadmap` setting's file, else
+# the first of docs/roadmap.md, docs/ROADMAP.md and ROADMAP.md), read by
+# sitrep_checks.sh --list-pointers, so the pointers followed here are
+# exactly the ones the sit-rep follows (same parser, same rules: inside the
+# root through links, inside its Root, the same repository, no repeat).
+# Each sub-roadmap and the design.md beside it, wherever it is, are citers.
+for rm_file in ${ROADMAP_FILE:+"$ROADMAP_FILE"}; do
     [[ -e "$rm_file" ]] || continue
     if ! PTRS="$(bash "$SELF_DIR/sitrep_checks.sh" --root . --roadmap "$rm_file" --list-pointers 2>/dev/null)"; then
         finding "$rm_file" 1 "could not read the Sub-roadmap | Root table (sitrep_checks.sh --list-pointers failed)"
@@ -456,7 +512,14 @@ done
 # redirect, never as an awk operand, so a path holding `=` is not taken for
 # an awk assignment.
 citations() {
-    awk 'BEGIN { re = "[-A-Za-z0-9_.$:{}~%+/]*design\\.md#[A-Za-z0-9_-]*"; OFS = "\t" }
+    DESIGN_ALT="$DESIGN_ALT" awk 'BEGIN { re = "[-A-Za-z0-9_.$:{}~%+/]*design\\.md#[A-Za-z0-9_-]*"; OFS = "\t"
+        alt = ENVIRON["DESIGN_ALT"]; needle = alt "#" }
+    # fragment_end(str, from): the index after the run of fragment
+    # characters that starts at <from>.
+    function fragment_end(str, from) {
+        while (from <= length(str) && substr(str, from, 1) ~ /[A-Za-z0-9_-]/) from++
+        return from
+    }
     {
         line = $0; off = 0
         while (match(substr(line, off + 1), /\]\(<[^<>]*>/)) {
@@ -464,6 +527,8 @@ citations() {
             dest = substr(line, s + 3, RLENGTH - 4)
             if (match(dest, /design\.md#[A-Za-z0-9_-]*/))
                 print FNR, 1, substr(dest, 1, RSTART + RLENGTH - 1)
+            else if (alt != "" && (k = index(dest, needle)) > 0)
+                print FNR, 1, substr(dest, 1, fragment_end(dest, k + length(needle)) - 1)
             len = length(dest)
             blank = ""; for (i = 0; i < len; i++) blank = blank " "
             line = substr(line, 1, s + 2) blank substr(line, s + 3 + len)
@@ -477,6 +542,20 @@ citations() {
                      || (s > 3 && substr(line, s - 3, 3) == "](<")
             print FNR, islink ? 1 : 0, tok
             off = s + RLENGTH - 1
+        }
+        # The root design under another file name (DESIGN_ALT): the same
+        # path characters before it, the fragment after it.
+        off = 0
+        while (alt != "" && (k = index(substr(line, off + 1), needle)) > 0) {
+            s = off + k
+            b = s
+            while (b > 1 && substr(line, b - 1, 1) ~ /[-A-Za-z0-9_.$:{}~%+\/]/) b--
+            e = fragment_end(line, s + length(needle))
+            tok = substr(line, b, e - b)
+            islink = (b > 2 && substr(line, b - 2, 2) == "](") \
+                     || (b > 3 && substr(line, b - 3, 3) == "](<")
+            print FNR, islink ? 1 : 0, tok
+            off = e - 1
         }
     }'
 }
@@ -496,7 +575,12 @@ for file in ${CITERS[@]+"${CITERS[@]}"}; do
         path="${tok%#*}"
         [[ -n "$frag" ]] || continue                              # placeholder
         [[ "$path" =~ ^[A-Za-z][A-Za-z0-9+.-]*:// || "$path" == //* ]] && continue   # a URL
-        [[ "$path" == design.md || "$path" == */design.md ]] || continue
+        alt=false
+        if [[ -n "$DESIGN_ALT" && ( "$path" == "$DESIGN_ALT" || "$path" == */"$DESIGN_ALT" ) ]]; then
+            alt=true
+        elif [[ "$path" != design.md && "$path" != */design.md ]]; then
+            continue
+        fi
         anchored=false
         if [[ "$path" =~ ^\$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)/(.*)$ ]]; then
             path="${BASH_REMATCH[2]}"; anchored=true
@@ -521,6 +605,7 @@ for file in ${CITERS[@]+"${CITERS[@]}"}; do
             elif [[ -n "$from_root" && -f "$from_root" ]]; then
                 target="$from_root"
             elif [[ -n "$from_dir$from_root" ]]; then
+                [[ "$alt" == true ]] && continue    # not the root design
                 if [[ -z "$from_dir" || -z "$from_root" || "$from_dir" == "$from_root" ]]; then
                     finding "$file" "$line" "no such design file '${from_dir:-$from_root}' for '#$frag'"
                 else
@@ -529,11 +614,14 @@ for file in ${CITERS[@]+"${CITERS[@]}"}; do
                 continue
             fi
         fi
+        # A path under the root design's other file name is a citation
+        # only when it resolves, by the rules above, to that design.
+        [[ "$alt" == true && "$target" != "$DESIGN" ]] && continue
         if [[ -z "$target" ]]; then
             finding "$file" "$line" "'$tok' leaves the root"
             continue
         fi
-        if [[ "$target" == "$DESIGN" ]]; then
+        if [[ -n "$DESIGN" && "$target" == "$DESIGN" ]]; then
             check_fragment "$file" "$line" "$frag"
         else
             if [[ ! -f "$target" ]]; then

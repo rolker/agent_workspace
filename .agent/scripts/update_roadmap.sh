@@ -9,11 +9,22 @@
 #   - Table format: changes the Status column to "done"
 #   - Checklist format: changes "- [ ]" to "- [x]"
 #
-# Discovers roadmap files at: ROADMAP.md, docs/ROADMAP.md, docs/roadmap.md
-# (every one that exists; a path that is the same file as one already
-# processed — case-insensitive filesystems — is skipped). A file is read,
-# written and reported under its stored name, whichever candidate spelling
-# found it.
+# Which file is the roadmap (issue #551) comes from project_document_path
+# (_project_registry.sh), for the project --root belongs to: --root is its
+# registered root, or a worktree of the root's own repository (merge_pr.sh
+# passes the feature branch's worktree), found with
+# project_document_name_for_root against the main checkout's registry.
+#   - the project's `roadmap` setting names a file: that file only (a file
+#     it names that does not exist: nothing is updated, with a message);
+#   - the setting is `none`: nothing is updated, with a message;
+#   - unset, or --root belongs to no registered project (the workspace):
+#     every one of the candidates docs/roadmap.md, docs/ROADMAP.md,
+#     ROADMAP.md that exists (a path that is the same file as one already
+#     processed -- case-insensitive filesystems -- is skipped);
+#   - the settings file or the registry cannot be read: nothing is updated,
+#     with the reason.
+# A file is read, written and reported under its stored name, whichever
+# candidate spelling found it.
 # Both formats are tried against each file found.
 #
 # Only matches explicit #<N> references (no fuzzy matching).
@@ -161,12 +172,52 @@ _try_checklist_format() {
     done < <(grep -nE "#${ISSUE_NUM}([^[:alnum:]_]|$)" "$roadmap" 2>/dev/null | cut -d: -f1)
 }
 
+# --- Which files: the project's roadmap setting, else the candidates ---
+# The shared list (project_document_candidates), walked last to first:
+# every candidate that exists is processed, so the order only sets the
+# order of the printed paths and which spelling the same-file guard keeps
+# (the first), and both stay as they were before the list was shared.
+# This script never blocks a merge, so without the registry helper it uses
+# the same list as written here and says why.
+ROADMAP_CANDIDATES=("ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md")
+REGISTRY_HELPER="$SCRIPT_DIR/_project_registry.sh"
+# shellcheck source=_project_registry.sh
+if [[ -f "$REGISTRY_HELPER" ]] && source "$REGISTRY_HELPER" 2>/dev/null \
+        && declare -F project_document_for_dir >/dev/null; then
+    mapfile -t _shared < <(project_document_candidates roadmap)
+    ROADMAP_CANDIDATES=()
+    for ((_i = ${#_shared[@]} - 1; _i >= 0; _i--)); do ROADMAP_CANDIDATES+=("${_shared[_i]}"); done
+    _ws="$(registry_main_checkout "$SCRIPT_DIR/../..")"
+    _rc=0
+    _line="$(project_document_for_dir "$_ws" "$ROOT_DIR" roadmap 2>/dev/null)" || _rc=$?
+    if [[ $_rc -eq 0 && "$_line" == none ]]; then
+        echo "  This project keeps no roadmap (roadmap=none in its settings); nothing to update for #${ISSUE_NUM}" >&2
+        exit 0
+    elif [[ $_rc -eq 0 && "$_line" == "set "* ]]; then
+        ROADMAP_CANDIDATES=("${_line#set }")
+    elif [[ $_rc -eq 1 ]]; then
+        # Nothing exists: when a setting names the file, say so rather than
+        # tick a candidate the project did not choose.
+        _name="$(project_document_name_for_root "$_ws" "$ROOT_DIR" 2>/dev/null)" || _name=""
+        _val=""
+        [[ -z "$_name" ]] || _val="$(project_file_get "$_ws" "$_name" roadmap 2>/dev/null)" || _val=""
+        if [[ -n "$_val" ]]; then
+            echo "  ⚠️  roadmap=$_val (project '$_name') names a file not in $ROOT_DIR; nothing updated for #${ISSUE_NUM}" >&2
+            exit 0
+        fi
+    elif [[ $_rc -ne 0 ]]; then
+        _why="$(project_document_for_dir "$_ws" "$ROOT_DIR" roadmap 2>&1 >/dev/null | head -n1)"
+        echo "  ⚠️  could not tell which file is the roadmap (${_why:-unknown error}); nothing updated for #${ISSUE_NUM}" >&2
+        exit 0
+    fi
+else
+    echo "  ⚠️  _project_registry.sh could not be loaded next to update_roadmap.sh; using the candidate roadmap files" >&2
+fi
+
 # --- Discover and process roadmap files ---
-# Check every candidate location; try both formats against each file.
-# docs/roadmap.md is the workspace's own spelling; the uppercase paths stay
-# so project repos keep their existing convention.
+# Check every chosen location; try both formats against each file.
 PROCESSED_ROADMAPS=()
-for rel_path in "ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md"; do
+for rel_path in "${ROADMAP_CANDIDATES[@]}"; do
     roadmap="$ROOT_DIR/$rel_path"
     [[ -f "$roadmap" ]] || continue
     # Use the stored name: on a case-insensitive filesystem the
