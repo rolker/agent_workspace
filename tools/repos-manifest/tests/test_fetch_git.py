@@ -333,6 +333,74 @@ def test_a_stop_signal_during_the_read_ends_git_and_leaves_no_temporary(tmp_path
     assert list(system.iterdir()) == []
 
 
+def stop_the_tool_during_the_read(tmp_path, url, argv, signum, where="."):
+    """Run the tool with `argv` with no terminal (a session of its own) in a system directory
+    whose `config.yaml` records the manifest `m.yaml` in the git repo at `url`, send it `signum`
+    while git waits on the server, and give its exit status and stderr, once it has ended, the
+    system directory's files and the tool's temporary directory's."""
+    temporary = tmp_path / "tool-tmp"
+    temporary.mkdir()
+    system = tmp_path / "system"
+    (system / ".repos-manifest").mkdir(parents=True)
+    (system / "src").mkdir()
+    (system / ".repos-manifest" / "config.yaml").write_text(
+        f"manifest:\n  url: {url}\n  path: m.yaml\nlayout: flat\n"
+    )
+    before = sorted(str(path) for path in system.rglob("*"))
+    source = Path(fetch.__file__).parents[1]
+    env = {**os.environ, "TMPDIR": str(temporary), "PYTHONPATH": str(source)}
+    tool = subprocess.Popen(
+        [sys.executable, "-c", "from repos_manifest.cli import run; run()", *argv],
+        cwd=system / where,
+        env=env,
+        start_new_session=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        deadline = time.monotonic() + 30
+        while not processes_naming(url) or not list(temporary.iterdir()):
+            assert time.monotonic() < deadline, "git never started"
+            assert tool.poll() is None, tool.communicate()
+            time.sleep(0.05)
+        time.sleep(0.2)
+        tool.send_signal(signum)
+        _, err = tool.communicate(timeout=30)
+    finally:
+        if tool.poll() is None:
+            tool.kill()
+    assert sorted(str(path) for path in system.rglob("*")) == before
+    return tool.returncode, err.decode(), list(temporary.iterdir())
+
+
+STATUS_AND_SHOW = [["status"], ["status", "--json"], ["show"]]
+
+
+@pytest.mark.parametrize("argv", STATUS_AND_SHOW, ids=" ".join)
+def test_status_and_show_stopped_during_the_read_end_git_and_leave_no_temporary(
+    tmp_path, silent, argv
+):
+    url = f"{silent.url}/sys.git"
+    where = "src" if argv == ["show"] else "."
+    code, err, left = stop_the_tool_during_the_read(tmp_path, url, argv, signal.SIGTERM, where)
+    assert code == -signal.SIGTERM, err
+    assert err == "ERROR: stopped by SIGTERM; nothing was changed\n"
+    assert processes_naming(url) == []
+    assert left == []
+
+
+@pytest.mark.parametrize("argv", STATUS_AND_SHOW, ids=" ".join)
+def test_status_and_show_stopped_by_ctrl_c_during_the_read_print_no_traceback(
+    tmp_path, silent, argv
+):
+    url = f"{silent.url}/sys.git"
+    code, err, left = stop_the_tool_during_the_read(tmp_path, url, argv, signal.SIGINT)
+    assert code == -signal.SIGINT, err
+    assert err == "ERROR: stopped by SIGINT; nothing was changed\n"
+    assert processes_naming(url) == []
+    assert left == []
+
+
 def test_a_private_repo_over_ssh_is_read_with_the_persons_ssh(tmp_path, monkeypatch):
     """git's ssh is the person's (`GIT_SSH_COMMAND`, as `~/.ssh/config` or an agent would be):
     a stub that records how it was called and runs `git-upload-pack` on a local repo."""

@@ -34,6 +34,7 @@ from .location import GitLocation, Location
 from .location import label as location_label
 from .masking import mask_url, mask_urls, remember_url
 from .selection import Selected
+from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
 from .system import (
     SYSTEM_DIR,
     BLOCKED_PLACE,
@@ -138,7 +139,17 @@ class DistroStatus:
 def run_status(named_distros: Sequence[str], as_json: bool) -> int:
     """The command: 1 when a repo that is not optional is not at its place or is unusable, or
     a distro cannot be read or resolved; 0 otherwise. A system directory that cannot be found
-    or read is a `ManifestError`, which the caller reports (exit status 1)."""
+    or read is a `ManifestError`, which the caller reports (exit status 1). A stop signal at
+    any point ends the run with one line; the temporary clone of a manifest in a git repo is
+    removed and git is ended first."""
+    try:
+        with signals_end_the_run():
+            return _status(named_distros, as_json)
+    except Stopped as exc:
+        return stop_exit(exc, f"stopped by {signal_name(exc)}; nothing was changed")
+
+
+def _status(named_distros: Sequence[str], as_json: bool) -> int:
     cwd = current_directory()
     with reporting_oserror():
         system = find_system(cwd)

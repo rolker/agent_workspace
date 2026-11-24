@@ -139,15 +139,23 @@ def _show_in_system(args: argparse.Namespace, cwd: Path) -> selection.Resolved:
 
 
 def cmd_show(args: argparse.Namespace) -> int:
+    """A stop signal while the manifest is read ends the run with one line; the temporary clone
+    of a manifest in a git repo is removed and git is ended first."""
     if args.distro == "":
         raise ManifestError("--distro is given an empty name; name the distro to show")
-    with reporting_oserror():
-        cwd = current_directory()
-        if args.manifest is None:
-            resolved = _show_in_system(args, cwd)
-        else:
-            manifest = read_manifest(args.manifest, cwd)
-            resolved = selection.resolve(manifest, args.role, args.distro, args.with_groups or [])
+    try:
+        with signals_end_the_run():
+            with reporting_oserror():
+                cwd = current_directory()
+                if args.manifest is None:
+                    resolved = _show_in_system(args, cwd)
+                else:
+                    manifest = read_manifest(args.manifest, cwd)
+                    resolved = selection.resolve(
+                        manifest, args.role, args.distro, args.with_groups or []
+                    )
+    except Stopped as exc:
+        return stop_exit(exc, f"stopped by {signal_name(exc)}; nothing was changed")
     print(render(resolved))
     return 0
 
