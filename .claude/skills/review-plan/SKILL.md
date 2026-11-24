@@ -83,7 +83,10 @@ later edits to the plan file never reach it. Never review the body, or a PR
 comment, as the plan: read the plan file at the PR's head commit. From the
 top folder of the repository the PR belongs to, fetch the head first
 (`<headRefOid>` from the first command; the Step 5 note reads the plan SHA
-the same way):
+the same way). `origin` must be that repository. If the fetch fails, or
+`git show` fails for any reason other than the file not existing at that
+commit (the no-plan-file case below), stop and show git's message; never
+read another copy:
 
 ```bash
 git fetch -q origin "pull/<N>/head"
@@ -103,12 +106,15 @@ git show <headRefOid>:./.agent/work-plans/issue-<issue>/plan.md
   lists no closed issue for a PR into a branch other than the default one,
   such as a sub-issue's PR into its parent's branch). Read the
   plan at the PR's head with the `git show` above first. Only when that
-  file does not exist at the head, find the plan as the **Issue number**
-  form below does for `--issue <issue>`, and if none is found, stop and say
-  so. The head comes first so that a checkout behind the PR never supplies
-  an older copy. Step 5 takes the SHA of a plan read at the head with
-  `--ref`, and of a plan the `--issue` lookup found (a local file) with
-  `--plan <path>`.
+  file does not exist at the head, read the one local fallback: the plan
+  file in the checkout this skill runs from, which is the repository the
+  PR belongs to, `$(git rev-parse --show-toplevel)/.agent/work-plans/issue-<issue>/plan.md`.
+  If it is not there, stop and say so, naming the path looked at. Never
+  search other worktrees or registered projects (the **Issue number**
+  form's search): another repository's issue can have the same number. The
+  head comes first so that a checkout behind the PR never supplies an
+  older copy. Step 5 takes the SHA of a plan read at the head with `--ref`,
+  and of the local fallback file with `--plan <path>`.
 
 **File path** (e.g., `/review-plan $WS_ROOT/.agent/work-plans/issue-45/plan.md`):
 
@@ -346,7 +352,7 @@ by hand:
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 # Plan checked out locally (worktree / --issue / file path, and the
-# PR-number form's --issue fallback when the head has no plan file):
+# PR-number form's local fallback when the head has no plan file):
 $WS_ROOT/.agent/scripts/review_progress.sh plan-sha --plan <path>
 # PR-number form, plan read at the PR head (every other PR case): fetch the
 # head (<N> is the PR number), then ask by ref — no local checkout needed.
