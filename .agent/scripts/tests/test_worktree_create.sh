@@ -389,9 +389,11 @@ echo "=== A branch another run creates during the lookup is left alone ==="
 # The git double plays a second run for the same issue: during this run's
 # origin lookup it creates the branch and its worktree at the same path.
 # This run stops and says so; the other run's branch and worktree stay.
-# Run from $FEAT, the script's root is that worktree (refs shared with $SB).
-RACE_MSG="ERROR: another run created the branch 'feature/issue-38' in $FEAT while this run was asking origin about it; this run made nothing and removes nothing."
-RACE_DEST="$FEAT/worktrees/workspace/issue-origin-38"
+# Run as the copy in $FEAT, the script's root is still the main checkout
+# $SB (issue 585), so the other run's worktree is where this run's would
+# have gone.
+RACE_MSG="ERROR: another run created the branch 'feature/issue-38' in $SB while this run was asking origin about it; this run made nothing and removes nothing."
+RACE_DEST="$SB/worktrees/workspace/issue-origin-38"
 run_stubbed STUB_RACE_BRANCH=feature/issue-38 STUB_RACE_REPO="$SB" STUB_RACE_DEST="$RACE_DEST" \
     --issue 38 --type workspace
 if [[ "$RC" -ne 0 && "$OUT" == *"$RACE_MSG"* && "$OUT" != *"removed again"* ]] \
@@ -420,19 +422,19 @@ echo "=== A fetch that fails fast: origin is asked, and any doubt stops ==="
 # The git double fails every fetch; ls-remote answers as the case needs.
 run_stubbed STUB_FETCH=fail STUB_LS_OK=refs/heads/feature/issue-28 --issue 28 --type workspace
 check_stop "fetch failed, origin has the branch: worktree_create.sh stops" nonzero "$SB" feature/issue-28 \
-    "$(msg_target "$FEAT" feature/issue-28 "origin has 'feature/issue-28', but fetching it failed (fatal: stub fetch failed)")"
+    "$(msg_target "$SB" feature/issue-28 "origin has 'feature/issue-28', but fetching it failed (fatal: stub fetch failed)")"
 add_repo STUB_FETCH=fail STUB_LS_OK=refs/heads/feature/issue-410 "$SB" "$SANDBOX/pkg-wt-29" feature/issue-29 feature/issue-410
 check_stop "fetch failed, origin has the parent: _wt_add_repo refuses, naming the sub-issue branch" refused "$SB" feature/issue-29 \
     "$(msg_parent "$SB" feature/issue-410 feature/issue-29 "origin has 'feature/issue-410', but fetching it failed (fatal: stub fetch failed)")" \
     "$SANDBOX/pkg-wt-29"
 run_stubbed STUB_FETCH=noop --issue 34 --type workspace
 check_stop "fetch exited 0 without the ref: worktree_create.sh stops" nonzero "$SB" feature/issue-34 \
-    "$(msg_target "$FEAT" feature/issue-34 "the fetch exited 0 but wrote no origin/feature/issue-34")"
+    "$(msg_target "$SB" feature/issue-34 "the fetch exited 0 but wrote no origin/feature/issue-34")"
 # ls-remote fails too, and an earlier fetch left origin/<parent>.
 gitq -C "$SB" update-ref refs/remotes/origin/feature/issue-405 "$LOCAL_MAIN"
 run_stubbed STUB_FETCH=fail STUB_LS_FAIL=refs/heads/feature/issue-405 --issue 16 --type workspace --parent-issue 405
 check_stop "origin unasked, it had the parent: worktree_create.sh stops, naming the sub-issue branch" nonzero "$SB" feature/issue-16 \
-    "$(msg_parent "$FEAT" feature/issue-405 feature/issue-16 "fetching 'feature/issue-405' failed (fatal: stub fetch failed), and origin could not be asked; it had 'feature/issue-405' at the last fetch (origin/feature/issue-405)")"
+    "$(msg_parent "$SB" feature/issue-405 feature/issue-16 "fetching 'feature/issue-405' failed (fatal: stub fetch failed), and origin could not be asked; it had 'feature/issue-405' at the last fetch (origin/feature/issue-405)")"
 add_repo STUB_FETCH=fail STUB_LS_FAIL=refs/heads/feature/issue-405 "$SB" "$SANDBOX/pkg-wt-17" feature/issue-17 feature/issue-405
 check_stop "origin unasked, it had the parent: _wt_add_repo refuses, naming the sub-issue branch" refused "$SB" feature/issue-17 \
     "$(msg_parent "$SB" feature/issue-405 feature/issue-17 "fetching 'feature/issue-405' failed (fatal: stub fetch failed), and origin could not be asked; it had 'feature/issue-405' at the last fetch (origin/feature/issue-405)")" \
@@ -441,14 +443,14 @@ gitq -C "$SB" update-ref -d refs/remotes/origin/feature/issue-405
 if command -v timeout >/dev/null 2>&1; then
     run_stubbed STUB_FETCH=fail STUB_LS_HANG=refs/heads/feature/issue-24 WT_FETCH_TIMEOUT=2 --issue 24 --type workspace
     check_stop "fetch failed, then ls-remote timed out: worktree_create.sh stops" nonzero "$SB" feature/issue-24 \
-        "$(msg_target "$FEAT" feature/issue-24 "fetching 'feature/issue-24' failed (fatal: stub fetch failed), and asking origin for it timed out after 2s" 2)"
+        "$(msg_target "$SB" feature/issue-24 "fetching 'feature/issue-24' failed (fatal: stub fetch failed), and asking origin for it timed out after 2s" 2)"
     add_repo STUB_FETCH=fail STUB_LS_HANG=refs/heads/feature/issue-26 WT_FETCH_TIMEOUT=2 "$SB" "$SANDBOX/pkg-wt-26" feature/issue-26
     check_stop "fetch failed, then ls-remote timed out: _wt_add_repo refuses" refused "$SB" feature/issue-26 \
         "$(msg_target "$SB" feature/issue-26 "fetching 'feature/issue-26' failed (fatal: stub fetch failed), and asking origin for it timed out after 2s" 2)" \
         "$SANDBOX/pkg-wt-26"
     run_stubbed STUB_FETCH=fail STUB_LS_HANG=refs/heads/feature/issue-409 WT_FETCH_TIMEOUT=2 --issue 27 --type workspace --parent-issue 409
     check_stop "parent fetch failed, then ls-remote timed out: worktree_create.sh stops" nonzero "$SB" feature/issue-27 \
-        "$(msg_parent "$FEAT" feature/issue-409 feature/issue-27 "fetching 'feature/issue-409' failed (fatal: stub fetch failed), and asking origin for it timed out after 2s" 2)"
+        "$(msg_parent "$SB" feature/issue-409 feature/issue-27 "fetching 'feature/issue-409' failed (fatal: stub fetch failed), and asking origin for it timed out after 2s" 2)"
 else
     echo "  SKIP: ls-remote timeouts (no timeout command on this machine)"
 fi
@@ -461,13 +463,13 @@ GIT_LINE="$(git -C "$SB" fetch --quiet origin 2>&1 | head -n1)"
 UNREACH_7="fetching 'feature/issue-7' failed ($GIT_LINE), and origin could not be asked whether it has 'feature/issue-7'"
 run_create "$FEAT" "$FEAT_SCRIPT" --issue 7 --type workspace
 check_stop "unreachable origin, no tracking ref: worktree_create.sh stops" nonzero "$SB" feature/issue-7 \
-    "$(msg_target "$FEAT" feature/issue-7 "$UNREACH_7")"
+    "$(msg_target "$SB" feature/issue-7 "$UNREACH_7")"
 add_repo "$SB" "$SANDBOX/pkg-wt-31" feature/issue-31
 check_stop "unreachable origin, no tracking ref: _wt_add_repo refuses" refused "$SB" feature/issue-31 \
     "$(msg_target "$SB" feature/issue-31 "fetching 'feature/issue-31' failed ($GIT_LINE), and origin could not be asked whether it has 'feature/issue-31'")" \
     "$SANDBOX/pkg-wt-31"
 run_create "$FEAT" "$FEAT_SCRIPT" --issue 7 --type workspace --allow-unverified-branch
-if [[ "$RC" -eq 0 && "$OUT" == *"WARNING: cannot tell whether origin has 'feature/issue-7' (in $FEAT): $UNREACH_7. --allow-unverified-branch was given, so 'feature/issue-7' is started afresh; if origin has it, its first push is rejected."* \
+if [[ "$RC" -eq 0 && "$OUT" == *"WARNING: cannot tell whether origin has 'feature/issue-7' (in $SB): $UNREACH_7. --allow-unverified-branch was given, so 'feature/issue-7' is started afresh; if origin has it, its first push is rejected."* \
       && "$OUT" == *"WARNING: could not fetch 'main' from origin"*"local 'main'"* ]]; then
     pass "unreachable origin, --allow-unverified-branch: created, both warnings name their reason"
 else
@@ -504,7 +506,7 @@ fi
 gitq -C "$SB" update-ref refs/remotes/origin/feature/issue-15 "$LOCAL_MAIN"
 run_create "$FEAT" "$FEAT_SCRIPT" --issue 15 --type workspace
 check_stop "unreachable origin that had the branch: stops, no new branch started" nonzero "$SB" feature/issue-15 \
-    "$(msg_target "$FEAT" feature/issue-15 "fetching 'feature/issue-15' failed ($GIT_LINE), and origin could not be asked; it had 'feature/issue-15' at the last fetch (origin/feature/issue-15)")"
+    "$(msg_target "$SB" feature/issue-15 "fetching 'feature/issue-15' failed ($GIT_LINE), and origin could not be asked; it had 'feature/issue-15' at the last fetch (origin/feature/issue-15)")"
 gitq -C "$SB" update-ref -d refs/remotes/origin/feature/issue-15
 # An existing branch whose parent origin cannot be asked about: warned.
 gitq -C "$SB" branch feature/issue-32 "$LOCAL_MAIN"
@@ -562,7 +564,7 @@ if command -v timeout >/dev/null 2>&1; then
     RC=$?
     elapsed=$((SECONDS - started))
     check_stop "hanging fetch: worktree_create.sh stops, no branch started" nonzero "$SB" feature/issue-13 \
-        "$(msg_target "$FEAT" feature/issue-13 "fetching 'feature/issue-13' timed out after 2s" 2)"
+        "$(msg_target "$SB" feature/issue-13 "fetching 'feature/issue-13' timed out after 2s" 2)"
     if [[ "$elapsed" -lt 20 ]]; then
         pass "hanging fetch: worktree_create.sh's branch fetch is bounded (${elapsed}s)"
     else

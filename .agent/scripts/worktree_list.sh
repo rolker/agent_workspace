@@ -18,9 +18,20 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 source "$SCRIPT_DIR/_worktree_helpers.sh"
+
+# A repository named by GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE or
+# GIT_COMMON_DIR in the caller's environment would make every `git -C <dir>`
+# below answer for that repository instead of <dir>, so worktrees would be
+# made, listed or removed in it (issue 585). This script runs as a process
+# of its own, so they are dropped for it alone.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
+
+# The workspace's main checkout, found from this script's location (also
+# when this is the copy inside a linked worktree); a refusal stops here
+# (issue 585).
+ROOT_DIR="$(wt_main_root "$SCRIPT_DIR" worktree_list.sh)" || exit 1
 
 # ---------------------------------------------------- user-tier guard (#265) ---
 # This script is promoted to the user tier (.agent/user_tier_scripts.txt), so

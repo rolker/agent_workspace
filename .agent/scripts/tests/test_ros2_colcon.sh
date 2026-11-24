@@ -355,6 +355,56 @@ if [ -f $wt/l1_ws/install/local_setup.bash ]; then source $wt/l1_ws/install/loca
         "--issue 111 --type project" "$out"
 }
 
+# Issue 585: worktree_create.sh run as the copy inside a linked worktree of
+# the workspace makes the package worktree where the main checkout's
+# registry puts it, and its --layer path sources the main checkout's
+# _pr_base.sh (the base from the pin) and calls the main checkout's adapter
+# (worktree_env writes env.sh). The worktree's own _pr_base.sh and adapter
+# are removed from its copy, so a call to either fails the run.
+test_worktree_create_package_from_worktree_copy() {
+    echo "TEST: worktree_create.sh as a linked worktree's copy makes a package worktree from the main checkout's registry, _pr_base.sh and adapter (issue 585)"
+    local sb out rc=0 proj wt wtc
+    sb="$(make_worktree_sandbox)"
+    # git -C "" would act on the cwd: stop unless the sandbox is real.
+    if [ -z "$sb" ] || [ ! -d "$sb" ] || [[ "$sb" != "$SANDBOX"/* ]]; then
+        assert_eq "fixture: the per-test sandbox was made" "true" "false"
+        return
+    fi
+    make_toolchain_stubs "$sb"
+    proj="$(make_colcon_project "$sb")"
+    make_committed_pkg_repo "$proj" l1 pkg_a
+    make_committed_pkg_repo "$proj" l1 pkg_b
+    mkdir -p "$proj/layers/main/l1_ws/install"
+    touch "$proj/layers/main/l1_ws/install/local_setup.bash"
+    # The scripts committed, so the linked worktree carries its own copy;
+    # the registry (.agent/projects.local) stays untracked, in the main
+    # checkout only.
+    git -C "$sb" add .agent/scripts .agent/project_types
+    git -C "$sb" -c user.name=t -c user.email=t@t commit --quiet -m "workspace scripts"
+    wtc="$sb/worktrees/workspace/issue-workspace-3"
+    mkdir -p "$sb/worktrees/workspace"
+    git -C "$sb" worktree add --quiet -b feature/issue-3 "$wtc" main
+    rm -f "$wtc/.agent/scripts/_pr_base.sh" "$wtc/.agent/scripts/adapter"
+    if [ ! -x "$wtc/.agent/scripts/worktree_create.sh" ] || [ -e "$wtc/.agent/projects.local" ] \
+       || [ -e "$wtc/.agent/scripts/_pr_base.sh" ] || [ -e "$wtc/.agent/scripts/adapter" ]; then
+        assert_eq "fixture: the worktree carries the scripts, without _pr_base.sh, the adapter and the registry" "true" "false"
+        return
+    fi
+    out="$(cd "$wtc" && export ROS_ROOT_DIR="$sb/rosroot" && PATH="$sb/stubbin:$PATH" \
+        "$wtc/.agent/scripts/worktree_create.sh" --allow-unverified-branch --issue owner/pkg_a#111 \
+        --type project --project tiered --layer l1 --package-repos pkg_a 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    wt="$sb/projects/tiered/worktrees/issue-tiered-owner-pkg_a-111"
+    assert_eq "the package worktree is under the registered project" "true" "$([ -d "$wt" ] && echo true || echo false)"
+    assert_eq "worktree checked out on feature/issue-111" \
+        "feature/issue-111" "$(git -C "$wt/l1_ws/src/pkg_a" branch --show-current 2>/dev/null)"
+    assert_eq "_pr_base.sh (main checkout's): the header records the pin as base=" \
+        "# project=tiered issue=owner/pkg_a#111 layer=l1 base=fakefox" "$(head -n1 "$wt/.worktree-repos" 2>/dev/null)"
+    assert_eq "worktree_env (main checkout's adapter): env.sh generated" "true" "$([ -f "$wt/env.sh" ] && echo true || echo false)"
+    assert_eq "nothing made under the worktree the copy runs from" "false" \
+        "$([ -e "$wtc/projects" ] || [ -e "$wtc/worktrees" ] && echo true || echo false)"
+}
+
 test_worktree_create_package_base_from_pin_or_refused() {
     echo "TEST: a package worktree without --base takes the pin; a pin that is no branch refuses before anything is made (issue 429)"
     local sb out rc=0 proj wt a
@@ -4210,6 +4260,7 @@ echo ""
 
 test_validator_accepts_ros2_colcon
 test_worktree_create_package_success
+test_worktree_create_package_from_worktree_copy
 test_worktree_create_package_base_from_pin_or_refused
 test_worktree_create_package_existing_branch_needs_named_base
 test_worktree_create_package_parent_issue_starts_from_parent

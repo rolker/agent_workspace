@@ -275,6 +275,9 @@ declare -A ROOT_READERS=(
     # Copies the real worktree scripts and the single_project type into its
     # sandbox workspace.
     [test_worktree_create.sh]=".agent/scripts .agent/project_types"
+    # Copies the four worktree scripts, their helpers, the dispatcher and
+    # the single_project type into its sandbox workspaces (issue 585).
+    [test_worktree_main_root.sh]=".agent/scripts .agent/project_types"
     # Copies the real worktree_remove.sh and its helpers into its sandbox
     # workspace (issue 428).
     [test_worktree_remove.sh]=".agent/scripts"

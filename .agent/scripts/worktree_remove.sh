@@ -124,15 +124,25 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Derive ROOT_DIR from the script's location, consistent with all other
-# worktree scripts. This works regardless of CWD — even if called from
-# inside a project worktree (where git context is the project repo, not
-# the workspace repo).
-ROOT_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
-
 source "$SCRIPT_DIR/_worktree_helpers.sh"
 # shellcheck source=_project_registry.sh
 source "$SCRIPT_DIR/_project_registry.sh"
+
+# A repository named by GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE or
+# GIT_COMMON_DIR in the caller's environment would make every `git -C <dir>`
+# below answer for that repository instead of <dir>, so worktrees would be
+# made, listed or removed in it (issue 585). This script runs as a process
+# of its own, so they are dropped for it alone.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
+
+# ROOT_DIR is the workspace's main checkout, found from this script's
+# location (wt_main_root): a copy inside a linked worktree still acts on
+# the main checkout's worktrees and registry, and the cwd plays no part,
+# so a call from inside a project worktree works too. This script
+# deletes: on a refusal it exits here, before the registry is read,
+# before any cd and before any delete; it never falls back to the copy's
+# own checkout, and no flag overrides the refusal (issue 585).
+ROOT_DIR="$(wt_main_root "$SCRIPT_DIR" worktree_remove.sh)" || exit 1
 
 # ---------------------------------------------------- user-tier guard (#265) ---
 # This script is promoted to the user tier (.agent/user_tier_scripts.txt), so
