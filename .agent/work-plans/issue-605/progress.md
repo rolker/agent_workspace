@@ -83,3 +83,72 @@ The review's actions go to the plan. Host decisions on how the rule sits in the 
 **Plan**: `.agent/work-plans/issue-605/plan.md` at `00c110a7`
 
 Two rules rows (the lighter level; the one follow-up issue authorization), a per-checkpoint section in the rules file, and prose pointers in the orchestrator and run-issue skills; no script or step change. Answers the Issue Review's seven actions.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-24 14:01 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #605 — Host standing rules: a lighter review level for the manifest work until the Rolling test passes
+**Plan**: `.agent/work-plans/issue-605/plan.md` at `00c110a7`
+**Branch**: `feature/issue-605`
+**Serves**: Less waiting for the same care (README workspace goals), `docs/design.md#rules` and `docs/design.md#review-loop-and-timeline`.
+
+Ready with directions: every gap below is closed by the replacement wording given; no decision is left open for the host or the owner beyond the host readings already listed for his veto.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Two rows, one section, three pointers; one pull request. |
+| Issue alignment | Needs work | All seven Issue Review actions are answered, and every quoted sentence in the two reason cells is verbatim from the issue body. But the per-checkpoint list promises checkpoints `dispatch_phase.sh next` does not raise (F1, F2), has no 9a item (F3), and Row A turns the owner's "(That day: ...)" example into a general rule (F4). |
+| File targeting | Good | The three files are the right ones; no script or step change is needed once the host-written checkpoint is stated (F1). |
+| Consequences | Good | The three suites assert nothing the planned text removes: the rules-table parser splits cells outside backticks and Row A/B have no bare pipe; `has` checks in `test_skill_paths.sh` only require text that stays; `test_package_issue_loop.sh` counts bash blocks using `where` (still 4, pointers are prose). |
+| Principle alignment | Needs work | "Verify before claiming": the router walk below. "Keep one current design": the four relaxed rows are named by their real opening words, but one of them is not relaxed (F5). |
+| ADR compliance | Good | ADR-0013: entries stay in the `## Checkpoint` shape, within the vocabulary, so nothing routes to row 28. |
+| ROS conventions | N/A | Workspace plan. |
+
+### What the router does (dispatch_phase.sh next, read at the worktree head)
+
+- Pre-push review `approved`, with suggestions: `checkpoint:publish` (rows 13-15). Host answers `publish` after the full pass. Plan is right.
+- Pre-push review `changes-requested`, suggestions only, round 1 or 2: `action=address-findings`, no checkpoint (only `approved` or round >= 3 raise one). There is nothing to "answer `publish`" at.
+- Must-fix, one fix pass: the fix's `## Implementation` routes to `action=review-code` (round 2, a full round with cross-model reviewers; the narrow convergence scope is put on the task line only at round 3), never to `publish`. No checkpoint the router raises sits between the fix and round 2.
+- Post-push cold read (a PR-mode `## Local Review`) with any non-`approved` verdict: `action=address-findings`, then a PR-mode re-review round, then `triage-reviews`. The plan's "a cold read's must-fix is fixed and then goes to him with the merge question" skips that re-review, which the router does not.
+- What does work with no script change: a `## Checkpoint` the host appends itself with `**After**: publish`, `**Decision**: publish` routes to `publish` with no pull request and to `triage-reviews` with one open (the `after in ("publish", "rounds")` block); `**After**: plan`, `**Decision**: proceed` routes to `implement`. These are host-written checkpoints the router did not raise, so the text must say so, and the orchestrator and run-issue pointers must say it is the one place the "run-issue raises every checkpoint" text does not hold.
+
+### Findings
+
+1. **[Issue alignment] must-fix** — The `publish` and `rounds` line says a suggestions-only pre-push review "is answered `publish`" and that after a must-fix fix pass "the host raises `publish`". Neither checkpoint is raised. Replace the `publish` and `rounds` bullet with:
+   > - Where `next` would start a second review round, the host does not dispatch it. This is the one place under this rule where the host writes a checkpoint `next` did not raise: it runs the full pre-commit pass first (`run-issue` step 7; a failure is recorded as the host's `address`, as there), then appends a `## Checkpoint` with `**After**: publish`, `**Decision**: publish` and `**Decided-by**: host (manifest-work rule: <reason>)`, the review's open suggestions listed in its body, and calls `next`, which routes it to `publish` (no pull request yet) or `triage-reviews` (pull request open). The two cases: a pre-push review with no must-fix that `next` sends to `address-findings` (the host checks with `review_progress.sh verdict`: round 1 with no must-fix gives `ship=recommended`), reason "suggestions only"; and the `## Implementation` of the one fix pass for a must-fix, which `next` sends to `review-code`, reason "fix pass, no second round". A pre-push review that is `approved` raises `checkpoint:publish` itself and is answered `publish` as today. The suggestions stay open through triage.
+2. **[Issue alignment] must-fix** — The cold read's findings route to a fix round and a PR-mode re-review. Add to the `findings` bullet (or a new bullet after it):
+   > - A cold read (step 9a) that is not `approved` goes to `address-findings` by `next`. With a must-fix, that fix pass runs; with suggestions only, it is not dispatched. In either case the host then appends the `publish` checkpoint of the bullet above (pull request open, so `next` routes it to `triage-reviews`) instead of dispatching the PR-mode re-review, and triage brings the result to the owner with the merge question.
+   And change Row A's "(the cold read of the final diff and CI read the fix)" to "(the pull request's one outside read at `run-issue` step 9a, Copilot's review or the cold read, and CI read the fix)": on the first pull request of a day Copilot, not a cold read, is that read.
+3. **[Issue alignment] suggestion** — No item says what the host does at 9a or how a skipped pre-push reviewer is left out. Add two bullets:
+   > - Step 9a: until Copilot fails on a given day, 9a runs as written (one request per pull request). After its first failure that day (any 9a "not available" outcome), later pull requests that day skip item 2's request and go to item 3, and the outside-reviewer line says "Copilot: skipped, failed earlier today (<first failure's reason>)". The cold read's agent is Codex, or Gemini when Codex has failed that day; with both failed that day, item 3's "With neither agent available" applies. A cold read whose agent fails goes to `phase-failed` as today; the retry names the other agent if it has not failed that day. That day, a pull request that changes no code gets no cold read (the owner's "one Codex cold read on pull requests that change code"), and the outside-reviewer line says so.
+   > - Pre-push `review-code` and its handoff: the host adds the reviewers skipped that day, with their first failure's reason, and "omit them from `--agents`" (review-code: "Omit an agent from the list when its CLI is known to be unavailable").
+   And replace the `phase-failed` bullet with: "`phase-failed`: `retry` as today for a phase that failed to run. A reviewer's failure inside a phase that completed (an agent named unavailable in a review entry, or a 9a 'not available') is not a `phase-failed`; it is what starts that reviewer's skip for the day."
+4. **[Issue alignment] suggestion** — Row A's "that day Copilot and Gemini are not asked after a failure, and the cold read is one Codex read on a pull request that changes code" makes the 2026-11-24 example general (Codex fixed even if Codex is the one that failed). Replace with: "a reviewer that fails once is not asked again that calendar day, and the next day starts with every reviewer again (on 2026-11-24 that meant no Copilot and no Gemini, with one Codex cold read on a pull request that changes code);".
+5. **[Principle alignment] suggestion** — Row A lists "At each checkpoint and hand-back, one line per outside reviewer" as relaxed, but the rule keeps it whole (a skipped reviewer is named with its reason, exactly what that row asks). Drop it from the list and add it to "Unchanged". Keep the other three by opening words (they match the file: "Review depth:", "A merge happens only when everything is clean", "A review that comes back with open findings") plus `run-issue` step 9a's one Copilot request; also name "The review-plan phase runs before any implementation" under "Unchanged" (the one plan review always runs).
+6. **[Issue alignment] suggestion** — The `plan` bullet's "not to a second full review of unchanged text" cannot happen (a `revise` changes the text, and `next` sends the new `## Plan Authored` to `review-plan`). Replace with: "`plan`: one plan review per pull request. `proceed` when it leaves directions only (they go into the implement handoff). On `revise`, after the revised plan's `## Plan Authored` the host appends a `plan` checkpoint answered `proceed`, `**Decided-by**: host (manifest-work rule: one plan review)`, instead of dispatching a second `review-plan`; `next` routes it to `implement`."
+7. **[Issue alignment] suggestion** — The end condition is checkable only through the issue. Change both "until the Rolling test of issue 436 passes" in Row A's first sentence and the section's first sentence to "until the Rolling test of issue 436 (the second-machine test on the new manifest) passes, which a host checks as issue 436 closed as completed (`gh issue view 436 --json state,stateReason`)". Add to the scope sentence: "An issue whose changes reach outside these parts is not manifest work, and its pull request follows the rows unrelaxed."
+8. **[Consequences] suggestion** — Row B: say how the boxes are ticked, with the existing mechanism: "…and ticks them as deferred with `review_progress.sh check --deferred` (`run-issue` step 6, 'Deferred suggestion-only boxes')". The follow-up issue carries the AI signature like any issue.
+9. **[File targeting] suggestion** — Pointers. Orchestrator paragraph: append "; under it the host also appends a `publish` or `plan` checkpoint that `next` did not raise, in the cases that section names." run-issue Overview pointer: append "Under it the host appends a `publish` or `plan` checkpoint that `next` did not raise, in the cases that file names, instead of dispatching a second review round." The 9a pointer stands.
+10. **[Plan text] suggestion** — Step 1's muddled first sentence becomes: "Append two rows at the end of the Rules table, after the issue 398 standing-authorization row."
+
+### Summary
+
+The owner's words are quoted verbatim and the scope matches what he approved, but the checkpoint list promises answers at checkpoints the router does not raise. The honest mechanism with no script change is a host-written `publish` (or `plan`) checkpoint in place of the second round, said openly; with the replacement wording above the plan is ready for implementation.
+
+### Recommended Actions
+
+- [ ] Replace the `publish`/`rounds` bullet with F1's text and add F2's cold-read bullet and Row A wording.
+- [ ] Add F3's 9a and pre-push `--agents` bullets; replace the `phase-failed` bullet.
+- [ ] Apply F4 and F5 to Row A's rule cell (general skip wording; the outside-reviewer row moved to "Unchanged"; the plan-review row named as unchanged).
+- [ ] Apply F6 to the `plan` bullet and F7's checkable end condition and mixed-scope sentence.
+- [ ] Apply F8 to Row B and F9 to both skill pointers; fix step 1's sentence (F10).
+- [ ] Run `test_skill_paths.sh`, `test_package_issue_loop.sh`, `test_dispatch_phase.sh` and the hooks on the changed files.
+
+### Decisions made (owner may veto)
+- A host-written `publish` or `plan` checkpoint, in place of the second round the router would start, is how the rule runs with no script change — undoing it: the second rounds run as the router routes them, and the rule's "one round" holds only where a review is `approved`.
+- On a day Copilot is skipped, a pull request that changes no code gets no cold read, read from his "one Codex cold read on pull requests that change code" — undoing it: drop that sentence and the cold read runs on every pull request.
