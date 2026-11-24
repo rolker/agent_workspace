@@ -305,3 +305,13 @@ All three round-2 findings are answered with the entry's words. "The handoff of 
 
 ### Findings
 - [ ] (suggestion) The duplicate-issue guard searches for "an open issue that names this pull request", but nothing says the follow-up issue's body names the pull request, so the search can come back empty after the crash it guards against. It also does not say to reuse and record an issue it finds. Wording: "opens the one follow-up issue (second row above), its body naming this pull request, with the suggestions ..." and "..., in case an earlier run opened it and stopped before recording it (if found, it is that issue)". — `.agent/knowledge/host_standing_rules.md:59`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 14:21 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the round-3 pre-push review at a7ec2e98 approved with no must-fix and one suggestion, and the host's full pre-commit pass over the branch's files passed)
+**After**: publish
+**Decision**: publish
+
+The full pass ran with no SKIP over the files changed since origin/main and exited 0; every hook that applied passed, the script-suite hook included. One suggestion stays open and goes to the owner with the merge question: the duplicate guard in the `merge` bullet searches for an open issue that names the pull request, but nothing requires the follow-up issue's body to name it, and the bullet does not say to reuse and record an issue the search finds. Outside reviewers before the push: Codex ran in rounds 1 and 2 and found one must-fix point in each; Gemini was skipped all day, having failed on its headless tool denial; round 3 had none, by the convergence-check rule.
