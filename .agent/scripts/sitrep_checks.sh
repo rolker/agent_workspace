@@ -161,8 +161,10 @@
 #     `Across the paths` span at a paragraph's start that never closes
 #     (the paragraph opens no group); bold text that goes on after
 #     `Across the paths` (the group is still `Across the paths`); a path
-#     number used twice (both paths are read, the row follows the second;
-#     the summary's two `P<n>` counts are not told apart).
+#     number used twice, or a second Across paragraph (both are read, the
+#     row follows the second; the summary's two `P<n>` or `across` counts
+#     are not told apart). The Across ones only beside a path: a section
+#     with no path paragraph gets none of these rows for Across.
 # Only `line` rows are counted for a group; deferral, format and part rows
 # keep their places and belong to none. A section with no path paragraph
 # has no groups at all, whatever else it holds (an Across paragraph alone
@@ -847,7 +849,7 @@ scan_roadmap() {
     # into GTEXT (path_mark).
     local open_ok=false bold="" bold_on=false bold_at=0 ptext_on=false
     if [ -n "$part" ]; then kpre=sub; ipre="$part: "; fi
-    GMARKS=(); GTEXT=(); ACC_GROUP=""; ACC_SEEN=false
+    GMARKS=(); GRAW=(); GTEXT=(); PENDING=(); ACC_GROUP=""; ACC_SEEN=false
     SCAN_SECTION=false
     SCAN_TABLE=false
     while IFS= read -r raw || [ -n "$raw" ]; do
@@ -1017,14 +1019,20 @@ bold_unclosed() {
     bold_on=false
     read -ra w <<< "$bold"
     t="${w[*]-}"
-    [[ "$t" =~ ^Path\ [0-9]+ ]] || [[ "$t" == "Across the paths"* ]] || return 0
-    emit format "(a bold **${w[*]:0:6} at a paragraph's start never closes: it opens no group)" unchecked ""
+    t="(a bold **${w[*]:0:6} at a paragraph's start never closes: it opens no group)"
+    if [[ "${w[*]-}" =~ ^Path\ [0-9]+ ]]; then
+        emit format "$t" unchecked ""
+    elif [[ "${w[*]-}" == "Across the paths"* ]]; then
+        # An Across paragraph matters only beside a path: group_rows shows
+        # this row only then, so a section with no path keeps its rows.
+        PENDING+=("${#ROWS[@]}"$'\t'"format"$'\t'"${t//$'\t'/ }"$'\t'"unchecked"$'\t'"none"$'\t'"$TODAY")
+    fi
 }
 
 # path_mark <bold text> <row index> <text after the bold>: when the bold
 # text at a paragraph's start names a path or Across, note the group in
-# GMARKS ("<row index>\t<path|across>\t<name>") and its paragraph's
-# text in GTEXT (the rest of the paragraph is read in
+# GMARKS ("<row index>\t<path|across>\t<name>"), its bold text in GRAW
+# and its paragraph's text in GTEXT (the rest of the paragraph is read in
 # while ptext_on). The first `Acceptance case` paragraph notes the group
 # it sits in, the last one opened above it (ACC_GROUP). Anything else is
 # not a group.
@@ -1037,11 +1045,9 @@ path_mark() {
     if [[ "$t" =~ ^Path\ [0-9]+ ]]; then
         GMARKS+=("$2"$'\t'path$'\t'"$t")
     elif [[ "$t" == "Across the paths"* ]]; then
-        # The group is `Across the paths` whatever follows; more words are
-        # shown, never taken into its name.
+        # The group is `Across the paths` whatever follows; group_rows
+        # shows more words, never takes them into its name.
         GMARKS+=("$2"$'\t'across$'\t'"Across the paths")
-        [ "$t" = "Across the paths" ] \
-            || emit format "(the Across paragraph's bold text is not just \"Across the paths\": $t)" unchecked ""
     else
         if [ "$t" = "Acceptance case" ] && [ "$ACC_SEEN" = false ]; then
             ACC_SEEN=true
@@ -1049,6 +1055,7 @@ path_mark() {
         fi
         return 0
     fi
+    GRAW+=("$t")
     GTEXT+=("$(trim "$3")")
     ptext_on=true
 }
@@ -1074,7 +1081,7 @@ first_sentence() {
 # root's rows only; it runs before anything else is added). Nothing when
 # no path paragraph was found: an Across paragraph alone opens no group.
 group_rows() {
-    local m i k n="${#ROWS[@]}" lo hi c pn first=-1 has_path=false
+    local m i k n="${#ROWS[@]}" lo hi c pn p first=-1 has_path=false across=false
     local -a at=() kind=() name=() cnt=() out=()
     local -A seen=()
     for m in ${GMARKS[@]+"${GMARKS[@]}"}; do
@@ -1110,7 +1117,19 @@ group_rows() {
                     || out+=("format"$'\t'"(path number $pn is used twice: ${name[k]//$'\t'/ }; the summary's P$pn counts are not told apart)"$'\t'"unchecked"$'\t'"none"$'\t'"$TODAY")
                 seen[$pn]=1
             fi
+            # Likewise a second Across paragraph (two `across` labels), and
+            # bold text that goes on after `Across the paths`.
+            if [ "${kind[k]}" = across ]; then
+                [ "$across" = false ] \
+                    || out+=("format"$'\t'"(a second Across the paths paragraph; the summary's two across counts are not told apart)"$'\t'"unchecked"$'\t'"none"$'\t'"$TODAY")
+                across=true
+                [ "${GRAW[k]}" = "Across the paths" ] \
+                    || out+=("format"$'\t'"(the Across paragraph's bold text is not just \"Across the paths\": ${GRAW[k]//$'\t'/ })"$'\t'"unchecked"$'\t'"none"$'\t'"$TODAY")
+            fi
             k=$((k + 1))
+        done
+        for p in ${PENDING[@]+"${PENDING[@]}"}; do
+            [ "${p%%$'\t'*}" -ne "$i" ] || out+=("${p#*$'\t'}")
         done
         [ "$i" -eq "$n" ] || out+=("${ROWS[i]}")
     done

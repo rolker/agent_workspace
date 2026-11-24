@@ -2050,16 +2050,23 @@ done
 echo "TEST: what cannot be read as a group is a format row, never dropped unseen"
 run_rm "$(printf '%s\n' '## Direction' '' '**Path 1, One.** a' '' '| Line | Check |' '|---|---|' "| A | $T |" '' \
     '**Path 1, Again.** b' '' '**Path 3, Never' 'closes here.' '' '| Line | Check |' '|---|---|' "| B | $T |" '' \
-    '**Across the paths, shared.** c' '' '| Line | Check |' '|---|---|' "| C | $T |")"
+    '**Across the paths, shared.** c' '' '| Line | Check |' '|---|---|' "| C | $T |" '' \
+    '**Across the paths.** d' '' '| Line | Check |' '|---|---|' "| D | $T |")"
 want="$(printf '%s\n' $'path\tPath 1, One\ttrue' $'line\tA\ttrue' $'path\tPath 1, Again\ttrue' \
     $'format\t(path number 1 is used twice: Path 1, Again; the summary\'s P1 counts are not told apart)\tunchecked' \
     $'format\t(a bold **Path 3, Never closes here. at a paragraph\'s start never closes: it opens no group)\tunchecked' \
     $'line\tB\ttrue' $'path\tAcross the paths\ttrue' \
     $'format\t(the Across paragraph\'s bold text is not just "Across the paths": Across the paths, shared)\tunchecked' \
-    $'line\tC\ttrue')"
+    $'line\tC\ttrue' $'path\tAcross the paths\ttrue' \
+    $'format\t(a second Across the paths paragraph; the summary\'s two across counts are not told apart)\tunchecked' \
+    $'line\tD\ttrue')"
 [[ $RC -eq 0 && "$(cut -f1-3 <<< "$OUT")" == "$want" ]] \
-    && pass "(paths) a path number used twice, a bold Path span that never closes, and words after Across the paths are format rows; Across keeps its name" \
+    && pass "(paths) a path number used twice, a bold Path span that never closes, words after Across the paths and a second Across paragraph are format rows; Across keeps its name" \
     || fail "(paths) edges rc=$RC '$OUT'"
+run_rm "$(printf '%s\n' '## Direction' '' '**Across the paths, shared.** c' '' '**Across the paths' 'never closes' '' \
+    '| Line | Check |' '|---|---|' "| C | $T |")"
+[[ $RC -eq 0 && "$(cut -f1-3 <<< "$OUT")" == $'line\tC\ttrue' ]] \
+    && pass "(paths) no path paragraph: an odd or unclosed Across paragraph adds no row (rows as before paths were read)" || fail "(paths) across no path rc=$RC '$OUT'"
 
 echo "TEST: no path paragraph: rows, summary and next steps as before paths were read"
 run_rm "$(printf '%s\n' '## Direction' '' '**Across the paths.** Alone, it opens nothing.' '' \
