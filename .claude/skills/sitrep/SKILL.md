@@ -338,11 +338,11 @@ rows="<rows_file printed in step 1>"
 # paths, no path word is printed.
 haspaths=no
 if [ -f "$rows" ] && [ -r "$rows" ]; then
-    ! grep -q "^path	" "$rows" || haspaths=yes
+    ! grep -q $'^path\t' "$rows" || haspaths=yes
 elif ! lp="$("$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$ROOT" "${ra[@]}" --list-paths)"; then
     echo "paths: could not be listed (reason above); work is marked path unknown"
     haspaths=unknown
-elif grep -q "^group	" <<< "$lp"; then
+elif grep -q $'^group\t' <<< "$lp"; then
     haspaths=yes
 fi
 wl="$("$WS_ROOT/.agent/scripts/sitrep_root.sh" --worktrees --rows "$rows")" \
@@ -506,8 +506,8 @@ Direction section writes them (issue #563):
   block of this step prints `paths=unknown`).
 - The root's Direction section is not written as paths (step 1's rows
   hold no `path` row; with no rows, the checker's `--list-paths` prints
-  nothing, and the last block of this step prints `paths=none`): no path
-  word is printed, except a sub-roadmap's path.
+  no `group` line, and the last block of this step prints `paths=none`):
+  no path word is printed, except a sub-roadmap's path.
 
 The state is the latest timeline entry in words, so the report needs no
 entry names. The entry is looked up by its base type
@@ -797,9 +797,12 @@ it from)" and no pull request is looked up; with no list from step 3,
 references (`null` or empty), or a reference without its repository, is
 matched by its branch name only. Matching is by the issue number
 only, through `feature/issue-<N>` worktrees and pull requests that close
-`#<N>` or come from that branch. When the line names no issue, or no
-branch or pull request matches, nothing in flight on this machine
-advances it, and the report says that rather than pick other work.
+`#<N>` or come from that branch. When no branch or pull request
+matches an issue it looked up, nothing in flight on this machine
+advances it, and the report says that rather than pick other work. When
+the line names no issue of this repository, or the branches or the pull
+request list could not be read, it was not looked up, and the report
+says so and why, never that nothing exists.
 
 What the next step is for comes from the Direction section's
 `**Acceptance case.**` paragraph, as the checker reads it
@@ -1131,7 +1134,8 @@ Running: <branch>: <its state>.
 - Running: <name>: <issue title> (issue <N>)<, the next step>: <state>. <path>.
 - And <k> more:
   - <name>
-- No branch or pull request for the next step of: <the groups whose first unmet line step 5 matched no branch or pull request for>.
+- No branch or pull request for the next step of: <the groups whose next step step 5 looked up and matched nothing for>.
+- Not looked up for <group>: <why: its line names no issue of this repository | the branches could not be listed | the pull request list could not be read>.
 
 **Problems**:
 
@@ -1262,10 +1266,21 @@ Rules for the report:
   are matched: then the first five of them, in step 3's order, are
   shown, and the rest are named under "And <k> more:" with the others;
   then one bullet "No branch or pull request for the next step of:"
-  names the groups whose first unmet line step 5 matched no branch of
-  the root's own worktrees and no open pull request for (left out when
-  there is none). It says nothing about the group's other lines: work
-  for them can be in flight above, marked with the group. A line is filled in
+  names the groups whose first unmet line step 5 looked up and matched
+  no branch of the root's own worktrees and no open pull request for
+  (left out when there is none). The report never states an absence it
+  did not check, so a group is named there only when step 5 looked:
+  its block printed `issues_named=` with a number, listed the branches,
+  and read the pull request list. With no pull-request source for the
+  root, the bullet reads "No branch for the next step of:" and says
+  nothing about pull requests. A group step 5 did not look up for gets
+  one short line instead, "Not looked up for <group>: <why>", one per
+  reason: its line names no issue of this repository (`issues_named=none`;
+  another repository's issue is not looked up), the branches could not
+  be listed (`branches: could not be listed`), or the pull request list
+  could not be read (`pull_requests=not looked up`). Neither says
+  anything about the group's other lines: work for them can be in
+  flight above, marked with the group. A line is filled in
   part by part, and a part the branch does not have is left out:
   - `<name>` is the branch, or for a worktree that is not the root's
     own (`own` is `no`: another repository's work a Direction line of
@@ -1309,6 +1324,9 @@ Rules for the report:
     `closingIssuesReferences` whose repository is this one (the match
     step 5 makes); with neither, it is path unknown. Never a `no path
     line (...)` label, which needs the timeline that was not read.
+    When step 1 printed no rows there are none to read it from, so it is
+    "path unknown (steps not checked)", as for a worktree (no path word
+    when step 3 printed `paths=none`).
 - **Problems** in words: the Decision register's newest `yes <date>` is
   the "last design-decision review", its `not yet` rows "design
   decisions not yet reviewed"; digest entries are "research topics".
