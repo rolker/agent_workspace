@@ -574,3 +574,35 @@ False positive: Gemini's "step 5's jq fails silently without jq" (step 3's workt
 - [x] (suggestion) The PR body says `--list-paths` prints "the group the acceptance case sits under"; it now prints the acceptance text as well, and step 5 reads it — PR 572 description (deferred: the pull request description is the host's to update (host direction); not edited here)
 - [x] (suggestion) An unclosed `**Across the paths` bold above Path 1 gives its format row after the `path` row of Path 1, not at its place (reproduced) — `.agent/scripts/sitrep_checks.sh:1035` (deferred: not a one-line change: placing the row in place needs the order of marks and pending rows recorded; the row is present and reported under Problems (host direction))
 - [x] (suggestion) A pull request with no worktree reads "path unknown (no worktree, timeline not read)" even when step 1 printed no rows, where the reason is that the steps were not checked — `.claude/skills/sitrep/SKILL.md:1306`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 09:42 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a4c066f54a5215d26, resume 3 of 3)
+
+**PR**: #572 at `1270565e`
+**Addressed**: Local Review at `4c765965` (2026-11-24 09:37 -05:00)
+**Commits**: cc8b6995, 1270565e
+
+### Actions
+- [x] (must-fix) "No branch or pull request for the next step of:" names a group only when step 5 looked (an issue of this repository named, branches listed, pull request list read); otherwise "Not looked up for <group>: <why>", one line per reason (no issue of this repository; branches could not be listed; pull request list could not be read); with no pull-request source the bullet is "No branch for the next step of:" and says nothing about pull requests; step 5's own sentence says the same; test pins the wording — `.claude/skills/sitrep/SKILL.md` template, In flight rule, step 5 (cc8b6995, test in 1270565e)
+- [x] (suggestion) The two grep patterns use `$'^path\t'` and `$'^group\t'`; the file holds no literal TAB now — `.claude/skills/sitrep/SKILL.md` step 3 (cc8b6995)
+- [x] (suggestion) Leading space: a path's or the acceptance case's text starting on the line after its bold is joined with no leading space (`${GTEXT[-1]:+ }`, `${ACC_TEXT:+ }`); one test — `.agent/scripts/sitrep_checks.sh` (1270565e)
+- [x] (suggestion) "prints nothing" now "prints no `group` line" for a section with no path paragraph — `.claude/skills/sitrep/SKILL.md` step 3 (cc8b6995)
+- [x] (suggestion) Pull request description (deferred: the description is the host's to update, per host direction; not edited)
+- [x] (suggestion) Unclosed `**Across the paths` format row order (deferred: not a one-line change, since placing it in place needs the order of marks and pending rows recorded; the row is present and reported under Problems, per host direction)
+- [x] (suggestion) A pull request with no worktree is "path unknown (steps not checked)" when step 1 printed no rows (no path word when step 3 printed `paths=none`) — `.claude/skills/sitrep/SKILL.md` step 8 (cc8b6995)
+
+### Host directions (for the owner's veto)
+- Must-fix fixed as directed: never state an absence that was not checked; nothing about pull requests without a pull-request source.
+- Four suggestions fixed with the smallest edits; the Across row order declined as not a one-line change; the pull request description left to the host.
+
+### Decided beyond the directions
+- None.
+
+### Suites (each run on its own from the worktree, on the final content)
+- test_sitrep_checks.sh: "test_sitrep_checks: 300 passed, 0 failed"
+- test_skill_paths.sh: "test_skill_paths: 199 passed, 0 failed"
+- test_sitrep_root.sh: "test_sitrep_root: 69 passed, 0 failed"
+- CI checks the push; the host owns it.
