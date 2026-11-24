@@ -239,3 +239,20 @@ All ten round-1 findings are answered as the Checkpoint decided. The three depar
 - [ ] On exit 4 or 5, a dispatched phase ends with Status partial and names the issue text it needs; say so in the skill text and the pull request
 - [ ] Name the host on every skill `gh` call (`-R "github.com/$_REPO"`) and pin it
 - [ ] Make the guard's message name the exit code and point to the per-exit table
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:26 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 2 of the plan review says ready: all ten earlier findings are answered, and its five new points can be handed to the implementer as instructions)
+**After**: plan
+**Decision**: proceed
+
+Implement the plan at a3b24fcd with these instructions, which answer the Plan Review at 403122c9 and bind the implementer (host decisions, listed for the owner's veto):
+- A: the manifest header counts only when the current checkout is the manifest's issue checkout (issue_checkout_of). In a sibling repository's checkout the header is ignored and that checkout's own origin decides; the helper never advises gh repo set-default toward a repository that is not the current checkout's. Find the manifest with the existing _wpd_enclosing_manifest, not a new walk. Add a sibling-checkout test.
+- B: a package worktree's top folder (not a git repository, but under a manifest whose header names this number) gives exit 3 with a message naming the header's owner/repo#N; add the test and the row in the contract table.
+- C: a dispatched phase cannot ask the owner. On exit 4 or 5 the skill, when it cannot go on without the issue's text, ends its entry with Status partial and names the text it needs, so the host asks; the skill text says so.
+- D: the skills write -R "github.com/$_REPO", as onboard-project already does, so an environment GH_HOST cannot send the call elsewhere; pin it.
+- E: the guard line prints the helper's exit code and points to the per-exit table; it does not say "stop" for exit 4, which is an ordinary case.
+- The planner's three departures stand as the reviewer accepted them: a header is taken only when it is owner/repo#N for this number; any gh-resolved setting triggers the gh call; on exit 5 review-issue and plan-task ask for the issue's text and nothing is posted.
+- In review-plan step 1, issue 579 (driven at the same time) rewrites the "PR number" block, which will hold three gh calls after it lands. This change adds the repository to the gh calls that exist on this branch and says in its entry that the block will need the flag on all three whichever merges second.
