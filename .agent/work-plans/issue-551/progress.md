@@ -630,3 +630,13 @@ Re-triage after the merge of origin/main (7a29404e, after PR 567) at the owner's
 **Decision**: merge
 
 The owner's answer at the previous merge checkpoint, "Resolve, then merge", authorized this merge once the conflict resolution was clean. It is: the PR-mode re-review approved with no findings, the re-triage found nothing open, the PR shows no reviews, and the PR body has its Decision summary. CI on the head was still finishing; merge_pr.sh waits for it and refuses on a failure.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 10:28 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: address
+
+The merge answered on 2026-11-23 23:09 did not land: pull request 568 is still open, and since then main gained pull requests 570 (issue 428 part 2) and 572 (issue 563, the sit-rep per path), which changed sitrep_checks.sh, sitrep_root.sh and the sit-rep skill that this branch also changes. GitHub now reports the pull request as conflicting (docs/design.md and .agent/knowledge/script_reference.md; the three sit-rep files merge textually). The owner's words today, with the pull request named as open and ready: "work on 568". Recorded as address because the branch has to take main in before any merge, and the result is new code to review: the earlier merge answer was for a head that no longer merges, so the merge question is asked again after the re-review. The finding for the fix pass: merge origin/main, resolve the two conflicts keeping both sides, and make this branch's lookup of where a project keeps its roadmap hold for what pull request 572 added to the sit-rep checker and skill (the path rows, --list-paths, the acceptance text), with tests.
