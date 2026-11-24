@@ -631,3 +631,28 @@ Prior findings:
 
 ### Findings
 - [ ] (suggestion) Step 5's new sentence says a line not looked up is reported "so and why, never that nothing exists", but in a root with no path paragraph the unchanged `Running:` rule still reads "Running: nothing on this machine." whenever step 5 matched nothing, including when it did not look; same as main there (that roadmap is read as before), so not a regression; one clause in the `Running:` rule would make the two agree — `.claude/skills/sitrep/SKILL.md:1239`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 09:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #572 at `1e295fe9`
+**Sources**: 3 (Local Review @ `1e295fe9` (round-3 convergence check); Local Review @ `4c765965` for its two suggestions declined on the host's directions; CI rollup). No hosted review and no comment on the pull request; Copilot was not requested.
+**Cross-source confirmations**: 0
+**CI**: pending (two workflow runs on `1e295fe9`, 45417165271 and 45417182906, each: Validate Documentation pass, Validate Adapter Contract pass; Lint (pre-commit), repos-manifest tests Python 3.10 and 3.14 pending, read 09:49 -05:00)
+
+`review_progress.sh sources` at `1e295fe9`: one open local finding (the convergence check's suggestion), no dropped entries, no GitHub comments.
+
+Ruling on the convergence check's suggestion: valid, raised to must-fix. The branch's own rule says "The report never states an absence it did not check" (SKILL.md:1271) and step 5 says a line not looked up is reported "so and why, never that nothing exists" (:803-805), yet the no-paths `Running:` rule (:1239-1240, template :1126) still prints "Running: nothing on this machine." whenever step 5 matched nothing, including when it did not look (the line names no issue of this repository, the branches could not be listed, or the pull request list could not be read). That is the same unchecked-absence claim fixed as a must-fix for the paths case in cc8b6995, reachable on an ordinary no-paths roadmap whose next line names no issue. It is in kind on main ("nothing advances it"), but this PR rewrote that sentence and added the rules it now contradicts, so an agent following the skill gets two conflicting instructions; the fix is one clause plus a test pin.
+
+Decision summary checked against the branch: the change bullets, the review history (rounds 1 to 3, the cold read, the re-review with Gemini and Codex both finding its must-fix) and the cost note match the progress timeline and the diff; the PR-description suggestion is closed (the body now says `--list-paths` prints the acceptance case's text). Two things out of date: the live-run line's `deferrals 3/10` is now `2/10` (`sitrep_checks.sh --root . --summary` at `1e295fe9` gives `lines 2/15 deferrals 2/10 paths P1 1/4 P2 0/4 P3 0/3 P4 0/3 P5 none across 1/1`; issue 428 closed at 09:22 -05:00, after that run); and "after merging main" no longer holds, main has since gained PR 571 (issue 569: its work plan and one line of `tools/repos-manifest/docs/roadmap.md`), which `git merge-tree` merges with this branch without conflict. After the fix below, "Open, small" needs the fix round's outcome.
+
+### Findings
+- [ ] (must-fix, Local Review @ `1e295fe9`) In a root with no path paragraph, "Running: nothing on this machine." is printed when step 5 did not look up the next line (no issue of this repository named, branches could not be listed, pull request list could not be read), against the branch's own "never states an absence it did not check"; print "nothing on this machine" only when step 5 looked, otherwise a `Running:` line saying it was not looked up and why (the same three reasons as "Not looked up for <group>:"), in the rule and the no-paths template, and pin it beside the existing wording test (`test_sitrep_checks.sh:1358`) — `.claude/skills/sitrep/SKILL.md:1239` (template `:1126`)
+- [x] (suggestion, Local Review @ `4c765965`) An unclosed `**Across the paths` bold above Path 1 gives its `format` row after Path 1's `path` row, not in place — declined, ruling upheld: the input is malformed, the row is printed and the sit-rep shows it under Problems, so nothing is silent and no ordinary case is affected; only the row's position differs. Listed under "Open, small" in the PR body — `.agent/scripts/sitrep_checks.sh:1035`
+- [x] (suggestion, Local Review @ `4c765965`) PR body said `--list-paths` prints only the acceptance case's group — closed: the host rewrote the body; it now says it prints the acceptance case's text with the group it sits under — PR 572 description
+
+### False positives
+None.
