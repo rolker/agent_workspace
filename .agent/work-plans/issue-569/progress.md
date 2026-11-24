@@ -968,3 +968,20 @@ Part 3 of 3 of issue 569. The pre-push rounds 1 and 2 raised six suggestions, al
 - [x] No issues found. LGTM.
 
 ### False positives
+
+## Local Review
+**Status**: failed
+**When**: 2026-11-24 13:10 -05:00
+**By**: claude-code (claude-opus-5-5)
+**Verdict**: none (the outside read did not run)
+
+**PR**: #603 at `7de6d53`
+**Depth**: Deep (reason: large diff, +578 -4756 in 35 files; the one outside read the host asked for, by Codex, failed)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Codex did not finish its review. `cross_model_review.sh --pr 603 --agents codex` (AGENT_TIMEOUT=3000) ended with EXIT=1 after about 72,000 tokens. Codex's error was: "ERROR: You've hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/settings/usage to purchase more credits or try again at 1:28 PM." Codex returned no findings. The lead did not do its own read in place of Codex's, so this entry is not a cold read. Whether Codex read the whole diff is unknown, because it stopped before it reported anything.
+
+The prompt given to Codex held 34 of the PR's 35 files. The one left out was `.agent/work-plans/issue-569/progress.md`, so the script did leave `.agent/work-plans/` out as it should.
+
+### Findings
+- [ ] Cold read not done: Codex hit its usage limit. Retry the cold read with Gemini, or with Codex after its limit resets.
