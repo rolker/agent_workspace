@@ -1857,3 +1857,32 @@ The ten suggestions of the Integrated Review at d092c02b stay open for the one f
 Written by the host where `next` would start a PR-mode re-review (`action=review-code` after the fix pass at 83daf55f), under the manifest-work rule in `.agent/knowledge/host_standing_rules.md` ("Manifest work: the lighter review level"), now on main. The fix pass merged origin/main into the branch after pull request 611 landed (merge commit 90b32eab; conflicts in `docs/design.md`'s change log and `docs/manifest/design.md`, both resolved keeping what both sides say) and made true what that merge had made false: the refusal of a manifest given to registration as a URL or a git location now says registration with `--manifest` takes a local file and gives the tool's `init <repo url> --manifest-path <file>` way for a manifest kept in a git repo; the adapter's refusal gives the matching next step for a URL source; and the documents that repeated the old claim are rewritten. These changes after the cold read are read by CI only; the owner is told so with the merge question.
 
 Suggestions open for the one follow-up issue, unchanged: the eight from the pre-push round and the cold read's two, as listed in this part's two earlier publish checkpoints. Two things the fix pass noticed in main's text and left alone, added to that issue: `docs/manifest/design.md`'s settings table says the tool takes a URL with no path as the file itself, while `init` refuses a URL given without `--manifest-path`; and the adapter's git-form line prints the `source` value unmasked (also in issue 612).
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 16:01 -05:00
+**By**: claude-code (claude-sonnet-5-5)
+**Reviews-read**: none
+
+**PR**: #610 at `1c175e65`
+**Sources**: 3 (Local Review @ `93975f8` and its Implementation fix pass at `3a08a7b3`; Local Review (Pre-Push) @ `bb91e0b` via the Checkpoints; CI rollup on the new head); no Copilot review was requested (skipped: quota), no human review, no inline or conversation comments (the pull request's reviews fetched: 0)
+**Cross-source confirmations**: 0
+**CI**: all-pass (head `1c175e65`, polled about once a minute for roughly 25 minutes until settled; 10 of 10 check-runs passed across the two workflow runs 45483601987 and 45483611281: Lint (pre-commit) 10m13s and 16m58s; Validate Adapter Contract 2m42s and 2m3s; Validate Documentation 13s and 6s; repos-manifest tests (Python 3.10) 13m28s and 15m24s; repos-manifest tests (Python 3.14) 14m47s and 17m16s; none failed, none pending)
+
+Under the manifest-work rule the fix pass after the cold read (merge of origin/main at `90b32eab`, then `43f03f13` and `90db61ca`) is not re-reviewed; CI is its check, and CI passed on the head. The sources helper was not relied on for carry-forward: the ten suggestions of the Integrated Review at `d092c02b` are carried by hand from that entry, the two Checkpoints and the cold read. The two the newest Checkpoint names were noticed in main's text by the fix pass (not introduced by this branch) and are added. None is a must-fix against the code: each is a hardening or documentation point that does not break the registration path as shipped, and under the lighter review level all go to the one follow-up issue at merge.
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) @ `bb91e0b`) register_session_root.sh's check for `--manifest` searches the flattened array, so a value equal to `--manifest` passes it — `.agent/scripts/register_session_root.sh:128`
+- [ ] (suggestion, Local Review (Pre-Push) @ `bb91e0b`) Values of `--distro`, `--role`, `--with` and `--fetch-from` starting with `-` are passed on unchecked — `.agent/scripts/register_project.sh:243`
+- [ ] (suggestion, Local Review (Pre-Push) @ `bb91e0b`) Tool not installed at `$TOOL_BIN` and a root inside an existing system are not refused before writing or shown by the dry run — `.agent/scripts/register_project.sh:823`
+- [ ] (suggestion, Local Review (Pre-Push) @ `bb91e0b`) A root left non-empty without `.repos-manifest` gets a NEXT that `--manifest` then refuses — `.agent/scripts/register_project.sh:1349`
+- [ ] (suggestion, Local Review (Pre-Push) @ `bb91e0b`) The rollback removes parent directories that were missing at check time, not ones the run is known to have made — `.agent/scripts/register_project.sh:1230`
+- [ ] (suggestion, Local Review (Pre-Push) @ `bb91e0b`) on_exit's NEXT does not say "without --manifest" (may be resolved by the earlier fix pass; the follow-up issue confirms) — `.agent/scripts/register_project.sh:1393`
+- [ ] (suggestion, Local Review (Pre-Push) @ `bb91e0b`) `manifest_is_remote` misses the scp form with no user (`host:path`) — `.agent/scripts/register_project.sh:816`
+- [ ] (suggestion, Local Review (Pre-Push) @ `bb91e0b`) Minor: unquoted `$TOOL_BIN`/`$M_DISTRO` in NEXT lines, `${SETUP_ARGS[*]}` in the dry run, an empty kept `bootstrap_url=` refused though the adapter would not refuse it — `.agent/scripts/register_project.sh:824`
+- [ ] (suggestion, Local Review @ `93975f8`) A relative --manifest given straight to `adapter setup` is made absolute only when it exists in the caller's directory; otherwise it is passed relative and the tool reads it from the root; refuse a relative path that is not an existing file — `.agent/project_types/ros2_colcon/adapter.sh:1343`
+- [ ] (suggestion, Local Review @ `93975f8`) A repeated --distro or --role takes the last value in registration while `adapter setup` refuses duplicates; refuse duplicates in manifest mode — `.agent/scripts/register_project.sh:243`
+- [ ] (suggestion, noticed in main's text by the fix pass, Checkpoint at `90db61ca`) `docs/manifest/design.md`'s settings table says the tool takes a URL with no path as the file itself, while `init` refuses a URL given without `--manifest-path` — `docs/manifest/design.md`
+- [ ] (suggestion, noticed in main's text by the fix pass, Checkpoint at `90db61ca`) The adapter's git-form line prints the `source` value unmasked, so a credential-bearing source URL shows its user name and token (also in issue 612) — `.agent/project_types/ros2_colcon/adapter.sh`
+
+### False positives
