@@ -1174,3 +1174,56 @@ Instructions that bind the implementer (host decisions, listed for the owner's v
 - The plan was reviewed on 2026-11-19 and main has moved since: before editing, list the call sites again on this branch and work from that list, not from the plan's line numbers; say in the entry where the two differ.
 - Carry the two suggestions the owner deferred to this pull request on 2026-11-20 ("Merge, carry F1 F2"): F1, run-issue step 11 says "present the merge checkpoint again" after a late review's triage and should say to call next again; F2, the worktree_remove.sh header and its script_reference.md row do not list the refusal of a manifest path containing "..".
 - Issue 563 (sit-rep per path) is in flight on its own branch and rewrites parts of test_sitrep_checks.sh and test_sitrep_root.sh: keep this part's edits to those two suites to the fixtures item 4 needs.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 08:41 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-428 at `b7c0c7d3`
+**Commits**: 62c1f1e1, aa2968f6, fa8d167b, b7c0c7d3
+
+Part 2 of the issue (plan item 4 and its rows of item 6), plus the two suggestions the owner carried here on 2026-11-20 ("Merge, carry F1 F2"). Part 1's files were not redone. Owner direction applied (2026-11-20): "Let's not waist too much time going for perfect when we can have agents handle the edge cases."
+
+### Changes
+- `extract_gh_slug` (`.agent/scripts/_issue_helpers.sh`) uses `sitrep_root.sh`'s `gh_slug` grammar in bash, no `gh` call: https/http (user or user:token), ssh (user, port), git and scp-like github.com forms, host in any case, exactly owner/repo, optional `.git` and trailing `/`. Not accepted: other hosts, `notgithub.com`, `github.com.evil.example`, `www.`/`ssh.github.com`, GitHub Enterprise, more than two path segments, a bare `owner/repo`. Kept difference, recorded in the header: an absolute path (starting with `/`) ending `/github.com/<owner>/<repo>[.git]`, the sandboxes' bare-clone form. — 62c1f1e1
+- New `test_issue_helpers.sh`: a 49-row table through `extract_gh_slug` and, for parity, through `gh_slug` taken from `sitrep_root.sh`'s PYLIB block (the suite fails if the block cannot be found). The 3 local-path rows are marked as the intended difference. Run against the old parser, 24 checks fail. — 62c1f1e1
+- `test_ros2_colcon.sh`: the stub `_issue_helpers.sh` now sources the real file and replaces only `issue_lookup`, so there is no stale copy. Two new assertions: the stub's function gives nothing for `git@gitlab.com:o/r.git` (the old copy gave `git@gitlab.com:o/r`) and `o/r` for a GitHub URL. — 62c1f1e1
+- `test_merge_pr_gate.sh`: the hang-3 (applied, applied-ontop) and hang-4 origins are now `ssh://git@github.com/owner/pkg_a.git`. `serve_shim` maps a quoted path that is not a local folder into `$sb/fake_remotes/github.com`; a path that is a local folder is served as before. — 62c1f1e1
+- `test_sitrep_checks.sh`: one case, a root whose origin is `git@gitlab.com:acme/w.git`, so a bare `gh-issue 5 closed` gives `unknown` and gh is never called. Nothing else in that suite changed; `test_sitrep_root.sh` is unchanged. — 62c1f1e1
+- `worktree_create.sh`: a bare `--issue` for `--type project` with no GitHub slug (an origin on another host, or no origin) gets no lookup, no `gh issue view` fallback and no `gh pr view` check. The worktree is made and one of the plan's two notes is printed, without the "offline or issue does not exist" line. The workspace-slug fallback now runs for the workspace type only. Tests in `test_worktree_create.sh`: both project cases, run from the workspace folder with a gh stub that answers any repo and number, plus the unchanged workspace-type case (looked up and pr-checked in `ws-owner/ws`). — aa2968f6
+- `script_reference.md`: `_issue_helpers.sh` row (62c1f1e1) and `worktree_create.sh` row (aa2968f6).
+- F2: the `worktree_remove.sh` header's refused list and its `script_reference.md` row now include "a manifest path containing `..` (correct `.worktree-repos` by hand)". It was not already on main. — fa8d167b
+- F1: run-issue step 11 now says "call `next` again (after that triage it may raise `checkpoint:findings` rather than the merge checkpoint)" instead of "present the merge checkpoint again". It was not already on main. — b7c0c7d3
+
+### Call sites on this branch versus the plan
+- Same set as the plan: `merge_pr.sh` (now lines 466, 468, 535, 541, 646, 2294, 2419), `worktree_create.sh` (634, 642, 660, 663, 672, 704), `worktree_enter.sh` (323, 339), `sitrep_checks.sh` (474), the three internal calls in `_issue_helpers.sh`, and the orchestrator skill's WS_REPO snippet. Every one passes `git remote get-url` output; none passes a bare slug.
+- Different from the plan: `test_ros2_colcon.sh`'s fixtures already use `git@github.com:owner/<name>.git` behind a `GIT_SSH_COMMAND` shim, so the only stale thing there was the copy (line 845). The plan's `make_origin_repo` reference is in `test_merge_pr.sh` (line 207); its comment described the old "plain text substitution", so it was reworded (a comment-only change in a file the plan does not list). The plan's line numbers for the hang-3 fixtures (~1585, ~1616) are now 1606 and 1637. The third `github.com$` fixture (hang-ws, line 1669, `ssh://git@github.com$bare` for the workspace sandbox) gives an empty slug under both the old and the new parser (more than two segments), which that sandbox's `repos//...` fixtures expect, so it was left as is.
+
+### Decided here (not in the plan)
+- The local-path form is accepted only when the input starts with `/`. Without that, the plan's own refused case `ssh://git@github.com/tmp/x/github.com/o/r.git` would match.
+- `serve_shim` maps only paths that are not local folders. Mapping every path would have broken hang-ws, whose origin path is an absolute bare repo.
+- Other copies of the old loose parser (the `sed 's#.*github\.com[:/]##'` pattern in `gh_create_issue.sh`, `gh_create_pr.sh`, `git_bug_setup.sh`, `pr_status.sh` and `_project_registry.sh:784`) are not in the plan and were not changed. Listed for the host to decide whether they need an issue.
+
+### Suites run (each on its own with `bash`; the full pass is left to the host)
+- test_issue_helpers.sh: 98 passed, 0 failed
+- test_sitrep_checks.sh: 253 passed, 0 failed
+- test_sitrep_root.sh: 65 passed, 0 failed
+- test_worktree_create.sh: PASS: 112 FAIL: 0
+- test_worktree_enter_stderr.sh: 35 passed, 0 failed
+- test_ros2_colcon.sh: 1553 passed, 0 failed, 0 skipped
+- test_merge_pr_gate.sh: 213 passed, 0 failed
+- test_merge_pr.sh: 175 passed, 0 failed
+- test_merge_pr_skill.sh: 132 passed, 0 failed
+- test_merge_pr_root_resolution.sh: 6 passed, 0 failed
+- test_project_registry.sh: 425 passed, 0 failed
+- test_precommit_hook_path.sh: 19 passed, 0 failed
+- test_worktree_remove.sh: 138 passed, 0 failed
+- test_skill_paths.sh: 200 passed, 0 failed
+- test_records_write_gate.sh: 68 passed, 0 failed
+- test_user_tier_install.sh: 276 passed, 0 failed
+- test_package_issue_loop.sh: 228 passed, 0 failed
+- test_validate_workspace_stale.sh: 126 passed, 0 failed
+- test_user_tier_guard.sh: 64 passed, 0 failed
+- test_script_tests_hook_scope.sh: 358 passed, 0 failed
+
+Hook rule: the first commit (62c1f1e1) was made without `SKIP=validate-script-tests` by mistake. The `validate-script-tests` hook ran its selection and passed. Every later commit, this entry's included, set it.
