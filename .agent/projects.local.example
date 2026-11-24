@@ -45,12 +45,12 @@
 # test; `--remove <name>` unregisters, `--dry-run` shows the steps, and
 # `register_project.sh <name>` adopts a line written by hand. A
 # single_project checkout is the user's own clone. A ros2_colcon instance
+# from a manifest in the new format is set up by the manifest tool: in the
+# root, run `repos-manifest init <manifest> --distro-dirs --distro <d>
+# [--role <r>]`, then register the root. One from a bootstrap.yaml
 # bootstraps itself: register a path that does not exist yet with
-# `--set bootstrap_url=<url of the project's bootstrap.yaml>`, or from a
-# manifest in the new format (issue #436) with `ros2_colcon --role <r>
-# --distro <d> --set source=<git URL or absolute path> [--set
-# source_ref=<branch|tag|commit>] [--set source_path=<file in the repo>]`,
-# and registration runs `.agent/scripts/adapter --project <name> setup`.
+# `--set bootstrap_url=<url of the project's bootstrap.yaml>`, and
+# registration runs `.agent/scripts/adapter --project <name> setup`.
 #
 # Per-project settings (issue #332) go in .agent/projects.d/<name> (no
 # extension; gitignored, per machine), one key=value per line, written with
@@ -74,24 +74,22 @@
 #   bootstrap_url         ros2_colcon only: http(s):// or file:// URL of the
 #                         project's bootstrap.yaml (refused for
 #                         single_project, which is cloned by hand)
-#   source                ros2_colcon only: the project's manifest in the
-#                         new format, resolved by the repos-manifest resolver
-#                         (make install-repos-manifest): an absolute path to
-#                         the file, or an https:// or file:// URL of a git
-#                         repository holding it (not plain http://, no
-#                         user name or password; the fetch uses https, ssh
-#                         or file only). Not beside bootstrap_url.
-#                         A URL is fetched afresh by each setup and sync
-#                         into a temporary directory removed afterwards (no
-#                         clone is kept). To work on a manifest locally,
-#                         give the path of the file in your own checkout.
+#   source                still accepted, but read by no route: an
+#                         absolute path to a manifest file, or an https://
+#                         or file:// URL of a git repository holding it
+#                         (not plain http://, no user name or password).
+#                         Not beside bootstrap_url. A ros2_colcon root
+#                         without .repos-manifest/ that sets it is refused
+#                         at use, naming `repos-manifest init` and the
+#                         unset; on the tool route `adapter validate` names
+#                         it as a second record. Removing the three keys is
+#                         a line of the workspace roadmap.
 #   source_ref            with a URL source: the branch, tag or commit
 #   source_path           with a URL source: the file in the repository
 #                         (default manifest.yaml)
-#                         role= and distro= on the registry line are
-#                         required with source. Remove the three keys
-#                         together: project_setting.sh unset <name> source
-#                         source_ref source_path
+#                         Remove the three keys together:
+#                         project_setting.sh unset <name> source source_ref
+#                         source_path
 #
 # A key the project's type never reads is refused by `set`, and a
 # hand-written one fails `check` and stops the adapter; each type lists

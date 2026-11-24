@@ -32,15 +32,18 @@
 #                  (a parent root grouping instances). Omitted: ros2_colcon
 #                  when <path>/configs/manifest or <path>/.repos-manifest
 #                  (a root the manifest tool set up; issue 503) exists or
-#                  --set bootstrap_url=... is given, else single_project. A
-#                  --set source=... does not choose the type: pass
-#                  ros2_colcon with it (issue #436).
+#                  --set bootstrap_url=... is given, else single_project.
+#                  To register from a manifest in the new format, run the
+#                  manifest tool's init in the root first (repos-manifest
+#                  init <manifest> --distro-dirs), then register the root.
 #   --name N       the project's name (default: the directory's name)
 #   --parent, --distro, --role, --worktrees, --default-instance
 #                  the registry's trailing fields (_project_registry.sh
 #                  header); --worktrees is written as an absolute path
 #   --set key=value  a settings-file key (project_setting.sh's keys), e.g.
-#                  --set build=./scripts/build.sh --set test=none
+#                  --set build=./scripts/build.sh --set test=none; a key
+#                  the type lists in its registration_refused is refused
+#                  before anything is written, with the list's reason
 #   --no-setup     never run `adapter setup`, even for a type whose
 #                  registration.conf runs it when the directory is missing
 #   --skip-run     do not run the build and test verbs; the status says so
@@ -644,6 +647,20 @@ if [ "$IS_PARENT" -eq 0 ]; then
     REQUIRED="$(registration_conf_get "$ROOT" "$TYPE" required_commands)"
     CONF_SETUP="$(registration_conf_get "$ROOT" "$TYPE" setup)"
     CONF_RUN="$(registration_conf_get "$ROOT" "$TYPE" run)"
+    # A --set key the type lists in its registration_refused: its adapter
+    # refuses a project that sets it, so the registration could never
+    # pass; refused here, before anything is written.
+    for _kv in ${SETS[@]+"${SETS[@]}"}; do
+        _k="${_kv%%=*}"
+        _rrc=0; _why="$(registration_refused_setting "$ROOT" "$TYPE" "$_k")" || _rrc=$?
+        if [ "$_rrc" -eq 0 ]; then
+            echo "ERROR: --set $_k is refused for a project of type $TYPE: $_why" >&2
+            final refused "register $PROJECT_ROOT without --set $_k, after the steps above" 1
+        elif [ "$_rrc" -eq 2 ]; then
+            echo "ERROR: cannot tell whether type $TYPE refuses --set $_k: $_why" >&2
+            final refused "fix $ROOT/.agent/project_types/$TYPE/registration_refused" 1
+        fi
+    done
 else
     REQUIRED=""; CONF_SETUP="never"; CONF_RUN=""
     [ "${#SETS[@]}" -eq 0 ] || die_usage "a parent root ($REGISTRY_PARENT_TYPE) has no settings of its own; --set them on its instances"
@@ -1132,7 +1149,7 @@ if [ "$RUN_SETUP" -eq 1 ]; then
     echo ""
     echo "== adapter --project $NAME setup ($PROJECT_ROOT does not exist)"
     SETUP_RAN=1
-    "$ADAPTER" --from "$ROOT" --project "$NAME" setup 8>&- || failed "adapter setup failed (above)" "fix the setup failure (its bootstrap_url or source, say)"
+    "$ADAPTER" --from "$ROOT" --project "$NAME" setup 8>&- || failed "adapter setup failed (above)" "fix the setup failure (its bootstrap_url, say)"
 fi
 
 # 2. The static gate.
