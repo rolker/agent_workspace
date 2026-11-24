@@ -1453,3 +1453,22 @@ Part 2b-1 of the plan: a manifest in a git repo for `init` and `sync`, with `sta
 Not findings: an absolute path with `--manifest-path` refused by `init` (raised by Codex and the Claude adversarial pass) follows the Plan Review's direction 2 and the design's refusal row, `file://` being the local git form; the missing `docs/manifest/roadmap.md` line (Codex) is left out on purpose.
 
 Verified: `PYTHONPATH=src .venv python -m pytest` on test_fetch_from, test_fetch_git, test_init_refusals, test_manifest_in_git, test_manifest_reading, test_system, test_update_safety, test_url_messages: 757 passed in 25.96s; `bash .agent/scripts/tests/test_ros2_colcon.sh`: 1207 passed, 0 failed, 0 skipped; the whole tool suite not rerun (the implementer's result: 1275 + 837 passed). Rule-off checks in a scratch copy: exact-name rule off fails 3 tests, size limit off fails 1, git `base` refusal off fails 2, the transport rule off fails none (suggestion above). Root `docs/design.md` is 1286 lines after the merge of main, as its new change-log row says.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 14:50 -05:00
+**By**: claude-code (claude-opus-5-5)
+
+**Branch**: feature/issue-498 at `678fc3bc`
+**Addressed**: Local Review (Pre-Push) at `c2da3363` (2026-11-24 14:27 -05:00)
+**Commits**: ab9ee785, eebc07d0, 678fc3bc
+
+### Actions
+- [x] (must-fix 1) `status` and `show` (with or without a manifest given) now run inside `signals_end_the_run()`; a stop signal ends git and its helper, removes the temporary clone and prints "ERROR: stopped by <signal>; nothing was changed", no traceback on Ctrl-C. Tests `test_status_and_show_stopped_during_the_read_end_git_and_leave_no_temporary` (SIGTERM) and `test_status_and_show_stopped_by_ctrl_c_during_the_read_print_no_traceback` (SIGINT), each over `status`, `status --json` and `show`: all 6 fail without the fix (empty stderr for SIGTERM, a KeyboardInterrupt traceback for SIGINT) — `status.py:204`, `cli.py:141`, `tests/test_fetch_git.py` (ab9ee785)
+- [x] (must-fix 2) The transport rule is kept. When git's text says "transport '<x>' not allowed" (only a rewrite gives it; a redirect is refused by curl as "Protocol ... disabled (in redirect)", and the redirect test now asserts the message names no rewrite), the message adds: "the read allows only the transport the url names, and a url rewrite in git's configuration (url.<base>.insteadOf) can lead git to another; give as the manifest's url the url the rewrite leads to, which `git ls-remote --get-url <url, masked and shell-quoted>` prints". docs/design.md ("Where the manifest comes from", twice, and "Fetching over https and pushing over ssh"), the README and fetch.py's docstring say so. Tests `test_a_rewrite_to_another_transport_is_refused_with_the_url_to_give` (insteadOf in a scratch GIT_CONFIG_GLOBAL, https://example.invalid to file://; the rewritten url given directly reads) and `test_the_rewrite_step_masks_the_url` fail without the fix — `fetch.py:_clone_failed`, `tests/test_fetch_git.py` (eebc07d0, 678fc3bc)
+- Left open on purpose: the ten suggestions (indexes 2 to 11 of the review entry), unticked, for the one follow-up issue when the pull request merges.
+
+### Checks
+- New tests: `tests/test_fetch_git.py -k status_and_show`: 6 passed (6 failed with the fix stashed); `-k "rewrite or redirect"`: 4 passed (2 failed with the fix stashed).
+- Whole tool suite, worktree source on PYTHONPATH, serial (pytest-xdist is not installed in .venv, so no `-n 4`): first 19 files 1315 passed in 402.40s; last 14 files first 1 failed, 804 passed (test_url_messages scan on the new command line; fixed in 678fc3bc), then 805 passed in 313.34s. After 678fc3bc, test_url_messages.py and test_fetch_git.py: 106 passed.
+- black (line length 100) and flake8 (repo args) clean on the touched Python files; the commit hooks ran black and flake8. The full pre-commit pass is left to the host.
