@@ -157,3 +157,25 @@ The helper's contract is right for every way the four scripts are really invoked
 - [ ] Scope the design.md sentence to the worktree scripts, add the Change log row, and pick the WORKTREE_GUIDE place for the new sentence.
 - [ ] Select the implement pass's suites with `run_script_tests.sh --files <changed files>`; record the red run's output in the implementation entry.
 - [ ] Build the follow-up issue's script list from a grep; mention the main-checkout workflow and `check_branch_updates.sh` reads in `script_reference.md`; correct "three scripts" to four.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:23 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan review's verdict is ready; every finding is one the reviewer says can be handled during implementation)
+**After**: plan
+**Decision**: proceed
+
+Implement the plan at 1e8602b7 with these instructions, which answer the Plan Review at e770230e and bind the implementer (host decisions, listed for the owner's veto):
+- Finding 1: the two existing tests that assume the old root are updated with the fix (test_worktree_create.sh, the race case; test_worktree_enter_stderr.sh, which runs a copied script from a folder that is not a git repository): each keeps testing what it tested, in a fixture the new helper accepts.
+- Finding 2: every refusal test for worktree_remove.sh has a real worktree on the path the script would act on, so "nothing was deleted" proves something.
+- Finding 3: merge_pr.sh run as a worktree's copy can, after the fix, remove the worktree its own scripts are running from. That is intended (it is what the merge is asked to do, and it fails today only by accident); say so in the script reference and test it with the working directory in the main checkout.
+- Finding 4: resolve the root with cd "$(dirname "$(dirname "$script_dir")")" && pwd -P, which is right when .agent/scripts is a symbolic link.
+- Finding 5: the sentence added to docs/design.md says what is true of the four worktree scripts only, with the Change log row the document's rule asks for; the worktree guide gets its sentence where it describes running the scripts from inside a worktree.
+- Finding 6: choose the suites to run with run_script_tests.sh --files <changed files> -j 4 (check the flags in its help first), so the suites that run these scripts from sandbox copies are included; name each with its result line.
+- Finding 7: the follow-up list of other scripts with the same root line is built from a grep and goes in the pull request text; none is fixed here.
+- Finding 8: the script reference says that, run from a worktree, these scripts now read --workflow files and check_branch_updates.sh from the main checkout.
+- Finding 9: registry_require_root is in all four scripts; the text says so.
+- Finding 10: when git itself fails (a safe.directory refusal, for example), the refusal includes git's own error line.
+- The plan's open question (a project that carries its own copy of the workspace's scripts takes its own main checkout as root) is left as it is: the reviewer found it real but harmless, since projects get the scripts through the plugin and the workspace root, never by copy.
+- worktree_remove.sh deletes: it must never act on a root it did not verify. No flag overrides a refusal.
