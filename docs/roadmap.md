@@ -168,6 +168,7 @@ the first of `docs/roadmap.md`, `docs/ROADMAP.md` and `ROADMAP.md` (#551).
 | Follow-up: the orchestrator skill's first updates from the dogfooding log (#431) | `gh-issue 431 open` |
 | Instruction-file trim (#338), the backlog sweep | `gh-issue 430 closed` |
 | The fork cutover (#260 to #262) | `gh-issue rolker/unh_marine_autonomy#396 closed` |
+| Deployment mode (#582, with its logging convention #580 and recovery checklist #583), after field mode | `gh-issue 208 closed ; gh-issue 209 closed` |
 | Design later: the home level (Path 5) | |
 | The orchestrator design session (#398) | `gh-issue rolker/unh_marine_autonomy#396 closed` |
 | Design later: kinds of work beyond coding issues (Path 2) | |
