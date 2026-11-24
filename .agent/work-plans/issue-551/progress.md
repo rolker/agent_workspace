@@ -816,3 +816,32 @@ Part 2 of issue 551 (the skills, the integration audit's roadmap ignore check, t
 - [x] (suggestion) the tracked check passes `<path>` from `set <path>[#<heading>]`: say to drop `#<heading>` first, and that a project with no git has no tracked check — `.claude/skills/audit-project/SKILL.md:227-230`
 - [x] (suggestion) triage-reviews still says the merge gate's bookkeeping rule is `ROADMAP.md`, `docs/ROADMAP.md` or `docs/roadmap.md`; since part 1 it also counts the file the `roadmap` setting names — `.claude/skills/triage-reviews/SKILL.md:186-188`
 - [x] (suggestion) plan-task, review-plan and review-issue say "the project's own goals and design document" without saying where to find it; one clause pointing at `project_setting.sh doc <name> goals|design` (they do not guess a path: `docs/design.md#<section>` there is the workspace's form) — `.claude/skills/plan-task/SKILL.md:133`, `.claude/skills/review-plan/SKILL.md:205`, `.claude/skills/review-issue/SKILL.md:142`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 12:12 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-551 at `84f0e726`
+**Addressed**: Local Review (Pre-Push) at `32c9a35b` (2026-11-24 12:03 -05:00)
+**Commits**: f74dc6b1, e0127b6f, cc078d28, c2d723b3, b485f7b4, 0f14e00b, 18a902c4, 84f0e726
+
+Round 1's 1 must-fix and 8 suggestions, all fixed as the host's directions gave them (host decisions, listed for the owner's veto). Text only, no script changed.
+
+### Actions
+- [x] (must-fix M1) brainstorm reads a project's goals, design and roadmap through `project_setting.sh doc <name> goals|design|roadmap` (set / fallback / none / nothing with the reason), never a path it decides; `ARCHITECTURE.md` stays an extra design name when `design` gives nothing and stores nothing; the wrong claim about `sitrep_root.sh` is gone. One pin section in `test_skill_paths.sh` (the three `doc` lines, and the old `docs/roadmap.md`, else `ROADMAP.md` wording absent) — `.claude/skills/brainstorm/SKILL.md:80-99`, f74dc6b1
+- [x] (S1) a 3c "decide later" holds for the rest of the run: step 5's offer to record a new `roadmap=docs/roadmap.md` is not made after it — `.claude/skills/onboard-project/SKILL.md` (3c options, "The project's roadmap"), e0127b6f
+- [x] (S2) a recorded key is asked again when `--reask` names it; decide later under `--reask` keeps the stored value, and the readers keep following it — `.claude/skills/onboard-project/SKILL.md` (3c status list and options), e0127b6f
+- [x] (S3) `doc` exit 2 with "the registry <file> has errors" is the registry, not the setting; exit 3 is a project not registered under that name; both mapped in onboard-project 3c and audit-project step 3 (audit: one registry finding, the three rows unknown) — cc078d28
+- [x] (S4) design-discussion runs `doc` again after `set` (exit 1: file not written yet; exit 2: refused, offer `unset` or another file, each its own yes) and lists `none` among the values it records — `.claude/skills/design-discussion/SKILL.md:151-161`, 0f14e00b
+- [x] (S5) the smaller option: the part-collision check covers `goals` and `design` only, and says the roadmap case is reported by the sit-rep (`points at the root's own roadmap`), since `--list-pointers` leaves that row out; `sitrep_checks.sh` unchanged — `.claude/skills/audit-project/SKILL.md:241-247`, b485f7b4
+- [x] (S6) the tracked check takes `<path>` before any `#<heading>`; a project without git has no tracked check — `.claude/skills/audit-project/SKILL.md:209-212`, c2d723b3
+- [x] (S7) triage-reviews' coverage rule also counts the file the `roadmap` setting names (in a checkout of the project root's own repository), as `_bookkeeping.sh` does — `.claude/skills/triage-reviews/SKILL.md:186-189`, 18a902c4
+- [x] (S8) plan-task, review-plan and review-issue: one clause each, a project's goals and design are found where `project_setting.sh doc <name> goals|design` says (never a guessed path) — `.claude/skills/plan-task/SKILL.md:132`, `.claude/skills/review-plan/SKILL.md:204`, `.claude/skills/review-issue/SKILL.md:137`, 84f0e726
+
+### Notes
+- The brainstorm pin does not call `bash_blocks_parse`: two older blocks in that skill (the issue-create and comment heredocs, indented in a numbered list) do not pass `bash -n` as extracted; they are outside this round.
+- Sweep after the pass: no skill decides a project's goals, design or roadmap path on its own. One script still names fixed design files: `discover_governance.sh` (used by gather-project-knowledge) lists `ARCHITECTURE.md` and `docs/design.md` as `architecture` without reading the `design` setting. It is an inventory, not one of the readers part 1 listed; for the host to decide.
+
+### Tests (each suite on its own)
+test_skill_paths: 210 passed, 0 failed; test_checkpoint_269: 43 passed, 0 failed; test_triage_reviews_integration: 70 passed, 0 failed; test_project_integration_audit: 286 passed, 0 failed. No script changed, so no script suite applies. Full pre-commit pass left to the host. Not pushed.
