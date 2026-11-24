@@ -966,3 +966,13 @@ Decision summary checked against the branch: the changed files, the roadmap rule
 ### Findings
 - [x] (suggestion, PR text "Left as they are") `discover_governance.sh` lists design files by fixed name (`ARCHITECTURE.md`, `docs/design.md`) and does not read the `design` setting. Ruling: may stay a listed limit. It is an inventory of governance files under six types, documented in `docs/design.md` (Sessions and roots) as not knowing the roles; issue 551's reader list (item 3) does not include it, and the plan (line 36) kept it untouched after its review. Its one consumer, gather-project-knowledge, could report a project whose design lives under another name as having no architecture file; that is a gap in a summary the pull request names openly, not a wrong action by any reader of the three settings. A possible follow-up for the owner, not a merge blocker. — `.agent/scripts/discover_governance.sh`
 - [x] (suggestion, PR text "Left as they are") double-quoted free-text arguments in skill text this pull request does not otherwise touch (`review_progress.sh persist --title "<issue title>"` in six skills; agent-written `git commit -m`, `gh issue create --title`, `gh label create --description` text). Ruling: may stay a listed limit, parked for the owner. This branch neither adds nor changes any of them, so it breaks no ordinary case; the one real case (an issue title holding a backtick or `$`) predates this branch and is workspace-wide. The quoting fix this branch does make covers every place it writes a stored or user-given value into a command. — skill text outside this pull request's changes
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:00 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner's answer in the dialog, to "Merge pull request 602 now?": "Merge (Recommended)". The dialog showed: what onboarding now asks and that every write waits for a yes; the other skills that follow the lookup and the comment fix carried from part 1; three pre-push rounds with every finding fixed, the Codex cold read with no findings, the final triage (856250b8) with nothing open, Gemini and Codex in rounds 1 and 2, Copilot not requested; the two things left alone on purpose (the inventory script's fixed names; double-quoted free-text arguments in skills outside this change, in his inbox); CI with all 10 checks passed on 20d8d4a3; no hosted review or comment; mergeable, clean; and that merging closes issue 551.
