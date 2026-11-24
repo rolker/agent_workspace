@@ -291,3 +291,32 @@ Frozen five-path text (feature/issue-560 at f3fe8604, now merged as 9a8c1eaf): P
 **Phase**: implement
 
 The owner asked for this drive today: "/orchestrator 563 and 428". The newest Implementation entry is partial because of the shutdown, not a defect. The retry finishes its "Remains, in plan order" list (items 1 to 4), under the same instructions as the plan checkpoint of 2026-11-23 14:29 (N1 to N6, M4, M5).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 08:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-563 at `52e05356`
+
+Retry that finishes the 2026-11-23 14:56 partial pass; its "Remains" items 1 to 4 are done, in order.
+
+### Done (commits in order)
+- 06230cc8 test_skill_paths: the "Path 3 marker" case is rewritten, not dropped. It now checks only README.md and review-issue's SKILL.md for "A safeguard has to earn its cost" (review-issue's Serves rule tells reviews to write that README line word for word, so the two must still agree); the sit-rep's SKILL.md is no longer in it. review-issue's SKILL.md drops its parenthesis "(the sit-rep marks such work by that phrase)", which this change makes untrue.
+- 545ee328 merge of origin/main (164 commits, pull request 564 among them) with a merge commit. No conflicts. Main changed none of the sit-rep's skill or scripts, nor their test files, since the branch point e8cd279d (`git log` over `.claude/skills/sitrep`, `sitrep_checks.sh`, `sitrep_root.sh` and their tests is empty); `test_skill_paths.sh` merged automatically (main added its five-paths reading case, f304d0ab). Nothing needed reconciling.
+- 8443b1db docs/roadmap.md: the Across paragraph in present tense ("The sit-rep reports each path on its own, with its lines in no fixed order, and marks work in flight by the path whose line names it."); its line's check `file-contains .agent/scripts/sitrep_checks.sh a path row governs the line rows up to the next path row`; the Format bullet gains "A table belongs to the nearest path or Across paragraph above it." No other wording there changed. docs/design.md: the Direction row's one-list sentence becomes per-path reporting (name, lines true, lines not yet true, no fixed order; Across a group never behind; no table = "no design yet"; lines above the first path = "no path"; no Path paragraph = one group as before), and the "Until the sit-rep reports each path on its own (#563) ... Paths 4 and 5 are never marked" sentence becomes the item 12 marks (including the pull-request-only mark); the Measures row gains the per-path counts and the same-paths comparison; a change-log row (2026-11-24, 1254 lines).
+- 52e05356 .agent/knowledge/script_reference.md: `named_path` on the `sitrep_root.sh` row; on the `sitrep_checks.sh` row the `path` row, the nearest-paragraph rule, per-path next steps (else `(root)`) and the ` paths ...` summary suffix.
+
+### Suites (each run on its own from the worktree)
+- After the merge: test_sitrep_checks.sh "test_sitrep_checks: 281 passed, 0 failed"; test_sitrep_root.sh "test_sitrep_root: 69 passed, 0 failed"; test_skill_paths.sh "test_skill_paths: 199 passed, 0 failed".
+- test_skill_paths.sh again after the script_reference.md edit: "test_skill_paths: 199 passed, 0 failed" (before the merge, after item 1: "197 passed, 0 failed").
+- No changed script this pass; no suite names `script_reference.md`. The full pass is left to the host.
+
+### Live run
+`sitrep_checks.sh --root . --roadmap docs/roadmap.md` on the merged main text (this branch at 52e05356, exit 0, 81 rows):
+- summary: `lines 2/15 deferrals 3/10 paths P1 1/4 P2 0/4 P3 0/3 P4 0/3 P5 none across 1/1`
+- path rows: Path 1, ROS 2 projects / Path 2, modular workflows / Path 3, less waiting for the same care / Path 4, kinds of projects and knowledge (each `true lines`); Path 5, top-level work organisation (`unchecked`, `no lines (no design yet)`); Across the paths (`true group`).
+- next steps: Path 1 "The workspace installs on the second machine from a clean clone, user tier included (#430)" false; Path 2 "A project chooses where its records live, and a session finds them through one lookup (#393)" false; Path 3 "A merge does not wait on CI that the change cannot affect (#550)" false; Path 4 "A project says where it keeps its goals, design and roadmap (#551)" false; Path 5 no lines (no design yet); Across the paths none open (its new check is true); the two parts' next steps unchanged (`tools/repos-manifest/docs/roadmap.md`, `docs/manifest/roadmap.md`, both unchecked).
+
+### Deviations
+- Item 1 rewritten rather than dropped, and review-issue's SKILL.md edited (one parenthesis removed): the plan did not name that file, but its sentence was made untrue by this change.
+- The plan's cost note (N6) is for the host to carry into the pull request; not written here.
