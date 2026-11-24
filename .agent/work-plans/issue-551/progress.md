@@ -791,3 +791,28 @@ Part 2 of the plan (items 10, 11, 12, 12a, 13) and the carried suggestion F1. Co
 
 ### Tests (each suite on its own)
 test_project_integration_audit: 286 passed, 0 failed; test_skill_paths: 208 passed, 0 failed; test_script_tests_hook_scope: 366 passed, 0 failed; test_user_tier_guard: 64 passed, 0 failed; test_merge_pr_skill: 132 passed, 0 failed; test_merge_pr: 175 passed, 0 failed; test_merge_pr_gate: 213 passed, 0 failed; test_project_documents: 204 passed, 0 failed; test_triage_reviews_integration: 70 passed, 0 failed. `_bookkeeping.sh` has no suite of its own (the five that name it ran). Full pre-commit pass left to the host. Not pushed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 12:03 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-551 at `32c9a35b`
+**Base**: origin/main
+**Depth**: Deep (reason: 414 changed lines; three skill definitions, a governance trigger)
+**Must-fix**: 1 | **Suggestions**: 8
+**Round**: 1 | **Ship**: continue — round 1: 1 must-fix; first round always re-reviews after fixes
+
+Part 2 of issue 551 (the skills, the integration audit's roadmap ignore check, the carried F1 comment). Static: shellcheck clean on the four changed scripts; test_skill_paths 208/0; test_project_integration_audit 286/0 (run by the adversarial pass). Cross-model: Gemini ran (8 findings; its must-fix 1 is a false positive, `project_setting.sh doc` prints nothing on a non-zero exit; its SIGPIPE and instructions=none points do not hold); Codex ran (1 finding, confirmed, kept as a suggestion).
+
+### Findings
+- [ ] (must-fix) brainstorm still decides a project's design (`docs/design.md` or `ARCHITECTURE.md`) and roadmap (`docs/roadmap.md`, else `ROADMAP.md`) itself, and says that is what `sitrep_root.sh` reports, which is no longer true: with a `roadmap` or `design` setting naming another file it reads the wrong file or reports the document absent. With `Closes #551` ("followed by every reader") it must read them through `project_setting.sh doc <name> goals|design|roadmap` (or `sitrep_root.sh --dir <root>`'s `design=`/`roadmap=` lines), keeping `ARCHITECTURE.md` as an extra name — `.claude/skills/brainstorm/SKILL.md:80-84`
+- [ ] (suggestion) after "Decide later" for the roadmap in 3c, the step 5 Direction offer asks again to record `roadmap=docs/roadmap.md`: one question twice in a run; say a 3c "decide later" holds for the run — `.claude/skills/onboard-project/SKILL.md:478-484`
+- [ ] (suggestion) `--reask` on a recorded document key: 3c says "recorded; not asked" with no `--reask` exception, and "Decide later ... readers keep the fixed list" is untrue when a value stays stored; say decide later under `--reask` keeps the stored value — `.claude/skills/onboard-project/SKILL.md:396-441`
+- [ ] (suggestion) `doc` exit 2 for a key not stored (registry unreadable) and exit 3 (unknown project) are not mapped in either status list; audit-project would call them "the setting cannot be used" — `.claude/skills/onboard-project/SKILL.md:410-426`, `.claude/skills/audit-project/SKILL.md:224-242`
+- [ ] (suggestion) design-discussion stores an answer with `set` but does not run `doc` again, so a value `set` takes and the lookup refuses (a symbolic-link roadmap) stays stored while the user is told it is recorded (onboard-project step 3c does re-check); its value list also omits `none` — `.claude/skills/design-discussion/SKILL.md:152-163`
+- [ ] (suggestion) the part-collision check cannot find a `roadmap` collision: `sitrep_checks.sh --list-pointers` drops a pointer at the root's own roadmap ("points at the root's own roadmap"), and the audit passes the recorded roadmap as `--roadmap`; limit the check to goals and design and say the sit-rep reports the roadmap case — `.claude/skills/audit-project/SKILL.md:244-257`
+- [ ] (suggestion) the tracked check passes `<path>` from `set <path>[#<heading>]`: say to drop `#<heading>` first, and that a project with no git has no tracked check — `.claude/skills/audit-project/SKILL.md:227-230`
+- [ ] (suggestion) triage-reviews still says the merge gate's bookkeeping rule is `ROADMAP.md`, `docs/ROADMAP.md` or `docs/roadmap.md`; since part 1 it also counts the file the `roadmap` setting names — `.claude/skills/triage-reviews/SKILL.md:186-188`
+- [ ] (suggestion) plan-task, review-plan and review-issue say "the project's own goals and design document" without saying where to find it; one clause pointing at `project_setting.sh doc <name> goals|design` (they do not guess a path: `docs/design.md#<section>` there is the workspace's form) — `.claude/skills/plan-task/SKILL.md:133`, `.claude/skills/review-plan/SKILL.md:205`, `.claude/skills/review-issue/SKILL.md:142`
