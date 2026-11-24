@@ -47,7 +47,7 @@ become `/.agent/...`. With the fallback, `$WS_ROOT` is `.`, which is right in
 a workspace session.
 
 A path written without `$WS_ROOT` (such as `.agents/README.md` or
-`docs/design.md` in the project list below) is relative to the **project
+`docs/decisions/` in the project list below) is relative to the **project
 root**: in a project session, the session's root; in a workspace session on a
 project's topic, that project's registered folder, the `<path>` field of its
 line in `$WS_ROOT/.agent/projects.local` (a relative `<path>` resolves against
@@ -74,7 +74,7 @@ Every source is optional. Read what exists, and say in the output (the
 only when the topic is about a project):
 
 - `.agents/workspace-context/research_digest.md` — the project's research
-  digest (the path `design-discussion` reads; #551 may move it)
+  digest (the path `design-discussion` reads)
 - `.agents/README.md` — the project's agent rules, including what may not be
   written in its public places
 - the project's principles (`PRINCIPLES.md` or `docs/principles.md`) and
