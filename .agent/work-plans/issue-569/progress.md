@@ -891,3 +891,18 @@ Part 3 of 3, round 2: the fixes 0ef6f8f5, 745899c9, 1aef015d, 707033b7 for round
 **Decision**: address
 
 Both round-2 suggestions are fixed before the push: a literal check that `packages:` (and each of the four keys of the earlier format) is refused, so removing a key from the tuple fails a test; and the README sentence "Every command reads a manifest", which is not true of `build`. Outside reviewers on round 2: Codex ran, and the README point is its; Gemini failed (its headless run denied a tool call).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 13:20 -05:00
+**By**: claude-code (claude-sonnet-5-5)
+
+**Branch**: feature/issue-569 at `1e95b622`
+**Addressed**: Local Review (Pre-Push) at `dcf2eb42` (2026-11-24 12:59 -05:00)
+**Commits**: 71898ea8, 1e95b622
+
+### Actions
+- [x] `packages:` literal coverage: new test_the_earlier_format_keys_are_the_four_the_format_had asserts the tuple equals {repos, extends, optional_layers, packages} — `tools/repos-manifest/tests/test_cli.py:77`
+- [x] "Every command reads a manifest" now "Every command that reads a manifest reads it only in the format of ..."; same claim fixed in `tools/repos-manifest/docs/design.md:2175` (spec.md has none) — `tools/repos-manifest/README.md:214`
+
+Checks: pytest test_cli.py + test_documents.py: 60 passed. Full pre-commit pass left to the host.
