@@ -1,10 +1,8 @@
-"""repos_manifest — prototype general ROS 2 multi-repo manifest resolver.
+"""repos_manifest: reads a manifest of the repos of a ROS 2 project made of many repos, writes
+what it comes to for a machine, and sets up, syncs and builds a system directory from it.
 
-**Extraction candidate.** See agent_workspace issue #267: this package is designed to be
-extracted into its own repository. Its name, CLI command and directory are repos-manifest, chosen
-by the owner in issue #497. Nothing
-outside ``tools/repos-manifest/`` imports this package directly; the intended integration surface
-is the ``repos-manifest`` CLI only.
+Its interface is the ``repos-manifest`` command; the modules of this package are not an
+interface for other code.
 """
 
 __version__ = "0.1.0"
