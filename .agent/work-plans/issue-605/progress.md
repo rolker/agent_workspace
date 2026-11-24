@@ -347,3 +347,21 @@ Cross-model: codex ran (EXIT=0) and read the whole diff: 3 files, `.agent/knowle
 ### Findings
 - [ ] (suggestion) Follow-up issue should also collect suggestions from the integrated review that are ticked deferred, not only the `publish` checkpoint body — `.agent/knowledge/host_standing_rules.md` (`merge` bullet)
 - [ ] (suggestion) Pin the expiry check to the workspace repo: `gh issue view 436 -R rolker/agent_workspace --json state,stateReason` — `.agent/knowledge/host_standing_rules.md` (rule row and section intro)
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 14:33 -05:00
+**By**: claude-code (claude-sonnet-5-5)
+**Reviews-read**: 6045836937
+
+**PR**: #607 at `c1c72e5`
+**Sources**: 3 (Integrated Review @ `c1c72e5`, Local Review (Codex cold read) @ `4a64c1d` covering the head via bookkeeping, CI rollup; Copilot @ `c1c72e5` could not review: quota notice, no findings)
+**Cross-source confirmations**: 0
+**CI**: pending (Lint (pre-commit), repos-manifest tests (#267 prototype) on Python 3.10 and 3.14, and Validate Documentation on one of the two runs were still running after about 5 minutes; Validate Adapter Contract passed; the copilot-pull-request-reviewer check-run's failure is its quota notice, not a CI failure of the change)
+
+### Findings
+- [ ] (suggestion, Local Review (Pre-Push) @ `cd252df`, first triage) The `merge` bullet's duplicate-issue guard searches for "an open issue that names this pull request", but nothing requires the follow-up issue's body to name the pull request, so the search can come back empty after the crash it guards against; the bullet also does not say to reuse and record an issue the search finds. Wording: "opens the one follow-up issue (second row above), its body naming this pull request, ..." and "..., in case an earlier run opened it and stopped before recording it (if found, it is that issue)". — `.agent/knowledge/host_standing_rules.md:59`
+- [ ] (suggestion, Local Review @ `4a64c1d`) Valid. The `merge` bullet takes the follow-up issue's suggestions only from the `publish` checkpoint's body, but suggestions raised later (a PR-mode integrated review or a cold read after that checkpoint) sit open in the integrated review and would never reach the issue. Say the host collects the pull request's open suggestions from the `publish` checkpoint's body and from the latest `## Integrated Review`, each once. — `.agent/knowledge/host_standing_rules.md:59`
+- [ ] (suggestion, Local Review @ `4a64c1d`) Valid. A bare `gh issue view 436` resolves in the current checkout's repository, which in a project session or a project worktree is not the workspace, so the expiry check could read the wrong issue 436 or fail. Mechanism text here names no specific project or repository, so the fix is not a literal owner/name: pin it as `gh issue view 436 -R <the workspace repository> --json state,stateReason`, or in words "(issue 436 of the workspace repository, `gh issue view 436 --json state,stateReason` with `-R` set to it)", in the rule row and in the section intro. — `.agent/knowledge/host_standing_rules.md:48` and `:53`
+
+### False positives
