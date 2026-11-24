@@ -757,3 +757,37 @@ Instructions that bind the implementer (host decisions, listed for the owner's v
 - Part 1 changed after the plan was reviewed, and the skill text must match what merged: a goals, design or roadmap path may hold only ASCII letters, digits, ".", "_", "-" and "/" (refused otherwise, at set time and at lookup), and a roadmap setting that is the design's file through a symbolic link is refused. The question the skills ask, and what they do with an answer the setting refuses, follow the merged project_setting.sh, not the plan's older wording; say in the entry where the two differ.
 - Carry the suggestion the owner deferred to this pull request on 2026-11-24 ("Merge, carry F1"): the comment on bookkeeping_roadmap_paths in .agent/scripts/_bookkeeping.sh says a roadmap value "may hold ( ) | ! @ +", which is untrue since those characters are refused; reword the comment only, no code change.
 - Main has moved since the plan (the sit-rep skill was rewritten by pull request 572; onboarding ran on a second machine): read the two skills as they are on this branch before editing.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 11:57 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-551 at `8ad728045b58d562ce405e264941e104686b15a0`
+
+Part 2 of the plan (items 10, 11, 12, 12a, 13) and the carried suggestion F1. Commits: 63b1f867, d1454a85, dd937448, 25ba7201, 077cc77c, 8ad72804.
+
+### Changes
+- (F1, carried at the owner's "Merge, carry F1") `.agent/scripts/_bookkeeping.sh`: the comment on `bookkeeping_roadmap_paths` no longer says a value may hold `( ) | ! @ +`; it says the setting holds no other character than letters, digits and `. _ / -` (refused at set and lookup) and the escape keeps the literal match safe should that set widen. Comment only, no code change.
+- (12a) `.agent/scripts/project_integration_audit.sh`: the category 4 ignore-would-hide check takes the roadmap path from the lookup (`project_document_path`): the file the `roadmap` setting names (also one not written yet), else the first existing candidate, else `docs/roadmap.md`; `roadmap=none` and a setting the lookup refuses check no roadmap path. Header updated. Four new cases in `test_project_integration_audit.sh`.
+- (10) `onboard-project` step 3c: asks "Where does this project keep its goals? its design? its roadmap?", one key at a time, only when unrecorded, after `project_setting.sh doc` shows what the readers find. Options: a file (the `fallback` path as the suggestion; for goals a README/design section after reading the heading; for design a differently named design file), `none`, or decide later (nothing stored). Stored with `project_setting.sh set <settings-name> "<key>=<value>"` on a yes, then `doc` again. `--reask` takes the three keys; steps 5 and 6 use "the project's roadmap" as the lookup names it (no Direction offer and no queue in the roadmap with `roadmap=none` or a refused setting); the summary lists the three.
+- (11) `audit-project` step 3: goals, design and roadmap rows from `doc` (+ `get`); `ARCHITECTURE.md` stays an accepted design name. Findings: a recorded file untracked or missing, a setting the lookup refuses, and a setting naming a sub-roadmap from `sitrep_checks.sh --list-pointers` or the `design.md` beside one. Step 10's queue uses the lookup's roadmap.
+- (12) `design-discussion` step 0 Documents: a project's documents come from `doc`; `set` is used, `none` respected (Step 7's "No document"), `fallback` is a suggestion to ask about, nothing found is said with the reason. An answer not recorded is offered as a setting on its own yes, else kept on the anchor issue. The workspace (no settings) and parts as before. The trial note no longer says the location waits on #551.
+- (13) `test_skill_paths.sh`: pins for the three skills (a new design-discussion section with bash-block parsing) and checks that the guessed `docs/roadmap.md`/`ROADMAP.md` wording is gone.
+
+### Where the plan and the merged Part 1 differ (the skills follow Part 1)
+- Path characters: the plan refused only blanks and backslash; Part 1 accepts only ASCII letters, digits, `.`, `_`, `-`, `/`. The onboarding question names that set, and tells a refusal as a limit of the workspace's readers, offering decide later or `none`, never moving or renaming the project's files.
+- Roadmap rules the plan did not have: a `.md` file, not the README or an agent instruction file, not `docs/design.md` or the design's file. Stated in step 3c.
+- Symbolic links: the plan checked containment at read time; Part 1 also refuses, at lookup only, a roadmap that is a link or reached through one and a roadmap the design's file links to. `set` accepts those, so the skill runs `doc` after storing and offers to remove the key or name another file.
+- `doc` prints nothing on exit 1, also for a recorded key whose file is missing (the plan said it prints the same line as the helper). The skills tell a recorded key with `list`/`get` and take the path from `get`.
+
+### Decisions the plan did not state
+- The integration audit checks an existing fallback candidate when the key is unset (the plan said `docs/roadmap.md` when unset), so an ignored `ROADMAP.md` is reported. A refused setting adds no new finding id there; the skills report it through `doc`.
+- Onboarding offers to record `roadmap=docs/roadmap.md` (own yes) when it creates the roadmap there.
+- audit-project reports all three keys (the plan named the design check), and the pointer-table check covers all three.
+- design-discussion offers to store an answer as a setting (the plan said ask); the anchor issue stays the fallback.
+
+### Not done (outside Part 2's list)
+- `brainstorm` (SKILL.md lines 81-82) still names a project's roadmap as `docs/roadmap.md`, else `ROADMAP.md`, and its design as `docs/design.md` or `ARCHITECTURE.md`; `plan-task`, `review-plan` and `review-issue` cite a project's design as `docs/design.md#<section>`. For the host to decide.
+
+### Tests (each suite on its own)
+test_project_integration_audit: 286 passed, 0 failed; test_skill_paths: 208 passed, 0 failed; test_script_tests_hook_scope: 366 passed, 0 failed; test_user_tier_guard: 64 passed, 0 failed; test_merge_pr_skill: 132 passed, 0 failed; test_merge_pr: 175 passed, 0 failed; test_merge_pr_gate: 213 passed, 0 failed; test_project_documents: 204 passed, 0 failed; test_triage_reviews_integration: 70 passed, 0 failed. `_bookkeeping.sh` has no suite of its own (the five that name it ran). Full pre-commit pass left to the host. Not pushed.
