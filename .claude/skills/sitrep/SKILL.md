@@ -334,11 +334,15 @@ ra=(); [ -z "$roadmap" ] || ra=(--roadmap "$roadmap")
 rows="<rows_file printed in step 1>"
 # The section is written as paths when step 1's rows hold a path row; with
 # no rows, when the checker finds a path in it (--list-paths: its own
-# rules, no check run). Without paths, no path word is printed.
+# rules, no check run), and "unknown" when it could not tell. Without
+# paths, no path word is printed.
 haspaths=no
 if [ -f "$rows" ] && [ -r "$rows" ]; then
     ! grep -q "^path	" "$rows" || haspaths=yes
-elif [ -n "$("$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$ROOT" "${ra[@]}" --list-paths 2>/dev/null)" ]; then
+elif ! lp="$("$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$ROOT" "${ra[@]}" --list-paths)"; then
+    echo "paths: could not be listed (reason above); work is marked path unknown"
+    haspaths=unknown
+elif [ -n "$lp" ]; then
     haspaths=yes
 fi
 wl="$("$WS_ROOT/.agent/scripts/sitrep_root.sh" --worktrees --rows "$rows")" \
@@ -457,7 +461,7 @@ except ValueError:
     if [ "$haspaths" = yes ] && [ "$npath" = "no path" ]; then wpath="no path (a line names it)"
     elif [ "$haspaths" = yes ] && [ -n "$npath" ]; then wpath="$npath"
     elif [ -n "$named" ] && [ "$named" != yes ] && [ -n "$npart" ]; then wpath="$npart"
-    elif [ "$haspaths" != yes ]; then wpath=""
+    elif [ "$haspaths" = no ]; then wpath=""
     elif [ -z "$named" ]; then wpath="path unknown (steps not checked)"
     elif [ "$serves" = goal ]; then wpath="no path line (serves a goal)"
     elif [ "$serves" = none ]; then wpath="no path line (serves no goal)"
@@ -497,10 +501,12 @@ Direction section writes them (issue #563):
   Serves line counts, so a re-review that found the issue serves nothing
   outranks an older one that named a goal, and a partial or failed Issue
   Review leaves the older one's Serves in place.
-- Step 1 printed no rows: `path unknown (steps not checked)`.
+- Step 1 printed no rows: `path unknown (steps not checked)`, also when
+  the checker's `--list-paths` failed (the block says so, and the last
+  block of this step prints `paths=unknown`).
 - The root's Direction section is not written as paths (step 1's rows
   hold no `path` row; with no rows, the checker's `--list-paths` prints
-  none, and the last block of this step prints `paths=none`): no path
+  nothing, and the last block of this step prints `paths=none`): no path
   word is printed, except a sub-roadmap's path.
 
 The state is the latest timeline entry in words, so the report needs no
@@ -573,23 +579,22 @@ for it when it is empty. Within each group, branches with a worktree come
 first, in the worktree list's order, then branches with only a pull
 request, in the order `gh pr list` printed them.
 
-The paths themselves, for the report's closing question. Which paths
-there are, and their names, come from the checker, so the question
-offers exactly the groups the report shows: the `path` rows of step 1's
-rows file (put its `rows_file` value in place of the placeholder), or,
-when step 1 printed none, the checker's `--list-paths`, which reads the
-section by the same rules and runs no check. Each path is printed on a
+The paths themselves, for the report's closing question. The roadmap's
+structure is read by the checker only, so the question offers exactly
+the groups the report shows: this block formats what the checker's
+`--list-paths` prints (the same rules as step 1's rows, no check run),
+and reads nothing of the roadmap itself. Each path is printed on a
 `path` line with its name as the roadmap writes it (`Path 2, modular
-workflows`) and its paragraph's first sentence, as written; then, when
-there is an Across group, its first sentence on an `across` line (the
-`no path` group is not offered). The first sentence is the one thing
-read from the prose: the text after the bold name of the paragraph
-whose bold name is that path's. A sentence ends at a period followed by
-white space or the paragraph's end, or at a period and a closing double
-quotation mark followed by either (a quoted sentence). An
-`acceptance_path=` line names the group the `**Acceptance case.**`
-paragraph sits in (the nearest path or Across paragraph above it, as
-the checker groups tables); with none above it, no such line.
+workflows`) and the first sentence of its paragraph, after the bold
+name, as written; then, when there is an Across group, its first
+sentence on an `across` line (the `no path` group is not offered). A
+sentence ends at a period followed by white space or the paragraph's
+end, or at a period and a closing double quotation mark followed by
+either (a quoted sentence). An `acceptance_path=` line names the group
+the `**Acceptance case.**` paragraph sits in: the nearest path or Across
+paragraph above it, as the checker groups tables. With none above it,
+there is no such line. When the checker cannot list the paths, the
+block prints `paths=unknown`.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
@@ -597,50 +602,15 @@ r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: no root c
 ROOT="$(sed -n 's/^root=//p' <<< "$r")"
 roadmap="$(sed -n 's/^roadmap=//p' <<< "$r")"
 ra=(); [ -z "$roadmap" ] || ra=(--roadmap "$roadmap")
-rows="<rows_file printed in step 1>"
-if [ -f "$rows" ] && [ -r "$rows" ]; then
-    names="$(awk -F'\t' '$1 == "path" { print $2 }' "$rows")"
-elif ! names="$("$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$ROOT" "${ra[@]}" --list-paths)"; then
+if ! lp="$("$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$ROOT" "${ra[@]}" --list-paths)"; then
     echo "paths=unknown (the checker could not list them; reason above)"; exit 0
 fi
-# Paragraphs of the section that open with bold text, each joined into one
-# line, outside fences: where the first sentences are read from.
-awk '/^ ? ? ?(```|~~~)/ { f = !f; next } f { next }
-     /^## Direction/ { d = 1; b = 1; next } d && /^ ? ? ?##?[ \t]/ { exit }
-     d && /^[[:space:]]*($|\||#)/ { if (p) print s; p = 0; b = 1; next }
-     d && b && /^\*\*/ { p = 1; s = "" }
-     p { s = s (s == "" ? "" : " ") $0 }
-     d { b = 0 }
-     END { if (p) print s }' "${roadmap:-/dev/null}" 2>/dev/null | NAMES="$names" python3 -c '
-import os, re, sys
-names = [n for n in os.environ["NAMES"].splitlines() if n and n != "no path"]
-def first(t):
-    f = re.match(r"(.+?\.\x22?)(?:\s|$)", t)
-    return f.group(1) if f else t
-sent, group, acc = {}, None, None
-for l in sys.stdin:
-    m = re.match(r"\*\*(.+?)\*\*\s*(.*)", l.strip())
-    if not m:
-        continue
-    # The bold text as the checker names a group: white space collapsed,
-    # one trailing "." or "," dropped; Across whatever follows it.
-    k = re.sub(r"[.,]$", "", " ".join(m.group(1).split()))
-    if k.startswith("Across the paths"):
-        k = "Across the paths"
-    if k == "Acceptance case" and acc is None:
-        acc = group or ""
-    if k in names:
-        group = k
-        sent.setdefault(k, first(m.group(2)))
-for n in names:
-    if n != "Across the paths":
-        print("path\t%s\t%s" % (n, sent.get(n, "")))
-if "Across the paths" in names:
-    print("across\tAcross the paths\t" + sent.get("Across the paths", ""))
-if not names:
-    print("paths=none (no **Path <n>** paragraph in the Direction section)")
-elif acc:
-    print("acceptance_path=" + acc)'
+awk -F'\t' '$1 == "group" && $2 == "Across the paths" { if (a == "") a = "across\t" $2 "\t" $3; next }
+     $1 == "group" && $2 != "no path" { print "path\t" $2 "\t" $3; n++ }
+     $1 == "acceptance" { acc = $2 }
+     END { if (a != "") print a
+           if (!n) print "paths=none (no **Path <n>** paragraph in the Direction section)"
+           else if (acc != "") print "acceptance_path=" acc }' <<< "$lp"
 ```
 
 ### 4. Write the run record
@@ -1218,12 +1188,15 @@ Rules for the report:
   rows.
 - **The line after the heading** is step 5's `acceptance_first`, so the
   reader sees what the next step is for. When it is empty, the line is
-  left out. With paths, the acceptance case is the test of one path, the
-  one whose group its paragraph sits in (the nearest path paragraph
-  above it), which step 3's last block prints as `acceptance_path=`,
-  and the line says so: "The test of <acceptance_path>:
-  <acceptance_first>". With no `acceptance_path=` line (the paragraph
-  sits above every path), the line is `acceptance_first` alone.
+  left out. With paths, the acceptance case is the test of the group
+  its paragraph sits in (the nearest path or Across paragraph above
+  it), which step 3's last block prints as `acceptance_path=`, and the
+  line says so: "The test of <acceptance_path>: <acceptance_first>",
+  e.g. "The test of Path 1, ROS 2 projects: ..." or, under the Across
+  paragraph, "The test of Across the paths: ...". With no
+  `acceptance_path=` line (the paragraph sits above every path, or step
+  3 printed `paths=none` or `paths=unknown`), the line is
+  `acceptance_first` alone.
 - **Result words** are translated, and always printed, so a step that
   could not be checked never reads as one that failed:
 

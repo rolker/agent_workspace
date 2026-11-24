@@ -1203,6 +1203,18 @@ RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$blkp" 2>&1)" || RC=$?
 RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
 [[ $RC -eq 0 && "$(cut -f7 <<< "$OUT" | sort -u)" == "path unknown (steps not checked)" ]] \
     && pass "(skill 3) path: with no rows from step 1 the path is unknown, never guessed" || fail "(skill 3) path no rows '$OUT'"
+# A checker that cannot list the paths is not "no paths": the work is
+# still path unknown, and the block says why (issue #563).
+cp "$WS/.agent/scripts/sitrep_checks.sh" "$SB/checks.saved"
+printf '#!/usr/bin/env bash\necho "checker broke" >&2\nexit 2\n' > "$WS/.agent/scripts/sitrep_checks.sh"
+RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$blk" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$(grep -v '^paths: \|^checker broke' <<< "$OUT" | cut -f7 | sort -u)" == "path unknown (steps not checked)" \
+    && "$OUT" == *"paths: could not be listed (reason above)"* ]] \
+    && pass "(skill 3) path: a failed --list-paths with no rows gives path unknown, never no path word" || fail "(skill 3) path list-paths failed '$OUT'"
+RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$(skill_step 3 3)" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$OUT" == *"paths=unknown (the checker could not list them; reason above)" ]] \
+    && pass "(skill 3) paths: a failed --list-paths is paths=unknown, not paths=none" || fail "(skill 3) paths unknown '$OUT'"
+mv "$SB/checks.saved" "$WS/.agent/scripts/sitrep_checks.sh"
 
 echo "TEST: sit-rep step 3 reads what work no line names serves from the newest complete Issue Review's Serves line only"
 # A Serves line of "none" (review-issue's word for no goal) is no path; a
@@ -1280,13 +1292,16 @@ RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$(skill_step 3 3)" 2>&1)" |
 [[ $RC -eq 0 && "$OUT" == $'path\tPath 1, Alpha\tFirst.\npath\tPath 2, Wrapped over two\tSecond one.\nacross\tAcross the paths\tShared.\nacceptance_path=Path 2, Wrapped over two' ]] \
     && pass "(skill 3) paths with no rows: the checker's paths only (fenced and continuation ones are not), wrapped name joined, trailing comma dropped; the acceptance case's path" \
     || fail "(skill 3) paths by the checker rc=$RC '$OUT'"
-# With rows, the names are the rows' path rows (no path is not offered).
-printf 'path\tno path\ttrue\tlines\t2026-11-24\nline\tU\tfalse\tnone\t2026-11-24\npath\tPath 1, Alpha\ttrue\tlines\t2026-11-24\npath\tPath 7, Rows only\tunchecked\tno lines (no design yet)\t2026-11-24\n' > "$SB/rows-q"
-blk="$(skill_step 3 3)"
-RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "${blk//<rows_file printed in step 1>/$SB/rows-q}" 2>&1)" || RC=$?
-[[ $RC -eq 0 && "$OUT" == $'path\tPath 1, Alpha\tFirst.\npath\tPath 7, Rows only\t\nacceptance_path=Path 1, Alpha' ]] \
-    && pass "(skill 3) paths with rows: the names are step 1's path rows, never the prose's" || fail "(skill 3) paths from rows rc=$RC '$OUT'"
-rm -f "$SB/rows-q"
+# What the checker decides is what the block shows: a thematic break or a
+# fence right above a path paragraph, a `## Directions` heading, the
+# acceptance case under the Across paragraph (issue #563).
+printf '%s\n' '## Directions' '' '**Path 9, Not this.** No.' '' '## Direction' '' '**Path 1, One.** First.' '' \
+    '***' '**Path 2, Two.** Second.' '' '```' '**Path 6, Fenced.** No.' '```' '**Path 3, Three.** Third.' '' \
+    '___' '**Across the paths.** Shared.' '' '**Acceptance case.** The test.' '' '## Next' > "$WS/docs/roadmap.md"
+RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$(skill_step 3 3)" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$OUT" == $'path\tPath 1, One\tFirst.\npath\tPath 2, Two\tSecond.\npath\tPath 3, Three\tThird.\nacross\tAcross the paths\tShared.\nacceptance_path=Across the paths' ]] \
+    && pass "(skill 3) paths: after a thematic break or a fence each path keeps its sentence; Directions is not the section; the acceptance case under Across" \
+    || fail "(skill 3) paths as the checker reads them rc=$RC '$OUT'"
 mv "$SB/roadmap3.saved" "$WS/docs/roadmap.md"
 
 echo "TEST: sit-rep step 8 template: lead words, one item per line, blank lines between sections"
@@ -1428,6 +1443,7 @@ git init -q "$W5"
 git -C "$W5" remote add origin https://github.com/acme/widgets.git
 add_helpers "$W5"
 cp "$WS/.agent/scripts/worktree_list.sh" "$W5/.agent/scripts/"
+cp "$SCRIPT_DIR/../sitrep_checks.sh" "$W5/.agent/scripts/"
 printf "## Direction\n" > "$W5/docs/roadmap.md"
 printf '%s' "$W5" > "$HOMESB/.claude/agent-workspace-root"
 
@@ -2015,8 +2031,8 @@ run_rm "$(printf '%s\n' '## Direction' '' '**Paths.** Not a path.' '' \
     && pass "(paths) Paths., a continuation line, a bullet, a lazy continuation, a fence and a table cell open nothing; a wrapped bold span is joined" \
     || fail "(paths) pattern rc=$RC '$OUT'"
 RC=0; S="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/root" --list-paths 2>&1)" || RC=$?
-[[ $RC -eq 0 && "$S" == $'Path 1, Wrapped over two lines\nPath 2, Split' ]] \
-    && pass "(paths) --list-paths prints the groups' names by the same rules, and runs no check" || fail "(paths) list-paths rc=$RC '$S'"
+[[ $RC -eq 0 && "$S" == $'group\tPath 1, Wrapped over two lines\tReal.\ngroup\tPath 2, Split\tReal too.' ]] \
+    && pass "(paths) --list-paths prints each group's name and first sentence by the same rules, and runs no check" || fail "(paths) list-paths rc=$RC '$S'"
 RC=0; bash "$SITREP" --root "$SB/root" --list-paths --summary >/dev/null 2>&1 || RC=$?
 [[ $RC -eq 2 ]] && pass "(paths) --list-paths with --summary is a usage error" || fail "(paths) list-paths --summary rc=$RC"
 
@@ -2026,6 +2042,9 @@ for hr in '---' '***' '___'; do
         "$hr" '**Path 2, Two.** Second. More.' '' '**Acceptance case.** T.' '' '| Line | Check |' '|---|---|' "| B | $F |")" --no-follow
     [[ $RC -eq 0 && "$(cut -f1-3 <<< "$OUT")" == $'path\tPath 1, One\ttrue\nline\tA\ttrue\npath\tPath 2, Two\ttrue\nline\tB\tfalse' ]] \
         && pass "(paths) '$hr' above a path paragraph: the path opens, its lines are its own" || fail "(paths) '$hr' rc=$RC '$OUT'"
+    RC=0; S="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/root" --list-paths 2>&1)" || RC=$?
+    [[ $RC -eq 0 && "$S" == $'group\tPath 1, One\tFirst.\ngroup\tPath 2, Two\tSecond.\nacceptance\tPath 2, Two' ]] \
+        && pass "(paths) '$hr': --list-paths gives the sentence and the acceptance case's group" || fail "(paths) '$hr' list-paths rc=$RC '$S'"
 done
 
 echo "TEST: what cannot be read as a group is a format row, never dropped unseen"

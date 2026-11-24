@@ -56,13 +56,22 @@
 #              this, so both scripts share one parser and one set of
 #              validity rules.
 #   --list-paths
-#              run no check, follow no pointer and print no row: the name
-#              of each group the rows would hold (each `path` row's item,
-#              Paths below), one per line, in roadmap order. Nothing for a
-#              section with no path paragraph, or a roadmap that is
-#              missing or unreadable. Exit 0. The sit-rep reads the paths
-#              through this when it has no saved rows, so it reads them by
-#              the checker's rules, never its own.
+#              run no check, follow no pointer and print no row: one
+#              TAB-separated line per group the rows would hold (Paths
+#              below), in roadmap order,
+#                group<TAB><name><TAB><first sentence>
+#              the name as its `path` row gives it, the first sentence of
+#              its opening paragraph after the bold name (up to a period
+#              followed by white space or the end, or a period and a
+#              closing `"` followed by either; empty for `no path`); then
+#                acceptance<TAB><name>
+#              when the first `**Acceptance case.**` paragraph (opened by
+#              the same rules as a path's) sits under a path or Across
+#              paragraph: the nearest one above it. Nothing for a section
+#              with no path paragraph, or a roadmap that is missing or
+#              unreadable. Exit 0. The sit-rep reads the paths through
+#              this, so it reads them by the checker's rules, never its
+#              own.
 #   --next-steps-from <rows-file>
 #              the next step of the root and of each part, from rows saved
 #              by an earlier run (no roadmap is read, no check runs, so it
@@ -834,9 +843,11 @@ scan_roadmap() {
     # or the section's start); bold = a bold span at a paragraph's start
     # still open (wrapped), joined so far; bold_at = the row index the
     # paragraph opened at.
-    local open_ok=false bold="" bold_on=false bold_at=0
+    # ptext_on = the lines of a group's opening paragraph are being read
+    # into GTEXT (path_mark).
+    local open_ok=false bold="" bold_on=false bold_at=0 ptext_on=false
     if [ -n "$part" ]; then kpre=sub; ipre="$part: "; fi
-    GMARKS=()
+    GMARKS=(); GTEXT=(); ACC_GROUP=""; ACC_SEEN=false
     SCAN_SECTION=false
     SCAN_TABLE=false
     while IFS= read -r raw || [ -n "$raw" ]; do
@@ -855,7 +866,7 @@ scan_roadmap() {
                 in_fence=false
             fi
             prev_table_line=false; table=none; prev_para=false
-            open_ok=true; bold_unclosed
+            open_ok=true; ptext_on=false; bold_unclosed
             continue
         fi
         [ "$in_fence" = true ] && continue
@@ -875,7 +886,7 @@ scan_roadmap() {
         fi
         if [[ "$raw" =~ ^[[:space:]]*\| ]]; then
             prev_para=false
-            open_ok=true; bold_unclosed
+            open_ok=true; ptext_on=false; bold_unclosed
             if [ "$prev_table_line" = false ]; then
                 split_row "$raw"
                 table=other
@@ -965,7 +976,11 @@ scan_roadmap() {
         fi
         if [ -z "$part" ]; then
             # A path or Across paragraph (Paths in the header). A bold
-            # span still open goes on through paragraph text only.
+            # span still open goes on through paragraph text only, and so
+            # does the text of a group's opening paragraph.
+            if [ "$ptext_on" = true ]; then
+                if [ "$prev_para" = true ]; then GTEXT[-1]+=" $(trim "$raw")"; else ptext_on=false; fi
+            fi
             if [ "$bold_on" = true ]; then
                 if [ "$prev_para" = true ]; then bold+=" $(trim "$raw")"; else bold_unclosed; fi
             elif [ "$open_ok" = true ] && [ "$prev_para" = true ] && [[ "$raw" == '**'* ]]; then
@@ -973,7 +988,7 @@ scan_roadmap() {
             fi
             if [ "$bold_on" = true ] && [[ "$bold" == *'**'* ]]; then
                 bold_on=false
-                path_mark "${bold%%\*\**}" "$bold_at"
+                path_mark "${bold%%\*\**}" "$bold_at" "${bold#*\*\*}"
             fi
             # Only a blank line, a heading or a thematic break lets the
             # next line open a paragraph; text and list items do not.
@@ -1006,9 +1021,13 @@ bold_unclosed() {
     emit format "(a bold **${w[*]:0:6} at a paragraph's start never closes: it opens no group)" unchecked ""
 }
 
-# path_mark <bold text> <row index>: when the bold text at a paragraph's
-# start names a path or Across, note the group in GMARKS
-# ("<row index>\t<path|across>\t<name>"); anything else is not a group.
+# path_mark <bold text> <row index> <text after the bold>: when the bold
+# text at a paragraph's start names a path or Across, note the group in
+# GMARKS ("<row index>\t<path|across>\t<name>") and its paragraph's
+# text in GTEXT (the rest of the paragraph is read in
+# while ptext_on). The first `Acceptance case` paragraph notes the group
+# it sits in, the last one opened above it (ACC_GROUP). Anything else is
+# not a group.
 path_mark() {
     local t
     local -a w
@@ -1023,7 +1042,32 @@ path_mark() {
         GMARKS+=("$2"$'\t'across$'\t'"Across the paths")
         [ "$t" = "Across the paths" ] \
             || emit format "(the Across paragraph's bold text is not just \"Across the paths\": $t)" unchecked ""
+    else
+        if [ "$t" = "Acceptance case" ] && [ "$ACC_SEEN" = false ]; then
+            ACC_SEEN=true
+            [ "${#GMARKS[@]}" -eq 0 ] || ACC_GROUP="${GMARKS[-1]#*$'\t'*$'\t'}"
+        fi
+        return 0
     fi
+    GTEXT+=("$(trim "$3")")
+    ptext_on=true
+}
+
+# first_sentence <text>: up to the first period followed by white space or
+# the end, or a period and a closing double quotation mark followed by
+# either (a quoted sentence); all of it when there is none.
+first_sentence() {
+    local t="$1" i n="${#1}" c
+    for ((i = 1; i < n; i++)); do
+        [ "${t:i:1}" = . ] || continue
+        c="${t:i+1:1}"
+        if [ -z "$c" ] || [[ "$c" == [[:space:]] ]]; then printf '%s' "${t:0:i+1}"; return; fi
+        if [ "$c" = '"' ]; then
+            c="${t:i+2:1}"
+            if [ -z "$c" ] || [[ "$c" == [[:space:]] ]]; then printf '%s' "${t:0:i+2}"; return; fi
+        fi
+    done
+    printf '%s' "$t"
 }
 
 # group_rows: put a path row ahead of each group's rows in ROWS (the
@@ -1168,10 +1212,21 @@ if [ "$ROADMAP_STATE" = found ]; then
 fi
 
 if [ "$LIST_PATHS" = true ]; then
+    k=0; g=0
     for r in ${ROWS[@]+"${ROWS[@]}"}; do
         fields "$r"
-        [ "$F_K" != path ] || printf '%s\n' "$F_I" || exit 1
+        [ "$F_K" = path ] || continue
+        g=$((g + 1))
+        if [ "$F_I" = "no path" ]; then
+            printf 'group\tno path\t\n' || exit 1
+        else
+            printf 'group\t%s\t%s\n' "$F_I" "$(first_sentence "${GTEXT[k]//$'\t'/ }")" || exit 1
+            k=$((k + 1))
+        fi
     done
+    if [ "$g" -gt 0 ] && [ -n "$ACC_GROUP" ]; then
+        printf 'acceptance\t%s\n' "$ACC_GROUP" || exit 1
+    fi
     exit 0
 fi
 
