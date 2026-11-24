@@ -1,0 +1,904 @@
+#!/usr/bin/env python3
+"""Review a draft in a local window and leave line-anchored notes (issue #545).
+
+Usage::
+
+    python3 .agent/scripts/review_viewer.py <draft.md> [--notes PATH] [--previous FILE]
+
+A session launches this as a background command; the process exiting when
+the owner closes the window is the signal to read the notes file. Standard
+library only (tkinter, difflib; ADR-0009).
+
+The window shows the draft read-only with light formatting (headings, bold,
+italic, code on grey, table pipes lined up), one display line per file line,
+so line numbers match the file. The owner selects a passage and adds a note
+(Ctrl+N), adds one note on the whole draft, edits or deletes notes from the
+side list (a click jumps to the passage), and records a decision: Approve or
+Changes requested. Closing with no decision asks Approve / Changes requested /
+Just close; Just close records ``none (notes only)``.
+
+Notes file (default ``<draft>.notes.md`` beside the draft; ``--notes`` puts it
+elsewhere, its folder created at the first write). It is rewritten, atomically,
+after every change::
+
+    # Review notes: <draft file name>
+
+    Written <local time with offset>
+
+    **Decision**: approve | changes requested | none (notes only)
+
+    ## Note on the whole draft
+
+    <note>
+
+    ## Note <n> (lines <a>-<b>)
+
+    > <passage, quoted from the draft file>
+
+    <note>
+
+No ``**Decision**`` line means none was recorded: the window was killed, or
+is still open. Passages are always the file's own text (never the padded
+display text of a table), so the agent can find them in the draft.
+
+At the first write of a session an existing notes file is renamed to
+``<notes>.prev`` (``os.replace``, one level kept): this round's notes never mix
+with the last round's, and the last round's are not lost.
+
+Changes since the last round: on close the draft text as read at launch is
+saved to the snapshot ``<notes path without .notes.md>.reviewed`` (a notes path
+not ending in ``.notes.md`` gets ``.reviewed`` appended to the whole path). The
+next launch on the same notes path diffs the draft against that snapshot and
+highlights the added or changed lines (a deleted run marks the line after it).
+``--previous FILE`` diffs against FILE instead. No notes are carried over.
+
+Exit codes: 0 the window closed (read the notes file for the decision);
+1 a usage error (missing draft or ``--previous`` file, unreadable text);
+2 no display or no tkinter (one line on stderr, no traceback).
+"""
+
+import argparse
+import dataclasses
+import datetime
+import difflib
+import os
+import re
+import sys
+import tempfile
+from pathlib import Path
+from typing import Callable, Dict, List, Mapping, Optional, Sequence, Set, Tuple
+
+DECISIONS = ("approve", "changes requested", "none (notes only)")
+
+CHAT_FALLBACK = """\
+Exit code 2 means no window can open here (no display, no tkinter, or the
+display refused the connection). Run the same review in chat instead: show the
+draft with line numbers (cat -n <draft>), take the owner's comments by line
+range, and write the notes file in the format above yourself, with the
+**Decision** line he gives."""
+
+# ---------------------------------------------------------------------------
+# Display check
+# ---------------------------------------------------------------------------
+
+
+def check_display(env: Mapping[str, str], import_tk: Callable[[], object]) -> Optional[str]:
+    """Return None if a window may open, else a one-line reason.
+
+    ``import_tk`` imports tkinter (raises ImportError when it is missing).
+    A display that is set but unreachable is caught later, when ``Tk()``
+    raises ``TclError``.
+    """
+    if not env.get("DISPLAY") and not env.get("WAYLAND_DISPLAY"):
+        return "no display (neither DISPLAY nor WAYLAND_DISPLAY is set)"
+    try:
+        import_tk()
+    except ImportError as exc:
+        return f"tkinter is not available ({one_line(str(exc))})"
+    return None
+
+
+def one_line(message: str) -> str:
+    """The first non-empty line of a message, for one-line error output."""
+    for line in message.splitlines():
+        if line.strip():
+            return line.strip()
+    return message.strip()
+
+
+# ---------------------------------------------------------------------------
+# Lines and light formatting
+# ---------------------------------------------------------------------------
+
+
+def split_lines(text: str) -> List[str]:
+    """Split on newlines only, as an editor numbers lines (``cat -n``).
+
+    ``str.splitlines`` also splits on form feeds and other separators, which
+    would put the window's line numbers out of step with the file's. A
+    trailing newline does not start an extra line; a trailing CR is dropped.
+    """
+    if text == "":
+        return []
+    lines = text.split("\n")
+    if lines[-1] == "":
+        lines.pop()
+    return [line[:-1] if line.endswith("\r") else line for line in lines]
+
+
+Span = Tuple[int, int, int, str]  # (line 1-based, start col, end col, tag)
+
+
+@dataclasses.dataclass
+class Formatted:
+    """The display text and how it maps back to the file.
+
+    ``lines[i]`` is the display of file line ``i + 1``. ``colmaps[i]`` is None
+    when the display line equals the file line, else a list of length
+    ``len(lines[i]) + 1`` giving, for each display column, the file column.
+    """
+
+    lines: List[str]
+    colmaps: List[Optional[List[int]]]
+    spans: List[Span]
+
+    @property
+    def text(self) -> str:
+        return "\n".join(self.lines)
+
+    def to_raw_col(self, line: int, col: int) -> int:
+        cmap = self.colmaps[line - 1]
+        if cmap is None:
+            return col
+        return cmap[min(max(col, 0), len(cmap) - 1)]
+
+
+FENCE_RE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
+HEADING_RE = re.compile(r"^\s{0,3}#{1,6}(\s|$)")
+INLINE_CODE_RE = re.compile(r"(`+)(.+?)\1")
+BOLD_RE = re.compile(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1")
+ITALIC_RE = re.compile(
+    r"(?<![\w*])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?![\w*])"
+    r"|(?<![\w_])_(?=[^\s_])(.+?)(?<=[^\s_])_(?![\w_])"
+)
+SEPARATOR_CELL_RE = re.compile(r"^:?-+:?$")
+
+
+def _table_cells(line: str) -> Tuple[str, List[Tuple[int, str]]]:
+    """Split a table row into its indent and (file column, text) cells.
+
+    Pipes escaped with a backslash stay inside their cell. Cell text is
+    stripped; its file column is where the stripped text starts.
+    """
+    indent = line[: len(line) - len(line.lstrip())]
+    pipes = [i for i, ch in enumerate(line) if ch == "|" and (i == 0 or line[i - 1] != "\\")]
+    bounds = [len(indent) - 1] + pipes + [len(line)]
+    segments = []
+    for left, right in zip(bounds, bounds[1:]):
+        segments.append((left + 1, line[left + 1 : right]))
+    # The segment before the leading pipe is the indent: drop it. A trailing
+    # pipe leaves an empty last segment: drop it too.
+    segments = segments[1:]
+    if pipes and pipes[-1] == len(line.rstrip()) - 1 and segments:
+        segments = segments[:-1]
+    cells = []
+    for start, seg in segments:
+        lead = len(seg) - len(seg.lstrip())
+        cells.append((start + lead, seg.strip()))
+    return indent, cells
+
+
+def _align_table(rows: Sequence[str]) -> List[Tuple[str, List[int]]]:
+    """Pad a block of table rows so the pipes line up.
+
+    Returns, per row, the display line and its display-to-file column map.
+    """
+    parsed = [_table_cells(row) for row in rows]
+    widths: List[int] = []
+    for _, cells in parsed:
+        for k, (_, cell) in enumerate(cells):
+            if k == len(widths):
+                widths.append(0)
+            if not SEPARATOR_CELL_RE.match(cell):
+                widths[k] = max(widths[k], len(cell))
+    widths = [max(w, 3) for w in widths]
+    out = []
+    for row, (indent, cells) in zip(rows, parsed):
+        # (display text, file column of each of its characters)
+        parts: List[Tuple[str, Sequence[int]]] = [(indent, range(len(indent)))]
+        pipe_col = row.find("|", len(indent))
+        parts.append(("|", [max(pipe_col, 0)]))
+        for k, (start, cell) in enumerate(cells):
+            end = start + len(cell)
+            if SEPARATOR_CELL_RE.match(cell):
+                left = ":" if cell.startswith(":") else "-"
+                right = ":" if len(cell) > 1 and cell.endswith(":") else "-"
+                body = left + "-" * (widths[k] - 2) + right
+                parts.append((" ", [start]))
+                parts.append((body, [min(start + i, end) for i in range(len(body))]))
+                parts.append((" ", [end]))
+            else:
+                pad = widths[k] - len(cell)
+                parts.append((" ", [start]))
+                parts.append((cell, range(start, end)))
+                parts.append((" " * (pad + 1), [end] * (pad + 1)))
+            nxt = row.find("|", end)
+            parts.append(("|", [nxt if nxt >= 0 else len(row)]))
+        cmap = [col for _, cols in parts for col in cols] + [len(row)]
+        out.append(("".join(text for text, _ in parts), cmap))
+    return out
+
+
+def light_format(text: str) -> Formatted:
+    """Display lines, column maps and style spans for the draft text.
+
+    Markers (``#``, ``**``, backticks) stay visible, so every display line is
+    the file line except table rows, which are padded to line up the pipes.
+    """
+    raw = split_lines(text)
+    lines = list(raw)
+    colmaps: List[Optional[List[int]]] = [None] * len(raw)
+    spans: List[Span] = []
+    in_fence: Optional[str] = None
+    table_start: Optional[int] = None
+
+    def flush_table(end: int) -> None:
+        if table_start is None:
+            return
+        for offset, (disp, cmap) in enumerate(_align_table(raw[table_start:end])):
+            idx = table_start + offset
+            if disp != raw[idx]:
+                lines[idx] = disp
+                colmaps[idx] = cmap
+
+    for i, line in enumerate(raw):
+        fence = FENCE_RE.match(line)
+        if in_fence is not None:
+            spans.append((i + 1, 0, len(line), "code"))
+            if fence and fence.group(1)[0] == in_fence[0] and len(fence.group(1)) >= len(in_fence):
+                in_fence = None
+            continue
+        if fence:
+            flush_table(i)
+            table_start = None
+            in_fence = fence.group(1)
+            spans.append((i + 1, 0, len(line), "code"))
+            continue
+        if line.lstrip().startswith("|"):
+            if table_start is None:
+                table_start = i
+        else:
+            flush_table(i)
+            table_start = None
+    flush_table(len(raw))
+
+    in_fence = None
+    for i, disp in enumerate(lines):
+        fence = FENCE_RE.match(raw[i])
+        if in_fence is not None:
+            if fence and fence.group(1)[0] == in_fence[0] and len(fence.group(1)) >= len(in_fence):
+                in_fence = None
+            continue
+        if fence:
+            in_fence = fence.group(1)
+            continue
+        spans.extend(_inline_spans(i + 1, disp))
+    spans.sort()
+    return Formatted(lines, colmaps, spans)
+
+
+def _inline_spans(lineno: int, line: str) -> List[Span]:
+    spans: List[Span] = []
+    if HEADING_RE.match(line):
+        spans.append((lineno, 0, len(line), "heading"))
+    if line.lstrip().startswith("|"):
+        spans.append((lineno, 0, len(line), "table"))
+    code = [(m.start(), m.end()) for m in INLINE_CODE_RE.finditer(line)]
+    spans.extend((lineno, a, b, "code") for a, b in code)
+
+    def outside_code(a: int, b: int) -> bool:
+        return all(b <= ca or a >= cb for ca, cb in code)
+
+    for m in BOLD_RE.finditer(line):
+        if outside_code(m.start(), m.end()):
+            spans.append((lineno, m.start(), m.end(), "bold"))
+    for m in ITALIC_RE.finditer(line):
+        if outside_code(m.start(), m.end()):
+            spans.append((lineno, m.start(), m.end(), "italic"))
+    return spans
+
+
+# ---------------------------------------------------------------------------
+# Selections and passages
+# ---------------------------------------------------------------------------
+
+Index = Tuple[int, int]  # (line 1-based, display column)
+
+
+def parse_index(index: str) -> Index:
+    """A Tk text index "L.C" as (line, column)."""
+    line, col = index.split(".")
+    return int(line), int(col)
+
+
+def selection_to_range(start: Index, end: Index) -> Tuple[int, int]:
+    """The file lines a selection covers.
+
+    A selection that ends at column 0 of a later line (a whole line selected
+    with its newline) ends on the line before.
+    """
+    first, last = start[0], end[0]
+    if end[1] == 0 and last > first:
+        last -= 1
+    return first, last
+
+
+def passage_text(raw_text: str, fmt: Formatted, start: Index, end: Index) -> str:
+    """The file's own text for a display selection (never the padded display)."""
+    raw = split_lines(raw_text)
+    if not raw:
+        return ""
+    (la, ca), (lb, cb) = start, end
+    # Tk's last index ("end") sits one line past the text: clamp to the file.
+    la = min(max(la, 1), len(raw))
+    ra = fmt.to_raw_col(la, ca)
+    if lb > len(raw):
+        lb, rb = len(raw), len(raw[-1])
+    else:
+        rb = fmt.to_raw_col(lb, cb)
+    if la == lb:
+        out = raw[la - 1][ra:rb]
+    else:
+        out = "\n".join([raw[la - 1][ra:]] + raw[la : lb - 1] + [raw[lb - 1][:rb]])
+    return out.rstrip("\n")
+
+
+# ---------------------------------------------------------------------------
+# Notes
+# ---------------------------------------------------------------------------
+
+
+@dataclasses.dataclass
+class Note:
+    first: int
+    last: int
+    passage: str
+    text: str
+    anchor: Optional[Tuple[Index, Index]] = dataclasses.field(default=None, compare=False)
+
+
+@dataclasses.dataclass
+class Review:
+    draft_name: str
+    notes: List[Note] = dataclasses.field(default_factory=list)
+    whole: Optional[str] = None
+    decision: Optional[str] = None
+
+    def add(self, note: Note) -> int:
+        self.notes.append(note)
+        return len(self.notes) - 1
+
+    def edit(self, index: int, text: str) -> None:
+        self.notes[index].text = text
+
+    def delete(self, index: int) -> None:
+        del self.notes[index]
+
+    def set_whole(self, text: Optional[str]) -> None:
+        """Set, replace, or (with None or blank) remove the whole-draft note."""
+        self.whole = text if text and text.strip() else None
+
+    def decide(self, decision: str) -> None:
+        if decision not in DECISIONS:
+            raise ValueError(f"unknown decision: {decision!r}")
+        self.decision = decision
+
+
+def render_notes(review: Review, written: Optional[datetime.datetime] = None) -> str:
+    when = (written or datetime.datetime.now().astimezone()).isoformat(timespec="seconds")
+    out = [f"# Review notes: {review.draft_name}", "", f"Written {when}", ""]
+    if review.decision:
+        out += [f"**Decision**: {review.decision}", ""]
+    if review.whole:
+        out += ["## Note on the whole draft", "", review.whole.strip("\n"), ""]
+    for n, note in enumerate(review.notes, start=1):
+        quoted = "\n".join(("> " + p) if p else ">" for p in note.passage.split("\n"))
+        out += [f"## Note {n} (lines {note.first}-{note.last})", "", quoted, ""]
+        out += [note.text.strip("\n"), ""]
+    return "\n".join(out)
+
+
+NOTE_HEAD_RE = re.compile(r"^## Note (\d+) \(lines (\d+)-(\d+)\)$")
+WHOLE_HEAD = "## Note on the whole draft"
+
+
+def parse_notes(text: str) -> Review:
+    """Read a notes file back (used by the format's round-trip test).
+
+    A note's text that itself holds a ``## Note`` heading line cannot be told
+    from the next note; the window writes what the owner typed as is.
+    """
+    lines = text.split("\n")
+    title = lines[0][len("# Review notes: ") :] if lines else ""
+    review = Review(title)
+    sections: List[Tuple[str, List[str]]] = []
+    for line in lines[1:]:
+        if line.startswith("**Decision**: ") and not sections:
+            review.decision = line[len("**Decision**: ") :].strip()
+        elif line == WHOLE_HEAD or NOTE_HEAD_RE.match(line):
+            sections.append((line, []))
+        elif sections:
+            sections[-1][1].append(line)
+    for head, body in sections:
+        body_text = "\n".join(body).strip("\n")
+        if head == WHOLE_HEAD:
+            review.whole = body_text
+            continue
+        m = NOTE_HEAD_RE.match(head)
+        assert m is not None
+        quote: List[str] = []
+        rest = body_text.split("\n")
+        while rest and (rest[0] == ">" or rest[0].startswith("> ")):
+            quote.append(rest.pop(0)[2:])
+        review.add(
+            Note(int(m.group(2)), int(m.group(3)), "\n".join(quote), "\n".join(rest).strip("\n"))
+        )
+    return review
+
+
+def atomic_write(path: Path, content: str) -> None:
+    """Write via a temp file in the same folder and rename over the target."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix="." + path.name + ".", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+        os.replace(tmp, path)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
+class NotesWriter:  # pylint: disable=too-few-public-methods
+    """Writes the notes file; the first write moves a previous one to ``.prev``.
+
+    The rename happens at the first write, not at launch, so a window closed
+    or killed before any change leaves the old notes file where it was.
+    """
+
+    def __init__(self, path: Path):
+        self.path = path
+        self.prev_path = Path(str(path) + ".prev")
+        self._rotated = False
+
+    def write(self, content: str) -> None:
+        if not self._rotated:
+            if self.path.exists():
+                os.replace(self.path, self.prev_path)
+            self._rotated = True
+        atomic_write(self.path, content)
+
+
+# ---------------------------------------------------------------------------
+# Changes since the last round
+# ---------------------------------------------------------------------------
+
+
+def snapshot_path(notes_path: Path) -> Path:
+    """Where the draft shown in this round is kept for the next round's diff.
+
+    ``x.notes.md`` -> ``x.reviewed``; any other notes path gets ``.reviewed``
+    appended to the whole name.
+    """
+    name = notes_path.name
+    if name.endswith(".notes.md") and name != ".notes.md":
+        return notes_path.with_name(name[: -len(".notes.md")] + ".reviewed")
+    return notes_path.with_name(name + ".reviewed")
+
+
+def changed_lines(old: str, new: str) -> Set[int]:
+    """1-based lines of ``new`` added or changed relative to ``old``.
+
+    Both are the raw file texts. A deleted run marks the line after it (the
+    last line when the deletion was at the end).
+    """
+    a, b = split_lines(old), split_lines(new)
+    marked: Set[int] = set()
+    matcher = difflib.SequenceMatcher(a=a, b=b, autojunk=False)
+    for tag, _i1, _i2, j1, j2 in matcher.get_opcodes():
+        if tag in ("replace", "insert"):
+            marked.update(range(j1 + 1, j2 + 1))
+        elif tag == "delete" and b:
+            marked.add(min(j1 + 1, len(b)))
+    return marked
+
+
+class UsageError(Exception):
+    """A problem with the arguments or the files they name (exit 1)."""
+
+
+def read_text(path: Path, what: str) -> str:
+    if not path.is_file():
+        raise UsageError(f"{what} not found: {path}")
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise UsageError(f"cannot read {what} {path}: {one_line(str(exc))}") from exc
+
+
+# ---------------------------------------------------------------------------
+# Session: everything the window does, without the window
+# ---------------------------------------------------------------------------
+
+
+class Session:
+    """One review round: the draft as read at launch, the notes, the writer."""
+
+    def __init__(self, draft: Path, notes_path: Path, previous: Optional[Path] = None):
+        self.draft = draft
+        self.raw_text = read_text(draft, "draft")
+        self.formatted = light_format(self.raw_text)
+        self.writer = NotesWriter(notes_path)
+        prev_file = previous if previous is not None else self.snapshot
+        if previous is not None:
+            prev_text: Optional[str] = read_text(previous, "--previous file")
+        elif self.snapshot.is_file():
+            prev_text = read_text(self.snapshot, "last round's snapshot")
+        else:
+            prev_text = None
+        self.previous_file = prev_file if prev_text is not None else None
+        self.changed = changed_lines(prev_text, self.raw_text) if prev_text is not None else set()
+        self.review = Review(draft.name)
+
+    @property
+    def notes_path(self) -> Path:
+        return self.writer.path
+
+    @property
+    def snapshot(self) -> Path:
+        """Where the draft as read at launch is kept for the next round."""
+        return snapshot_path(self.writer.path)
+
+    def note_from_selection(self, start: Index, end: Index, text: str) -> int:
+        """Add a note on a display selection; the caller saves."""
+        first, last = selection_to_range(start, end)
+        passage = passage_text(self.raw_text, self.formatted, start, end)
+        return self.review.add(Note(first, last, passage, text, anchor=(start, end)))
+
+    def save(self) -> None:
+        self.writer.write(render_notes(self.review))
+
+    def finish(self, decision: str) -> None:
+        """Record the decision, write the notes, keep the shown draft for next round."""
+        self.review.decide(decision)
+        self.save()
+        atomic_write(self.snapshot, self.raw_text)
+
+
+# ---------------------------------------------------------------------------
+# The window (thin: every rule above is tested without it)
+# ---------------------------------------------------------------------------
+
+
+class ViewerApp:  # pragma: no cover - needs a display; smoke-tested under xvfb
+    def __init__(self, root, session: Session):
+        # pylint: disable=import-outside-toplevel
+        import tkinter as tk
+        from tkinter import font as tkfont
+        from tkinter import scrolledtext
+
+        self.tk = tk
+        self.root = root
+        self.session = session
+        root.title(f"Review: {session.draft.name}")
+        root.geometry("1200x800")
+
+        family = tkfont.nametofont("TkFixedFont").actual("family")
+        base = tkfont.Font(family=family, size=11)
+        self.fonts = {
+            "base": base,
+            "bold": tkfont.Font(family=family, size=11, weight="bold"),
+            "italic": tkfont.Font(family=family, size=11, slant="italic"),
+            "heading": tkfont.Font(family=family, size=12, weight="bold"),
+        }
+
+        panes = tk.PanedWindow(root, orient=tk.HORIZONTAL, sashrelief=tk.RAISED)
+        panes.pack(fill=tk.BOTH, expand=True)
+        self.text = scrolledtext.ScrolledText(panes, wrap=tk.WORD, font=base, padx=10, pady=10)
+        # ScrolledText lives in its own frame (with the scrollbar): add that.
+        panes.add(self.text.frame, stretch="always", minsize=400)
+        side = tk.Frame(panes)
+        tk.Label(side, text="Notes (click to jump)", anchor="w").pack(fill=tk.X)
+        self.listbox = tk.Listbox(side, activestyle="dotbox", exportselection=False)
+        self.listbox.pack(fill=tk.BOTH, expand=True)
+        panes.add(side, minsize=220, width=300)
+        self._build_text()
+
+        toolbar = tk.Frame(root)
+        buttons = [
+            ("Add note (Ctrl+N)", self.add_note),
+            ("Note on whole draft", self.whole_note),
+            ("Edit", self.edit_note),
+            ("Delete", self.delete_note),
+            ("Approve", lambda: self.decide("approve")),
+            ("Changes requested", lambda: self.decide("changes requested")),
+        ]
+        for label, command in buttons:
+            tk.Button(toolbar, text=label, command=command).pack(side=tk.LEFT, padx=3, pady=4)
+        self.status = tk.StringVar()
+        tk.Label(toolbar, textvariable=self.status, anchor="w").pack(side=tk.LEFT, padx=10)
+        toolbar.pack(fill=tk.X)
+
+        root.bind("<Control-n>", lambda _e: self.add_note() or "break")
+        self.listbox.bind("<<ListboxSelect>>", self.jump)
+        self.listbox.bind("<Double-Button-1>", lambda _e: self.edit_note())
+        self.listbox.bind("<Delete>", lambda _e: self.delete_note())
+        root.protocol("WM_DELETE_WINDOW", self.on_close)
+
+        msg = f"Select text, then Add note. Notes go to {session.notes_path}"
+        if session.previous_file is not None:
+            msg += f" | {len(session.changed)} line(s) changed since {session.previous_file.name}"
+        self.status.set(msg)
+
+    def _build_text(self) -> None:
+        tk, st, fmt = self.tk, self.text, self.session.formatted
+        st.insert("1.0", fmt.text)
+        st.tag_configure("heading", font=self.fonts["heading"])
+        st.tag_configure("bold", font=self.fonts["bold"])
+        st.tag_configure("italic", font=self.fonts["italic"])
+        st.tag_configure("code", background="#ececec")
+        st.tag_configure("table", foreground="#202060")
+        st.tag_configure("changed", background="#dcebff")
+        st.tag_configure("noted", background="#fff3b0")
+        st.tag_configure("flash", background="#ffb060")
+        for line, a, b, tag in fmt.spans:
+            st.tag_add(tag, f"{line}.{a}", f"{line}.{b}")
+        for line in sorted(self.session.changed):
+            st.tag_add("changed", f"{line}.0", f"{line}.0 lineend")
+        for tag in ("changed", "noted", "flash"):
+            st.tag_raise(tag)
+        st.configure(state=tk.DISABLED)
+
+    # -- helpers ----------------------------------------------------------
+
+    def _refresh(self) -> None:
+        review = self.session.review
+        self.listbox.delete(0, self.tk.END)
+        if review.whole:
+            self.listbox.insert(self.tk.END, "Whole draft: " + review.whole.split("\n")[0][:60])
+        for n, note in enumerate(review.notes, start=1):
+            first_line = note.text.split("\n")[0][:50]
+            self.listbox.insert(self.tk.END, f"{n} (lines {note.first}-{note.last}): {first_line}")
+        self.text.tag_remove("noted", "1.0", self.tk.END)
+        for note in review.notes:
+            if note.anchor:
+                (la, ca), (lb, cb) = note.anchor
+                self.text.tag_add("noted", f"{la}.{ca}", f"{lb}.{cb}")
+
+    def _selected(self) -> Optional[int]:
+        """The selected list row as -1 (whole-draft note) or a note index."""
+        sel = self.listbox.curselection()
+        if not sel:
+            return None
+        row = sel[0]
+        if self.session.review.whole:
+            return -1 if row == 0 else row - 1
+        return row
+
+    def _save(self, message: str) -> bool:
+        try:
+            self.session.save()
+        except OSError as exc:
+            from tkinter import messagebox  # pylint: disable=import-outside-toplevel
+
+            messagebox.showerror("Notes not saved", str(exc), parent=self.root)
+            self.status.set(f"NOT SAVED: {one_line(str(exc))}")
+            return False
+        self.status.set(message)
+        return True
+
+    def _ask_text(self, title: str, prompt: str, initial: str = "") -> Optional[str]:
+        tk = self.tk
+        dialog = tk.Toplevel(self.root)
+        dialog.title(title)
+        dialog.transient(self.root)
+        tk.Label(dialog, text=prompt + "  (Ctrl+Enter to save)", anchor="w").pack(fill=tk.X)
+        box = tk.Text(dialog, width=70, height=8, wrap=tk.WORD, font=self.fonts["base"])
+        box.insert("1.0", initial)
+        box.pack(fill=tk.BOTH, expand=True, padx=6, pady=4)
+        result: Dict[str, Optional[str]] = {"value": None}
+
+        def ok(_event=None):
+            result["value"] = box.get("1.0", "end-1c")
+            dialog.destroy()
+            return "break"
+
+        row = tk.Frame(dialog)
+        tk.Button(row, text="Save", command=ok).pack(side=tk.LEFT, padx=4, pady=4)
+        tk.Button(row, text="Cancel", command=dialog.destroy).pack(side=tk.LEFT, padx=4)
+        row.pack()
+        box.bind("<Control-Return>", ok)
+        box.focus_set()
+        dialog.wait_visibility()
+        dialog.grab_set()
+        self.root.wait_window(dialog)
+        return result["value"]
+
+    # -- actions ----------------------------------------------------------
+
+    def add_note(self) -> None:
+        try:
+            a, b = self.text.index("sel.first"), self.text.index("sel.last")
+        except self.tk.TclError:
+            self.status.set("Select a passage first (or use Note on whole draft).")
+            return
+        text = self._ask_text("Note", "Note on the selected passage:")
+        if not text or not text.strip():
+            return
+        self.session.note_from_selection(parse_index(a), parse_index(b), text)
+        self._refresh()
+        count = len(self.session.review.notes)
+        self._save(f"{count} note(s) saved to {self.session.notes_path.name}")
+
+    def whole_note(self) -> None:
+        review = self.session.review
+        text = self._ask_text(
+            "Note on the whole draft", "Note on the whole draft:", review.whole or ""
+        )
+        if text is None:
+            return
+        review.set_whole(text)
+        self._refresh()
+        self._save("Whole-draft note " + ("saved." if review.whole else "removed."))
+
+    def edit_note(self) -> None:
+        idx = self._selected()
+        if idx is None:
+            self.status.set("Pick a note in the list first.")
+            return
+        if idx == -1:
+            self.whole_note()
+            return
+        note = self.session.review.notes[idx]
+        text = self._ask_text("Edit note", f"Note {idx + 1}:", note.text)
+        if not text or not text.strip():
+            return
+        self.session.review.edit(idx, text)
+        self._refresh()
+        self._save(f"Note {idx + 1} edited.")
+
+    def delete_note(self) -> None:
+        from tkinter import messagebox  # pylint: disable=import-outside-toplevel
+
+        idx = self._selected()
+        if idx is None:
+            self.status.set("Pick a note in the list first.")
+            return
+        label = "the whole-draft note" if idx == -1 else f"note {idx + 1}"
+        if not messagebox.askyesno("Delete note", f"Delete {label}?", parent=self.root):
+            return
+        if idx == -1:
+            self.session.review.set_whole(None)
+        else:
+            self.session.review.delete(idx)
+        self._refresh()
+        self._save(f"Deleted {label}.")
+
+    def jump(self, _event=None) -> None:
+        idx = self._selected()
+        if idx is None or idx == -1:
+            return
+        anchor = self.session.review.notes[idx].anchor
+        if not anchor:
+            return
+        (la, ca), (lb, cb) = anchor
+        a, b = f"{la}.{ca}", f"{lb}.{cb}"
+        self.text.see(a)
+        self.text.tag_add("flash", a, b)
+        self.root.after(900, lambda: self.text.tag_remove("flash", "1.0", self.tk.END))
+
+    def decide(self, decision: str) -> None:
+        self.session.review.decide(decision)
+        self._save(f"Decision recorded: {decision}. Close the window when done.")
+
+    def _ask_decision(self) -> Optional[str]:
+        tk = self.tk
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Close without a decision?")
+        dialog.transient(self.root)
+        tk.Label(dialog, text="No decision recorded. Close with:", padx=12, pady=8).pack()
+        choice: Dict[str, Optional[str]] = {"value": None}
+
+        def pick(value: str) -> None:
+            choice["value"] = value
+            dialog.destroy()
+
+        row = tk.Frame(dialog)
+        for label, value in (
+            ("Approve", "approve"),
+            ("Changes requested", "changes requested"),
+            ("Just close (notes only)", "none (notes only)"),
+        ):
+            tk.Button(row, text=label, command=lambda v=value: pick(v)).pack(
+                side=tk.LEFT, padx=4, pady=8
+            )
+        row.pack(padx=8)
+        dialog.wait_visibility()
+        dialog.grab_set()
+        self.root.wait_window(dialog)
+        return choice["value"]
+
+    def on_close(self) -> None:
+        decision = self.session.review.decision or self._ask_decision()
+        if decision is None:  # the dialog was dismissed: keep reviewing
+            return
+        try:
+            self.session.finish(decision)
+        except OSError as exc:
+            print(f"review_viewer: could not save on close: {one_line(str(exc))}", file=sys.stderr)
+        self.root.destroy()
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="review_viewer.py",
+        description="Review a draft in a local window and leave line-anchored notes.",
+        epilog=CHAT_FALLBACK,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("draft", type=Path, help="the draft to review (Markdown or text)")
+    parser.add_argument(
+        "--notes", type=Path, help="notes file (default: <draft>.notes.md beside the draft)"
+    )
+    parser.add_argument(
+        "--previous",
+        type=Path,
+        help="diff against this file instead of the last round's .reviewed snapshot",
+    )
+    return parser
+
+
+def _import_tkinter():
+    import tkinter  # pylint: disable=import-outside-toplevel
+
+    return tkinter
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = build_parser().parse_args(argv)
+    draft = args.draft.resolve()
+    notes_path = (args.notes or Path(str(draft) + ".notes.md")).resolve()
+    previous = args.previous.resolve() if args.previous else None
+    try:
+        session = Session(draft, notes_path, previous)
+    except UsageError as exc:
+        print(f"review_viewer: {exc}", file=sys.stderr)
+        return 1
+
+    reason = check_display(os.environ, _import_tkinter)
+    if reason is not None:
+        print(f"review_viewer: {reason}; review in chat instead (see --help)", file=sys.stderr)
+        return 2
+    tk = _import_tkinter()
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:
+        print(
+            f"review_viewer: cannot open a window ({one_line(str(exc))}); "
+            "review in chat instead (see --help)",
+            file=sys.stderr,
+        )
+        return 2
+    ViewerApp(root, session)
+    root.mainloop()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

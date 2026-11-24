@@ -226,6 +226,8 @@ declare -A ROOT_READERS=(
     # workspace; its rev-parse --show-toplevel calls are on sandbox checkouts.
     [test_package_issue_loop.sh]=".agent/scripts .agent/project_types .claude/skills"
     [test_progress_read.py]=".agent/scripts"
+    # Imports and runs the real review_viewer.py (issue #545).
+    [test_review_viewer.py]=".agent/scripts"
     # Copies the real scripts, project types, user-tier list, .claude and
     # .claude-plugin into its sandbox workspace.
     [test_project_integration_audit.sh]=".agent/scripts .agent/project_types .agent/user_tier_scripts.txt .claude .claude-plugin"
