@@ -320,3 +320,25 @@ Retry that finishes the 2026-11-23 14:56 partial pass; its "Remains" items 1 to 
 ### Deviations
 - Item 1 rewritten rather than dropped, and review-issue's SKILL.md edited (one parenthesis removed): the plan did not name that file, but its sentence was made untrue by this change.
 - The plan's cost note (N6) is for the host to carry into the pull request; not written here.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 08:34 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-563 at `14471097`
+**Base**: main
+**Depth**: Deep (reason: 1346 changed lines in 12 files, skill and knowledge files among them)
+**Must-fix**: 1 | **Suggestions**: 5
+**Round**: 1 | **Ship**: continue — round 1: 1 must-fix; first round always re-reviews after fixes
+
+Specialists: static analysis (shellcheck not installed, not run; the touched suites pass: test_sitrep_checks 281/0, test_sitrep_root 69/0, test_skill_paths 199/0, test_design_anchors 82/0), governance, plan drift, Claude adversarial (no must-fix), Gemini (ran, 8 findings, 3 kept), Codex (ran, 2 findings, both kept). Dropped as false positives: Gemini's jq dependency (step 3 already uses jq) and its step 3 field-list worry (`isCrossRepository` is in the list); the GMARKS reset (safe, group_rows runs before any sub-roadmap scan).
+
+### Findings
+- [ ] (must-fix) The closing question's paths (step 3's last block) and the `haspaths` fallback parse the roadmap's prose with a grammar other than the checker's: a fenced `**Path` is offered, a bold span wrapped over two lines gives `paths=none`, a trailing comma stays in the name, a continuation line starting `**Path` restarts the paragraph; plan item 12 took the names from the `path` rows. Take the names from the rows when present and use the checker's grammar for the fallback (Codex, Gemini) — `.claude/skills/sitrep/SKILL.md:584-609, 336-342`
+- [ ] (suggestion) In flight shows at most five branches, yet every branch matched to any group's first unmet line must be among the five, and six groups (or a line naming two issues) can match more; the template says "no branch advances" where the rule says "no branch or pull request". Give an overflow rule and one wording (Codex, Gemini) — `.claude/skills/sitrep/SKILL.md:1125, 1238-1245`
+- [ ] (suggestion) Step 8 says the acceptance case is the test of the path whose paragraph sits above it, but no block prints that path; step 5's acceptance block could print it (Gemini) — `.claude/skills/sitrep/SKILL.md:1183-1188`
+- [ ] (suggestion) A pull request with no worktree gets its path from a line row whose item has `(#<N>`, which misses the second issue of a list such as `(#208, #209)` (in the roadmap today) and does not say that the `no path` group reads `no path (a line names it)` (Gemini) — `.claude/skills/sitrep/SKILL.md:1274-1284`
+- [ ] (suggestion) Each group's "<t> of <n> done" is said to come from step 1's `--- next steps`, whose lines carry no counts; name the summary's ` paths` suffix or the rows as the source — `.claude/skills/sitrep/SKILL.md:1203-1207`
+- [ ] (suggestion) Path grammar edges: two paragraphs with the same path number get the same summary label (`P1 none P1 none`), so the per-path comparison of two records mis-pairs them; `**Across the paths<anything>**` keeps the suffix as the group's name; a `**Path` span that never closes drops the path with no row saying so (Claude adversarial, Gemini) — `.agent/scripts/sitrep_checks.sh:330-337, 973-983`
