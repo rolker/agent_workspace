@@ -713,3 +713,18 @@ Each suite run on its own from the worktree after the merge:
 - `test_project_documents.sh` (issue 551's suite): test_project_documents: 204 passed, 0 failed
 
 The full pre-commit pass is left to the host; commits made with `SKIP=validate-script-tests` per the dispatched-pass hook rule.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 11:58 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #597 at `aa47b9cd`
+**Depth**: Deep (reason: convergence check per handoff, scoped to merge commit ff9ce164 since the last reviewed head `860476c`; no cross-model reviewers)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Scope: the merge of origin/main (pull request 568, issue 551) into the branch. Checked: `git show --cc ff9ce164`; for every file the branch changed, the branch's change lines against main (d2f489ff..ff9ce164) equal its change lines against the merge base (2a1a1730..e3681845) except in the two conflict files. `script_reference.md`: only the `project_setting.sh` row was touched by both sides; the merged row is main's row with exactly the branch's word change (word diff), and the `validate_adapter.sh` and `register_project.sh` rows are the branch's (main left them as at the base). `docs/design.md`: the branch's change lines apply unchanged, plus one merge row; the convention holds (issue 551's merge commits 5c79c7b1, 7a29404e, 0b9e2fb6 have 1258, 1272, 1274 lines, their rows' counts), the branch's file at e3681845 is 1262, and `wc -l docs/design.md` is 1283. Files both sides touched that merged cleanly (`_project_registry.sh`, `projects.local.example`, `test_project_file.sh`, `docs/roadmap.md`): hunks far apart, both texts present. Main's added lines (work plans aside) reintroduce no manifest-route text; `_rc_refuse_removed_source`, `registration_refused_setting` and their tests are intact. Re-run here: `validate_adapter.sh` (both types all 13 verbs), `test_register_project.sh` 225 passed 0 failed, `test_project_file.sh` 701 passed 0 failed, `test_project_documents.sh` 204 passed 0 failed. Cross-model: skipped (convergence check, per handoff).
+
+### Findings
+- [ ] No issues found. LGTM.
