@@ -411,3 +411,25 @@ Each suite run on its own from the worktree; the full pre-commit pass is left to
 - With `design=none`, a docs/design.md left in the tree is checked as a part's design (stated, not changed).
 - The Target stays `Status: proposed`.
 - `project_setting.sh doc` exits 3 for its usage errors (round 1, unchanged); a hand-made worktree outside a root's `worktrees=` directory reads the fallback (stated limit, unchanged).
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-23 22:02 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a5c9a1e1d1aa2635c, resume 2 of 3)
+
+**Branch**: feature/issue-551 at `5c79c7b1`
+**Addressed**: merge of origin/main before the round-3 pre-push review
+**Commits**: 5c79c7b1 (merge of origin/main, PR 566 / issue 452), 7763df53 (ROOT_READERS entry for test_project_documents.sh)
+
+### Actions
+- [x] `.agent/knowledge/script_reference.md` (1 hunk, three table rows): kept both sides per row. `review_progress.sh` and `pr_start.py` rows taken from main (they add `cold-read`, issue 452; this branch had not changed them). `_bookkeeping.sh` row taken from this branch (it adds `bookkeeping_roadmap_paths <wt>`, issue 551; main had not changed it). A word diff of the two sides showed no other difference.
+- [x] `docs/design.md` (1 hunk, the change log): kept both sides' rows. Main's three #452 rows go first because they are already on main, then this branch's #551 row. Each row keeps its own count, as the 2026-11-18 merge row for #488 sets out: #452's rows say 1240 and #551's says 1234, each its own side's file at the time. **This differs from the handoff's "fix any line count a row states":** rewriting those counts would make old rows false. Instead a new change-log row records this merge and carries the merged file's count, 1258, which matches `wc -l docs/design.md` after the merge.
+- [x] Found while running the requested suites: `test_script_tests_hook_scope.sh` failed once (352 passed, 1 failed). `test_project_documents.sh`, added on this branch, derives a real repository root but had no `ROOT_READERS` entry. I added one, `.agent/scripts .agent/project_types` (the suite copies both into its sandbox), the same as `test_project_file.sh` (7763df53).
+
+### Checks
+Suites run one at a time from the worktree. The full pre-commit pass is left to the host. The merge commit ran its hooks with `SKIP=validate-script-tests`.
+- test_design_anchors.sh: `test_design_anchors: 82 passed, 0 failed`
+- test_project_documents.sh: `test_project_documents: 174 passed, 0 failed`
+- test_skill_paths.sh: `test_skill_paths: 200 passed, 0 failed`
+- test_script_tests_hook_scope.sh: `352 passed, 1 failed` on the merge alone (the missing `ROOT_READERS` entry above). After 7763df53: `test_script_tests_hook_scope: 359 passed, 0 failed`
