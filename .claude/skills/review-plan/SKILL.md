@@ -41,7 +41,7 @@ workspace session behaves exactly as it did before this idiom existed.
 /review-plan --issue <N>
 ```
 
-- `<pr-number>` — read the plan from a draft PR (existing behavior)
+- `<pr-number>` — read the plan file at a PR's head commit
 - `<path-to-plan.md>` — read the plan directly from a local file
 - `--issue <N>` — resolve to `$WS_ROOT/.agent/work-plans/issue-<N>/plan.md`
 
@@ -68,15 +68,56 @@ Determine the input form and locate the plan file. Detection heuristic:
 **PR number** (e.g., `/review-plan 127`):
 
 ```bash
-# PR metadata and body (plan is in the PR body)
-gh pr view <N> --json title,body,baseRefName,headRefName,files,url
+# PR metadata (no body: it is a snapshot, not the plan; see below)
+gh pr view <N> --json title,baseRefName,headRefName,headRefOid,files,url
 
-# Get the linked issue
-gh pr view <N> --json body --jq '.body' | grep -o '#[0-9]*' | head -1
+# Plan files the PR changes; each path names its issue as issue-<issue>
+gh pr view <N> --json files --jq '.files[].path | select(test("^[.]agent/work-plans/issue-[0-9]+/plan[.]md$"))'
+
+# The issues the PR closes, as GitHub parses them (one number per line)
+gh pr view <N> --json closingIssuesReferences --jq '.closingIssuesReferences[].number'
 ```
 
-Find the plan file in the PR's changed files — it will be at
-`$WS_ROOT/.agent/work-plans/issue-*/plan.md`. Read it in full.
+The PR body is a snapshot of the plan, copied once when the PR was opened;
+later edits to the plan file never reach it. Never review the body, or a PR
+comment, as the plan: read the plan file at the PR's head commit. From the
+top folder of the repository the PR belongs to, fetch the head first
+(`<headRefOid>` from the first command; the Step 5 note reads the plan SHA
+the same way). `origin` must be that repository. The `cat-file` line is
+there because `git show` prints the same "does not exist" message for a
+commit that was never fetched as for a file missing at that commit; once
+it passes, a failing `git show` can only mean the file is not at the head
+(the no-plan-file case below). If the fetch or the `cat-file` check fails,
+stop and show git's message; never read another copy:
+
+```bash
+git fetch -q origin "pull/<N>/head"
+git cat-file -e "<headRefOid>^{commit}"
+git show <headRefOid>:./.agent/work-plans/issue-<issue>/plan.md
+```
+
+- **One plan file**: `<issue>` is the number in its `issue-<issue>`
+  directory; read the file in full with the `git show` above.
+- **More than one plan file**: if exactly one of them has an `issue-<issue>`
+  among the issues the PR closes, take it and read it as above. Otherwise
+  (none matches, several match, or the PR closes no issue) stop and say
+  which plan files the PR changes and which issues it closes.
+- **No plan file** (for example a `[PLAN]` draft opened by
+  `worktree_create.sh --plan-file`, which posts the plan as a PR comment,
+  or a PR whose plan an earlier PR committed): `<issue>` is the issue the
+  PR closes; if it closes none, or more than one, stop and say so (GitHub
+  lists no closed issue for a PR into a branch other than the default one,
+  such as a sub-issue's PR into its parent's branch). Read the
+  plan at the PR's head with the `git show` above first. Only when that
+  file does not exist at the head, read the one local fallback: the plan
+  file in the checkout this skill runs from, which is the repository the
+  PR belongs to, `$(git rev-parse --show-toplevel)/.agent/work-plans/issue-<issue>/plan.md`.
+  If it is not there, stop and say so, naming the path looked at. Never
+  search other worktrees or registered projects (the **Issue number**
+  form's search): another repository's issue can have the same number. The
+  head comes first so that a checkout behind the PR never supplies an
+  older copy. Step 5 takes the SHA of a plan read at the head with `--ref`,
+  and of the local fallback file with `--plan <path>`.
 
 **File path** (e.g., `/review-plan $WS_ROOT/.agent/work-plans/issue-45/plan.md`):
 
@@ -313,11 +354,14 @@ by hand:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-# Plan checked out locally (worktree / --issue / file path):
+# Plan checked out locally (worktree / --issue / file path, and the
+# PR-number form's local fallback when the head has no plan file):
 $WS_ROOT/.agent/scripts/review_progress.sh plan-sha --plan <path>
-# PR-number form, reviewing from any tree: fetch the head, then ask by ref —
-# no local checkout of the file is needed.
-git fetch -q origin "<headRefName>"
+# PR-number form, plan read at the PR head (every other PR case): fetch the
+# head (<N> is the PR number), check the commit is here (stop if not),
+# then ask by ref — no local checkout needed.
+git fetch -q origin "pull/<N>/head"
+git cat-file -e "<headRefOid>^{commit}"
 $WS_ROOT/.agent/scripts/review_progress.sh plan-sha --plan ./.agent/work-plans/issue-<issue>/plan.md --ref "<headRefOid>"
 ```
 
