@@ -484,3 +484,30 @@ Round 2 of part 2, after the fix pass 07e99799..deb6660c. Checked against the co
 - [x] (suggestion) A root the removed route set up keeps its `layers/main/*/src` checkouts (maybe with local work) and `configs/manifest-resolved*` after `init` in the root, which then clones again under `<root>/<distro>/`; the tool route never reads the old ones. Say so in the message and the design, or point at an empty directory as the flat-layout refusal does (adapter.sh 690) — `.agent/project_types/ros2_colcon/adapter.sh:631`
 - [x] (suggestion) Print the project's own `--distro`/`--role` from the registry line (`ACTIVE_PROJECT_DISTRO`/`ACTIVE_PROJECT_ROLE`, .agent/scripts/adapter 281-283) when set, instead of placeholders — `.agent/project_types/ros2_colcon/adapter.sh:631`
 - [x] (suggestion) "a root set up without --distro-dirs is refused here" reads as this check refusing it; say "by the adapter" — `.agent/project_types/ros2_colcon/adapter.sh:632`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 10:50 -05:00
+**By**: claude-code (claude-opus-5-5)
+
+**Branch**: feature/issue-569 at `750881d8`
+**Addressed**: Local Review (Pre-Push) at `ba5c27dc` (2026-11-24 10:31 -05:00)
+**Commits**: 82f091d7, 68567f38, b927ea8c, 02ac34fb, 750881d8
+
+### Actions
+- [x] register_project.sh refuses a --set of source, source_ref or source_path for a ros2_colcon project before anything is written (no registry line, settings file or directory; a dry run too), through a new per-type data list .agent/project_types/ros2_colcon/registration_refused (the unused_settings grammar, read by registration_refused_setting in _project_registry.sh, checked by validate_adapter.sh), so the script still names no type. The message gives the way on: make the directory, run the manifest tool's init in it, register it without --set source=. source_ref and source_path alone were already refused by the combination check; they now get this refusal first. The phi test asserts the new behaviour; the adapter's refusal for an already registered root stays tested in test_ros2_colcon.sh (test_source_without_tool_root_refused). The NEXT= "its bootstrap_url, say" at the setup call is no longer reached on this path and is right for the remaining one (a bootstrap_url setup), so it is unchanged. project_setting.sh set of the keys on a registered ros2_colcon project stays accepted; ros2_colcon/unused_settings is unchanged — `.agent/scripts/register_project.sh`, `.agent/scripts/tests/test_register_project.sh`
+- [x] The URL line says the clone is kept, never fetched by the tool, and pulled by hand before each sync; the message is shorter and points at a new section of docs/manifest/design.md, "A root that sets source", which holds the detail and says plainly what is given up. "What the tool has to give" gains "A manifest read from a git repo"; "reads the manifest again on every sync" no longer covers a URL source; the mapping table marks --manifest-ref/--manifest-path as the target, not taken by init today (verified: cli.py's init takes manifest, --role, --with, --distro, --distro-dirs, --fetch-from, --yes), with the hand clone as today's way. docs/design.md's routes text says the same and its change log gets a 2026-11-24 row for what was given up; the earlier 2026-11-24 row of this branch, which had no issue or line count, gets them (#569, 1252). The 2026-11-13 rows are untouched. The roadmap line covering it is the tool roadmap's "`base` and the manifest itself can be given as a path, a URL, or a file in a git repo" (tools/repos-manifest/docs/roadmap.md; "A manifest can be read from a private git server" is the related one); no roadmap line was added or edited. The PR text is the host's: this gap is to be named to the owner there — `.agent/project_types/ros2_colcon/adapter.sh`, `docs/manifest/design.md`, `docs/design.md`
+- [x] The refusal says, when the root holds layers/main or configs/manifest-resolved (a link too), that init does not read the old checkouts under layers/main/<layer>_ws/src or configs/manifest-resolved* and clones again under <root>/<distro>/ (paths checked against d22692ac's adapter.sh); tested both present and absent; the design section says the same — `.agent/project_types/ros2_colcon/adapter.sh`
+- [x] The init command carries the registry line's --distro and --role when set, placeholders otherwise, and the unset line names only the fields the line has; tested with both, with distro only, and with none — `.agent/project_types/ros2_colcon/adapter.sh`
+- [x] "is refused here" became "the adapter refuses" (now inside the shortened init line) — `.agent/project_types/ros2_colcon/adapter.sh`
+
+### Checks
+Suites for the changed scripts (_project_registry.sh, validate_adapter.sh, register_project.sh: their own suites and every suite naming them) and the changed suite files, each run on its own:
+- test_register_project.sh: test_register_project: 225 passed, 0 failed
+- test_adapter.sh: === Results: 258 passed, 0 failed ===
+- test_ros2_colcon.sh: === Results: 1203 passed, 0 failed, 0 skipped ===
+- test_project_registry.sh: === Results: 425 passed, 0 failed ===
+- test_project_file.sh: === Results: 701 passed, 0 failed ===
+- test_capture.sh 41/0; test_discover_governance.sh 32/0; test_dispatch_phase.sh 244/0; test_fresh_clone_no_project.sh 26/0; test_gh_create_issue.sh PASS 88 FAIL 0; test_gh_create_pr.sh PASS 113 FAIL 0; test_merge_pr_gate.sh 213/0; test_merge_pr.sh 175/0; test_merge_pr_skill.sh 132/0; test_precommit_hook_path.sh 19/0; test_project_integration_audit.sh 279/0; test_pr_status.sh 3/0; test_register_session_root.sh 72/0; test_script_tests_hook_scope.sh 358/0; test_session_start_layer.sh 52/0; test_sitrep_checks.sh 253/0; test_sitrep_root.sh 65/0; test_skill_paths.sh 200/0; test_user_tier_guard.sh 64/0; test_validate_workspace_stale.sh 126/0; test_worktree_create.sh PASS 112 FAIL 0; test_worktree_enter_stderr.sh 35/0; test_worktree_remove.sh 136/0
+- test_design_anchors.sh: test_design_anchors: 82 passed, 0 failed (docs changed)
+- The full pre-commit pass is left to the host.
