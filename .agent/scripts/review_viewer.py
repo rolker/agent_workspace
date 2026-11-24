@@ -630,7 +630,12 @@ class ViewerApp:  # pragma: no cover - needs a display; smoke-tested under xvfb
         tk.Label(toolbar, textvariable=self.status, anchor="w").pack(side=tk.LEFT, padx=10)
         toolbar.pack(fill=tk.X)
 
-        root.bind("<Control-n>", lambda _e: self.add_note() or "break")
+        # On the text widget too, ahead of its class bindings: Tk's Text class
+        # binds Control-n to <<NextLine>>, which moves the cursor and clears the
+        # selection before a root binding would run. "break" stops that.
+        for seq in ("<Control-n>", "<Control-N>"):
+            self.text.bind(seq, lambda _e: self.add_note() or "break")
+            root.bind(seq, lambda _e: self.add_note() or "break")
         self.listbox.bind("<<ListboxSelect>>", self.jump)
         self.listbox.bind("<Double-Button-1>", lambda _e: self.edit_note())
         self.listbox.bind("<Delete>", lambda _e: self.delete_note())
