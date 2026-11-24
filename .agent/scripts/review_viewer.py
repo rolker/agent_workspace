@@ -208,23 +208,28 @@ def _align_table(rows: Sequence[str]) -> List[Tuple[str, List[int]]]:
     Returns, per row, the display line and its display-to-file column map.
     """
     parsed = [_table_cells(row) for row in rows]
+    # A separator row is one whose every cell is dashes; a lone "-" in a data
+    # row (a common N/A) is data and is shown as typed.
+    separator = [
+        bool(cells) and all(SEPARATOR_CELL_RE.match(c) for _, c in cells) for _, cells in parsed
+    ]
     widths: List[int] = []
-    for _, cells in parsed:
+    for is_sep, (_, cells) in zip(separator, parsed):
         for k, (_, cell) in enumerate(cells):
             if k == len(widths):
                 widths.append(0)
-            if not SEPARATOR_CELL_RE.match(cell):
+            if not is_sep:
                 widths[k] = max(widths[k], len(cell))
     widths = [max(w, 3) for w in widths]
     out = []
-    for row, (indent, cells) in zip(rows, parsed):
+    for row, is_sep, (indent, cells) in zip(rows, separator, parsed):
         # (display text, file column of each of its characters)
         parts: List[Tuple[str, Sequence[int]]] = [(indent, range(len(indent)))]
         pipe_col = row.find("|", len(indent))
         parts.append(("|", [max(pipe_col, 0)]))
         for k, (start, cell) in enumerate(cells):
             end = start + len(cell)
-            if SEPARATOR_CELL_RE.match(cell):
+            if is_sep:
                 left = ":" if cell.startswith(":") else "-"
                 right = ":" if len(cell) > 1 and cell.endswith(":") else "-"
                 body = left + "-" * (widths[k] - 2) + right
