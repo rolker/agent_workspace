@@ -36,7 +36,7 @@ are relative to the tool's own directory.
 | `status` shows what differs from the manifest | `file-exists src/repos_manifest/status.py` |
 | A field machine fetches every repo from one prefix on a private server (`fetch_from` with fallback off) | `file-exists src/repos_manifest/fetch_from.py` |
 | A developer's machine fetches each repo from their fork where it exists, and from the published repo otherwise (`fetch_from` with fallback on) | |
-| A manifest can be read from a private git server | |
+| A manifest can be read from a private git server | `file-exists src/repos_manifest/fetch.py` |
 | `sync` adds the extra remotes a machine names to every clone | |
 | A system set up with a directory per distro holds more than one distro, and gains another later without moving the first | |
 | Project11 is described by a manifest in one of its repos and set up from it | |

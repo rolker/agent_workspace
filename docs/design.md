@@ -511,11 +511,11 @@ Status: `decided`
   `source` once selected is removed (issue 569): a root without `.repos-manifest/` whose settings file
   sets `source` is refused by every verb that reads the manifest and by `setup` and `sync`, before
   anything is fetched, and the message names `repos-manifest init --distro-dirs` in the root (for a
-  manifest that lists its distros; for a URL `source`, on the file at `source_path` in a clone at
-  `source_ref`, as `init` reads a local file only) and
-  `project_setting.sh unset <name> source source_ref source_path`. That clone is kept and the tool never
-  fetches it, so it is updated by hand until the tool reads a manifest from a git repo; the removed route
-  fetched it afresh on every `setup` and `sync`. `register_project.sh` refuses a `--set` of the three
+  manifest that lists its distros; for a URL `source`, in the git form: the URL, `--manifest-ref
+  <source_ref>` and `--manifest-path <source_path>`) and
+  `project_setting.sh unset <name> source source_ref source_path`. The tool reads that manifest from its
+  repo afresh at every `sync`, as the removed route did on every `setup` and `sync`, so no clone is kept by
+  hand. `register_project.sh` refuses a `--set` of the three
   keys for a `ros2_colcon` project before it writes anything (the type's `registration_refused` list). A
   manifest in the new format is registered by running the tool's `init` in the root first, then
   registering the root; onboarding an empty session folder from a manifest is #473's.
@@ -1229,6 +1229,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-24 | Registry and adapters | What the removal of the manifest route gives up (issue 569 part 2, review fix): a URL `source` was fetched afresh by each `setup` and `sync`, so a root never went on using an old manifest without a word (the 2026-11-13 rows). `init` reads a manifest from a local file only, so such a root is now set up from a clone made by hand that the tool never fetches; it is updated by hand, and can fall behind silently, until the tool reads a manifest from a git repo. The refusal and the text say so; `register_project.sh` refuses a `--set` of `source`, `source_ref` or `source_path` for a `ros2_colcon` project before it writes anything (the type's new `registration_refused` list, named beside `unused_settings` in the settings paragraph). The section grows by 6 lines; the detail is in `docs/manifest/design.md`, under "A root that sets `source`" | #569 | 1262 |
 | 2026-11-24 | Change log | Main merged into issue 569's branch after #551 landed (pull request 568): the rows of both sides are kept, #551's (already on main) before #569's, and their line counts are each side's own file at the time; this row's count is the merged file's | #569 | 1283 |
 | 2026-11-24 | Sessions and roots | The onboarding bullet's footprint questions add where the project keeps its goals, design and roadmap (issue 551 part 2): the `goals`, `design` and `roadmap` settings, each a file in the project or `none`. Sessions and roots grows by 1 line | #551 | 1285 |
+| 2026-11-24 | Registry and adapters | The manifest tool reads a manifest from a git repo (issue 498 part 2b-1): for a URL `source`, the refusal's `init` command is the git form (the URL, `--manifest-ref <source_ref>`, `--manifest-path <source_path>`), and the tool reads the file from the repo afresh at every `sync`, so the clone kept by hand and its falling behind silently are gone. The section keeps its length | #498 | 1286 |
 
 ## Glossary
 

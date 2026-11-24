@@ -128,8 +128,7 @@ Each says what the design says today and what the plan does until the owner answ
 4. Limits for reading a manifest (60 s with no terminal for git and always for http, 1 MiB, redirects only to http or https and never https to http). The design and spec give none; the 2026-11-18 Checkpoint chose them; #510 designs settable limits for fetches. The plan uses them as constants and #510 makes them settable.
 5. A relative `base` of a git-located manifest. The design says it comes from the same repo; the spec says a location's `path` has no `..`. Recommendation: join and normalise, refuse a result that leaves the repo.
 6. The form of `manifest` in `status --json` for a git location (today a masked string). Recommendation: an object with `url`, `version` and `path`, the field stays a string for a path or URL, and the document says so; no script in the workspace reads the field.
-7. Git's behaviour on a redirect from https to http is not known to the plan; 2b-1 tests it, and if git follows it, the read passes `-c http.followRedirects=false` or the plan asks.
-8. `init` reads the manifest, then its first `sync` reads it again, so the manifest `init` showed may differ from the one `sync` uses. Recommendation: leave as is; the design says every read is fresh.
+7. Settled by the Plan Review's direction 5 (2026-11-24): `GIT_ALLOW_PROTOCOL` is set from the url's own scheme (`https` for https, `http:https` for http, `ssh`, `file`), so git's curl cannot follow a redirect from https to http, and a redirect within the scheme still works.
 
 Not part of this issue, to be opened if the owner agrees: `local_manifest` and `sync`'s step 1 (a developer who edits the manifest in its clone gets the edited one); a distro's `manifest_version` and `add-distro --manifest-ref`; `fetch_from` acting on the manifest's own repo and on a parent manifest (the design says it waits for this issue); a manifest named by a commit (#510).
 

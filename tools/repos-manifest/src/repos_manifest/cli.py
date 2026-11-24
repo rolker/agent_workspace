@@ -303,8 +303,9 @@ def build_parser() -> argparse.ArgumentParser:
         "status",
         help=(
             "Show what the system directory holds against what the manifest says; changes"
-            " nothing and fetches nothing. Exit status 1 when a repo that is not optional is"
-            " not at its place or cannot be used"
+            " nothing and fetches no repo (a manifest recorded in a git repo is read from it)."
+            " Exit status 1 when a repo that is not optional is not at its place or cannot be"
+            " used"
         ),
     )
     status_p.add_argument(
