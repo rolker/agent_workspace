@@ -1312,6 +1312,15 @@ has "$SKILLS/plan-task/SKILL.md" "plan-task: the draft PR's head names origin's 
 has "$SKILLS/plan-task/SKILL.md" "plan-task: an existing PR is matched on the head repository's owner too, and two stop the step" \
     '--json url,headRepositoryOwner' 'select((.headRepositoryOwner.login | ascii_downcase) == \"${_HEAD_OWNER,,}\")' \
     'not editing any:'
+has "$SKILLS/plan-task/SKILL.md" "plan-task: steps 6 and 7 resolve what they need in their own shell, free text through quoted heredocs" \
+    "SUMMARY=\$(cat <<'SUMMARY_EOF' <one-line summary of the approach> SUMMARY_EOF )" \
+    'PLAN_SHA=$("$WS_ROOT/.agent/scripts/review_progress.sh" plan-sha --plan "$WORK_PLANS_DIR/plan.md") || exit 1' \
+    "cat <<'ENTRY_BODY' <1-2 sentence summary of the approach> ENTRY_BODY"
+if grep -qE '<<ENTRY$' "$SKILLS/plan-task/SKILL.md"; then
+    fail "plan-task: an unquoted <<ENTRY heredoc is back (a backtick in the summary would run)"
+else
+    pass "plan-task: no unquoted ENTRY heredoc"
+fi
 if grep -qF ".[0].url" "$SKILLS/plan-task/SKILL.md"; then
     fail "plan-task: still takes the first pull request on the branch name (.[0].url)"
 else

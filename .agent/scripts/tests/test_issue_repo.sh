@@ -28,7 +28,9 @@
 #     request's head names origin's owner when origin is a fork of the
 #     repository the helper names, an existing pull request is taken only
 #     from that head's owner (two from it: stop), and an issue title holding a backtick,
-#     $(...) and $VAR reaches gh literally, with nothing run.
+#     $(...) and $VAR reaches gh literally, with nothing run;
+#   - plan-task steps 6 and 7, each in a fresh shell: the plan commit and
+#     the Plan Authored entry's plan-commit SHA, free text kept literal.
 #
 # Hermetic: one mktemp -d sandbox with its own HOME and git config;
 # remotes are only URLs (nothing is fetched), local ones of the form
@@ -494,6 +496,56 @@ else
         fail "the issue title ran a command"
     else
         pass "the issue title ran no command"
+    fi
+fi
+
+echo "=== plan-task steps 6 and 7: each block in a fresh shell ==="
+# Steps 6 and 7 as the skill writes them, each run in its own shell (no
+# WORK_PLANS_DIR or PLAN_SHA carried over): the plan commit and the
+# Plan Authored entry with the plan-commit SHA; the summary and the title,
+# holding a backtick, $(...) and $HOME, kept literal.
+step_block() {  # <heading regex>
+    awk -v h="$1" '$0 ~ h {s=1} s && /^```bash$/{b=1; next} b && /^```$/{exit} b' "$SKILL"
+}
+fill() {  # <block>: the placeholders filled in, hostile free text
+    local b="$1"
+    b=${b//"<ref>"/7}; b=${b//"<N>"/7}
+    b=${b//"<issue title>"/"$TITLE"}
+    b=${b//"<one-line summary of the approach>"/"$TITLE"}
+    b=${b//"<1-2 sentence summary of the approach>"/"$TITLE"}
+    b=${b//"<YYYY-MM-DD HH:MM ±HH:MM>"/"2026-11-24 14:00 -05:00"}
+    b=${b//"<agent name> (<model>)"/"t (m)"}
+    b=${b//" [--strict]"/}
+    printf '%s' "$b"
+}
+STEP6=$(fill "$(step_block '^### 6\\. ')")
+STEP7=$(fill "$(step_block '^### 7\\. ')")
+if [[ "$STEP6" != *"git commit"* || "$STEP7" != *"persist"* ]]; then
+    fail "plan-task steps 6 and 7: the blocks were not found in $SKILL"
+else
+    P67="$SANDBOX/p67"
+    mkplanrepo "$P67" own/p67
+    echo "more" >> "$P67/.agent/work-plans/issue-7/plan.md"
+    OUT=$(cd "$P67" && env -u WORKTREE_ISSUE PATH="$STUB_PATH" "$BASH_BIN" -c "$STEP6" 2>&1 </dev/null); RC=$?
+    sha6=$(git -C "$P67" rev-parse --short HEAD)
+    msg=$(git -C "$P67" log -1 --format=%B)
+    if [[ $RC -eq 0 && "$msg" == *"$TITLE"* && "$OUT" == *"$sha6"* ]]; then
+        pass "step 6 in a fresh shell: commits the plan with the summary literal and prints its SHA"
+    else
+        fail "step 6: exit $RC; message: ${msg:0:200}; output: ${OUT:0:300}"
+    fi
+    OUT=$(cd "$P67" && env -u WORKTREE_ISSUE PATH="$STUB_PATH" "$BASH_BIN" -c "$STEP7" 2>&1 </dev/null); RC=$?
+    prog="$P67/.agent/work-plans/issue-7/progress.md"
+    if [[ $RC -eq 0 ]] && grep -qxF "**Plan**: \`.agent/work-plans/issue-7/plan.md\` at \`$sha6\`" "$prog" 2>/dev/null \
+        && grep -qxF "$TITLE" "$prog"; then
+        pass "step 7 in a fresh shell: the Plan line names the plan and its commit, the summary literal"
+    else
+        fail "step 7: exit $RC; output: ${OUT:0:300}; progress: $(head -c 600 "$prog" 2>/dev/null)"
+    fi
+    if [[ -e "$P67/PWNED1" || -e "$P67/PWNED2" ]]; then
+        fail "steps 6 and 7: free text ran a command"
+    else
+        pass "steps 6 and 7: free text ran no command"
     fi
 fi
 

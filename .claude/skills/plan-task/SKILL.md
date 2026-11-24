@@ -242,8 +242,9 @@ else
 fi
 ```
 
-Use `$WORK_PLANS_DIR` (from the resolver) as the base path in step 5 and
-step 7 — do not construct `$WS_ROOT/.agent/work-plans/issue-<N>/` by hand.
+Use `$WORK_PLANS_DIR` (from the resolver) as the base path in step 5;
+steps 6, 7 and 8 resolve it again in their own blocks — do not construct
+`$WS_ROOT/.agent/work-plans/issue-<N>/` by hand.
 
 ### 5. Generate the plan
 
@@ -331,16 +332,26 @@ change to the design picture".>
 
 Commit `plan.md` on its own first. The progress entry in step 7 cites the
 commit that contains the plan text (ADR-0013's plan-commit SHA), so the
-plan has to be committed before the entry can name it:
+plan has to be committed before the entry can name it. The block is a new
+shell: it resolves the work-plans directory itself (with step 4's guard),
+and the summary goes in through a quoted heredoc, so a backtick or `$` in
+it is never run or expanded:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
-mkdir -p "$WORK_PLANS_DIR"
+"$WS_ROOT/.agent/scripts/issue_repo.sh" "<ref>" >/dev/null; _rc=$?; case "$_rc" in 0|4|5) ;; *) echo "issue_repo.sh exit $_rc: this block reads and writes no records; see the Repository by exit code table"; exit "$_rc" ;; esac
+# shellcheck source=../../../.agent/scripts/_resolve_work_plans_dir.sh
+source "$WS_ROOT/.agent/scripts/_resolve_work_plans_dir.sh"
+WORK_PLANS_DIR=$(resolve_work_plans_dir <N>) || exit 1
+SUMMARY=$(cat <<'SUMMARY_EOF'
+<one-line summary of the approach>
+SUMMARY_EOF
+)
 git add "$WORK_PLANS_DIR/plan.md"
 git commit -m "Add work plan for #<N>
 
-<one-line summary of the approach>"
-PLAN_SHA=$($WS_ROOT/.agent/scripts/review_progress.sh plan-sha --plan "$WORK_PLANS_DIR/plan.md")
+$SUMMARY"
+"$WS_ROOT/.agent/scripts/review_progress.sh" plan-sha --plan "$WORK_PLANS_DIR/plan.md"
 ```
 
 `plan-sha` prints the last commit that touched `plan.md` (never the branch
@@ -363,27 +374,39 @@ prints the "would have aborted" notice and commits only when
 strict (`--strict`, or the env var set to `1`) goes through
 `resolve_work_plans_dir()` and `progress_append.sh`. Echo the printed line
 in step 9's report. As in step 4, the block asks `issue_repo.sh` first and
-writes nothing for an issue that is not this checkout's. The issue title
-goes in through a quoted heredoc, so a backtick or `$` in it is never run
-or expanded.
+writes nothing for an issue that is not this checkout's. It is a new
+shell, so it resolves the work-plans directory and the plan SHA itself.
+The issue title and the entry's text go in through quoted heredocs, so a
+backtick or `$` in them is never run or expanded; only the `**Plan**` line
+is filled from the shell, by `printf`. (A dispatched phase's partial entry,
+step 1, has no plan: it leaves out the `PLAN_SHA`, `PLAN_REL` and `printf`
+lines.)
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 "$WS_ROOT/.agent/scripts/issue_repo.sh" "<ref>" >/dev/null; _rc=$?; case "$_rc" in 0|4|5) ;; *) echo "issue_repo.sh exit $_rc: this block reads and writes no records; see the Repository by exit code table"; exit "$_rc" ;; esac
+# shellcheck source=../../../.agent/scripts/_resolve_work_plans_dir.sh
+source "$WS_ROOT/.agent/scripts/_resolve_work_plans_dir.sh"
+WORK_PLANS_DIR=$(resolve_work_plans_dir <N>) || exit 1
+PLAN_SHA=$("$WS_ROOT/.agent/scripts/review_progress.sh" plan-sha --plan "$WORK_PLANS_DIR/plan.md") || exit 1
+PLAN_REL="${WORK_PLANS_DIR#"$(git rev-parse --show-toplevel)/"}/plan.md"
 ISSUE_TITLE=$(cat <<'TITLE_EOF'
 <issue title>
 TITLE_EOF
 )
-$WS_ROOT/.agent/scripts/review_progress.sh persist --issue "<N>" --branch "$(git branch --show-current)" \
-    --title "$ISSUE_TITLE" [--strict] <<ENTRY
+{
+cat <<'ENTRY_HEAD'
 ## Plan Authored
 **Status**: complete
 **When**: <YYYY-MM-DD HH:MM ±HH:MM>
 **By**: <agent name> (<model>)
-**Plan**: \`${WORK_PLANS_DIR#"$(git rev-parse --show-toplevel)/"}/plan.md\` at \`${PLAN_SHA}\`
-
+ENTRY_HEAD
+printf '**Plan**: `%s` at `%s`\n\n' "$PLAN_REL" "$PLAN_SHA"
+cat <<'ENTRY_BODY'
 <1-2 sentence summary of the approach>
-ENTRY
+ENTRY_BODY
+} | $WS_ROOT/.agent/scripts/review_progress.sh persist --issue "<N>" --branch "$(git branch --show-current)" \
+    --title "$ISSUE_TITLE" [--strict]
 ```
 
 `**Plan**` is the entry's correlation key: `review-plan` and the round
