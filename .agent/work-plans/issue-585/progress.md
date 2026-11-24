@@ -71,3 +71,19 @@ What no longer applies: the fork's "fix to `worktree_remove.sh`" and its #508/#5
 - [ ] Put the root rule in one helper used by all four scripts, built on `registry_main_checkout`, with a clear refusal when the main checkout cannot be found.
 - [ ] Add tests that run each script as the copy inside a linked worktree and check the resolved root, the base directory for the new worktree, and a registered project.
 - [ ] Grep the other scripts for the same `dirname "$(dirname "$SCRIPT_DIR")"` line and list any that run from worktree copies as follow-ups; leave #239 (Makefile) separate.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:13 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review confirms the defect in all four worktree scripts, which is the scope the owner accepted at the triage: "four worktree scripts find the wrong root when run from a worktree copy"; its actions are directions for the plan)
+**After**: issue-actions
+**Decision**: proceed
+
+The owner started this drive with "start those 3" (2026-11-24). Instructions for the plan (host decisions, listed for the owner's veto):
+- Scope: all four scripts (worktree_create.sh, worktree_enter.sh, worktree_list.sh, worktree_remove.sh). The issue's text about a fix already made to worktree_remove.sh, and its #508 and #509, belong to the old repository; here that script has the same defect.
+- One shared helper for the main checkout, built on what the repository already has (registry_main_checkout in _project_registry.sh), used by all four; when the main checkout cannot be found, a clear refusal, never a guess. Check it with and without the user tier (ADR-0016).
+- Tests that run each script as the copy inside a linked worktree of a sandbox repository: the resolved root, where a new worktree would be made, and that a registered project is found. A destructive path (remove) is tested in the sandbox only.
+- The misleading comment in worktree_remove.sh ("regardless of CWD") is corrected with the fix.
+- Other scripts with the same root line are listed in the plan as follow-ups, not fixed here. The Makefile case (issue 239) stays separate.
+- worktree_remove.sh is live-path code that deletes: the full standard applies to it, including what it does when the helper refuses.
