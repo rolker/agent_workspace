@@ -274,3 +274,34 @@ Codex findings dismissed: 3 (the no-code cold-read skip has no completion record
 - [x] suggestion: `merge` bullet looks for an open issue naming the pull request (`gh issue list --search`) before opening one — `.agent/knowledge/host_standing_rules.md:59`
 
 Suite: `bash .agent/scripts/tests/test_skill_paths.sh` gave `test_skill_paths: 213 passed, 0 failed`. The full pre-commit pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 14:18 -05:00
+**By**: claude-code (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-605 at `cd252df6`
+**Base**: origin/main
+**Depth**: Standard (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 1
+**Round**: 3 | **Ship**: recommended — no must-fix findings; the one suggestion can be applied or tracked
+
+Scope: commit 626e5fe1 against round 2's three findings. Cross-model: skipped (round-3 convergence check, per handoff).
+
+All three round-2 findings are answered with the entry's words. "The handoff of the one fix pass for a must-fix" now names the right pass. The `publish` bullet lists every suggestion, open or deferred, with text and `file:line` in the checkpoint body, and its last sentence matches `review_progress.sh sources` (unchecked findings of entries whose SHA matches or covers the head, triage-reviews lines 167-171) and `check --deferred` (turns `- [ ]` into `- [x]` with a "(deferred: ...)" note, review_progress.sh lines 670-723). The `findings` and `merge` bullets now read from that same checkpoint body. That gives one path: the review, then the `publish` checkpoint body, then the owner at `findings` with the merge question, then the one follow-up issue at `merge`. No sentence contradicts another. The `merge` sentence can be followed in order: the duplicate guard is introduced with "before opening one" and the reuse clause with "instead of opening another", so the order of actions is explicit even though the clauses are not written in that order. That is true but awkward wording, not a defect.
+
+### Decision summary
+
+**What changed**: Two rows at the end of the standing rules table in `.agent/knowledge/host_standing_rules.md` (the dated manifest-work lighter review level, and the standing authorization to open one follow-up issue per pull request for its deferred suggestions), a new section `## Manifest work: the lighter review level` saying what a host answers at each checkpoint under it, and three pointer sentences in the two loop skills (`orchestrator`, `run-issue`). Nothing existing was edited: the diff against origin/main is 423 insertions and 0 deletions.
+
+**Reviews and outcomes**: One plan review, ten directions, all applied. Pre-push round 1: 2 must-fix and 3 suggestions, all applied. Round 2: 2 must-fix and 1 suggestion, all applied (626e5fe1). Round 3 (this one, a convergence check with no cross-model reviewers): every round-2 finding is answered, 0 must-fix, 1 suggestion; Ship: recommended. Codex ran in rounds 1 and 2 and found one of the must-fix points in each. Gemini was skipped all day after it failed on its headless tool denial ("empty response; 1 tool action(s) were auto-denied in headless mode (Bash)").
+
+**Open human calls**: Three host readings that the section marks as open to the owner's veto. (1) In place of a second code review round, the host writes the `publish` checkpoint itself; after a `revise`, it writes a `plan` checkpoint answered `proceed` in place of a second plan review. (2) A reviewer's skip ends at the next calendar day, by the host machine's local date. (3) On a day Copilot is skipped, a pull request that changes no code gets no cold read. This is read from his example "one Codex cold read on pull requests that change code".
+
+**Verified**: `bash .agent/scripts/tests/test_skill_paths.sh` at cd252df6: "test_skill_paths: 213 passed, 0 failed". `review_progress.sh round`: round=3, prev_must_fix=2. `review_progress.sh verdict --must-fix 0 --round 3 --prev-must-fix 2`: ship=recommended. `git diff --stat origin/main...HEAD`: 5 files changed, 423 insertions(+), no deletions. The claims about triage's `sources` and `check --deferred` were read in `.claude/skills/triage-reviews/SKILL.md` and `.agent/scripts/review_progress.sh`.
+
+**Recommendation**: merge, after the host's full pre-commit pass and publish; no further review round.
+
+### Findings
+- [ ] (suggestion) The duplicate-issue guard searches for "an open issue that names this pull request", but nothing says the follow-up issue's body names the pull request, so the search can come back empty after the crash it guards against. It also does not say to reuse and record an issue it finds. Wording: "opens the one follow-up issue (second row above), its body naming this pull request, with the suggestions ..." and "..., in case an earlier run opened it and stopped before recording it (if found, it is that issue)". — `.agent/knowledge/host_standing_rules.md:59`
