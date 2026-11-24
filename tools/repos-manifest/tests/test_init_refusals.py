@@ -455,3 +455,21 @@ def test_a_config_yaml_that_cannot_be_written_names_it_and_sets_nothing_up(tmp):
         " (File too large); nothing was set up\n"
     ), done.stderr
     assert snapshot(system) == before
+
+
+def test_a_manifest_in_the_earlier_format_sets_nothing_up(tmp, capsys):
+    # The one-line refusal of `resolve`, `show` and `validate` (`test_cli.py`), and nothing
+    # written in the directory.
+    (tmp / "old.manifest.yaml").write_text("layers: [core]\nrepos: {core: {}}\n")
+    err = refused(
+        _system(tmp),
+        capsys,
+        "../old.manifest.yaml",
+        "--yes",
+        expect="is in the earlier format (it has `repos:` and no `repositories:`)",
+    )
+    assert err == (
+        "ERROR: ../old.manifest.yaml: is in the earlier format (it has `repos:` and no"
+        " `repositories:`); this tool reads it only in the format of the specification,"
+        " docs/spec.md\n"
+    )

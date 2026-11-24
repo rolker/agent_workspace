@@ -3,6 +3,8 @@ import pytest
 from repos_manifest import cli
 from repos_manifest.cli import main
 
+from helpers import make_remote, make_system, repo, run, snapshot
+
 # A manifest in the earlier format, in the shape of the project11 manifest it was used for: no
 # `repositories:` and no `base:` key, its repos under `repos:` by layer, each with a `ref`.
 EARLIER_FORMAT = """\
@@ -58,6 +60,35 @@ def test_a_manifest_in_the_earlier_format_is_refused_naming_the_format(
     )
     assert not out.exists()
     assert sorted(p.name for p in tmp_path.iterdir()) == ["old.yaml"]
+
+
+@pytest.mark.parametrize("command", ["sync", "status"])
+def test_a_recorded_manifest_now_in_the_earlier_format_changes_nothing(
+    command, vcs, tmp_path, capsys
+):
+    # A system set up from a manifest that is now in the earlier format: `sync` and `status`
+    # stop on it with the same message (the error line `sync` prints, a report line of
+    # `status`), exit 1 and change nothing.
+    remote = make_remote(tmp_path / "remotes", "a")
+    system, manifest = make_system(tmp_path, {"a": repo(remote)})
+    manifest.write_text(EARLIER_FORMAT)
+    before = snapshot(tmp_path)
+    capsys.readouterr()
+    assert run(system, command) == 1
+    assert snapshot(tmp_path) == before
+    captured = capsys.readouterr()
+    refusal = (
+        "ERROR: the manifest is what failed; nothing was changed: ../sys.manifest.yaml: is in"
+        " the earlier format (it has `repos:` and no `repositories:`); this tool reads it only"
+        " in the format of the specification, docs/spec.md (the manifest's path is `manifest`"
+        f" in {system / '.repos-manifest/config.yaml'}, taken from the system directory"
+        f" {system})\n"
+    )
+    if command == "sync":
+        assert (captured.out, captured.err) == ("", refusal)
+    else:
+        assert captured.err == ""
+        assert f"\n  {refusal}" in captured.out, captured.out
 
 
 @pytest.mark.parametrize(
