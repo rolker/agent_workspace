@@ -563,3 +563,25 @@ Rounds 1-3 raised 5 must-fix and 20 suggestions; every one is ticked in its fix 
 **Decision**: address
 
 Owner's answer: "Resolve, then merge". PR 567 (issue 545) merged into main after PR 568 was reviewed, and both added a change-log row at the same place in docs/design.md, so PR 568 no longer merges. A fix pass merges origin/main and keeps both rows (no other change), then a narrow review, the host's full pre-commit pass and CI. His answer authorizes the merge (merge commit) once that is clean; anything new found goes back to him.
+
+## Implementation
+
+**When**: 2026-11-23 23:05 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Status**: complete
+**Addressed**: merge of origin/main after PR 567, at the owner's merge checkpoint
+**PR**: #568 at 7a29404e2cdc5b74b5cc5dd351bed761aeb92b6d
+
+### Conflicts
+
+- `docs/design.md` change log (the only conflict): both sides kept. #545's row (already on main, count 1253) placed after #452's rows and before #551's two rows (counts 1234 and 1258 unchanged), following the previous merge's main-first convention; one new Change log merge row added with the merged file's `wc -l` (1272).
+- Auto-merged without conflict: `.agent/scripts/tests/test_script_tests_hook_scope.sh` (ROOT_READERS keeps main's `test_review_viewer.py` and the branch's `test_project_documents.sh`) and `.agent/knowledge/script_reference.md` (main's `review_viewer.py` row present alongside the branch's rows).
+
+### Tests
+
+- `test_design_anchors.sh`: test_design_anchors: 82 passed, 0 failed
+- `test_project_documents.sh`: test_project_documents: 180 passed, 0 failed
+- `test_script_tests_hook_scope.sh`: test_script_tests_hook_scope: 365 passed, 0 failed
+- `test_skill_paths.sh`: test_skill_paths: 200 passed, 0 failed
+
+Not pushed (host owns the push).
