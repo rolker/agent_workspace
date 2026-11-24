@@ -75,3 +75,48 @@ The host read the Issue Review at f1f85471. Its four actions are directions to t
 **Plan**: `.agent/work-plans/issue-569/plan.md` at `351700c2`
 
 Three parts, each its own PR: (1) the tool roadmap line, no check possible (no absence check in the vocabulary); (2) cut the adapter's manifest route (about 650 adapter lines, test_ros2_colcon.sh lines 2334-4024), the only caller of manifest-dir; the bootstrap route is separate code and left out; (3) remove the reader, add the error test, delete prototype.md, closes #569. CI job name and the #498 trim wait for the owner.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-24 09:00 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #569 — repos-manifest: remove the prototype's reader, and drop the roadmap line about moving from its format
+**Plan**: `.agent/work-plans/issue-569/plan.md` at `351700c2`
+**Branch**: `feature/issue-569`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Three parts, each its own PR, ordered so the reader loses its only caller (part 2) before it goes (part 3). Leaving the bootstrap route out is right: it calls no resolver code (`_rc_bootstrap_manifest`, adapter.sh 581-700, is curl and a clone). |
+| Issue alignment | Needs work | All four steps and the Issue Review's actions are covered, but part 3 as listed leaves most of the old reader in place (finding 3), which would not meet "no reader for the old format". Serves: "Workspace goals: projects and quality of the work (less to keep working, no document describing what is gone); `docs/design.md#registry-and-adapters` and `tools/repos-manifest/docs/design.md#where-the-manifest-comes-from`". Both anchors exist; "projects" should name the goal "Light touch on projects". |
+| File targeting | Concern | Part 2's delete/keep list for adapter.sh is wrong in both directions (findings 1, 2); part 3 names 3 of the 9 affected test files and 2 of the 6 prototype modules (findings 3, 4). |
+| Consequences | Needs work | The root `docs/design.md` (Registry and adapters bullet, lines 484-495) and `.agent/projects.local.example` (lines 44-52, 78-94) describe the manifest route and how to register from `source=`; neither is in the plan (finding 5). |
+| Principle alignment | Needs work | Fail loudly: the `source`-without-tool-root refusal is planned for five verbs only (finding 6). Keep one current design: the plan says the root design does not change, which is not so (finding 5). |
+| ADR compliance | Needs work | ADR-0017 and ADR-0022 triggered. ADR-0022 keeps in the root design what crosses the boundary, and the manifest route's settings keys and resolver call are exactly that text, so part 2 must edit the root design. ADR-0013: fine. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Findings
+
+1. **[File targeting] High** — Part 2 lists `_rc_source_setup` among the manifest-route functions to delete. It is not a manifest-route function: it sources a ROS setup file (adapter.sh 1986-1998) and is called by `_rc_tool_build` (2116) and by `adapter_build`/`adapter_test` on every route (2189, 2208, 2268, 2273). Deleting it breaks build and test on the tool and bootstrap routes. Resolution: keep it (and move it out of the deleted range).
+2. **[File targeting] High** — The keep-list omits `_rc_resolver_bin` (adapter.sh 1390), which the tool route (835, 850, 1016, 1154, 2109) and the bootstrap route's error message (605) call; "delete roughly lines 1335 to 1990" removes it. Conversely, three helpers the plan keeps have no caller outside the deleted range and become dead: `_rc_source_is_url`, `_rc_file_stamp`, `_rc_check_single_source` (and `_rc_registry_field_missing`, `_RC_TRANSPORTS`, whose only users go too). Resolution: replace the list with one derived from callers (live after the cut: `_rc_name`, `_rc_layer_lines`, `_rc_resolver_bin`, `_rc_source_setup`), and state it in the plan.
+3. **[Issue alignment] High** — The old reader is more than `_load_merged`, `resolve_chain` and `LAYOUT_MANIFEST_DIR`. `schema.py` (its own Manifest/load_manifest_file/ExtendsRef), `merge.py` (`merge_chain`), `selectors.py`, `validate.py` (`build_validation_table`, `check_dependencies`) and all of `emit.py` (both layouts; the new reader writes through `output.py`) are used only by the old path in `cli.py` (`cmd_resolve`/`cmd_validate` after `has_repositories_key` is false) and by `extends.py`. `base.py` imports nothing from `extends.py`, so "keep what the new base: reader shares" keeps nothing there. Resolution: name these modules for removal in part 3 (keeping `ManifestError`, which `cli.py` imports via `schema`, from `yamlload`), plus `_require_old_flags` and the `--layout` option if no layout remains.
+4. **[File targeting] Medium** — Part 3's test list misses `test_extends.py`, `test_extends_safety.py`, `test_acceptance_p11.py` (all import `resolve_chain`), `test_schema.py`, `test_selectors.py`, `test_validate.py` (the old modules), `test_cli.py` (p11 fixture at 8/30/50/101, `resolve_chain` monkeypatch at 86), `test_masking.py:304` (`--cache-dir`). And the p11 fixture is not only old-reader coverage: `test_project11.py` reads `fixtures/p11/expected` (OLD_EXPECTED, lines 15, 22, 57) and `test_base_reading.py:298` uses `p11/manifest.yaml` to test that the new reader refuses the earlier format as a base. Resolution: list each, and re-point those two (keep `p11/expected` or move what test_project11 needs; give test_base_reading a small inline old-format manifest) rather than "delete any fixture only they use".
+5. **[Consequences] Medium** — Documented paths that point at the removed route and are not in part 2: the root `docs/design.md` Registry-and-adapters bullet (484-495: "The other two (#436) ... On the manifest route the manifest ... is named by `source`", one-source rule, `register_project.sh ... --set source=`); `.agent/projects.local.example` 44-52 (registering a ros2_colcon instance "from a manifest in the new format ... --set source=") and 78-94; `register_project.sh` header 33-37 ("A --set source=... does not choose the type") and the setup-failure hint at 1135 ("its bootstrap_url or source"); and the bootstrap route's own error at adapter.sh 600-602, which still advises `project_setting.sh set <name> source=...` (tested at test_ros2_colcon.sh ~4016-4022, inside the section part 2 deletes, so the message would stay and go untested). Resolution: add each to part 2, each pointing at the tool route (`repos-manifest init` in the root, then registering that root, which `register_project.sh` already detects by `.repos-manifest`, line 626); drop the plan's "root `docs/design.md` does not change".
+6. **[Principle alignment] Medium** — The refusal for `source` set without `.repos-manifest/` is planned for `setup`, `sync`, `build`, `test`, `validate`. `adapter_build` and `adapter_test` have no manifest branch today, and `env`, `repos`, `worktree_repos`, `worktree_env` and `repo_pin` reach the manifest only through `_rc_require_manifest`. With only `_rc_route` changed to return `bootstrap`, those verbs would read `configs/manifest` silently. The manifest-route branches in the shared helpers `_rc_manifest_dir` (177), `_rc_pin_manifest_dir` (206), `_rc_check_manifest` (303) and `_rc_distro` (419) are also not in the plan's list. Resolution: put the refusal in one shared place every verb passes (`_rc_route` or `_rc_require_manifest`, plus `setup`/`sync` before `_rc_bootstrap_manifest`), remove the four helper branches, and test it on at least one verb that is not in the five (e.g. `repos` or `env`).
+7. **[Consequences] Low** — `docs/manifest/design.md` also mentions the route at 270 ("on the bootstrap and manifest routes"), 403 (`source_ref` may be a commit today) and 439-446 (the settings keys and how they map to the tool); the plan names only the step-by-step section, the route list, "Which route" and line 72. Resolution: re-grep the file for "manifest route" and `source` in part 2.
+
+### Summary
+
+The split into three parts and their order are right, and the bootstrap route is correctly separate code. But part 2's function list would delete a helper every route needs (`_rc_source_setup`) and the resolver lookup the tool route uses (`_rc_resolver_bin`), and part 3 names only a fraction of the old reader and its tests. Fix the lists from callers and imports before implementation.
+
+### Recommended Actions
+
+- [ ] Part 2: keep `_rc_source_setup` and `_rc_resolver_bin`; drop the now-dead `_rc_source_is_url`, `_rc_file_stamp`, `_rc_check_single_source`, `_rc_registry_field_missing`, `_RC_TRANSPORTS`; state the keep-list as derived from callers.
+- [ ] Part 2: remove the manifest branches in `_rc_manifest_dir`, `_rc_pin_manifest_dir`, `_rc_check_manifest`, `_rc_distro`; put the `source`-without-tool-root refusal at one shared point every verb passes, and test it on a verb outside the five.
+- [ ] Part 2: update root `docs/design.md` (Registry and adapters), `.agent/projects.local.example`, `register_project.sh` comments and hint, and the bootstrap error at adapter.sh 600-602, each pointing at `repos-manifest init` plus registering the root; keep a test for the bootstrap error's new text.
+- [ ] Part 3: name `schema.py`, `merge.py`, `selectors.py`, `validate.py`, `emit.py` for removal along with `extends.py`'s old path; keep `ManifestError` imported from `yamlload`.
+- [ ] Part 3: list every affected test file (findings 4), and re-point `test_project11.py` and `test_base_reading.py` instead of deleting the p11 fixture out from under them.
+- [ ] Serves: name the goal as "Light touch on projects".
