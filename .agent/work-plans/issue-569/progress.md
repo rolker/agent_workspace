@@ -906,3 +906,37 @@ Both round-2 suggestions are fixed before the push: a literal check that `packag
 - [x] "Every command reads a manifest" now "Every command that reads a manifest reads it only in the format of ..."; same claim fixed in `tools/repos-manifest/docs/design.md:2175` (spec.md has none) — `tools/repos-manifest/README.md:214`
 
 Checks: pytest test_cli.py + test_documents.py: 60 passed. Full pre-commit pass left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 13:02 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+
+**Branch**: feature/issue-569 at `6badb9a1`
+**Base**: main
+**Depth**: Standard (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — no must-fix findings; both round 2 suggestions fixed and confirmed against the code
+
+Scope: the round 2 findings and the fix commits 71898ea8 and 1e95b622, plus the merge 6badb9a1. Cross-model: skipped (round-3 convergence check, per handoff).
+
+- 71898ea8: the new test asserts `_EARLIER_FORMAT_KEYS` equals the literal set `repos`, `extends`, `optional_layers`, `packages` with length 4; it matches `manifest.py:34`, so dropping or renaming a key now fails a test.
+- 1e95b622: checked every command in `cli.py`. `resolve`, `validate` and `show` call `read_manifest`; `init` (`init.py:276`), `sync` (`sync.py:751`) and `status` (through `sync.resolve_all`) read the recorded manifest; `cmd_build` calls only `run_build`, and `build.py` imports no manifest reader. So `build` is the one command that reads none, and the README and `docs/design.md` sentences are right to single it out.
+- The merge left this branch's files intact: `git diff 991c469d 6badb9a1 -- tools/repos-manifest docs/fork_parity.md` is empty.
+- `PYTHONPATH=tools/repos-manifest/src .venv/bin/python -m pytest tools/repos-manifest/tests/test_cli.py tools/repos-manifest/tests/test_documents.py`: 60 passed.
+
+### Decision summary
+
+**What changed**: Part 3 of 3 of issue 569 removes the earlier (prototype) format's reader from `tools/repos-manifest`: its reader modules, the `--layout` and `--cache-dir` options that served it, and `prototype.md`. A manifest in the earlier format (`repos:` by layer, `extends:`, `optional_layers:`, `packages:`) is now refused with a message that names that format. Tests of the removed reader were removed; the ones still meaningful were ported to the new format, and tests were added for the refusal (each earlier-format key, for `resolve`, `show` and `validate`) and for the exact set of earlier-format keys. The README, the tool's `docs/design.md` and `docs/fork_parity.md` now say every command that reads a manifest reads only the specification's format, and that `build` works from the saved resolution.
+
+**Reviews and outcomes**: Round 1 approved with 4 suggestions, all fixed. Round 2 approved with 2 suggestions, both fixed (71898ea8, 1e95b622). Round 3 (this convergence check, no cross-model reviewers per handoff) approved with no findings; Ship: recommended. Codex ran in rounds 1 and 2; Gemini failed in both on a headless tool denial.
+
+**Open human calls**: None on this branch. The CI job rename is issue 601; the old `source` settings findings are issue 599.
+
+**Verified**: Implementer's full tool suite on c59fc837: 1988 passed. `test_ros2_colcon.sh`: 1203 passed, 0 failed, 0 skipped. `test_register_project.sh`: 225 passed. Fix rounds ran `test_cli.py` and `test_documents.py`. This round, at 6badb9a1: `test_cli.py` and `test_documents.py` with `tools/repos-manifest/src` on `PYTHONPATH`: 60 passed. Also checked: `cli.py`, `init.py`, `sync.py`, `status.py` and `build.py` confirm `build` is the only command that reads no manifest, and the origin/main merge changed nothing under `tools/repos-manifest` or `docs/fork_parity.md`.
+
+**Recommendation**: merge.
+
+### Findings
+- [ ] No issues found. LGTM.
