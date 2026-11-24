@@ -613,8 +613,16 @@ def check_paths(draft: Path, notes: Path, previous: Optional[Path] = None) -> No
     ``.reviewed`` snapshot. None may be a folder, and none may be the draft
     or the ``--previous`` file, except that the snapshot may be the
     ``--previous`` file: that file is read at launch, and replacing it on
-    close is what every round does to the snapshot.
+    close is what every round does to the snapshot. A path that cannot be
+    checked (a folder that may not be searched, a symlink loop) is refused.
     """
+    try:
+        _check_paths(draft, notes, previous)
+    except (OSError, RuntimeError) as exc:
+        raise UsageError(f"cannot check the --notes path {notes}: {one_line(str(exc))}") from exc
+
+
+def _check_paths(draft: Path, notes: Path, previous: Optional[Path]) -> None:
     if notes.is_dir():
         raise UsageError(f"--notes names a folder, not a file: {notes}")
     written = {
@@ -639,9 +647,9 @@ def check_paths(draft: Path, notes: Path, previous: Optional[Path] = None) -> No
 
 
 def read_text(path: Path, what: str) -> str:
-    if not path.is_file():
-        raise UsageError(f"{what} not found: {path}")
     try:
+        if not path.is_file():
+            raise UsageError(f"{what} not found: {path}")
         return path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         raise UsageError(f"cannot read {what} {path}: {one_line(str(exc))}") from exc
@@ -1094,15 +1102,25 @@ def _import_tkinter():
     return tkinter
 
 
+def _resolve(path: Path, what: str) -> Path:
+    try:
+        return path.resolve()
+    except (OSError, RuntimeError) as exc:  # a symlink loop is RuntimeError up to 3.12
+        raise UsageError(f"cannot resolve {what} {path}: {one_line(str(exc))}") from exc
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = build_parser().parse_args(argv)
-    draft = args.draft.resolve()
-    notes_path = (args.notes or Path(str(draft) + ".notes.md")).resolve()
-    previous = args.previous.resolve() if args.previous else None
     try:
+        draft = _resolve(args.draft, "draft")
+        notes_path = _resolve(args.notes or Path(str(draft) + ".notes.md"), "--notes path")
+        previous = _resolve(args.previous, "--previous file") if args.previous else None
         session = Session(draft, notes_path, previous)
     except UsageError as exc:
         print(f"review_viewer: {exc}", file=sys.stderr)
+        return 1
+    except (OSError, RuntimeError) as exc:  # e.g. a folder that may not be searched
+        print(f"review_viewer: cannot use the given paths: {one_line(str(exc))}", file=sys.stderr)
         return 1
 
     reason = check_display(os.environ, _import_tkinter)

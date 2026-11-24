@@ -543,6 +543,30 @@ class CliTest(TempDirTest):
         self.assert_one_line(result, 1, "would overwrite the draft")
         self.assertEqual(draft.read_text(encoding="utf-8"), "hello\n")
 
+    def test_symlink_loop_exits_1_one_line(self):
+        loop = self.dir / "loop.md"
+        loop.symlink_to(loop)
+        result = self.run_cli([str(loop)], {"DISPLAY": ":0"})
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertEqual(len(result.stderr.strip().splitlines()), 1, result.stderr)
+
+    @unittest.skipIf(os.name != "posix" or os.geteuid() == 0, "needs a non-root POSIX user")
+    def test_unsearchable_notes_folder_exits_1_one_line(self):
+        locked = self.dir / "locked"
+        locked.mkdir()
+        locked.chmod(0)
+        try:
+            result = self.run_cli(
+                [str(self.draft()), "--notes", str(locked / "sub" / "n.notes.md")],
+                {"DISPLAY": ":0"},
+            )
+        finally:
+            locked.chmod(0o700)
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertEqual(len(result.stderr.strip().splitlines()), 1, result.stderr)
+
     def test_unknown_option_exits_1_not_2(self):
         """2 is reserved for "no window"; argparse's own usage exit is 2."""
         result = self.run_cli([str(self.draft()), "--bogus", "x"], {})
