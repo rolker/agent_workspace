@@ -463,3 +463,24 @@ All four suggestions of the round-1 review are fixed before the push, none defer
 - test_project_file.sh: === Results: 701 passed, 0 failed ===
 - test_worktree_create.sh: PASS: 112, FAIL: 0
 - The full pre-commit pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 10:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-569 at `ba5c27dc`
+**Base**: origin/main
+**Depth**: Deep (reason: whole-branch diff, 16 files +672 -2882, deletes the adapter's manifest route and changes the root design; fix round classified on the whole diff)
+**Must-fix**: 2 | **Suggestions**: 3
+**Round**: 2 | **Ship**: continue — round 2: must-fix rising (0 -> 2); both are precise text or guard fixes, but the second touches a recorded owner decision
+
+Round 2 of part 2, after the fix pass 07e99799..deb6660c. Checked against the code: each fix sentence that is in the message holds on its own (`init --distro-dirs` refuses a manifest with no `distros:`, init.py 80-84; the adapter refuses a flat layout, adapter.sh 755; `read_manifest` reads a path only, system.py 764; `manifest.yaml` is the removed route's default; the URL test `^(https?|file)://` is the registry's, _project_registry.sh 1300, and the registry requires `source_ref` with a URL). The new tests can fail (exact strings, exact `tool.log` line). The two must-fix are about what the message and documents leave out or say in the wrong context. Run: test_ros2_colcon.sh 1183 passed 0 failed; test_register_project.sh 220 passed 0 failed (adversarial); test_design_anchors.sh 82 passed; shellcheck --severity=warning clean on the six changed scripts. Cross-model: Codex completed (its must-fix is finding 2, its suggestion folded into finding 2); Gemini failed (headless agy auto-denied a Bash tool call, empty response).
+
+### Findings
+- [ ] (must-fix) At registration (`register_project.sh <new path> ros2_colcon --set source=...`) the refusal's steps are wrong: "in <root>, run init" names a directory that does not exist, "the registered root then takes the tool route" and the `project_setting.sh unset` name a project the rollback removes, and NEXT= says "its bootstrap_url"; the new phi test locks that text in. `--set source*` with ros2_colcon can never register (setup or validate refuses it), so refuse it in register_project.sh before anything is written, saying: make the directory, run init in it, register it without `--set source=`; change the test to match — `.agent/scripts/register_project.sh:1136`, `.agent/scripts/tests/test_register_project.sh:692`
+- [ ] (must-fix) The URL line's way on leaves a hand clone that goes stale silently: init records the file's path and every sync re-reads it from disk, never fetching (init.py 281, system.py 764), and removing the clone breaks sync. This undoes the owner's 2026-11-13 decisions "never silently stale" and "no kept clone: fetched afresh by each setup and sync" (docs/design.md change log), unsaid. Say in the message that the clone is kept and updated by hand until the tool reads a manifest from git; add "a manifest read from a git URL, fetched afresh" to "What the tool has to give"; stop counting "reads the manifest again on every sync" as covering it for a URL source; mark the mapping table's `--manifest-ref`/`--manifest-path` as the target (init takes neither yet, cli.py 349-374) and give the clone as today's way; name this gap to the owner in the PR — `.agent/project_types/ros2_colcon/adapter.sh:634`, `docs/manifest/design.md:331`, `docs/manifest/design.md:396`, `docs/design.md:493`
+- [ ] (suggestion) A root the removed route set up keeps its `layers/main/*/src` checkouts (maybe with local work) and `configs/manifest-resolved*` after `init` in the root, which then clones again under `<root>/<distro>/`; the tool route never reads the old ones. Say so in the message and the design, or point at an empty directory as the flat-layout refusal does (adapter.sh 690) — `.agent/project_types/ros2_colcon/adapter.sh:631`
+- [ ] (suggestion) Print the project's own `--distro`/`--role` from the registry line (`ACTIVE_PROJECT_DISTRO`/`ACTIVE_PROJECT_ROLE`, .agent/scripts/adapter 281-283) when set, instead of placeholders — `.agent/project_types/ros2_colcon/adapter.sh:631`
+- [ ] (suggestion) "a root set up without --distro-dirs is refused here" reads as this check refusing it; say "by the adapter" — `.agent/project_types/ros2_colcon/adapter.sh:632`
