@@ -834,3 +834,13 @@ Part 3 of 3 (remove the earlier format's reader). Checked: (a) every `repos_mani
 - [ ] (suggestion) `packages:`, the fourth key in `_EARLIER_FORMAT_KEYS`, is in no test; add it to the CLI or `test_base_reading.py:279` parametrization — `tools/repos-manifest/src/repos_manifest/manifest.py:34`
 - [ ] (suggestion) The test comment says a manifest "with no `repositories:` or `base:` key" is refused; the code checks only for a missing `repositories:` (a `base:` plus `repos:` manifest is refused too) — `tools/repos-manifest/tests/test_cli.py:46`
 - [ ] (suggestion) The rewritten package description and module docstring still name "agent_workspace issue #267"; the tool's own text is not to mention the workspace — `tools/repos-manifest/pyproject.toml:8`, `tools/repos-manifest/src/repos_manifest/__init__.py:6`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 12:45 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the pre-push review at 935189b7 approved with four suggestions, each a few lines; fixing them now is cheaper than carrying them open to the findings checkpoint)
+**After**: publish
+**Decision**: address
+
+All four suggestions of part 3's round-1 review are fixed before the push: tests of the earlier-format refusal for `init`, `sync` and `status`; a test for the `packages:` key; the test comment that misstates when a manifest is refused; and the package description and module docstring that still name the workspace's issue. The host's full pre-commit pass was not run on this head, since the fix pass changes it. Outside reviewers on round 1: Codex ran, one edge-case point, dropped by the reviewer (a file with only `layers:` or `roles:` gets the new reader's own error); Gemini failed (its headless run denied a tool call).
