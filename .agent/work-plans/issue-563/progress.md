@@ -476,3 +476,24 @@ Committed tree: `git status` is clean (no untracked or modified file) and the su
 **Decision**: publish
 
 Three pre-push rounds: round 1 found 1 must-fix and 5 suggestions, round 2 found 2 must-fix and 4 suggestions in the fixes, round 3 (a convergence check, no cross-model reviewers) found every one closed and nothing new. Outside reviewers: Gemini and Codex ran in rounds 1 and 2 and both found the round 1 must-fix; they were not asked in round 3.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 09:18 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #572 at `2e15844e`
+**Sources**: 4 (Local Review (Pre-Push) @ `14471097` round 1, @ `a1e42449` round 2, @ `2416a866` round 3 (covers `2e15844e` via bookkeeping: only `progress.md` changed since); CI rollup). No hosted review and no comment on the pull request; Copilot was not requested.
+**Cross-source confirmations**: 0
+**CI**: pending (two workflow runs on `2e15844e`, 45412245762 and 45412235663, each: Validate Documentation pass; Lint (pre-commit), Validate Adapter Contract, repos-manifest tests Python 3.10 and 3.14 pending)
+
+`review_progress.sh sources` at `2e15844e`: no open local findings, no dropped entries, no GitHub comments. Round 1 (1 must-fix, 5 suggestions) and round 2 (2 must-fix, 4 suggestions) were each closed by the Implementation entry after it (every action ticked, commits named); round 3, a convergence check, approved with nothing open.
+
+Decision summary checked against the branch: the live-run line reproduces exactly (`sitrep_checks.sh --root . --summary` gives `lines 2/15 deferrals 3/10 paths P1 1/4 P2 0/4 P3 0/3 P4 0/3 P5 none across 1/1`; next lines #430, #393, #550, #551, Path 5 none, Across none open); the Serves-based Path 2/3 rules are gone from step 3; the roadmap, design and cost-note claims match the diff and SKILL.md step 5. Two imprecisions, neither wrong in substance: "main's roadmap" is the branch's roadmap, whose Across line has a check only through this PR's own edit; and the Serves line is still read, to qualify work no path line names (`no path line (serves a goal)` and its siblings), which the summary does not mention.
+
+### Findings
+None open.
+
+### False positives
+None.
