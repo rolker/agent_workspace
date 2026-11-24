@@ -30,7 +30,9 @@
 #     from that head's owner (two from it: stop), and an issue title holding a backtick,
 #     $(...) and $VAR reaches gh literally, with nothing run;
 #   - plan-task steps 6 and 7, each in a fresh shell: the plan commit and
-#     the Plan Authored entry's plan-commit SHA, free text kept literal.
+#     the Plan Authored entry's plan-commit SHA, free text kept literal;
+#   - review-plan's file path form: a plan in this checkout goes on, a plan
+#     in another checkout (or one nested in this one's tree) is refused.
 #
 # Hermetic: one mktemp -d sandbox with its own HOME and git config;
 # remotes are only URLs (nothing is fetched), local ones of the form
@@ -546,6 +548,47 @@ else
         fail "steps 6 and 7: free text ran a command"
     else
         pass "steps 6 and 7: free text ran no command"
+    fi
+fi
+
+echo "=== review-plan's file path form: only a plan in this checkout ==="
+# The block as the skill writes it, run from sandbox checkout RA with the
+# path of a plan in RA, in another checkout RB, and in a checkout nested
+# inside RA's tree (as worktrees sit inside the workspace checkout).
+RPSKILL="$(cd "$SCRIPT_DIR/../../.." && pwd)/.claude/skills/review-plan/SKILL.md"
+FPB=$(awk '/^\*\*File path\*\* /{s=1} s && /^```bash$/{b=1; next} b && /^```$/{exit} b' "$RPSKILL")
+run_fp() {  # <cwd> <plan path>
+    local blk=${FPB//"<ref>"/45}
+    blk=${blk//"<path-to-plan.md>"/"$2"}
+    : > "$GH_LOG"
+    OUT=$(cd "$1" && env -u WORKTREE_ISSUE PATH="$STUB_PATH" "$BASH_BIN" -c "$blk" 2>&1 </dev/null); RC=$?
+}
+if [[ "$FPB" != *'_OWN'* ]]; then
+    fail "review-plan file path form: the block was not found in $RPSKILL"
+else
+    RA="$SANDBOX/ra"; RB="$SANDBOX/rb"
+    for r in "$RA" "$RB" "$RA/worktrees/nested"; do
+        mkrepo "$r" "origin=$(fr "own/$(basename "$r")")"
+        mkdir -p "$r/.agent/work-plans/issue-45"
+        echo "# Plan" > "$r/.agent/work-plans/issue-45/plan.md"
+    done
+    run_fp "$RA" "./.agent/work-plans/issue-45/plan.md"
+    if [[ $RC -eq 0 && "$OUT" == *"Plan: ./.agent/work-plans/issue-45/plan.md"* ]]; then
+        pass "file path form: a plan in this checkout goes on"
+    else
+        fail "file path form, own plan: exit $RC; output: ${OUT:0:300}"
+    fi
+    run_fp "$RA" "$RB/.agent/work-plans/issue-45/plan.md"
+    if [[ $RC -ne 0 && "$OUT" == *"is in $RB, not in this checkout ($RA)"* && "$OUT" == *"Run review-plan from $RB."* && "$OUT" != *"Plan: "* ]]; then
+        pass "file path form: a plan in another checkout is refused, naming its checkout"
+    else
+        fail "file path form, another checkout's plan: exit $RC; output: ${OUT:0:300}"
+    fi
+    run_fp "$RA" "./worktrees/nested/.agent/work-plans/issue-45/plan.md"
+    if [[ $RC -ne 0 && "$OUT" == *"is in $RA/worktrees/nested, not in this checkout"* ]]; then
+        pass "file path form: a plan in a checkout nested in this one's tree is refused"
+    else
+        fail "file path form, nested checkout's plan: exit $RC; output: ${OUT:0:300}"
     fi
 fi
 

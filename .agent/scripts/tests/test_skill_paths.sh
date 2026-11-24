@@ -1337,6 +1337,11 @@ fi
 has "$SKILLS/review-plan/SKILL.md" "review-plan: the --issue lookup is this checkout's plan, then the workspace worktree, then a stop naming both paths" \
     'Registered projects'"'"' worktrees are not searched' \
     'echo "No plan for issue <N>: looked at $plan and $plan2.'
+has "$SKILLS/review-plan/SKILL.md" "review-plan: the file path form reads only a plan in this checkout, and its example is this checkout's" \
+    '**File path** (e.g., `/review-plan ./.agent/work-plans/issue-45/plan.md`)' \
+    '_t=$(cd "$(dirname "$PLAN_ARG")" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null) && _OWN=$(cd "$_t" && pwd -P)' \
+    'if [ -z "$_TOP" ] || [ "$_OWN" != "$_TOP" ]; then' \
+    'Run review-plan from ${_OWN:-the checkout that holds it}.'
 has "$SKILLS/review-plan/SKILL.md" "review-plan: the PR number form stops where origin is not \$_REPO (it fetches the head from origin)" \
     'if [ "${_ORIGIN_SLUG,,}" != "${_REPO,,}" ]; then' \
     'the PR number form is not supported in this checkout'

@@ -213,8 +213,9 @@ declare -A ROOT_READERS=(
     # Runs the real wrapper against the real worktree (its remote and repo
     # root); copies the wrapper and the registry helper into a sandbox.
     [test_gh_create_issue.sh]=".agent/scripts"
-    # Runs the real issue_repo.sh, and plan-task SKILL.md's steps 6 to 8
-    # read from the real file, against its sandbox checkouts (issue 581).
+    # Runs the real issue_repo.sh, plan-task SKILL.md's steps 6 to 8 and
+    # review-plan SKILL.md's file path block, read from the real files,
+    # against its sandbox checkouts (issue 581).
     [test_issue_repo.sh]=".agent/scripts .claude/skills"
     [test_merge_pr_gate.sh]=".agent/scripts"
     [test_merge_pr_root_resolution.sh]=""

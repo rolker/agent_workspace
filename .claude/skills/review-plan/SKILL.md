@@ -181,10 +181,37 @@ git show <headRefOid>:./.agent/work-plans/issue-<issue>/plan.md
   older copy. Step 5 takes the SHA of a plan read at the head with `--ref`,
   and of the local fallback file with `--plan <path>`.
 
-**File path** (e.g., `/review-plan $WS_ROOT/.agent/work-plans/issue-45/plan.md`):
+**File path** (e.g., `/review-plan ./.agent/work-plans/issue-45/plan.md`):
 
-Read the plan file directly. Extract the issue number from the path
-(the `issue-<N>` directory name).
+Extract the issue number from the path (the `issue-<N>` directory name).
+The number names an issue of the checkout the plan file is in, so the file
+must be in the checkout this skill runs in: a plan in another checkout is
+reviewed from that checkout (the session-root rule). Before reading the
+plan, the block below checks it: the file's own checkout (its folder's
+`git rev-parse --show-toplevel`, physically resolved) must be this one.
+Otherwise it stops and names the file's checkout. Then read the plan file
+directly.
+
+```bash
+WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
+"$WS_ROOT/.agent/scripts/issue_repo.sh" "<ref>" >/dev/null; _rc=$?; case "$_rc" in 0|4|5) ;; *) echo "issue_repo.sh exit $_rc: this block reads and writes no records; see the Repository by exit code table"; exit "$_rc" ;; esac
+PLAN_ARG=$(cat <<'PATH_EOF'
+<path-to-plan.md>
+PATH_EOF
+)
+_TOP="" _OWN=""
+_t=$(git rev-parse --show-toplevel 2>/dev/null) && _TOP=$(cd "$_t" && pwd -P)
+_t=$(cd "$(dirname "$PLAN_ARG")" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null) && _OWN=$(cd "$_t" && pwd -P)
+if [ ! -f "$PLAN_ARG" ] || [ -L "$PLAN_ARG" ]; then
+    echo "No plan file at $PLAN_ARG (a symbolic link is not followed: give the file's own path)."
+    exit 1
+fi
+if [ -z "$_TOP" ] || [ "$_OWN" != "$_TOP" ]; then
+    echo "The plan $PLAN_ARG is in ${_OWN:-no git checkout}, not in this checkout (${_TOP:-none}): its issue number names an issue of that checkout. Run review-plan from ${_OWN:-the checkout that holds it}."
+    exit 1
+fi
+echo "Plan: $PLAN_ARG"
+```
 
 **Issue number** (e.g., `/review-plan --issue 45`):
 
