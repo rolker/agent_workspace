@@ -1671,3 +1671,30 @@ test_adapter.sh: `=== Results: 260 passed, 0 failed ===`;
 test_script_tests_hook_scope.sh: `test_script_tests_hook_scope: 366 passed, 0 failed`;
 and the suites that name a changed file (register_project.sh, adapter.sh, _project_registry.sh), all exit 0 with 0 failed: test_project_registry (425), test_project_file (701), test_design_anchors (82), test_fresh_clone_no_project (26), test_gh_create_issue (88), test_precommit_hook_path (19), test_gh_create_pr (113), test_capture (41), test_discover_governance (32), test_project_documents (204), test_dispatch_phase (244), test_sitrep_root (82), test_merge_pr (175), test_pr_status (3), test_skill_paths (212), test_merge_pr_skill (132), test_project_integration_audit (286), test_session_start_layer (52), test_sitrep_checks (301), test_validate_workspace_stale (126), test_worktree_remove (136), test_worktree_enter_stderr (35), test_merge_pr_gate (213), test_user_tier_guard (64), test_worktree_create (112).
 Each new test was run against the pre-fix scripts and failed there (test_register_project: 11 failed; test_ros2_colcon: 4 failed). `shellcheck --severity=warning` clean on every file touched. The full pre-commit pass is left to the host.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 14:44 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (manifest-work rule: fix pass, no second round)
+**After**: publish
+**Decision**: publish
+
+Written by the host where `next` would start a second review round (`action=review-code` after the fix pass at c17168d3), under the lighter review level the owner approved for the manifest work on 2026-11-24 ("One plan review and one code review round per pull request. Must-fix findings get fixed; suggestions go into a single follow-up issue instead of another round."; his answer: "yes"). The rule's text is pull request 607 (issue 605), not yet merged; this checkpoint follows it as he approved it in the session.
+
+Part 2: registration from a manifest. The one review round (18a8096d) found 2 must-fix and 9 suggestions. The fix pass fixed both must-fix findings and the first suggestion (a `--fetch-from` prefix with credentials printed unmasked), which the host promoted because it prints a secret. Main was merged into the branch after it, with no conflict.
+
+The host's full pre-commit pass ran with no SKIP over the files changed since origin/main: every hook passed except the script-suite hook, where 55 of 56 suites passed and one failed: `test_review_viewer.sh`, `test_unsearchable_notes_folder_exits_1_one_line`, "AssertionError: 2 != 1 : review_viewer: cannot open a window (couldn't connect to display \":0\")". This is the failure of issue 598 (a test that needs a local display; this session has none), in a suite this branch does not touch. The owner decided the same case on 2026-11-24 at issue 569's publish checkpoint: "Publish, new issue (Recommended)", with CI as the check; the host follows that decision here and does not send it back as a fix.
+
+Suggestions left open for the one follow-up issue, from the review entry:
+
+- (suggestion) register_session_root.sh's check for `--manifest` searches the flattened array, so a value equal to `--manifest` (`--role --manifest`) passes it; track whether the option itself was parsed — `.agent/scripts/register_session_root.sh:128`
+- (suggestion) Values of `--distro`, `--role`, `--with` and `--fetch-from` that start with `-` are passed on unchecked (`--role --dry-run` swallows the dry run; the dispatcher scans argv for `--project` after the verb); refuse them before anything is written — `.agent/scripts/register_project.sh:243`
+- (suggestion) Two certain failures are not refused before writing or shown by the dry run: the tool not installed at `$TOOL_BIN`, and a root inside an existing system (init's `find_system` looks upward) — `.agent/scripts/register_project.sh:823`
+- (suggestion) A root left non-empty without `.repos-manifest` (only after init is SIGKILLed, leaving its aside) gets NEXT "re-run register_project.sh", which `--manifest` then refuses; say to remove the kept root first — `.agent/scripts/register_project.sh:1349`
+- (suggestion) The rollback removes parent directories that were missing at check time, not ones the run is known to have made (an empty directory someone else made meanwhile could go, with the message "made by setup") — `.agent/scripts/register_project.sh:1230`
+- (suggestion) on_exit's NEXT "<sync step>; or re-run register_project.sh" does not say "without --manifest" — `.agent/scripts/register_project.sh:1393`
+- (suggestion) `manifest_is_remote` misses the scp form with no user (`host:path`), which gets "no such file" rather than the issue-498 message — `.agent/scripts/register_project.sh:816`
+- (suggestion) Minor: `$TOOL_BIN`/`$M_DISTRO` unquoted in NEXT lines (the adapter's `_rc_tool_sync_step` quotes them); `${SETUP_ARGS[*]}` unquoted in the dry run; a kept `bootstrap_url=` with an empty value is refused though the adapter would not refuse it — `.agent/scripts/register_project.sh:824`, `:1087`, `:846`
+
+Outside reviewers on the one round: Codex ran (four points: one folded into a must-fix, three classed as suggestions); Gemini skipped, failed earlier today ("empty response; 1 tool action(s) were auto-denied in headless mode (Bash)").
