@@ -319,3 +319,62 @@ Pull request 571 (part 1 of 3, the tool's roadmap row) merged on 2026-11-24. The
 **Plan**: `.agent/work-plans/issue-569/plan.md` at `6530c842`
 
 Revision after the second Plan Review and the merge of part 1 (pull request 571, marked delivered). All seven findings are in, each checked against the code: `_rc_tool_validate` keeps its `source_ref`/`source_path` reads; exact new text for `single_project/unused_settings` with its two test assertions; no new registration test, and the `MR_SRC`/`MR_PY` finder kept in `test_register_project.sh`; the CLI backstop test ported to `cli.read_manifest`; `test_output.py`'s `--cache-dir` case in part 3; the refusal test asserts nothing fetched or imported and is folded into `test_tool_route_order` and `test_bootstrap_no_url_names_the_tool`; root `fork_parity.md`, root `roadmap.md` (part 2) and tool roadmap row 31 (part 3) named. Host decision recorded: `ros2_colcon/unused_settings` does not gain the `source*` keys here. Line numbers re-read on `df2f5010`; `adapter.sh` did not change on main.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-24 09:45 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #569 — repos-manifest: remove the prototype's reader, and drop the roadmap line about moving from its format
+**Plan**: `.agent/work-plans/issue-569/plan.md` at `6530c842`
+**Branch**: `feature/issue-569`
+
+Third review. Verdict ready on condition: the five findings below are small, exact and leave no design choice, so they go to the implementer as the directions under Recommended Actions instead of a fourth plan round.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Part 1 is delivered (PR 571). Part 2 (the adapter cut) and part 3 (the reader) are in the right order, and each is one PR. |
+| Issue alignment | Good | All four steps of the issue are covered. Step 2's dependency is settled: the cut is made here, in part 2. Serves: "Workspace goal "Light touch on projects" (`README.md#workspace-goals`; ...), `docs/design.md#registry-and-adapters` (part 2) and `tools/repos-manifest/docs/design.md#where-the-manifest-comes-from` (part 3)". |
+| File targeting | Needs work (small) | Findings 1 and 2. The adapter's delete list, checked with `grep -nw` per helper, holds. The test boundaries hold: 2336-2396 kept, 2397-4013 deleted, calls 5814 and 5817-5850. Outside the deleted range, only `test_tool_route_order` (4353, 4362) touches `source`. |
+| Consequences | Needs work (small) | Findings 4 and 5: six text sites are not on the list. |
+| Principle alignment | Good | Fail loudly holds. Every manifest-reading verb off the tool route reaches `_rc_require_manifest` (env 2015, build 2185, test 2232, validate 2385, repos 2452, worktree_repos 2500, worktree_env 2571, repo_pin 2841), and setup and sync get the refusal at their tops. Finding 3 is a test that would pass vacuously. |
+| ADR compliance | Good | ADR-0017 and ADR-0022: the root design changes in part 2, the tool's design in part 3. ADR-0013: entries recorded. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Second review's findings
+
+All seven were checked against the code. Six are answered in full and one in part.
+1. Answered. `_rc_tool_validate` reads `source`, `source_ref` and `source_path` at adapter.sh 1292-1294, and the plan keeps them. `test_tool_route_order` 4361 still asserts them.
+2. Answered. Exact new text for `single_project/unused_settings` 9-11. The asserts match: test_project_file.sh 1894 and test_register_project.sh 683/688. The old "says it once" `assert_not_contains` stays green. The `ros2_colcon/unused_settings` decision is stated.
+3. Answered. The finder is at 698-706, the wrapper and python3 link at 708-713, and fail-or-skip at 735-742. The tool-route registration test (1063) uses `MR_PY`/`MR_SRC` (1077, 1117) and has its own fail-or-skip at 1174.
+4. Answered. `read_manifest` is imported into `cli` (cli.py line 40), and `_load_new` (78) calls it first in both new commands, so `monkeypatch.setattr(cli, "read_manifest", ...)` is reached. `main`'s `except Exception` arm (451) catches every one of the five types.
+5. Answered. test_output.py 776-780 is named.
+6. Answered in part. The check is restated and the tests are folded in. But the plan says `make_toolchain_stubs` makes a `curl` stub, and it does not (test_ros2_colcon.sh 111-147 makes only `colcon` and `vcs`). See finding 3.
+7. Answered. Root `fork_parity.md:83` is split across parts 2 and 3, root `roadmap.md:273` is in part 2, and tool roadmap row 31 is in part 3.
+
+### Findings
+
+1. **[File targeting] Medium, part 2.** The plan deletes the manifest-route header "from its `# --- Manifest route` line, 701, to just before the 'Tool route' header". The header is at 702 and the Tool route header at 801. That range also holds `_rc_route` (792-800) and its comment (788-791), which the plan keeps and rewrites elsewhere. Read literally, it deletes the route function. Resolution: delete 702-787 (through "...run through _rc_nofd and inherit neither lock."), and keep 788-800.
+2. **[File targeting] Medium, part 2.** `adapter_sync` has a second block that only the manifest route uses. It is at 2364-2371: `if [ "$route" = manifest ]`, printing "source: N repositor... not checked out yet" and the `_RC_LAYERS_CHANGED` note. Its counter `missing` (local at 2318, increment at 2341) is read nowhere else. The plan names only the block at 2321 and the comment at 2310. `_RC_LAYERS_CHANGED` is set only in deleted code (1627, 1732).
+3. **[Principle alignment] Low, part 2.** The new `test_source_without_tool_root_refused` asserts "no `$sb/curl.log`". No stub writes that file unless the test creates one: `make_toolchain_stubs` has no curl stub, and only `make_tool_root` (4212) writes one. As planned, the "nothing fetched" half passes whether or not curl runs. Separately, the bootstrap block the plan cites as 603-604 is 603-605 (`if`, `echo`, `fi`), and the kept tool line is 606.
+4. **[Consequences] Low, part 2.** These text sites describe the cut route and are not on the plan's list. The plan's `grep -n 'manifest route'` does not catch them. (a) `.agent/knowledge/script_reference.md:27`: the `project_setting.sh` row calls `source`/`source_ref`/`source_path` "a `ros2_colcon` project's manifest in the new format, issue #436". (b) `.agent/project_types/ros2_colcon/registration.conf` 9-12: "or resolved from its source (a manifest in the new format; issue #436)". (c) `.agent/scripts/_project_registry.sh` header 69-70: "(for ros2_colcon, its manifest; issue #436)". (d) The adapter.sh header, 8-11 ("Three routes ... the two older ones (issue #436)") and 14-19 (`source` ... `configs/manifest-resolved` ... "see 'Manifest route' below"). (e) Root `docs/design.md:439`: "`source`, `source_ref` and `source_path` (where its source description lives, #436)". (f) `docs/manifest/design.md` 38-46: 42 is "`register_project.sh` writes both, with ... `--set source=...`" and 46 is "three routes". Only 39 and 51 of that range are on the list, and "three routes" is caught by none of the plan's re-grep terms. No skill under `.claude/skills/` and no other knowledge file names `source=` or the route; I grepped `.claude` and `.agent/knowledge`.
+5. **[Consequences] Low, part 2.** The root design bullet (`docs/design.md#registry-and-adapters`, 484-496) is planned only for removals. The new refusal is boundary behavior and should be stated there too: a `source` set on a root without `.repos-manifest/` is refused at every manifest-reading verb and at setup and sync, naming `init` and the `unset`.
+
+On the host's question about `project_setting.sh` and `register_project.sh`: after part 2, `project_setting.sh set <ros2_colcon> source=...` still succeeds. It is checked in full by `_project_source_combination` (`_project_registry.sh` 1275-1305: a URL needs `source_ref`, a path takes neither, not beside `bootstrap_url`). The dispatcher (`.agent/scripts/adapter` 331-335) still exports the keys. Every verb off the tool route then refuses, and on the tool route `validate` names the leftover keys as a second record. `register_project.sh ... ros2_colcon --set source=...` therefore fails loudly: setup is refused for a missing root (line 1135), and the static gate's `adapter validate` is refused for an existing one. This is what the plan's `unused_settings` decision intends ("accepted by `set` ... refused at use ..., never silently ignored"). It is consistent with the issue. Nothing in it is silent.
+
+The suites part 2 could break: `test_project_registry.sh` `test_dispatcher_exports_source_keys` (2135) stays green, since the dispatcher still exports. `test_adapter.sh` 396-405 checks the `single_project` list, which keeps its keys. `test_design_anchors.sh:617` writes its own fixture text. `validate_adapter.sh` checks verbs, silence at source and `unused_settings` reasons, none of which part 2 removes. `test_skill_paths.sh` and the other suites do not reference the route.
+
+### Summary
+
+The plan is sound and its lists match the code. Parts 2 and 3 can be implemented with the five directions below handed over verbatim. None needs a design choice.
+
+### Recommended Actions
+
+- [ ] Part 2, adapter.sh: delete the manifest-route header comment as lines 702-787 only. Keep `_rc_route` and its comment (788-800), and rewrite that comment for two routes.
+- [ ] Part 2, adapter.sh `adapter_sync`: also delete the `if [ "$route" = manifest ]` block after the layer loop (2364-2371), the `missing` local and its increment (2318, 2341), and the `route` local if only these used it. Afterwards `grep -n _RC_LAYERS_CHANGED` must return nothing.
+- [ ] Part 2, adapter.sh `_rc_bootstrap_manifest`: remove the whole `if [ -n "${ACTIVE_PROJECT_NAME:-}" ]` block that echoes `source=` (603-605), and keep the "Or set the root up with the manifest tool" line (606).
+- [ ] Part 2, test_ros2_colcon.sh `test_source_without_tool_root_refused`: before the verbs run, write the curl stub into `$sb/bin`, as `make_tool_root` does at 4212 (`printf '#!/usr/bin/env bash\necho "CURL_RAN:$*" >> "%s"\nexit 1\n' "$sb/curl.log" > "$sb/bin/curl"; chmod +x "$sb/bin/curl"`). Then the "no `$sb/curl.log`" assertion can fail.
+- [ ] Part 2, text: rewrite these to say `source`/`source_ref`/`source_path` are still accepted by `project_setting.sh` but read by no route. A `ros2_colcon` root without `.repos-manifest/` that sets them is refused at use, naming `repos-manifest init` and the `unset`. On the tool route, `validate` names them as a second record. Their removal is the workspace roadmap's own line. The sites: `.agent/knowledge/script_reference.md:27`, `.agent/project_types/ros2_colcon/registration.conf` 9-12, `.agent/scripts/_project_registry.sh` 69-70, adapter.sh header 8-19, root `docs/design.md:439`, and `docs/manifest/design.md` 38-46 (including "three routes" at 46 and `--set source=` at 42). Add one sentence for that refusal to the root design's routes bullet (484-496). Before the PR, also re-grep `adapter.sh`, `docs/` and `.agent/` (work-plans aside) for `three routes`, `manifest-resolved`, `lock.source` and `#436`, and name each remaining hit as history.
