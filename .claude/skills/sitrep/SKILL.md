@@ -327,17 +327,17 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="
 source "$WS_ROOT/.agent/scripts/_issue_helpers.sh"
 r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: no root could be decided for this directory (reason above)"; exit 1; }
 stype="$(sed -n 's/^type=//p' <<< "$r")"
+ROOT="$(sed -n 's/^root=//p' <<< "$r")"
 roadmap="$(sed -n 's/^roadmap=//p' <<< "$r")"
+ra=(); [ -z "$roadmap" ] || ra=(--roadmap "$roadmap")
 rows="<rows_file printed in step 1>"
 # The section is written as paths when step 1's rows hold a path row; with
-# no rows, when a **Path <n>** paragraph opens a line of the section (the
-# last block of this step prints paths=none when none does). Without
-# paths, no path word is printed.
+# no rows, when the checker finds a path in it (--list-paths: its own
+# rules, no check run). Without paths, no path word is printed.
 haspaths=no
 if [ -f "$rows" ] && [ -r "$rows" ]; then
     ! grep -q "^path	" "$rows" || haspaths=yes
-elif [ -n "$roadmap" ] && awk '/^## Direction/ { d = 1; next } d && /^## / { exit }
-        d && /^\*\*Path [0-9]+/ { f = 1; exit } END { exit !f }' "$roadmap" 2>/dev/null; then
+elif [ -n "$("$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$ROOT" "${ra[@]}" --list-paths 2>/dev/null)" ]; then
     haspaths=yes
 fi
 wl="$("$WS_ROOT/.agent/scripts/sitrep_root.sh" --worktrees --rows "$rows")" \
@@ -498,8 +498,9 @@ Direction section writes them (issue #563):
   Review leaves the older one's Serves in place.
 - Step 1 printed no rows: `path unknown (steps not checked)`.
 - The root's Direction section is not written as paths (step 1's rows
-  hold no `path` row; with no rows, the last block of this step prints
-  `paths=none`): no path word is printed, except a sub-roadmap's path.
+  hold no `path` row; with no rows, the checker's `--list-paths` prints
+  none, and the last block of this step prints `paths=none`): no path
+  word is printed, except a sub-roadmap's path.
 
 The state is the latest timeline entry in words, so the report needs no
 entry names. The entry is looked up by its base type
@@ -571,42 +572,74 @@ for it when it is empty. Within each group, branches with a worktree come
 first, in the worktree list's order, then branches with only a pull
 request, in the order `gh pr list` printed them.
 
-The paths themselves, for the report's closing question: each paragraph of
-the root's Direction section that opens with `**Path <n>`, printed as its
-number, its bold name and its first sentence, as written, then, when there
-is a path, the `**Across the paths` paragraph's first sentence on an
-`across` line. A sentence ends
-at a period followed by white space or the paragraph's end, or at a period
-and a closing double quotation mark followed by either (a quoted sentence).
-This block reads the roadmap's prose, not step 1's rows, so the question
-can still offer the paths when step 1 printed no rows.
+The paths themselves, for the report's closing question. Which paths
+there are, and their names, come from the checker, so the question
+offers exactly the groups the report shows: the `path` rows of step 1's
+rows file (put its `rows_file` value in place of the placeholder), or,
+when step 1 printed none, the checker's `--list-paths`, which reads the
+section by the same rules and runs no check. Each path is printed on a
+`path` line with its name as the roadmap writes it (`Path 2, modular
+workflows`) and its paragraph's first sentence, as written; then, when
+there is an Across group, its first sentence on an `across` line (the
+`no path` group is not offered). The first sentence is the one thing
+read from the prose: the text after the bold name of the paragraph
+whose bold name is that path's. A sentence ends at a period followed by
+white space or the paragraph's end, or at a period and a closing double
+quotation mark followed by either (a quoted sentence). An
+`acceptance_path=` line names the group the `**Acceptance case.**`
+paragraph sits in (the nearest path or Across paragraph above it, as
+the checker groups tables); with none above it, no such line.
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
 r="$("$WS_ROOT/.agent/scripts/sitrep_root.sh")" || { echo "no sit-rep: no root could be decided for this directory (reason above)"; exit 1; }
+ROOT="$(sed -n 's/^root=//p' <<< "$r")"
 roadmap="$(sed -n 's/^roadmap=//p' <<< "$r")"
-awk '/^## Direction/ { d = 1; next } d && /^## / { exit }
-     d && /^\*\*(Path [0-9]+|Across the paths)/ { p = 1; s = "" }
-     p && /^[[:space:]]*$/ { print s; p = 0; next }
+ra=(); [ -z "$roadmap" ] || ra=(--roadmap "$roadmap")
+rows="<rows_file printed in step 1>"
+if [ -f "$rows" ] && [ -r "$rows" ]; then
+    names="$(awk -F'\t' '$1 == "path" { print $2 }' "$rows")"
+elif ! names="$("$WS_ROOT/.agent/scripts/sitrep_checks.sh" --root "$ROOT" "${ra[@]}" --list-paths)"; then
+    echo "paths=unknown (the checker could not list them; reason above)"; exit 0
+fi
+# Paragraphs of the section that open with bold text, each joined into one
+# line, outside fences: where the first sentences are read from.
+awk '/^ ? ? ?(```|~~~)/ { f = !f; next } f { next }
+     /^## Direction/ { d = 1; b = 1; next } d && /^ ? ? ?##?[ \t]/ { exit }
+     d && /^[[:space:]]*($|\||#)/ { if (p) print s; p = 0; b = 1; next }
+     d && b && /^\*\*/ { p = 1; s = "" }
      p { s = s (s == "" ? "" : " ") $0 }
-     END { if (p) print s }' "${roadmap:-/dev/null}" 2>/dev/null | python3 -c '
-import re, sys
-n, across = 0, ""
+     d { b = 0 }
+     END { if (p) print s }' "${roadmap:-/dev/null}" 2>/dev/null | NAMES="$names" python3 -c '
+import os, re, sys
+names = [n for n in os.environ["NAMES"].splitlines() if n and n != "no path"]
 def first(t):
     f = re.match(r"(.+?\.\x22?)(?:\s|$)", t)
     return f.group(1) if f else t
+sent, group, acc = {}, None, None
 for l in sys.stdin:
-    m = re.match(r"\*\*(Path \d+)[,.:]?\s*(.*?)\.?\*\*\s*(.*)", l.strip())
-    if m:
-        n += 1
-        print("path\t%s\t%s\t%s" % (m.group(1), m.group(2), first(m.group(3))))
-    a = re.match(r"\*\*Across the paths\.?\*\*\s*(.*)", l.strip())
-    if a and not across:
-        across = "across\tAcross the paths\t" + first(a.group(1))
-if n and across:
-    print(across)
-if not n:
-    print("paths=none (no **Path <n>** paragraph in the Direction section)")'
+    m = re.match(r"\*\*(.+?)\*\*\s*(.*)", l.strip())
+    if not m:
+        continue
+    # The bold text as the checker names a group: white space collapsed,
+    # one trailing "." or "," dropped; Across whatever follows it.
+    k = re.sub(r"[.,]$", "", " ".join(m.group(1).split()))
+    if k.startswith("Across the paths"):
+        k = "Across the paths"
+    if k == "Acceptance case" and acc is None:
+        acc = group or ""
+    if k in names:
+        group = k
+        sent.setdefault(k, first(m.group(2)))
+for n in names:
+    if n != "Across the paths":
+        print("path\t%s\t%s" % (n, sent.get(n, "")))
+if "Across the paths" in names:
+    print("across\tAcross the paths\t" + sent.get("Across the paths", ""))
+if not names:
+    print("paths=none (no **Path <n>** paragraph in the Direction section)")
+elif acc:
+    print("acceptance_path=" + acc)'
 ```
 
 ### 4. Write the run record
@@ -1100,7 +1133,7 @@ structure"):
 ```markdown
 ## Sit-rep, <date>
 
-<acceptance_first from step 5, with paths named as its path's test>
+<acceptance_first from step 5; with paths, named as the test of step 3's acceptance_path>
 
 <with paths: one line per group, in roadmap order, from step 1's next steps:>
 <path name>: <t> of <n> done. Not yet: <its first unmet line, as written> — <its result in words>.
@@ -1184,8 +1217,10 @@ Rules for the report:
   reader sees what the next step is for. When it is empty, the line is
   left out. With paths, the acceptance case is the test of one path, the
   one whose group its paragraph sits in (the nearest path paragraph
-  above it), and the line says so: "The test of <path name>:
-  <acceptance_first>".
+  above it), which step 3's last block prints as `acceptance_path=`,
+  and the line says so: "The test of <acceptance_path>:
+  <acceptance_first>". With no `acceptance_path=` line (the paragraph
+  sits above every path), the line is `acceptance_first` alone.
 - **Result words** are translated, and always printed, so a step that
   could not be checked never reads as one that failed:
 
@@ -1313,12 +1348,14 @@ Rules for the report:
   changes the most. The suggestion proposes an action; the question asks
   the owner to decide something. By default it is the focus: one of the
   paths step 3 printed, or several, each named as step 3's last block
-  printed it (its number, name and first sentence), with Across the
-  paths as a focus too when that block printed an `across` line. Beside them, each
+  printed it (its name, as the roadmap writes it, and its first
+  sentence), with Across the paths as a focus too when that block
+  printed an `across` line. Beside them, each
   followed part is a focus of its own, named by its sub-roadmap path:
   the work step 3 marked with that path, and the part's next step. A
   sub-roadmap's own Paths paragraphs are not read; the part is one
   focus. The owner decides the focus when he asks for
   a sit-rep, and it is never stored. Ask something else only when the
   owner already named the focus in this session, or when step 3 printed
-  `paths=none` and no part was followed.
+  `paths=none` or `paths=unknown` (said under Problems) and no part was
+  followed.

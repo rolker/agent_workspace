@@ -1257,18 +1257,36 @@ printf '%s\n' '# R' '' '**Path 9, Not this.** Outside the section.' '' '## Direc
     '**Path 2, Beta.** Only one sentence' '' \
     '**Path 3, Gamma.** In his words: "Quoted one." and "quoted' 'two." Then more.' '' '## Next' > "$WS/docs/roadmap.md"
 RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$(skill_step 3 3)" 2>&1)" || RC=$?
-[[ $RC -eq 0 && "$OUT" == $'path\tPath 1\tAlpha one\tFirst sentence, with `code`.\npath\tPath 2\tBeta\tOnly one sentence\npath\tPath 3\tGamma\tIn his words: "Quoted one."' ]] \
-    && pass "(skill 3) paths: number, name and first sentence of each Path paragraph in the Direction section only; a sentence may end in a closing quotation mark" || fail "(skill 3) paths rc=$RC '$OUT'"
+[[ $RC -eq 0 && "$OUT" == $'path\tPath 1, Alpha one\tFirst sentence, with `code`.\npath\tPath 2, Beta\tOnly one sentence\npath\tPath 3, Gamma\tIn his words: "Quoted one."' ]] \
+    && pass "(skill 3) paths: the checker's name and the first sentence of each Path paragraph in the Direction section only; a sentence may end in a closing quotation mark" || fail "(skill 3) paths rc=$RC '$OUT'"
 printf '## Direction\n\nNo paths.\n' > "$WS/docs/roadmap.md"
 RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$(skill_step 3 3)" 2>&1)" || RC=$?
 [[ $RC -eq 0 && "$OUT" == "paths=none"* ]] && pass "(skill 3) paths: none in the roadmap is said, not guessed" || fail "(skill 3) no paths '$OUT'"
 printf '%s\n' '## Direction' '' '**Path 1, Alpha.** One.' '' '**Across the paths.** Shared work. More.' '' '## Next' > "$WS/docs/roadmap.md"
 RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$(skill_step 3 3)" 2>&1)" || RC=$?
-[[ $RC -eq 0 && "$OUT" == $'path\tPath 1\tAlpha\tOne.\nacross\tAcross the paths\tShared work.' ]] \
+[[ $RC -eq 0 && "$OUT" == $'path\tPath 1, Alpha\tOne.\nacross\tAcross the paths\tShared work.' ]] \
     && pass "(skill 3) paths: the Across paragraph's first sentence after the paths (issue #563)" || fail "(skill 3) across rc=$RC '$OUT'"
 printf '%s\n' '## Direction' '' '**Across the paths.** Alone.' > "$WS/docs/roadmap.md"
 RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$(skill_step 3 3)" 2>&1)" || RC=$?
 [[ $RC -eq 0 && "$OUT" == "paths=none"* ]] && pass "(skill 3) paths: an Across paragraph with no path is no path" || fail "(skill 3) across alone '$OUT'"
+# With no rows the checker names the paths (--list-paths), so the question
+# offers what the report shows: a fenced or continuation **Path is not one,
+# a wrapped bold name is joined, a trailing comma is dropped (issue #563).
+printf '%s\n' '## Direction' '' '**Path 1, Alpha,** First. More.' '' '```md' '**Path 6, Fenced.** in a fence' '```' '' \
+    'Text that wraps and' '**Path 3, Continued.** is not a path.' '' \
+    '**Path 2, Wrapped' 'over two.** Second one. More.' '' '**Acceptance case.** The test.' '' \
+    '**Across the paths.** Shared.' '' '## Next' > "$WS/docs/roadmap.md"
+RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "$(skill_step 3 3)" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$OUT" == $'path\tPath 1, Alpha\tFirst.\npath\tPath 2, Wrapped over two\tSecond one.\nacross\tAcross the paths\tShared.\nacceptance_path=Path 2, Wrapped over two' ]] \
+    && pass "(skill 3) paths with no rows: the checker's paths only (fenced and continuation ones are not), wrapped name joined, trailing comma dropped; the acceptance case's path" \
+    || fail "(skill 3) paths by the checker rc=$RC '$OUT'"
+# With rows, the names are the rows' path rows (no path is not offered).
+printf 'path\tno path\ttrue\tlines\t2026-11-24\nline\tU\tfalse\tnone\t2026-11-24\npath\tPath 1, Alpha\ttrue\tlines\t2026-11-24\npath\tPath 7, Rows only\tunchecked\tno lines (no design yet)\t2026-11-24\n' > "$SB/rows-q"
+blk="$(skill_step 3 3)"
+RC=0; OUT="$(cd "$(here)" && HOME="$HOMESB" bash -c "${blk//<rows_file printed in step 1>/$SB/rows-q}" 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$OUT" == $'path\tPath 1, Alpha\tFirst.\npath\tPath 7, Rows only\t\nacceptance_path=Path 1, Alpha' ]] \
+    && pass "(skill 3) paths with rows: the names are step 1's path rows, never the prose's" || fail "(skill 3) paths from rows rc=$RC '$OUT'"
+rm -f "$SB/rows-q"
 mv "$SB/roadmap3.saved" "$WS/docs/roadmap.md"
 
 echo "TEST: sit-rep step 8 template: lead words, one item per line, blank lines between sections"
@@ -1994,6 +2012,11 @@ run_rm "$(printf '%s\n' '## Direction' '' '**Paths.** Not a path.' '' \
 [[ $RC -eq 0 && "$(kinds)" == $'path\tPath 1, Wrapped over two lines\ttrue\tlines\nline\tW1\ttrue\t'"$T"$'\npath\tPath 2, Split\tunchecked\tno lines (no design yet)' ]] \
     && pass "(paths) Paths., a continuation line, a bullet, a lazy continuation, a fence and a table cell open nothing; a wrapped bold span is joined" \
     || fail "(paths) pattern rc=$RC '$OUT'"
+RC=0; S="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/root" --list-paths 2>&1)" || RC=$?
+[[ $RC -eq 0 && "$S" == $'Path 1, Wrapped over two lines\nPath 2, Split' ]] \
+    && pass "(paths) --list-paths prints the groups' names by the same rules, and runs no check" || fail "(paths) list-paths rc=$RC '$S'"
+RC=0; bash "$SITREP" --root "$SB/root" --list-paths --summary >/dev/null 2>&1 || RC=$?
+[[ $RC -eq 2 ]] && pass "(paths) --list-paths with --summary is a usage error" || fail "(paths) list-paths --summary rc=$RC"
 
 echo "TEST: no path paragraph: rows, summary and next steps as before paths were read"
 run_rm "$(printf '%s\n' '## Direction' '' '**Across the paths.** Alone, it opens nothing.' '' \
