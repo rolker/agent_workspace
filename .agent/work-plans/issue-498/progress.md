@@ -1472,3 +1472,32 @@ Verified: `PYTHONPATH=src .venv python -m pytest` on test_fetch_from, test_fetch
 - New tests: `tests/test_fetch_git.py -k status_and_show`: 6 passed (6 failed with the fix stashed); `-k "rewrite or redirect"`: 4 passed (2 failed with the fix stashed).
 - Whole tool suite, worktree source on PYTHONPATH, serial (pytest-xdist is not installed in .venv, so no `-n 4`): first 19 files 1315 passed in 402.40s; last 14 files first 1 failed, 804 passed (test_url_messages scan on the new command line; fixed in 678fc3bc), then 805 passed in 313.34s. After 678fc3bc, test_url_messages.py and test_fetch_git.py: 106 passed.
 - black (line length 100) and flake8 (repo args) clean on the touched Python files; the commit hooks ran black and flake8. The full pre-commit pass is left to the host.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 14:54 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (manifest-work rule: fix pass, no second round)
+**After**: publish
+**Decision**: publish
+
+Written by the host where `next` would start a second review round (`action=review-code` after the fix pass at 06c3446a), under the lighter review level the owner approved for the manifest work on 2026-11-24 ("One plan review and one code review round per pull request. Must-fix findings get fixed; suggestions go into a single follow-up issue instead of another round."; his answer: "yes"). The rule's text is pull request 607 (issue 605), not yet merged; this checkpoint follows it as he approved it in the session.
+
+Part 2b-1: a manifest in a git repo, for `init` and `sync`, with `status` and `show` reading the recorded location afresh. The one review round (74c89f53) found 2 must-fix and 10 suggestions. The fix pass fixed both must-fix findings: `status` and `show` stopped by a signal during the read now end git and remove the temporary clone; and a url rewrite in the person's git configuration to another transport is refused with a message that says what to give, the documents saying the same. The host chose that smaller fix over honouring the rewrite, listed for the owner's veto.
+
+The host's full pre-commit pass ran with no SKIP over the files changed since origin/main and exited 0: every hook that applied passed, the script-suite hook, shellcheck, black and flake8 included. The branch was level with main.
+
+Suggestions left open for the one follow-up issue, from the review entry:
+
+- (suggestion) The redirect test proves nothing about `GIT_ALLOW_PROTOCOL`: with the env set to `https:http:ssh:file` it still passes (curl never follows a redirect to `file://`); only the unit test of `allowed_protocols` covers the rule. Test the effect, e.g. an `insteadOf` from the served http url to `file://` that must fail — `tools/repos-manifest/tests/test_fetch_git.py:250`
+- (suggestion) `tags/x` when the repo has both a branch and a tag `x` is refused (git's `--branch` takes the branch); the message is true, but fetching `refs/tags/x` exactly would read what was asked — `tools/repos-manifest/src/repos_manifest/fetch.py:100`
+- (suggestion) With no terminal, `GIT_ASKPASS`/`SSH_ASKPASS` are left as set, so a desktop askpass can still put up a dialog until the 60 s limit; the design's "fails with a message and does not wait" is a little strong — `fetch.py:93`
+- (suggestion) A run backgrounded at a terminal (`sync &`) has a terminal it cannot read: a prompt stops on SIGTTIN and with no limit the run waits; `has_terminal` could also require `os.tcgetpgrp(fd) == os.getpgrp()` — `fetch.py:60`
+- (suggestion) With a terminal, a SIGTERM to the tool alone ends git by pid and can leave ssh at a passphrase prompt (by the plan's choice; say so in the design) — `fetch.py:264`
+- (suggestion) A second size guard on the bytes `cat-file` returns, and a bound on the clone itself at a terminal (`--filter=blob:limit=1m` where supported); not exploitable now, the ls-tree size is the hash-checked object's — `fetch.py:112`
+- (suggestion) `config.yaml` records the url in full (by design, as the resolved files and a clone's `.git/config` do) and is written 0644 under the usual umask; the design could say that, or write it 0600 when the url carries a password — `tools/repos-manifest/src/repos_manifest/system.py:122`
+- (suggestion) The status safety walk (`STATUS_MAY_CALL`) does not reach `fetch.py`, whose git commands `status` now runs; a walk or test that they write only the temporary directory — `tools/repos-manifest/tests/test_update_safety.py:446`
+- (suggestion) The adapter's printed `init` command interpolates `source`, `source_ref` and `source_path` unquoted (as the line above it already does), the hint covers only `^(https?|file)://` sources, and the commit sentence only 40-hex refs (not abbreviated or SHA-256) — `.agent/project_types/ros2_colcon/adapter.sh:647`
+- (suggestion) Pre-existing, now more visible: a `config.yaml` `manifest` string such as `host:m.yaml` is read as a local path (`is_url` looks only for `://`), while the spec calls it a URL — `tools/repos-manifest/src/repos_manifest/system.py:176`
+
+Outside reviewers on the one round: Codex ran (eight points: one became a must-fix, several became suggestions, two were rejected as by design); Gemini skipped, failed earlier today ("empty response; 1 tool action(s) were auto-denied in headless mode (Bash)").
