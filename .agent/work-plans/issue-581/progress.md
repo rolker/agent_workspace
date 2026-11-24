@@ -303,3 +303,38 @@ Cross-model: gemini ran (3 must-fix claimed, 1 kept as must-fix, 2 as suggestion
 - [x] (suggestion) plan-task step 8 pushes to origin and then runs `gh pr create -R "github.com/$_REPO"` with no `--head`: unexercised when `$_REPO` is not origin's repository (a fork-origin package checkout, a qualified ref); say so or pass `--head <owner>:<branch>` — `.claude/skills/plan-task/SKILL.md:390-420`
 - [x] (suggestion) review-plan step 0/1: `<N>` is the PR number in step 1's block and the issue number elsewhere; step 0 names `feature/issue-<N>` but not `feature/ISSUE-<N>-<desc>`; use a distinct `<PR>` placeholder — `.claude/skills/review-plan/SKILL.md:69-118`
 - [x] (suggestion) An origin through an SSH host alias (`git@github-work:o/r.git`) or `ssh.github.com:443` gives exit 4 although gh resolves it; the message is clear, but the skills then post nothing and skip the draft PR. Worth one line in the exit-4 row (pass `owner/repo#N`) — `.agent/scripts/issue_repo.sh:126-132`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 13:59 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-581 at `82520224`
+**Addressed**: Local Review (Pre-Push) at `2afab6f5` (2026-11-24 13:47 -05:00)
+**Commits**: 86a5102e, 86b0ad12, 64fa31b1, 82520224
+
+Fix pass for round 1 (2 must-fix, 5 suggestions), with the host's directions, listed for the owner's veto:
+- M1: the session-root rule is decided in one place, `issue_repo.sh`. Exit 0 now also means "this checkout's issue". A qualified `owner/repo#N` is printed only when `owner/repo` is this checkout's repository (origin's slug, or the header's in a package worktree's issue checkout, so the fork-origin package checkout is not refused); any other is exit 6, naming both and saying to run from a checkout of the named repository. When origin names no GitHub repository read locally (SSH host alias, `ssh.github.com:443`), one `gh repo view` in the checkout, `GH_REPO` unset, confirms it or the ref is refused. A qualified ref outside any checkout is exit 3. Each skill has an exit-6 row, and every block that reads or writes the issue's records (review-issue step 8 persist; plan-task steps 4, 7, 8; review-plan step 1's `--issue` plan lookup and step 6 persist) asks the helper first and goes on only on 0, 4 or 5 (4 and 5 come only from a bare number). This is pinned in `test_skill_paths.sh`, with a mutation case.
+- Consequence: the plan's acceptance box (d) changes. A qualified ref from the other root is now refused (exit 6), not printed. The plan was updated.
+- M2: plan-task step 8 takes the title through `ISSUE_TITLE=$(cat <<'TITLE_EOF' ... )`. The same defect existed before this branch in the three persist calls' `--title "<issue title>"` (review-issue step 8, plan-task step 7, review-plan step 6). Those blocks were being edited anyway, so they got the same fix. Pinned. Checked and left as they are: the guard lines' `"<ref>"` is the user's own argument, and the helper rejects anything that is not a ref. `<N>` and `ISSUE_NUM` are numbers. review-issue step 7's comment and the review-issue and review-plan entries use quoted heredocs. Three pre-existing spots carry text the agent writes, not the issue title, and are not on this branch: plan-task step 6's `git commit -m "...<one-line summary>"`, plan-task step 7's unquoted `<<ENTRY` (it must expand `WORK_PLANS_DIR` and `PLAN_SHA`, and its summary line is the agent's text), and review-plan step 6's `--branch "<plan's branch>"`. They are named here and not changed.
+- S1: leading zeros and 0 are a bad reference (exit 1), not normalised, because the skills use `<N>` as typed in paths and `gh` calls. A matching header whose `issue_checkout_of` fails gives exit 3 and quotes it, as the dispatcher refuses. A package worktree's top folder, or any folder of it that is no checkout, gives exit 3 whatever the header says, inside another repository or not. Each case is tested.
+- S2: with `GH_REPO` set, exit 2 says to unset it, also in a package issue checkout (tested). Exit 2 no longer advises passing the other repository's ref, which M1 now refuses. It advises this checkout's `owner/repo#N`.
+- S3: done in a few lines. When origin's slug differs from `$_REPO`, step 8 passes `--head <origin owner>:<branch>`, and the bare branch otherwise. `test_issue_repo.sh` runs step 8's block as the skill writes it, in a sandbox with a local bare origin and the stub `gh`. It also checks that a hostile title reaches `gh` literally. All three checks fail against the step-8 text before this pass.
+- S4: review-plan step 0 says `<N>` is the issue number except in step 1's PR number block (`<PR>`), and names `feature/ISSUE-<N>-<description>`. Step 1's PR block is untouched beyond the earlier repository flag (issue 579).
+- S5: the exit-4 message and each skill's exit-4 row name the case and say that `owner/repo#N` names the repository (gh confirms it).
+- Tests stay hermetic. They use sandbox repositories under `fake_remotes/github.com/...`, a stub `gh` first on PATH (it now also logs `pr list/create/edit`), the SSH alias `github-work` mapped in the stub, and local bare origins for the push. The real `gh` and the network are not used.
+
+### Actions
+- [x] (must-fix) Qualified ref picked the repository while records keyed on the number alone — `.agent/scripts/issue_repo.sh`, the three skills' records blocks (86a5102e)
+- [x] (must-fix) plan-task step 8 title inside double quotes — `.claude/skills/plan-task/SKILL.md` step 8, plus the three persist `--title` lines (86b0ad12)
+- [x] (suggestion) Three silent fallbacks to origin in issue_repo.sh — `.agent/scripts/issue_repo.sh` (86a5102e)
+- [x] (suggestion) GH_REPO in a package issue checkout advised set-default — `.agent/scripts/issue_repo.sh` (86a5102e)
+- [x] (suggestion) `gh pr create -R` with no `--head` for a fork origin — `.claude/skills/plan-task/SKILL.md` step 8 (64fa31b1)
+- [x] (suggestion) review-plan `<N>` meaning and branch forms — `.claude/skills/review-plan/SKILL.md` step 0 (82520224)
+- [x] (suggestion) SSH host alias origin gives exit 4 — `.agent/scripts/issue_repo.sh`, the three exit-4 rows (86a5102e)
+
+Suites run, each on its own, after the last commit:
+- `bash .agent/scripts/tests/test_issue_repo.sh`: "test_issue_repo: 107 passed, 0 failed"
+- `bash .agent/scripts/tests/test_skill_paths.sh`: "test_skill_paths: 252 passed, 0 failed"
+- `bash .agent/scripts/tests/test_records_write_gate.sh`: "test_records_write_gate: 68 passed, 0 failed"
+`grep -lwF issue_repo.sh` lists only the first two. shellcheck --severity=warning passed on the changed scripts. The full pre-commit pass and the full suite run are left to the host. No command was refused.
