@@ -1483,8 +1483,12 @@ hang_reap() {  # <sb>: kills every blocked shim; prints "reached" and the pids s
     while read -r p; do kill -0 "$p" 2>/dev/null && left="$left $p"; done < "$1/hang-ssh.pids"
     echo "reached$left"
 }
-# A shim that serves an ssh origin from the local bare repository (the URL
-# path is its absolute path), so a test can make only some calls block:
+# A shim that serves an ssh origin from a local bare repository, so a test
+# can make only some calls block. ssh://git@github.com/<owner>/<repo>.git is
+# served from $sb/fake_remotes/github.com/<owner>/<repo>.git (a real
+# github.com URL, which extract_gh_slug reads as <owner>/<repo>; issue 428);
+# a URL whose path is an existing local folder is served from that folder.
+#
 # HANG_MODE=applied: a push is applied, then the shim blocks (origin took
 #   the record, then stalled); every other call is served.
 # HANG_MODE=applied-ontop: as applied, and another commit lands on top of
@@ -1495,6 +1499,10 @@ serve_shim() {  # <sb>
     cat > "$1/serve-ssh" <<SHIM
 #!/usr/bin/env bash
 cmd="\${@: -1}"
+# git sends the URL's path quoted ('/owner/pkg_a.git'); a path that is not
+# a local folder is served from the fake_remotes/github.com folder.
+q="'"; p="\${cmd#* \$q}"; p="\${p%\$q}"
+[ -e "\$p" ] || cmd="\${cmd/\$q\//\$q$1/fake_remotes/github.com/}"
 pids="$1/hang-ssh.pids"; marker="$1/push-started"
 case "\$cmd" in
     git-receive-pack*)
@@ -1603,7 +1611,7 @@ if command -v timeout >/dev/null 2>&1; then
         A="$cont/l1_ws/src/pkg_a"
         pkg_pr_fixture "$sb" pkg_a feature/issue-901 ""
         serve_shim "$sb"
-        git -C "$A" remote set-url origin "ssh://git@github.com$sb/fake_remotes/github.com/owner/pkg_a.git"
+        git -C "$A" remote set-url origin "ssh://git@github.com/owner/pkg_a.git"
         a_before=$(git -C "$A" rev-parse HEAD)
         started=$SECONDS
         out="$(GIT_SSH_COMMAND="$sb/serve-ssh" GIT_SSH_VARIANT=simple HANG_MODE=$mode HANG_BRANCH=feature/issue-901 HANG_BARE="$sb/fake_remotes/github.com/owner/pkg_a.git" WT_FETCH_TIMEOUT=2 run_pkg_merge "$sb" owner/pkg_a#901)" || true
@@ -1634,7 +1642,7 @@ if command -v timeout >/dev/null 2>&1; then
     A="$cont/l1_ws/src/pkg_a"
     pkg_pr_fixture "$sb" pkg_a feature/issue-901 ""
     serve_shim "$sb"
-    git -C "$A" remote set-url origin "ssh://git@github.com$sb/fake_remotes/github.com/owner/pkg_a.git"
+    git -C "$A" remote set-url origin "ssh://git@github.com/owner/pkg_a.git"
     a_before=$(git -C "$A" rev-parse HEAD); p_before=$(pkg_progress "$cont")
     a_remote_before=$(git -C "$sb/fake_remotes/github.com/owner/pkg_a.git" rev-parse feature/issue-901)
     started=$SECONDS

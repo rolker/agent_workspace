@@ -689,17 +689,33 @@ if [ -n "$ISSUE_NUM" ]; then
     # GH_REPO_SLUG (which is the *project*'s repo, not necessarily the
     # issue's — e.g. a package worktree's owning repo can differ from the
     # registered project's own remote).
+    # A bare --issue for a project whose origin is not on GitHub, or which
+    # has no origin (issue 428): issue titles are read from GitHub, so it is
+    # not looked up anywhere. The workspace's repository is not the issue's,
+    # and gh without --repo would resolve against the current folder (a
+    # workspace pull request with the same number would refuse creation).
+    PROJECT_NO_GH=""
+    if [ -z "$ISSUE_OWNER_REPO" ] && [ "$ROOT_NOT_GIT" = false ] \
+        && [ "$WORKTREE_TYPE" == "project" ] && [ -z "$GH_REPO_SLUG" ]; then
+        if [ -n "$(git -C "$PROJECT_DIR" remote get-url origin 2>/dev/null)" ]; then
+            PROJECT_NO_GH="elsewhere"
+        else
+            PROJECT_NO_GH="no-origin"
+        fi
+    fi
     if [ -n "$ISSUE_OWNER_REPO" ]; then
         _LOOKUP_REPO="$ISSUE_OWNER_REPO"
-    elif [ "$ROOT_NOT_GIT" = true ]; then
-        # A bare --issue from a project root that is not a git repository:
-        # the issue's repository is not known, and the workspace's is not it.
+    elif [ "$ROOT_NOT_GIT" = true ] || [ -n "$PROJECT_NO_GH" ]; then
+        # A bare --issue from a project root that is not a git repository,
+        # or from one with no GitHub origin: the issue's repository is not
+        # known, and the workspace's is not it.
         _LOOKUP_REPO=""
     else
         # Look up issue via git-bug (with sync-on-miss) then gh fallback
         _LOOKUP_REPO="${GH_REPO_SLUG:-}"
         if [ -z "$_LOOKUP_REPO" ]; then
-            # Best-effort: extract from workspace remote
+            # Best-effort: extract from workspace remote (the workspace type
+            # only: a project with no GitHub origin is taken above)
             _WS_URL=$(git -C "$ROOT_DIR" remote get-url origin 2>/dev/null || echo "")
             _LOOKUP_REPO=$(extract_gh_slug "$_WS_URL")
         fi
@@ -709,15 +725,18 @@ if [ -n "$ISSUE_NUM" ]; then
     fi
     # Fallback: if slug extraction failed (non-GitHub remote), try gh without
     # --repo (not from a project root that is not a git repository: gh has
-    # no repository to resolve there).
-    if [ -z "$ISSUE_TITLE" ] && [ -z "$_LOOKUP_REPO" ] && [ "$ROOT_NOT_GIT" = false ] && command -v gh &>/dev/null; then
+    # no repository to resolve there; nor for a project with no GitHub
+    # origin, whose issue is not on GitHub).
+    if [ -z "$ISSUE_TITLE" ] && [ -z "$_LOOKUP_REPO" ] && [ "$ROOT_NOT_GIT" = false ] \
+        && [ -z "$PROJECT_NO_GH" ] && command -v gh &>/dev/null; then
         ISSUE_TITLE=$(gh issue view "$ISSUE_NUM" --json title --jq '.title' 2>/dev/null || echo "")
         ISSUE_STATE=$(gh issue view "$ISSUE_NUM" --json state --jq '.state' 2>/dev/null || echo "")
     fi
 
     # PR check stays gh-only — git-bug doesn't track PRs. Same repo as the
     # lookup above: the qualified ref's own repo, or the fallback chain.
-    if command -v gh &>/dev/null && { [ -n "$_LOOKUP_REPO" ] || [ "$ROOT_NOT_GIT" = false ]; }; then
+    if command -v gh &>/dev/null \
+        && { [ -n "$_LOOKUP_REPO" ] || { [ "$ROOT_NOT_GIT" = false ] && [ -z "$PROJECT_NO_GH" ]; }; }; then
         _PR_CHECK=""
         if [ -n "$_LOOKUP_REPO" ]; then
             _PR_CHECK=$(gh pr view "$ISSUE_NUM" --repo "$_LOOKUP_REPO" --json state --jq '.state' 2>/dev/null || echo "")
@@ -739,6 +758,10 @@ if [ -n "$ISSUE_NUM" ]; then
     elif [ -z "$_LOOKUP_REPO" ] && [ "$ROOT_NOT_GIT" = true ]; then
         echo "⚠️  Issue $ISSUE_DISPLAY_REF not looked up: the project root is not a git repository, so the issue's repository is not known (--issue owner/repo#N names it)"
         echo "   Proceeding anyway — verify the issue number is correct."
+    elif [ "$PROJECT_NO_GH" = elsewhere ]; then
+        echo "Issue $ISSUE_DISPLAY_REF not looked up: issue titles are read from GitHub, and this project's origin is hosted elsewhere."
+    elif [ "$PROJECT_NO_GH" = no-origin ]; then
+        echo "Issue $ISSUE_DISPLAY_REF not looked up: issue titles are read from GitHub, and this project has no origin."
     else
         echo "⚠️  Could not fetch issue $ISSUE_DISPLAY_REF title (offline or issue does not exist)"
         echo "   Proceeding anyway — verify the issue number is correct."

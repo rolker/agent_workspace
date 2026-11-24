@@ -18,14 +18,52 @@
 # registry_require_root guard (#265 PR 3, ADR-0016).
 
 # --- Utility: extract validated GitHub slug from remote URL ---
-# Returns the slug on stdout, empty if not a valid GitHub URL.
+# Prints owner/repo when the URL is a github.com remote, nothing otherwise
+# (issue 428). The grammar is sitrep_root.sh's gh_slug (issue 418):
+#   https?://[user[:token]@]github.com/   ssh://[user@]github.com[:port]/
+#   git://github.com/                     [user@]github.com:   (scp-like)
+# then exactly owner/repo, owner [A-Za-z0-9][A-Za-z0-9_-]* (the _ is a
+# managed user's short-code suffix), repo
+# [A-Za-z0-9_.][A-Za-z0-9_.-]*, an optional .git and an optional trailing
+# /; the host in any case, the rest of the URL as written. Anything else
+# gives nothing, so a remote hosted elsewhere is never read as a GitHub
+# repository: another host (git@gitlab.com:o/r), a host that only contains
+# the name (notgithub.com, github.com.evil.example), a user part holding ?
+# or # (https://evil.example?@github.com/o/r is fetched from evil.example),
+# a repository named . or .. (after the .git suffix), a path with more than
+# two segments, or a bare owner/repo with no host (no caller passes one:
+# every caller passes `git remote get-url` output). No gh call is made: the
+# callers run offline or before gh is signed in, where an empty slug is the
+# safe answer. Known differences from gh_slug:
+#   - www.github.com and ssh.github.com (the port-443 form) are not
+#     accepted, as in gh_slug; GitHub Enterprise hosts are not either.
+#   - Test fixtures only: an absolute local path whose last four segments
+#     are fake_remotes/github.com/<owner>/<repo>[.git] gives <owner>/<repo>.
+#     The test sandboxes serve their origins from local bare clones there;
+#     gh_slug says such a path is not on GitHub. Only a path starting with /
+#     qualifies, and the segments must be exactly fake_remotes/github.com,
+#     so a real local layout such as ~/go/src/github.com/<o>/<r> or
+#     ~/ghq/github.com/<o>/<r> gives nothing.
+# Keep the grammar in step with sitrep_root.sh: test_issue_helpers.sh runs
+# one table through both.
 extract_gh_slug() {
-    local url="$1"
-    local slug
-    slug=$(echo "$url" | sed -E 's#.*github\.com[:/]##' | sed 's/\.git$//')
-    if [[ "$slug" =~ ^[^/[:space:]]+/[^/[:space:]]+$ ]]; then
-        echo "$slug"
+    local url="$1" host='[Gg][Ii][Tt][Hh][Uu][Bb]\.[Cc][Oo][Mm]'
+    local slug_re='([A-Za-z0-9][A-Za-z0-9_-]*)/([A-Za-z0-9_.][A-Za-z0-9_.-]*)/?$'
+    local prefix_re="^(https?://([^@/?#[:space:]]+@)?${host}/|ssh://([^@/?#[:space:]]+@)?${host}(:[0-9]+)?/|git://${host}/|([^@/:[:space:]]+@)?${host}:)"
+    local owner repo
+    if [[ "$url" =~ ${prefix_re}${slug_re} ]]; then
+        owner="${BASH_REMATCH[6]}"; repo="${BASH_REMATCH[7]}"
+    elif [[ "$url" == /* && "$url" =~ /fake_remotes/github\.com/${slug_re} ]]; then
+        owner="${BASH_REMATCH[1]}"; repo="${BASH_REMATCH[2]}"
+    else
+        return 0
     fi
+    # One trailing .git is the suffix, not part of the name (".git" alone
+    # is a name).
+    [[ "$repo" == *?.git ]] && repo="${repo%.git}"
+    # . and .. name no repository (o/.. would be the owner's parent).
+    [[ "$repo" == . || "$repo" == .. ]] && return 0
+    echo "$owner/$repo"
 }
 
 # --- Single-issue lookup ---
