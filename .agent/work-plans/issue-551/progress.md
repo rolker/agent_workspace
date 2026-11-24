@@ -658,3 +658,19 @@ The merge answered on 2026-11-23 23:09 did not land: pull request 568 is still o
 
 ### Tests (each suite on its own, four at a time)
 test_adapter 248/0; test_capture 41/0; test_checkpoint_269 43/0; test_design_anchors 82/0; test_discover_governance 32/0; test_dispatch_phase 244/0; test_fresh_clone_no_project 26/0; test_gh_create_issue FAIL: 0; test_gh_create_pr FAIL: 0; test_issue_helpers 130/0; test_merge_pr_gate 213/0; test_merge_pr_root_resolution 6/0; test_merge_pr 175/0; test_merge_pr_skill 132/0; test_package_issue_loop 228/0; test_precommit_hook_path 19/0; test_project_documents 180/0; test_project_file 701/0; test_project_integration_audit 279/0; test_project_registry 425/0; test_pr_status 3/0; test_records_write_gate 68/0; test_register_project 222/0; test_ros2_colcon 1553/0/0 skipped; test_script_tests_hook_scope 366/0; test_session_start_layer 52/0; test_sitrep_checks 301/0; test_sitrep_root 82/0; test_skill_paths 199/0; test_triage_reviews_integration 70/0; test_update_roadmap 16/0; test_user_tier_guard 64/0; test_validate_workspace_stale 126/0; test_worktree_create FAIL: 0; test_worktree_enter_stderr 35/0; test_worktree_remove 138/0. The full pre-commit pass is left to the host. Not pushed.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 10:42 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**PR**: #568 at `13ef12b2`
+**Depth**: Deep (reason: cold read, cross-model only: codex, per handoff)
+**Must-fix**: 1 | **Suggestions**: 1
+
+Cold read: Codex alone (exit 0, review complete), given the title, URL and diff only (work-plan files left out; no earlier entries or findings read or passed). Tier by size: 1608 changed lines outside the work plan, 18 files. Both Codex findings checked against the code by the lead; severities below are the lead's.
+
+### Findings
+- [ ] (must-fix) The design citation scanner drops a broken anchor silently when the `design` setting's path holds a character the setting accepts but the scanner's path class does not (e.g. `@`): `docs/a@b/ARCHITECTURE.md#gone` is read as `b/ARCHITECTURE.md#gone`, resolves to no design, and the alternate-name branch skips it without a finding (reproduced with the scanner's awk). Fix: refuse such characters in the goals/design path grammar with a clear message, or widen the scanner's class to the grammar — `.agent/scripts/check_design_anchors.sh:564` (skip at `:620`, `:631`)
+- [ ] (suggestion) The roadmap-is-not-the-design guard compares path strings only: with the design file (set, or the docs/design.md fallback) a symbolic link to a regular file and `roadmap=` naming that target, validation and lookup both pass and the merge gate treats post-review commits to the design's real file as bookkeeping. Needs a deliberate alias in the owner's own settings, so a suggestion; fix by comparing the resolved roadmap file against the resolved design file at lookup — `.agent/scripts/_project_registry.sh:1459`
