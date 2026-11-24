@@ -103,9 +103,11 @@
 #                           project keeps none"), or a file inside the
 #                           project as a path relative to its root, with no
 #                           leading '/' or '~', no '..', '.' or empty
-#                           component, no trailing '/', no blanks, control
-#                           characters, backslash, '*', '?', '[' or ']', and
-#                           not a URL; goals and design may add
+#                           component, no trailing '/', not a URL, and only
+#                           ASCII letters, digits, '.', '_', '-' and '/' in
+#                           the path (what every reader handles: the design
+#                           citation scanner reads no other; any other
+#                           character is refused, named); goals and design may add
 #                           #<heading> (a section of the file), roadmap may
 #                           not (its readers use the file's '## Direction'
 #                           section, or the whole file), must end in .md
@@ -1381,6 +1383,26 @@ project_document_candidates() {
     for c in ${!var}; do printf '%s\n' "$c"; done
 }
 
+# The path characters every reader of a goals/design/roadmap setting
+# handles: check_design_anchors.sh's citation scanner reads a design path
+# only as a run of its path characters, and the merge gate's bookkeeping
+# list matches the roadmap's path literally. A path with any other
+# character would be read short by one of them (a broken citation passing
+# unseen), so it is refused, never read differently by each reader.
+_PROJECT_DOCUMENT_PATH_CHARS='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/'
+
+# Print the first character of <path> outside _PROJECT_DOCUMENT_PATH_CHARS
+# and return 1; return 0, printing nothing, when there is none. An explicit
+# list, not a range, so no locale widens it.
+_project_document_path_char() {
+    local p="$1" i ch
+    for ((i = 0; i < ${#p}; i++)); do
+        ch="${p:i:1}"
+        [[ "$_PROJECT_DOCUMENT_PATH_CHARS" == *"$ch"* ]] || { printf '%s' "$ch"; return 1; }
+    done
+    return 0
+}
+
 # Check a goals/design/roadmap value. Prints the reason and returns 1 when
 # it is not 'none' or a project-relative file path (optionally #<heading>;
 # never on roadmap, whose path must also end in .md). The path is checked
@@ -1388,7 +1410,7 @@ project_document_candidates() {
 # filesystem access (containment is checked again when the path is read,
 # project_document_path).
 _project_document_value_error() {
-    local key="$1" value="$2" path heading="" comp bad=""
+    local key="$1" value="$2" path heading="" comp bad="" c
     local -a comps=()
     [ "$value" = none ] && return 0
     path="${value%%#*}"
@@ -1407,6 +1429,8 @@ _project_document_value_error() {
         bad="the path must not hold blanks, control characters or a backslash"
     elif [[ "$path" == *[\*\?\[\]]* ]]; then
         bad="the path must not hold '*', '?', '[' or ']' (it is a file, not a pattern)"
+    elif ! c="$(_project_document_path_char "$path")"; then
+        bad="the path may hold only the characters every reader of the setting handles (ASCII letters, digits, '.', '_', '-' and '/'), not '$c'"
     else
         IFS='/' read -r -a comps <<< "$path"
         for comp in "${comps[@]}"; do

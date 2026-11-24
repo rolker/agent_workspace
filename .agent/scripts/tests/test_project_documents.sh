@@ -172,7 +172,8 @@ done
 printf 'Ptr.\n' > "$R/ptr/README.md"
 commit_all "$R/ptr"
 
-# globr: a roadmap whose name holds extglob characters.
+# globr: a roadmap whose name holds extglob characters (refused; its
+# setting is written by hand below).
 mkroot globr
 mkdir -p "$R/globr/notes"
 printf '# Plan\n' > "$R/globr/notes/!(nope).md"
@@ -197,6 +198,16 @@ mkdir -p "$R/candplan/notes"
 printf '# Plan\n\n- [ ] Candplan item (#7)\n' > "$R/candplan/notes/plan.md"
 ln -s notes/plan.md "$R/candplan/ROADMAP.md"
 commit_all "$R/candplan"
+# atp: documents under a directory whose name holds '@', a character the
+# design citation scanner does not read as part of a path (settings written
+# by hand: set refuses them).
+mkroot atp
+mkdir -p "$R/atp/docs/a@b" "$R/atp/notes"
+printf '# Arch\n\n## Overview\n' > "$R/atp/docs/a@b/ARCHITECTURE.md"
+printf 'Broken: docs/a@b/ARCHITECTURE.md#gone\n' > "$R/atp/README.md"
+printf '# Plan\n\n## Direction\n\n| Line | Check |\n|---|---|\n| At line | file-exists README.md |\n\n- [ ] At item (#7)\n' > "$R/atp/notes/a@b.md"
+printf '# Decoy\n\n## Direction\n\n| Line | Check |\n|---|---|\n| Decoy line | file-exists README.md |\n\n- [ ] Decoy item (#7)\n' > "$R/atp/docs/roadmap.md"
+commit_all "$R/atp"
 
 cat > "$WSC/.agent/projects.local" <<REG
 keyed    single_project  $R/keyed
@@ -220,6 +231,7 @@ globr    single_project  $R/globr
 dangl    single_project  $R/dangl
 candin   single_project  $R/candin
 candplan single_project  $R/candplan
+atp      single_project  $R/atp
 REG
 
 PS() { (cd "$WSC" && bash "$S/project_setting.sh" "$@"); }
@@ -230,7 +242,8 @@ check "set stores design, roadmap and goals ($out)" test "$rc" -eq 0
 check "get returns the heading with the path" test "$(PS get keyed goals 2>/dev/null)" = "README.md#Goals"
 # shellcheck disable=SC2088  # a literal '~' is the value under test
 for bad in /abs/design.md '~/design.md' ../design.md docs/../design.md ./design.md docs//design.md docs/ \
-           'https://example.com/design.md' 'docs/my design.md' 'docs/d*.md' 'docs\d.md' 'design.md#'; do
+           'https://example.com/design.md' 'docs/my design.md' 'docs/d*.md' 'docs\d.md' 'design.md#' \
+           'docs/a@b/design.md' 'docs/a:b.md' 'docs/a+b.md' 'docs/%41.md' 'docs/é.md' 'docs/$x.md'; do
     out="$(PS set plain "design=$bad" 2>&1)"; rc=$?
     check "set refuses design=$bad" test "$rc" -ne 0
 done
@@ -250,7 +263,10 @@ PS set linkr roadmap=notes/link.md >/dev/null 2>&1 || fail "set linkr"
 PS set mydes design=docs/my-design.md >/dev/null 2>&1 || fail "set mydes"
 PS set nonec design=none >/dev/null 2>&1 || fail "set nonec"
 PS set ptr roadmap=notes/plan.md >/dev/null 2>&1 || fail "set ptr"
-PS set globr 'roadmap=notes/!(nope).md' >/dev/null 2>&1 || fail "set globr"
+out="$(PS set globr 'roadmap=notes/!(nope).md' 2>&1)"; rc=$?
+check "set refuses roadmap=notes/!(nope).md" test "$rc" -ne 0
+[[ "$out" == *"roadmap must be 'none'"*"not '!'"* ]] && pass "the refusal names the setting and the character" || fail "globr refusal: '$out'"
+printf 'roadmap=notes/!(nope).md\n' > "$WSC/.agent/projects.d/globr"   # by hand
 PS set dangl roadmap=notes/gone.md >/dev/null 2>&1 || fail "set dangl"
 
 echo "TEST: roadmap may not name README, an agent instruction file or the design"
@@ -541,13 +557,8 @@ check "merge_pr.sh's CI patterns with a keyed worktree add the set roadmap" \
     test "$(ci_patterns "$R/keyed/worktrees/wt" | tr '\n' ' ')" = ".agent/work-plans/* ROADMAP.md docs/ROADMAP.md docs/roadmap.md notes/plan.md "
 check "merge_pr.sh's CI patterns without a worktree are the fixed list" \
     test "$(ci_patterns "" | tr '\n' ' ')" = ".agent/work-plans/* ROADMAP.md docs/ROADMAP.md docs/roadmap.md "
-pats="$( (source "$S/_bookkeeping.sh"; bookkeeping_roadmap_paths "$R/globr") | tail -n1)"
-# shellcheck disable=SC2053  # unquoted on purpose: the callers' pattern match
-lit() { [[ "$1" == $pats ]]; }
-check "an extglob roadmap name matches itself" lit 'notes/!(nope).md'
-check "an extglob roadmap name matches no other file" bash -c '! [[ "$1" == $2 ]]' _ notes/other.md "$pats"
-# shellcheck disable=SC2053  # unquoted on purpose, as above
-(shopt -s extglob; [[ notes/other.md == $pats ]]) && fail "with extglob on, the name matched another file" || pass "with extglob on, it still matches no other file"
+check "a hand-written roadmap with a refused character (extglob '!(...)') adds nothing" \
+    test "$(bk_paths "$R/globr" 2>/dev/null | wc -l)" -eq 3
 GB="$R/globr"
 REV="$(g -C "$GB" rev-parse HEAD)"
 printf 'x\n' >> "$GB/notes/other.md"; g -C "$GB" commit -q -am other
@@ -568,6 +579,38 @@ g -C "$WT" add -A && g -C "$WT" commit -q -m "neighbour"
 why="$(bash "$S/_bookkeeping.sh" --review "$WT" "$REVIEWED" "$(g -C "$WT" rev-parse HEAD)" 7)"; rc=$?
 check "a neighbouring file is not bookkeeping" test "$rc" -eq 1
 [[ "$why" == *"notes/plan.md.bak"* ]] && pass "the neighbour is named" || fail "neighbour: '$why'"
+
+echo "TEST: a path character no reader handles is refused at lookup too (hand-written settings)"
+# '@' is outside the design citation scanner's path characters: read, the
+# citation docs/a@b/ARCHITECTURE.md#gone would be cut to b/ARCHITECTURE.md
+# and its broken anchor pass unseen. Every reader refuses the setting instead.
+printf 'design=docs/a@b/ARCHITECTURE.md\nroadmap=notes/a@b.md\ngoals=docs/a@b/ARCHITECTURE.md#Overview\n' > "$WSC/.agent/projects.d/atp"
+for key in design roadmap goals; do
+    out="$(PS doc atp "$key" 2>&1)"; rc=$?
+    check "doc $key exits 2 for a path holding '@'" test "$rc" -eq 2
+    [[ "$out" == *"$key must be 'none'"*"not '@'"* ]] && pass "doc $key names the setting and the character" || fail "atp doc $key: '$out'"
+done
+out="$(PS check atp 2>&1)"; rc=$?
+check "check exits 2 on the hand-written '@' settings" test "$rc" -eq 2
+out="$(bash "$CDA" "$R/atp" 2>&1)"; rc=$?
+check "check_design_anchors.sh: the '@' design setting stops it (exit 2), never a silent pass" test "$rc" -eq 2
+[[ "$out" == *"not '@'"* ]] && pass "check_design_anchors.sh says why" || fail "atp anchors: '$out'"
+out="$(bash "$SC" --root "$R/atp" 2>&1)"
+[[ "$out" == *"(roadmap not readable: "*"not '@'"* && "$out" != *"Decoy line"* && "$out" != *"At line"* ]] \
+    && pass "sitrep_checks.sh: not readable, naming the character; neither file read" || fail "atp checks: '$out'"
+out="$(bash "$S/sitrep_root.sh" --dir "$R/atp" 2>&1)"
+[[ "$out" == *$'\nroadmap=\n'* && "$out" == *"roadmap_why=the roadmap setting cannot be read: "*"not '@'"* \
+    && "$out" == *$'\ndesign=\n'* && "$out" == *"check_design_anchors=skipped (the design setting cannot be read: "* ]] \
+    && pass "sitrep_root.sh: no roadmap or design, the reason naming the character" || fail "atp root: '$out'"
+out="$(bash "$UR" --issue 7 --root "$R/atp" 2>&1 >/dev/null)"
+grep -qF -- '- [ ] At item (#7)' "$R/atp/notes/a@b.md" && grep -qF -- '- [ ] Decoy item (#7)' "$R/atp/docs/roadmap.md" \
+    && pass "update_roadmap.sh edits neither file" || fail "atp ticked"
+[[ "$out" == *"not '@'"* ]] && pass "update_roadmap.sh says why" || fail "atp update: '$out'"
+check "the bookkeeping paths add nothing" test "$(bk_paths "$R/atp" 2>/dev/null | wc -l)" -eq 3
+rm -f "$WSC/.agent/projects.d/atp"
+out="$(bash "$CDA" "$R/atp" 2>&1)"; rc=$?
+check "unset, the same root reads docs/design.md (missing): exit 2 as before ($out)" test "$rc" -eq 2
+
 
 echo ""
 echo "test_project_documents: ${PASS} passed, ${FAIL} failed"

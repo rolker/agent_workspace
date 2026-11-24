@@ -27,7 +27,9 @@
 # inside the project, relative to its root, optionally #<heading> (not on
 # roadmap); unset, readers use the candidates docs/roadmap.md,
 # docs/ROADMAP.md, ROADMAP.md (roadmap) and docs/design.md (design); goals
-# has none. Paths outside the project, URLs and repositories are refused.
+# has none. Paths outside the project, URLs and repositories are refused,
+# and so is a path character other than an ASCII letter, a digit, '.', '_',
+# '-' or '/' (the characters every reader handles), named in the refusal.
 #
 # Records keys (location, location_path, tracking) are set and removed
 # together, e.g. `set <name> location=project tracking=project`. Until the
