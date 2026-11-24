@@ -529,7 +529,7 @@ Round 3 of part 2: the round-2 findings and the fix diff b34cfe6b..a66382af only
 ### Findings
 - [x] (must-fix) The new list is missing from the script reference: the `validate_adapter.sh` row names only the `unused_settings` and `registration.conf` checks, not `registration_refused`; the `register_project.sh` row does not say a `--set` key in the type's `registration_refused` is refused before anything is written. Also name the list beside `unused_settings` in docs/design.md's settings paragraph — `.agent/knowledge/script_reference.md:26`, `.agent/knowledge/script_reference.md:28`, `docs/design.md:450`
 - [x] (suggestion) "run git pull in it before each sync" fails for a tag `source_ref` (verified: a `git clone --branch v1` is a detached HEAD and `git pull` exits 1, "You are not currently on a branch"); the test itself uses `source_ref=v1`. Say "keep it at `source_ref` by hand (a `git pull` for a branch)" in the message and the design — `.agent/project_types/ros2_colcon/adapter.sh:648`, `docs/manifest/design.md:88`
-- [ ] (suggestion) The newest change-log row's line count says 1258; after the merge of origin/main the file has 1259 lines — `docs/design.md:1205`
+- [x] (suggestion) The newest change-log row's line count says 1258; after the merge of origin/main the file has 1259 lines — `docs/design.md:1205`
 
 ## Checkpoint
 **Status**: complete
