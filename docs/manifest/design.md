@@ -93,15 +93,13 @@ Or the instance is set up in a new, empty directory and registered there in one 
 refusal names too; the old root is then removed from the registry with `register_project.sh
 --remove <name>`.
 
-`init` reads a manifest from a file on the local disk only. For a URL `source`, the repo is
-cloned by hand at `source_ref`, and `init` is given the file at `source_path` in the clone
-(`manifest.yaml` when it is unset). The tool records that file's path and reads the file
-again on every `sync`, but it never fetches the clone. The clone is kept, since `sync` fails
-without it, and it is kept at `source_ref` by hand before each `sync` (a `git pull` for a
-branch).
-Until the tool reads a manifest from a git repo itself (see "What the tool has to give"),
-such a root can go on using an old manifest without a word, which the removed route, by
-fetching the manifest afresh on every `setup` and `sync`, did not allow.
+For a URL `source`, `init` is given the manifest as a file in a git repo: the URL,
+`--manifest-ref <source_ref>` and `--manifest-path <source_path>` (`manifest.yaml` when it
+is unset), which the refusal prints in its `init` command. The tool records them and reads the
+file from the repo afresh at every `sync`, `status` and `show`, so no clone is kept by hand and
+the root cannot go on using an old manifest without a word, as the removed route could not.
+A `source_ref` that is a commit is not read yet (see "What the tool has to give"); the refusal
+says so, and a branch or tag that holds it is given instead.
 
 A root the removed route set up holds its checkouts under `layers/main/<layer>_ws/src`, which
 may hold local work, and its generated directories `configs/manifest-resolved*`. `init` in
@@ -402,8 +400,9 @@ result as an agent going through the adapter.
 ### What the tool has to give
 
 What the adapter needs from the tool is asked of the tool, not rebuilt in the adapter. The
-status it reads is given now. The rest is what the removed manifest route gave and the tool's
-design does not give yet, so a root on the tool route goes without it until the tool does:
+status it reads and a manifest read from a git repo are given now. The rest is what the removed
+manifest route gave and the tool's design does not give yet, so a root on the tool route goes
+without it until the tool does:
 
 - **A status a script can read.** The tool gives it now: `repos-manifest status --json`
   prints one document a script can read, which also gives the role and the distros the system
@@ -412,8 +411,16 @@ design does not give yet, so a root on the tool route goes without it until the 
   part 4, under "The tool route").
 - **Protection against two runs at once.** The adapter's manifest route, removed in issue
   569, locked its fetch and resolve. The tool's design has no lock.
+- **A manifest read from a git repo.** The tool gives it now: a manifest given to `init` as a
+  file in a git repo is read from the repo afresh at every `sync`, `status` and `show`, with
+  `git` as it is set up on the machine, so a root never goes on using an old manifest without
+  a word, as on the removed manifest route, which fetched a URL `source` afresh on every
+  `setup` and `sync`. Until the tool's `local_manifest` is built, a manifest edited in the
+  clone of its repo is not read.
 - **Time limits on fetches.** The removed manifest route bounded its fetches, and the
-  resolver bounded its clones of parent manifests. The tool's design sets no limit on `sync`.
+  resolver bounded its clones of parent manifests. The tool bounds its read of a manifest
+  from a git repo when there is no terminal, at 60 seconds, and at 1 MiB for the file; its
+  design sets no limit on `sync`'s fetches of the repos.
 - **A failed resolve changes nothing.** The removed manifest route kept the previous
   generated directory when a fetch or a resolve failed, and swapped the new one in whole.
   The tool's `resolve` replaces its output whole or not at all, which also keeps a reader
@@ -422,20 +429,13 @@ design does not give yet, so a root on the tool route goes without it until the 
   before it resolves, so a manifest that does not resolve can leave that clone moved
   forward; the resolved output and every other repo have to stay as they were, and `sync`
   has to say that the manifest is what failed.
-- **A manifest read from a git repo.** The removed manifest route fetched a URL `source`
-  afresh on every `setup` and `sync`, so a root could not go on using an old manifest
-  without a word. `init` reads a manifest from a file on the local disk only, so such a root
-  is set up from a clone made by hand that the tool never fetches, and that clone is
-  updated by hand (under "A root that sets `source`"). The tool's design gives the manifest
-  as a file in a git repo, whose clone `sync` updates before it resolves; until the tool
-  does, that clone is the person's to keep up to date.
 - **A manifest named by a commit.** `source_ref` could name a commit on the removed manifest
   route. The tool's git form takes a branch or a tag, so a manifest pinned to a commit is set
   up with a branch or tag until the tool takes a commit.
 
 Three of the removed manifest route's guarantees are covered by the tool's design as it is:
-it reads the manifest file again on every `sync` (for a manifest on the local disk; a URL
-`source` is the case above, read again from a clone nothing fetches), its `sync` deletes nothing and leaves local work alone, and an
+it reads the manifest file again on every `sync` (from the local disk, or from its git repo
+for a URL `source`), its `sync` deletes nothing and leaves local work alone, and an
 interrupted `init` leaves either nothing, in which case registration is run again, or a
 system whose first sync `sync` finishes.
 
@@ -476,7 +476,7 @@ The settings keys map onto the manifest's location in its git form, as given to 
 
 | Settings key | Target, as given to `init` |
 |---|---|
-| `source` (a URL) with `source_ref` and `source_path` | The target: the manifest as a file in a git repo, its URL, `--manifest-ref` (a branch or a tag; see "What the tool has to give" for a commit) and `--manifest-path`. The path is always passed, `manifest.yaml` when none was given, because the tool takes a URL with no path as the file itself. `init` takes neither option today: the repo is cloned by hand at `source_ref` and `init` is given the file at `source_path` in the clone, which is then updated by hand (under "A root that sets `source`") |
+| `source` (a URL) with `source_ref` and `source_path` | The target: the manifest as a file in a git repo, its URL, `--manifest-ref` (a branch or a tag; see "What the tool has to give" for a commit) and `--manifest-path`. The path is always passed, `manifest.yaml` when none was given, because the tool takes a URL with no path as the file itself. The tool reads the file from the repo afresh at every `sync` (under "A root that sets `source`") |
 | `source` (a path) | The manifest as a path on the local disk |
 | `role=` and `distro=` on the registry line | `--role` and `--distro` |
 | nothing | `--with`, `--fetch-from`, `--remote` |

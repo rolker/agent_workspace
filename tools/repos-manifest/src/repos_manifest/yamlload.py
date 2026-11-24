@@ -16,6 +16,14 @@ class ManifestError(Exception):
     """A manifest file (or a chain of them) is invalid."""
 
 
+class Refusal(ManifestError):
+    """A command refuses to go on; nothing was changed. The message gives the next step. Here,
+    beside `ManifestError`, so that every module can raise it without importing ``system.py``."""
+
+    def __init__(self, condition: str, next_step: str):
+        super().__init__(f"{condition}. {next_step}")
+
+
 # Characters no key or value may hold: control characters (newline, carriage return, tab, NUL,
 # DEL, NEL, ...), line and paragraph separators, invisible format characters (zero-width
 # spaces, the byte-order mark, bidirectional overrides such as U+202E), private-use, surrogate

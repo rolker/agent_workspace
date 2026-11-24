@@ -1169,6 +1169,206 @@ for f in README.md .claude/skills/review-issue/SKILL.md; do
     fi
 done
 
+# --- The repository on every gh call (issue 581): review-issue, plan-task
+# and review-plan get the repository from issue_repo.sh, never from the
+# directory gh runs in, and never from a placeholder an agent fills in.
+# Every code block is a new shell, so each fenced block holding a
+# `gh issue` or `gh pr` line asks the helper itself (the guard line below,
+# before the first such line), and every such line names the repository
+# with its host: -R "github.com/$_REPO" (an environment GH_HOST cannot send
+# it elsewhere). The guard prints the helper's exit code and points to the
+# skill's per-exit table; it does not say "stop" (exit 4 is ordinary).
+REPO_GUARD='_REPO=$("$WS_ROOT/.agent/scripts/issue_repo.sh" "<ref>") || { _rc=$?; echo "issue_repo.sh exit $_rc: this block makes no gh call; see the Repository by exit code table"; exit "$_rc"; }'
+REPO_FLAG='-R "github.com/$_REPO"'
+# gh_blocks_named <file>: prints one line per fault (empty when none) and
+# the count of gh-calling blocks on the last line as "blocks=<n>".
+gh_blocks_named() {
+    awk -v guard="$REPO_GUARD" -v flag="$REPO_FLAG" '
+        function done_block() {
+            if (ngh > 0) {
+                blocks++
+                if (!ws) print "block at line " start ": no WS_ROOT line before the guard"
+                if (!gpos) print "block at line " start ": no issue_repo.sh guard line"
+                else if (gpos > firstgh) print "block at line " start ": the guard comes after the first gh call"
+            }
+        }
+        /^[[:space:]]*```/ {
+            if (!inb) { inb = 1; start = NR; ngh = 0; gpos = 0; ws = 0; firstgh = 0; n = 0 }
+            else { done_block(); inb = 0 }
+            next
+        }
+        !inb { next }
+        { n++ }
+        index($0, "WS_ROOT=\"$(cat ~/.claude/agent-workspace-root") && !gpos { ws = 1 }
+        $0 == guard && !gpos { gpos = n }
+        /(^|[^A-Za-z0-9_-])gh (issue|pr) / && $0 !~ /^[[:space:]]*#/ {
+            ngh++
+            if (!firstgh) firstgh = n
+            if (index($0, flag) == 0) print "line " NR ": gh call without " flag ": " $0
+        }
+        END { print "blocks=" blocks + 0 }
+    ' "$1"
+}
+for name in review-issue plan-task review-plan; do
+    f="$SKILLS/$name/SKILL.md"
+    [[ -f "$f" ]] || { fail "expected skill is missing: $name"; continue; }
+    out="$(gh_blocks_named "$f")"
+    nblocks="${out##*blocks=}"
+    faults="$(grep -v '^blocks=' <<< "$out" || true)"
+    if [[ -z "$faults" && "$nblocks" -gt 0 ]]; then
+        pass "$name: each of its $nblocks gh-calling blocks asks issue_repo.sh first and names $REPO_FLAG on every gh issue/pr line"
+    else
+        fail "$name: gh calls that do not name the repository from issue_repo.sh (blocks=$nblocks):"
+        printf '%s\n' "${faults:-no gh-calling block found}" | head -n5 | sed 's/^/        /'
+    fi
+    has "$f" "$name: calls issue_repo.sh through \$WS_ROOT, with the per-exit table and the guard" \
+        '"$WS_ROOT/.agent/scripts/issue_repo.sh"' '#### Repository by exit code' "$REPO_GUARD" \
+        'echo "Repository: $_REPO"' '_REPO_SLUG="$_REPO"' \
+        '| any other (127: the script is missing'
+    if grep -qF '_REPO_SLUG="<owner/repo>"' "$f"; then
+        fail "$name: still leaves the git-bug slug as a placeholder an agent fills in"
+    else
+        pass "$name: no hand-filled _REPO_SLUG placeholder"
+    fi
+    if grep -qF 'gh issue view <N> --json url' "$f"; then
+        fail "$name: still asks gh issue view <N> --json url (a bare call from the cwd)"
+    else
+        pass "$name: no bare gh issue view <N> --json url"
+    fi
+    bash_blocks_parse "$f" "$name"
+done
+for name in review-issue plan-task; do
+    has "$SKILLS/$name/SKILL.md" "$name: a dispatched phase ends partial on exit 4 or 5, naming the text it needs" \
+        'A dispatched phase cannot ask the owner.' 'gives exit 4 or 5' '`**Status**: partial`' \
+        'naming the text it needs (the title and body of issue `<ref>`)' 'The host asks the owner.'
+done
+has "$SKILLS/plan-task/SKILL.md" "plan-task: step 4's type is a local comparison with the workspace's repository" \
+    'compare the repository step 1 printed with the workspace'"'"'s own, with no `gh` call' \
+    '_WS_SLUG=$(extract_gh_slug "$(git -C "$WS_ROOT" remote get-url origin 2>/dev/null)")' \
+    'On exit 4 or 5 in step 1 the type is the session'"'"'s root instead'
+has "$SKILLS/review-issue/SKILL.md" "review-issue: step 8 records a review with no posted comment" \
+    'When step 7 posted nothing (exit 4 or 5 in step 1)' 'No comment was posted: <the reason, from step 1>.'
+has "$SKILLS/review-plan/SKILL.md" "review-plan: step 0 finds the repository; exit 4 and 5 review the plan alone" \
+    '### 0. Find the repository' 'Issue context unavailable' 'the review rests on the plan alone'
+# The session-root rule (issue 581, round 1): an issue's local records are
+# read or written only when issue_repo.sh says the issue is this
+# checkout's. Each fenced block that persists an entry, resolves the
+# work-plans directory or looks for an issue's plan asks the helper first,
+# with the guard above (exit 0 only) or the records guard (exit 0, or 4 and
+# 5, which only a bare number gives), so a qualified ref naming another
+# repository (exit 6) stops the block before the record is touched.
+REC_GUARD='"$WS_ROOT/.agent/scripts/issue_repo.sh" "<ref>" >/dev/null; _rc=$?; case "$_rc" in 0|4|5) ;; *) echo "issue_repo.sh exit $_rc: this block reads and writes no records; see the Repository by exit code table"; exit "$_rc" ;; esac'
+# records_blocks_guarded <file>: one line per fault, then "blocks=<n>".
+records_blocks_guarded() {
+    awk -v g1="$REPO_GUARD" -v g2="$REC_GUARD" '
+        /^[[:space:]]*```/ {
+            if (!inb) { inb = 1; start = NR; guard = 0; ws = 0; hit = 0 }
+            else {
+                if (hit) blocks++
+                inb = 0
+            }
+            next
+        }
+        !inb || hit { next }
+        index($0, "WS_ROOT=\"$(cat ~/.claude/agent-workspace-root") && !guard { ws = 1 }
+        ($0 == g1 || $0 == g2) && ws { guard = 1 }
+        /review_progress\.sh persist|resolve_work_plans_dir <N>|work-plans\/issue-<N>\/plan\.md"/ && $0 !~ /^[[:space:]]*#/ {
+            hit = 1
+            if (!guard) print "block at line " start ": records touched at line " NR " before an issue_repo.sh guard"
+        }
+        END { print "blocks=" blocks + 0 }
+    ' "$1"
+}
+for name in review-issue plan-task review-plan; do
+    f="$SKILLS/$name/SKILL.md"
+    [[ -f "$f" ]] || continue
+    out="$(records_blocks_guarded "$f")"
+    nblocks="${out##*blocks=}"
+    faults="$(grep -v '^blocks=' <<< "$out" || true)"
+    if [[ -z "$faults" && "$nblocks" -gt 0 ]]; then
+        pass "$name: each of its $nblocks records blocks asks issue_repo.sh before touching a record"
+    else
+        fail "$name: records blocks without an issue_repo.sh guard (blocks=$nblocks):"
+        printf '%s\n' "${faults:-no records block found}" | head -n5 | sed 's/^/        /'
+    fi
+    has "$f" "$name: exit 6 (another repository's issue) stops the skill" \
+        '| 6 | Stops before' 'names another repository than this checkout'"'"'s' \
+        'from a checkout of that repository (the session-root rule)'
+    has "$f" "$name: the exit-4 row names the SSH host alias case" \
+        'An origin through an SSH host alias (`git@<alias>:owner/repo.git`) or `ssh.github.com:443` lands here too although `gh` resolves it: only an origin URL on github.com is read as a GitHub repository, so use the bare number there'
+    # An issue title is anyone's text: never inside double quotes in a
+    # shell command, always through a quoted heredoc.
+    if grep -qF '"<issue title>"' "$f"; then
+        fail "$name: writes <issue title> inside double quotes (a backtick or \$ in it would run or expand)"
+    else
+        pass "$name: no <issue title> inside double quotes"
+    fi
+    has "$f" "$name: the issue title goes through a quoted heredoc" \
+        "ISSUE_TITLE=\$(cat <<'TITLE_EOF' <issue title> TITLE_EOF )"
+done
+has "$SKILLS/plan-task/SKILL.md" "plan-task: the draft PR's head names origin's owner when origin is a fork of \$_REPO" \
+    '_HEAD="${_ORIGIN_SLUG%%/*}:$CURRENT_BRANCH"' \
+    'gh pr create -R "github.com/$_REPO" --draft --head "$_HEAD"'
+has "$SKILLS/plan-task/SKILL.md" "plan-task: an existing PR is matched on the head repository's owner too, and two stop the step" \
+    '--json url,headRepositoryOwner' 'select((.headRepositoryOwner.login | ascii_downcase) == \"${_HEAD_OWNER,,}\")' \
+    'not editing any:'
+has "$SKILLS/plan-task/SKILL.md" "plan-task: steps 6 and 7 resolve what they need in their own shell, free text through quoted heredocs" \
+    "SUMMARY=\$(cat <<'SUMMARY_EOF' <one-line summary of the approach> SUMMARY_EOF )" \
+    'PLAN_SHA=$("$WS_ROOT/.agent/scripts/review_progress.sh" plan-sha --plan "$WORK_PLANS_DIR/plan.md") || exit 1' \
+    "cat <<'ENTRY_BODY' <1-2 sentence summary of the approach> ENTRY_BODY"
+if grep -qE '<<ENTRY$' "$SKILLS/plan-task/SKILL.md"; then
+    fail "plan-task: an unquoted <<ENTRY heredoc is back (a backtick in the summary would run)"
+else
+    pass "plan-task: no unquoted ENTRY heredoc"
+fi
+if grep -qF ".[0].url" "$SKILLS/plan-task/SKILL.md"; then
+    fail "plan-task: still takes the first pull request on the branch name (.[0].url)"
+else
+    pass "plan-task: no first-match pull request lookup"
+fi
+has "$SKILLS/review-plan/SKILL.md" "review-plan: step 0 names both branch forms and which number <N> is in the PR form" \
+    '`feature/ISSUE-<issue>-<description>` (case ignored), else the pull request number `<N>`' \
+    '`<N>` is the issue number everywhere except in step 1'"'"'s **PR number** form and the Step 5 note'"'"'s PR lines, where `<N>` is the pull request number and `<issue>` the issue number'
+if grep -qF 'wt_registry_worktree_dirs' "$SKILLS/review-plan/SKILL.md"; then
+    fail "review-plan: the --issue lookup still searches registered projects' worktrees by number"
+else
+    pass "review-plan: the --issue lookup searches no registered project's worktrees"
+fi
+has "$SKILLS/review-plan/SKILL.md" "review-plan: the --issue lookup is this checkout's plan, then the workspace worktree, then a stop naming both paths" \
+    'Registered projects'"'"' worktrees are not searched' \
+    'echo "No plan for issue <N>: looked at $plan and $plan2.'
+has "$SKILLS/review-plan/SKILL.md" "review-plan: the file path form reads only a plan in this checkout, and its example is this checkout's" \
+    '**File path** (e.g., `/review-plan ./.agent/work-plans/issue-45/plan.md`)' \
+    '_t=$(cd "$(dirname "$PLAN_ARG")" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null) && _OWN=$(cd "$_t" && pwd -P)' \
+    'if [ -z "$_TOP" ] || [ "$_OWN" != "$_TOP" ]; then' \
+    'Run review-plan from ${_OWN:-the checkout that holds it}.'
+has "$SKILLS/review-plan/SKILL.md" "review-plan: the PR number form stops where origin is not \$_REPO (it fetches the head from origin)" \
+    'if [ "${_ORIGIN_SLUG,,}" != "${_REPO,,}" ]; then' \
+    'the PR number form is not supported in this checkout'
+# The pin itself catches a block that lost its guard or a gh line that lost
+# its -R (a mutation of review-issue's text).
+MUT="$(mktemp)"
+grep -vxF -- "$REC_GUARD" "$SKILLS/review-issue/SKILL.md" > "$MUT"
+if grep -q 'before an issue_repo.sh guard' <<< "$(records_blocks_guarded "$MUT")"; then
+    pass "the records-block pin fails a block whose records guard was removed"
+else
+    fail "the records-block pin did not notice a block whose records guard was removed"
+fi
+awk -v guard="$REPO_GUARD" '$0 == guard { if (++k == 2) next } { print }' \
+    "$SKILLS/review-issue/SKILL.md" > "$MUT"
+if grep -q 'no issue_repo.sh guard line' <<< "$(gh_blocks_named "$MUT")"; then
+    pass "the gh-block pin fails a block whose guard was removed"
+else
+    fail "the gh-block pin did not notice a block whose guard was removed"
+fi
+sed 's| -R "github.com/$_REPO" --body-file| --body-file|' "$SKILLS/review-issue/SKILL.md" > "$MUT"
+if grep -q 'gh call without' <<< "$(gh_blocks_named "$MUT")"; then
+    pass "the gh-block pin fails a gh line whose -R was removed"
+else
+    fail "the gh-block pin did not notice a gh line whose -R was removed"
+fi
+rm -f "$MUT"
+
 # --- review-plan by PR number reads the plan file at the PR head (#579):
 # the PR body is a snapshot plan-task copied once, so a review that reads
 # it can judge stale text. Step 1 and the Step 5 note fetch the same way.

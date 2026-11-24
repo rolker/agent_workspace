@@ -392,6 +392,8 @@ def test_a_manifest_that_is_not_utf8_is_a_message_without_the_bytes(tmp_path, ca
 
 def test_a_manifest_is_read_as_utf8_whatever_the_locale(tmp_path, monkeypatch):
     # Read with the locale's encoding, a manifest would read on one machine and not another.
+    # It is read as bytes and decoded as UTF-8 by one function, as a manifest read from a git
+    # repo is (`decode_text`).
     import builtins
 
     from repos_manifest import manifest
@@ -399,14 +401,17 @@ def test_a_manifest_is_read_as_utf8_whatever_the_locale(tmp_path, monkeypatch):
     seen = []
 
     def spy(*args, **kwargs):
-        seen.append(kwargs.get("encoding"))
+        seen.append((args[1:2], kwargs.get("encoding")))
         return builtins.open(*args, **kwargs)
 
     monkeypatch.setattr(manifest, "open", spy, raising=False)
     path = tmp_path / "m.yaml"
     path.write_bytes(("# \u00e9\n" + _one_repo()).encode("utf-8"))
     assert load_manifest(path).repositories["a"].type == "git"
-    assert seen == ["utf-8"]
+    assert seen == [(("rb",), None)]
+    assert manifest.decode_text("\u00e9".encode("utf-8"), "x") == "\u00e9"
+    with pytest.raises(ManifestError, match="x: cannot be read as UTF-8 text"):
+        manifest.decode_text("\u00e9".encode("latin-1"), "x")
 
 
 def test_an_unreadable_manifest_is_a_message(tmp_path, capsys):

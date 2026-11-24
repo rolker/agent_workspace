@@ -78,7 +78,7 @@ remotes:
 
 | Key | Meaning |
 |---|---|
-| `manifest` | Where the manifest is, for every distro. A distro with its own `manifest_version` reads it at that version. A relative path is taken from the system directory. See "Where the manifest comes from". Not read in this part: the git form, a URL, and a distro's own `manifest_version`. |
+| `manifest` | Where the manifest is, for every distro. A distro with its own `manifest_version` reads it at that version. A relative path is taken from the system directory. See "Where the manifest comes from". Not read in this part: a URL, and a distro's own `manifest_version`. |
 | `local_manifest` | Optional. A path that is used instead, once that file exists: inside the system directory, or inside each distro's directory when there is one per distro, the same path in each. Not read in this part. |
 | `role` | The role of this machine, if the manifest has roles. |
 | `groups` | Optional. Extra groups to switch on, on top of the role. |
@@ -197,7 +197,8 @@ command finds `.repos-manifest/` by walking up from the current directory, and o
 readable `config.yaml` is an error that names the file. `init` gives that error too, not the
 refusal for a system that is set up, and its next step is to repair the file, or, to set up
 again, to move the system directory aside and run `init` in an empty directory. A `config.yaml` without exactly the shape this version writes
-(`manifest` as a path, `layout`, and `role`, `groups` and `distros` when set, each of its type,
+(`manifest` as a path or as the git form's mapping, `layout`, and `role`, `groups` and
+`distros` when set, each of its type,
 with an empty entry for each distro) is the same error, naming the key and what is wrong; any
 other key is named with the words that this version does not read it.
 
@@ -250,9 +251,10 @@ repos-manifest add-distro rolling --manifest-ref rolling
 A refusal changes nothing. Each command checks the conditions below in the order listed and
 gives the first that applies, with its next step. The checks that need no fetch come first.
 
-Two kinds of row are not built in this part, and no command makes their check: the `init`
-row for `--manifest-ref` or `--manifest-path`, which `init` does not take yet, and every
-`add-distro` row, since `add-distro` is not built. Every other row is built.
+The `add-distro` rows are not built in this part, and no command makes their check, since
+`add-distro` is not built. Every other row is built. When the manifest is given in the git
+form, `init` and `sync` check the `vcs` and `git` row before they read it, since git reads it;
+for a path, the rows are checked in the order listed.
 
 | Command | Condition | Next step the message gives |
 |---|---|---|
@@ -276,8 +278,8 @@ row for `--manifest-ref` or `--manifest-path`, which `init` does not take yet, a
 | `add-distro` | The manifest read has no `distros:`. | None: there is no distro to add. |
 | `add-distro` | The manifest read has `distros:` and does not list the distro. | When `manifest` is given in the git form, `--manifest-ref` for a version that lists it; when it is not, add the distro to its `distros:`. |
 
-A next step that names a command or option that is not built yet, `add-distro` or
-`--manifest-ref`, is left out of the message until it is built.
+A next step that names a command that is not built yet, `add-distro`, is left out of the
+message until it is built.
 
 #### Where the resolved files and state go
 
@@ -382,8 +384,35 @@ manifest:
 The git form is read by making a shallow clone of the branch or tag and taking the file out
 of it, with `git` as it is set up on the machine. Whatever lets a person clone that repo by hand lets the tools
 read the manifest: ssh keys, an ssh agent, entries in `~/.ssh/config`, a credential helper.
+One exception: a url rewrite in the person's git configuration (`url.<base>.insteadOf`) that
+leads to another transport, such as https to ssh for a forge, is refused, because the read
+allows only the transport the URL names (below). The message then says what to give instead:
+the URL the rewrite leads to, which `git ls-remote --get-url <url>` prints, as the manifest's URL.
 When a command is run at a terminal and git or ssh needs a password or passphrase, it asks.
 When there is no terminal, as in CI, it fails with a message and does not wait.
+
+What is built reads the git form for the manifest a system is set up from: `init` with
+`--manifest-path`, and `sync`, `status` and `show` in the system, each of which reads it from
+the repo afresh, once per run; nothing of it is kept between runs. The clone is bare (nothing
+is checked out, so no hook or filter runs) and shallow, at the branch or tag given, in a
+temporary directory named `repos-manifest-...` in the system's temporary directory (`TMPDIR`),
+never in the system directory, and it is removed when the read ends, a stop signal included;
+only a SIGKILL of the tool can leave it there. git is allowed only the URL's own transport, so
+a redirect cannot take an https read to plain http or elsewhere (an http read may go to
+https). git checks the transport after it applies a url rewrite, so a rewrite to another
+transport is refused too. With a terminal git may ask, and has no time limit. With none, git
+runs in a session
+of its own with its prompts turned off, the read has 60 seconds as a whole, and then git and
+the helpers it started, such as ssh, are ended. The file is the one entry at exactly the path
+given, written from the top of the repo as git names it (no `./`, no `/` at the end, not
+through a link); a link, a submodule or a directory there is refused, and so is a file larger
+than 1 MiB, before it is read. A version `heads/<x>` must be a branch and `tags/<x>` a tag. A
+version git cannot find is refused with git's own words, its URLs masked, and the next step
+that a branch or tag is meant: a manifest at a commit is not read yet. The text is checked as
+every manifest's is. The location is named in messages and in the resolved files' head comment
+as `url  version  path`, with the url's user name and password masked; `config.yaml` keeps the
+url in full, as the resolved files keep repo URLs. A manifest read from a git repo that has a
+`base` is refused in this version.
 
 The git form is also the one `fetch_from` can act on, because the tools know which repo the
 manifest is in. A field machine can be given the published location of the manifest and a
@@ -656,7 +685,10 @@ update, and step 1 does nothing for it.
 
 Step 1 follows the same rules as every other update: a clone that a person has moved to
 another branch, or that has local work, is left as it is. A developer who is editing the
-manifest in its checkout gets that edited manifest.
+manifest in its checkout gets that edited manifest. Step 1 and `local_manifest` are not built
+yet: until they are, `sync` reads the location `manifest` records, and a manifest edited in the
+clone of its repo under the system directory is not read (the clone itself is left alone, as
+any repo with local work is).
 
 After step 1, the manifest read for a distro is checked against what `config.yaml` records.
 Where they disagree, `sync` reports it for that distro and goes on with the other distros. By
@@ -1568,12 +1600,14 @@ repos-manifest status [--distro <name>] [--json]
 ```
 
 Shows, for each distro it acts on, what the system directory holds against what the manifest says.
-It changes nothing on disk and makes no network call of its own. It takes no lock, writes no resolved files,
+It changes nothing on disk and makes no network call of its own, except to read a manifest that
+`config.yaml` records in a git repo, which it reads from the repo as `sync` does (see "Where the
+manifest comes from"). It takes no lock, writes no resolved files,
 no record and no setup file, and it does not fetch: every answer is about the clones as they are, with
 what `origin` had when each was last fetched (by `sync`, or by hand). Every `git` it runs passes
 `--no-optional-locks`, so even `git status` does not rewrite a clone's index.
 
-`status` writes nothing in the system directory and makes no network call of its own. It runs
+`status` writes nothing in the system directory and makes no other network call of its own. It runs
 the clean filters a clone's own configuration names (a Git LFS filter is one), as `git status`
 does, so `status`, `git status` and `sync`'s git count the same files as changed (in a partial
 clone, a staged rename aside: see below); a filter that writes or fetches is outside what
@@ -1690,7 +1724,8 @@ and the facts that are not zero in brackets at the end. With `--json` the one do
 output is the same information:
 
 ```
-{ "format": 1, "ok": true, "system": "<absolute path>", "manifest": "...", "role": "...",
+{ "format": 1, "ok": true, "system": "<absolute path>", "manifest": "..." | { "url": "...",
+  "version": "..." | null, "path": "..." }, "role": "...",
   "groups": [...], "layout": "flat|distro-dirs", "recorded_distros": ["jazzy", "rolling"] | null,
   "distros": [ {
     "distro": "jazzy" | null, "ok": true, "problem": null,
@@ -1701,7 +1736,9 @@ output is the same information:
     "not_in_manifest": [ { "key": "...", "path": "..." } ] } ] }
 ```
 
-`version` is what the manifest names; `path` is relative to the system directory; `layer` is the
+`manifest` is the location `config.yaml` records: a path is a string, and a file in a git repo an
+object, with its url's user name and password masked and a null `version` for the default
+branch. In a repo's entry, `version` is what the manifest names; `path` is relative to the system directory; `layer` is the
 layer's name, `_unnamed` for the unnamed first layer, as the resolved files name it; `changes`,
 `unpushed` and `behind` are null where the repo is not there, `status` cannot count, or
 (`unpushed`) `HEAD` is detached, and all three are null for `left-alone` and `unusable`, which
@@ -1856,7 +1893,10 @@ key, not in the prefix.
 
 The rule applies to every repo the manifest resolves to, whichever manifest in the chain its
 URL came from, to the repo that holds the manifest, and to a parent manifest that is named
-as a file in a git repo; the last two wait until a manifest is read from git ("What is built").
+as a file in a git repo; the last waits until a parent is read from git ("What is built"). For
+the manifest given in the git form, the repo of the same name at the place is read, at the
+same version and path; messages name the URL read and the published one, and `config.yaml`
+keeps the published location.
 `status` shows where each repo was fetched from.
 
 A machine that should run exactly what is published leaves `fetch_from` unset.
@@ -1941,7 +1981,10 @@ git config --global url."git@github.com:example/".insteadOf "https://github.com/
 ```
 
 Neither changes the URL written in a clone's configuration, which is what the url rule compares,
-so `sync` and `status` read such a clone as following the manifest. `remote.origin.pushurl` does
+so `sync` and `status` read such a clone as following the manifest. A manifest read from a git
+repo at such a URL is the exception: the read allows only the transport the URL names, so the
+`insteadOf` rewrite to ssh is refused there, and the manifest's URL is given as the ssh URL the
+rewrite leads to ("Where the manifest comes from"). `remote.origin.pushurl` does
 the same for one clone. `fetch_from` is for a machine that fetches every repo from another place,
 which a rewrite per owner would only approximate.
 
@@ -2118,7 +2161,8 @@ Their robot uses the role `robot` with the extra group `my-robot-hardware`.
   installs vcs2l for the tests.
 - `colcon`, to build a layer.
 - `git` 2.23 or later, to update repos that are already cloned, to read their state, to check
-  whether a repo exists at another place and to add remotes.
+  whether a repo exists at another place, to add remotes and to read a manifest from a git
+  repo.
 - Python with PyYAML.
 
 The tools call `vcs` and `colcon` as commands. They do not import them as libraries. Every
@@ -2178,7 +2222,8 @@ that format and the specification. The reader of that format is removed, and wit
 things this design drops: a `packages:` section with package dependencies, roles defined by
 starting packages, and a cache of fetched parent manifests kept between runs.
 
-`init` and `sync` are built for a manifest given as a path on the local disk, flat or with
+`init` and `sync` are built for a manifest given as a path on the local disk or as a file in a git
+repo (`--manifest-path`, `--manifest-ref`; see "Where the manifest comes from"), flat or with
 `--distro-dirs`: setting a system up, cloning the repos that are missing, and updating the
 ones that are there by the rules under "sync", except the rebase of commits not on `origin`
 (such a repo is left as it is). `sync` reads the manifest and resolves every distro it acts on,
@@ -2187,11 +2232,14 @@ that cannot be read ends the run with nothing changed, since every distro reads 
 recorded location; a distro whose manifest does not resolve, whose resolved files cannot be
 written out, or, on a flat system, whose manifest now has distros, is reported, and the others
 go on. Each of those errors ends by saying that the manifest's path is the one recorded in
-`config.yaml`, taken from the system directory. Two names that a disk which ignores case
+`config.yaml`, taken from the system directory, or, for the git form, that the manifest is
+read from its repo afresh at every run. A manifest edited in the clone of its repo is not read
+until `local_manifest` is built (see "sync"). Two names that a disk which ignores case
 treats as one are not checked yet on the real destination.
 
-`status` is built as "status" describes, for a manifest given as a path on the local disk. It
-reads only and makes no network call, with the limits "status" lists. Some of its checks are
+`status` is built as "status" describes, for a manifest given as a path on the local disk or as
+a file in a git repo. It reads only and makes no network call but reading a manifest recorded
+in a git repo, with the limits "status" lists. Some of its checks are
 `sync`'s own code, called by both: resolving the manifest, the record's layer and the check on the
 real destination, the first checks on a repo (a git repository of its own, a commit checked out, no
 operation in progress, no `index.lock`, not sparse, one `origin` url, a stopped move), counting
@@ -2207,24 +2255,26 @@ done. The cases where the two read a repo differently, because `sync` fetches fi
 "status".
 
 `show` is built for a manifest given as a path on the local disk, and with no manifest inside
-a system directory, as "show" describes, with the URLs `fetch_from` builds in a system that sets
+a system directory, as "show" describes, whichever form the system records, with the URLs `fetch_from` builds in a system that sets
 it.
 
 Fetching every repo from another place is built with `fallback: false`, as "Where repos are
 fetched from" describes: `fetch_from` in `config.yaml`, `init --fetch-from`, and `init`, `sync`,
 `status` and `show` acting on the URLs built from the prefix through one step of resolving,
-with `sync`'s url rule moving the `origin` of clones that are there. Not built yet:
-`fallback: true` (refused where `config.yaml` is read), the `upstream` remote, and reading the
-manifest's own repo and a parent manifest from the other place.
+with `sync`'s url rule moving the `origin` of clones that are there, and reading a manifest
+given in the git form from the repo of its name at the place. Not built yet: `fallback: true`
+(refused where `config.yaml` is read), the `upstream` remote, and reading a parent manifest
+from the other place.
 
 `build` is built as "build" describes, for one distro at a time, stopping at the first layer
 that fails unless `--keep-going` is given. It reads the resolved files `sync` wrote and needs `colcon` on `PATH` or beside the
 Python running it.
 
 Not built yet: step 1 of "sync" (the manifest's own clone), the rebase of a repo with commits
-not on `origin`, `local_manifest`, the git and URL forms of a manifest's location with `--manifest-ref` and
-`--manifest-path`, arguments after `--` for `init` and `sync`, `add-distro`, `freeze`,
-`fetch_from` with `fallback: true` and extra remotes.
+not on `origin`, `local_manifest`, a manifest's location given as a URL, the git form given to
+`resolve`, `validate` or `show` and in `base`, a manifest at a commit, arguments after `--` for
+`init` and `sync`, `add-distro`, `freeze`, `fetch_from` with `fallback: true` and extra
+remotes.
 
 ## Open questions
 

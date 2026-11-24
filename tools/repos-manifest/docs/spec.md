@@ -314,7 +314,9 @@ base:
 A string with a `:` before its first `/` is a URL, not a path. A file whose name has a `:` in
 it is named with a directory in front, as in `./a:b.manifest.yaml`.
 
-The tools here read a path only for now. They refuse a URL or the git form with a message
+The tools here read a path, and a file in a git repo for the manifest a system is set up from
+(see "Where the manifest comes from" in the design document). They refuse a URL, and the git
+form in `base` and where a manifest is given to `resolve`, `validate` or `show`, with a message
 that says so.
 
 ### How manifests combine

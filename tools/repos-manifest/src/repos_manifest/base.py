@@ -5,7 +5,9 @@ the order it names them, each after its own parents, then the manifest itself. E
 read once, the first time it is reached; a manifest that builds on itself, directly or through
 others, is an error that names the chain.
 
-This version reads a location given as a path on the local disk. A relative path is taken from
+This version reads a `base` given as a path on the local disk, in a manifest read from the local
+disk; a manifest read from a git repo (``fetch.py``) is read alone, and its `base` refused
+(`parse_git_manifest`). A relative path is taken from
 the directory of the manifest that names it, after following links. A manifest is identified by
 its real path (links followed), which is also how it is named as a parent in messages and in
 the head comment of the output, so one file reached by two paths is one manifest.
@@ -33,6 +35,18 @@ def parse_manifest(text: str, source: str) -> Manifest:
         raise ManifestError(
             f"{source}: base: this version of the tool cannot read `base` in a manifest given"
             " as text; it reads it in a manifest read from a file"
+        )
+    return merge_parts([part])
+
+
+def parse_git_manifest(text: str, source: str) -> Manifest:
+    """Check the text of a manifest read from a git repo, named `source`. Its `base` is not
+    read in this version, and is refused with a message that says so."""
+    part = parse_part(text, source)
+    if part.base:
+        raise ManifestError(
+            f"{source}: base: this version of the tool reads `base` in a manifest read from a"
+            " file on the local disk, not yet in one read from a git repo"
         )
     return merge_parts([part])
 

@@ -107,10 +107,18 @@ when it is not the first in the chain, and the repos left out with the reason. R
 manifest inside a system directory, it uses what the system records. It writes nothing, and
 `init` prints the same before it asks. [docs/design.md](docs/design.md#show) shows the output.
 
-`init` sets up a system directory from a manifest given as a path on the local disk and clones
-its repos; `sync` clones the ones that are missing and updates the ones that are there, with
-`git`. A clean clone on the manifest's branch is fast-forwarded, and one `sync` left on the
-version the manifest named before is moved to the one it names now. A clone a person has changed
+`init` sets up a system directory from a manifest given as a path on the local disk, or as a
+file in a git repo (the repo's url with `--manifest-path` and, for a branch or tag other than
+the default, `--manifest-ref`), and clones its repos. A manifest in a git repo is read from the
+repo afresh by every `sync`, `status` and `show` in the system, with `git` as it is set up on the
+machine, so a private repo over ssh is read as a person clones it, and nothing of it is kept.
+The read allows only the transport the url names, so a url rewrite in the person's git
+configuration (`url.<base>.insteadOf`) that leads to another transport, such as https to ssh,
+is refused; give as the manifest's url the one the rewrite leads to, which
+`git ls-remote --get-url <url>` prints.
+`sync` clones the repos that are missing and updates the ones that are there, with `git`. A
+clean clone on the manifest's branch is fast-forwarded, and one `sync` left on the version the
+manifest named before is moved to the one it names now. A clone a person has changed
 is left as it is and reported: one with uncommitted changes, commits not on `origin`, another
 branch checked out, an operation in progress, or a file git does not track (untracked or
 ignored) where an incoming file goes. Untracked files elsewhere do not stop an update. So is a
@@ -170,7 +178,8 @@ owner whose repos are private.
 says: for each repo one state (expected, different, left alone, unusable, missing, skipped, or
 not at its place), with its uncommitted changes, its commits not on `origin`, how far it is
 behind `origin`'s branch, and where it was fetched from; and the repos `sync` recorded that are
-no longer in the manifest. It changes nothing on disk and makes no network call of its own: it
+no longer in the manifest. It changes nothing on disk and makes no network call of its own,
+except to read a manifest recorded in a git repo, as `sync` reads it: it
 answers from what each clone had when it was last fetched, starts no fsmonitor hook and lets a
 partial clone fetch no missing object. In a partial clone it counts changes without rename
 detection, so that it never needs a file the clone does not hold; there a staged rename counts as

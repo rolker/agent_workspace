@@ -64,6 +64,24 @@ When running `gh` commands that target a repo (`issue create`, `pr create`,
 `-R <owner/repo>` explicitly. `gh_create_issue.sh` enforces this with a
 safeguard that aborts if the detected repo doesn't match workspace or project.
 
+The same holds in a checkout: `gh` picks a remote named `upstream` over
+`origin` when no default is set, and a skill run from the wrong directory
+reaches another repository's issue with the same number. Skills that read
+or comment on an issue (`/review-issue`, `/plan-task`, `/review-plan`)
+therefore never let `gh` choose: at the head of every code block that calls
+`gh issue` or `gh pr` they ask `$WS_ROOT/.agent/scripts/issue_repo.sh <ref>`
+(every block is a new shell), print the answer as a `Repository:` line, and
+pass `-R "github.com/$_REPO"` (the host written out, so a `GH_HOST` in the
+environment cannot send the call elsewhere). A bare number means the
+repository of the checkout the skill runs in; `owner/repo#N` names that
+repository explicitly. An issue of another repository is worked from a
+checkout of that repository (the session-root rule): the helper refuses it
+(exit 6), and every block that reads or writes the issue's records asks
+the helper first too, so a record of this checkout's issue with the same
+number is never touched for it. A non-zero exit means no `gh` call in
+that block; each skill's "Repository by exit code" table says what it does
+then (exit 4, a checkout with no GitHub repository, is an ordinary case).
+
 ## Merging PRs from Worktrees
 
 Never use `gh pr merge --delete-branch` from a worktree — `gh` tries to
