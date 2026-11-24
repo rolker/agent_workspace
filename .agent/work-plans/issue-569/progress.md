@@ -781,3 +781,18 @@ Part 3 of 3 (remove the reader). Status is partial only because the CI job renam
 - Re-grep (`prototype|manifest-dir|earlier format|resolve_chain` over tools/repos-manifest, .agent, docs, work-plans aside): the remaining "earlier format" hits are the refusal and its tests and docs (current behaviour); tool roadmap line 29 (the line itself); root `docs/roadmap.md` row 4 "resolver prototype landed on PR #268" (history); `.agent/knowledge/host_standing_rules.md:29` (unrelated); `test_cli.py` `--layout manifest-dir` (the not-accepted test). Outside that grep: `.github/workflows/validate.yml:67` "(#267 prototype)" (the denied rename).
 
 Suites run: `pytest tools/repos-manifest/tests` (worktree source, main checkout venv): "1988 passed in 728.75s", no skips; `test_ros2_colcon.sh`: "Results: 1203 passed, 0 failed, 0 skipped"; `test_register_project.sh`: "225 passed, 0 failed"; `test_register_session_root.sh`: "72 passed, 0 failed". Pre-commit hooks ran on the touched files at each commit (SKIP=validate-script-tests). The full pass is left to the host.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 12:39 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: phase-failed
+**Decision**: retry
+**Phase**: implement
+
+"Leave it out (Recommended)"
+
+Part 3's implement pass wrote its entry partial (db392799) for one reason: the rename of the CI job in `.github/workflows/validate.yml`, which the owner had approved mid-pass ("yes, rename the CI job"), was denied by the session's permission check when the background agent tried the edit (reason given: "Undermining Oversight"). The agent tried no other way, and the host did not make the edit on its behalf. Everything else in part 3 is done and committed (6d1ae05b, c59fc837). Shown this, with the one-line edit quoted, the owner chose to leave the rename out of this part and have a small issue opened for it, which is #601. The other choices offered were that he make the edit himself, or that the host make it as a takeover of the step.
+
+So the retry changes no code: it writes the pass's entry again as complete, with the rename named as left out on the owner's decision and tracked in #601, and the workflow file untouched.
