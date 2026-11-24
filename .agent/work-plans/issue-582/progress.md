@@ -28,3 +28,13 @@ issue: 582
 - Static analysis: no linter profile for `.md`; pre-commit on the file passed.
 - Plan drift: skipped, no work plan (the owner asked for this row directly).
 - Claude adversarial and cross-model (gemini, codex): skipped, Light tier dispatches neither.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 12:17 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the pre-push review approved with nothing open; the host's pre-commit pass over the changed files passed)
+**After**: publish
+**Decision**: publish
+
+One row in the roadmap's deferral table, in the owner's words, added on his word: "add it to the roadmap" (2026-11-24), after he was shown the row and asked what it would change. This issue has no issue review, plan or plan review on its timeline: the change is one row of text the owner approved word for word, with nothing designed (a host decision, listed for his veto). The pull request says Part of #582; the issue stays open.
