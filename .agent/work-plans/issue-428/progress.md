@@ -1290,3 +1290,40 @@ Summary: no must-fix. Each of the four suggestions was checked by running `extra
 **Decision**: address
 
 The Integrated Review at a0cfd6a7 left three valid suggestions open, each a small fix: S1 (a crafted user part with ? or #, and a repository named . or .., are accepted; fix in both parsers, _issue_helpers.sh and sitrep_root.sh), S2 (the test-fixture local-path form accepts any absolute path ending /github.com/<owner>/<repo>; narrow it to the test sandboxes' fake_remotes/github.com/ folders), S3 (an owner name with _ gives no slug and worktree_create.sh then says the origin is hosted elsewhere, which is untrue). Reason for fixing now rather than asking: a cold read of the final diff comes before the merge question in any case, so a fix round now adds little wait, and the three fixes are a few regex lines with test rows. Issue 563's branch also edits sitrep_root.sh and its suite: the S1 and S3 edits there stay to the slug pattern and its test rows.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 09:04 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #570 at `1bf11430`
+**Addressed**: Integrated Review at `95e6593c` (2026-11-24 08:58 -05:00)
+**Commits**: `72d77eee`, `82603cf2`, `1bf11430`
+
+### Actions
+- [x] S1: a `?` or `#` in the https/ssh user part gives no slug, and a repository of `.` or `..` (after the `.git` suffix, so `o/..git` and `o/...git` too) gives none, in both parsers; ten table rows, one (`o/.x`) guarding against over-refusal — `.agent/scripts/_issue_helpers.sh:50-63`, `.agent/scripts/sitrep_root.sh:231-235` (`72d77eee`)
+- [x] S2: the local-path form needs `/fake_remotes/github.com/`; the `demo15` fixture moved under `fake_remotes`; rows added for `~/go/src/github.com/o/r`, `~/ghq/github.com/o/r.git`, `remotes/github.com/...` and `not_fake_remotes/github.com/...` (all give nothing); the three host-name local-path rows now sit under `fake_remotes` so they still test the host segment; header notes in `_issue_helpers.sh`, `test_issue_helpers.sh`, `test_merge_pr.sh` and the `script_reference.md` line say `fake_remotes` — `.agent/scripts/_issue_helpers.sh:40-46,57`, `.agent/scripts/tests/test_worktree_create.sh:1505-1517` (`82603cf2`)
+- [x] S3: `_` accepted after the owner's first character in both parsers; rows `o_x/r` (now `o_x/r`), `name_short/r.git` and `_o/r` (nothing) — `.agent/scripts/_issue_helpers.sh:25-26,49`, `.agent/scripts/sitrep_root.sh:234-235` (`1bf11430`)
+
+### Host directions applied (listed for the owner's veto)
+- S1 and S3 fixed in both parsers with table rows; S2 narrowed to `fake_remotes/github.com/` with the named fixture moved.
+- `sitrep_root.sh` edits are only in `GH_URL` (issue 563 also edits the file). `GH_URL` no longer reuses `SLUG`: `SLUG` is also the gh-issue reference grammar shared with `sitrep_checks.sh`, so admitting `_` there would have changed reference parsing in one of two places. `GH_URL` carries its own copy with `_` in the owner; the reference grammar is unchanged.
+- The scp-like form's user part (`[^@/:\s]+@`) was left as it was: there git hands the user to ssh and still connects to github.com.
+
+### Checks
+Suites run, each on its own (four at a time), all from this worktree:
+- `test_issue_helpers.sh`: test_issue_helpers: 130 passed, 0 failed
+- `test_sitrep_root.sh`: test_sitrep_root: 65 passed, 0 failed
+- `test_sitrep_checks.sh`: test_sitrep_checks: 253 passed, 0 failed
+- `test_worktree_create.sh`: PASS: 112 FAIL: 0
+- `test_merge_pr.sh`: Results: 175 passed, 0 failed
+- `test_merge_pr_gate.sh`: test_merge_pr_gate: 213 passed, 0 failed
+- `test_merge_pr_skill.sh`: test_merge_pr_skill: 132 passed, 0 failed
+- `test_project_registry.sh`: Results: 425 passed, 0 failed
+- `test_precommit_hook_path.sh`: test_precommit_hook_path: 19 passed, 0 failed
+- `test_worktree_enter_stderr.sh`: Results: 35 passed, 0 failed
+- `test_worktree_remove.sh`: test_worktree_remove: 138 passed, 0 failed
+- `test_ros2_colcon.sh`: Results: 1553 passed, 0 failed, 0 skipped
+- `test_skill_paths.sh`: test_skill_paths: 200 passed, 0 failed
+
+Commits made with `SKIP=validate-script-tests` (issue 465 rule); the full pre-commit pass is left to the host.
