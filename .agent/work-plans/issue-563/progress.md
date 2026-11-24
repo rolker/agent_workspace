@@ -708,3 +708,30 @@ Dropped by the silence filter: the adversarial reviewer's note that a matched br
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 09:58 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aa17746c67672cf5f, resume 1 of 3)
+**Reviews-read**: none
+
+**PR**: #572 at `0d1c577f`
+**Sources**: 3 (Local Review @ `0d1c577f` (convergence check, approved, nothing open); Implementation @ `0d1c577f` (its note on "implemented, no pull request yet"); CI rollup). No hosted review and no comment on the pull request; Copilot was not requested.
+**Cross-source confirmations**: 0
+**CI**: pending (two workflow runs on `0d1c577f`, 45419122722 and 45419128178, each: Validate Documentation pass, Validate Adapter Contract pass; Lint (pre-commit), repos-manifest tests Python 3.10 and 3.14 pending, read 09:57 -05:00)
+
+`review_progress.sh sources` at `0d1c577f`: no open local findings, no GitHub comments; one dropped entry, the Local Review at `1e295fe` (stale: its one suggestion is the must-fix ruled in the Integrated Review at `1e295fe9` and fixed in d5f7368f). The convergence check's `- [ ] No issues found. LGTM.` line is not a finding.
+
+Must-fix from the Integrated Review at `1e295fe9`: closed. d5f7368f prints "Running: nothing on this machine." only when step 5 looked, otherwise "Running: not looked up for the next step: <why>" with the same three reasons as In flight's "Not looked up for <group>:" lines, and no `Running:` line when step 5 looked up no line; the no-paths template shows the three forms and a test pins them. Re-run here: test_sitrep_checks "301 passed, 0 failed", test_skill_paths "199 passed, 0 failed".
+
+Ruling on "implemented, no pull request yet" said when step 3's pull request list could not be read: it can stay a listed limit. The wording is byte for byte on main (step 3's state table and the In flight rule), this pull request does not touch it, it needs `gh pr list` to fail, and that failure prints its own error in step 3's output, so the agent writing the report sees it; it is occasional, not an ordinary case broken. It is listed in the PR body under "Open, small", so the owner sees it at the merge checkpoint; a follow-up is his call.
+
+Decision summary checked against the branch: correct. The live-run line reproduces (`lines 2/15 ... across 1/1`; `sitrep_checks.sh --root . --summary` now gives `deferrals 2/10`, as the line says); the 3/10 run was at `2e15844e`, whose last merge of main (545ee328, 08:23 -05:00) preceded issue 428's close at 09:22 -05:00. The new review bullet and both "Open, small" bullets match the timeline and the code. One imprecision, not wrong in substance: the heading "Open, small (declined in the fix round)" covers the second bullet, which was not declined in a fix round but left as same-on-main (its own words say so). Main has gained pull request 571 since the last merge of main (issue 569's work plan and one line of `tools/repos-manifest/docs/roadmap.md`); `git merge-tree` merges it without conflict, and the PR text no longer claims the branch is level with main.
+
+### Findings
+- [x] (must-fix, Integrated Review @ `1e295fe9`) No-paths "Running: nothing on this machine." stated when step 5 did not look — closed by d5f7368f, verified above — `.claude/skills/sitrep/SKILL.md` step 8
+- [x] (suggestion, Implementation @ `0d1c577f`) "implemented, no pull request yet" said when the pull request list could not be read — ruled a listed limit, no change in this pull request: same on main, untouched here, needs a `gh pr list` failure whose error is visible; listed under "Open, small" in the PR body — `.claude/skills/sitrep/SKILL.md:533`, `:1311`
+
+### False positives
+None.
