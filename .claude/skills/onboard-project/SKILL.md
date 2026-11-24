@@ -394,7 +394,8 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 
 Each prints one line, or nothing with the reason on stderr:
 
-- `set <path>[#<heading>]` or `none` (exit 0): recorded; not asked.
+- `set <path>[#<heading>]` or `none` (exit 0): recorded; not asked, unless
+  `--reask` names the key.
 - `fallback <path>` (exit 0): not set; the readers use `<path>`, the first
   that exists of a fixed list (roadmap: `docs/roadmap.md`,
   `docs/ROADMAP.md`, `ROADMAP.md`; design: `docs/design.md`). Offer
@@ -421,8 +422,11 @@ The options:
   ticks nothing (`roadmap`), and the design-anchor check reads only parts'
   designs (`design`). With `roadmap=none`, steps 5 and 6 offer no
   Direction section and no queue in the roadmap.
-- **Decide later**: nothing stored. The readers keep the fixed list, and
-  the question comes back on the next run.
+- **Decide later**: nothing stored. With no stored value the readers keep
+  the fixed list, and the question comes back on the next run; under
+  `--reask`, a value already stored stays as it is, and the readers keep
+  following it. The answer holds for the rest of this run: the key is not
+  asked about again (step 5's offer to record a new roadmap included).
 
 What a stored value changes: `goals` is read by this skill,
 `audit-project` and `design-discussion`, no script; `design` is the file
@@ -464,7 +468,8 @@ each its own yes.
 roadmap` names (`set` or `fallback`; for a stored key whose file is not
 written yet, the path `project_setting.sh get <settings-name> roadmap`
 prints); with nothing found, a new `docs/roadmap.md`, and
-offer to record it as `roadmap=docs/roadmap.md` (its own yes). With
+offer to record it as `roadmap=docs/roadmap.md` (its own yes), unless the
+user chose decide later for the roadmap in 3c this run. With
 `roadmap=none` there is none. When the lookup refuses the setting (exit
 2), there is none until it is fixed: say so.
 
