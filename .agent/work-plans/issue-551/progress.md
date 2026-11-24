@@ -947,3 +947,22 @@ Codex ran alone (EXIT=0) on the title, URL and diff only; the prompt carried no 
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 12:46 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #602 at `20d8d4a3`
+**Sources**: 5 (Local Review (Pre-Push) @ `32c9a35b` round 1, @ `e985201b` round 2, @ `e8b916e7` round 3; Local Review @ `20d8d4a3` (Codex cold read); CI rollup). No hosted review, no conversation comment, no Copilot review (not requested; the cold read stands in its place).
+**Cross-source confirmations**: 0
+**CI**: pending (Workspace Validation ran twice on `20d8d4a3`, runs 45451047821 and 45451062272; in each: Validate Documentation pass, Validate Adapter Contract pass, Lint (pre-commit) pending, repos-manifest tests (#267 prototype) (Python 3.10) pending, repos-manifest tests (#267 prototype) (Python 3.14) pending; read 12:45 -05:00)
+
+The `sources` helper found no open local finding at this head and no dropped entry: round 1's 1 must-fix and 8 suggestions and round 2's 2 must-fix and 3 suggestions are all ticked by the fix passes after them, round 3 (convergence check) and the Codex cold read approved with nothing open. Pull request mergeable; main has moved since the round 2 merge (pull request 600: `docs/roadmap.md` and issue 582's progress file only), no overlap with this branch.
+
+Decision summary checked against the branch: the changed files, the roadmap rules it names (`.md` only, not the README, an agent instruction file, `docs/design.md` or the design's file; symbolic-link refusal at lookup only) match `_project_registry.sh` lines 1485-1518 and 1753-1760; the `_bookkeeping.sh` change is comment only; the triage-reviews and `docs/design.md` changes say what it says; the merge of main holds pull request 597. Two wording points, neither wrong in substance: "the plan and both reviews kept it out" (of `discover_governance.sh`) is loose, since the record shows the plan (plan.md line 36), its plan review and pre-push round 2 keeping it out, and round 1 did not address it; and the Review list predates the post-publish Codex cold read (approved, no findings), which it does not mention. "Gemini found the quoting defect" fits round 2's record (Gemini's must-fix 2 confirmed and kept) but the entry does not name which defect that was.
+
+### Findings
+- [x] (suggestion, PR text "Left as they are") `discover_governance.sh` lists design files by fixed name (`ARCHITECTURE.md`, `docs/design.md`) and does not read the `design` setting. Ruling: may stay a listed limit. It is an inventory of governance files under six types, documented in `docs/design.md` (Sessions and roots) as not knowing the roles; issue 551's reader list (item 3) does not include it, and the plan (line 36) kept it untouched after its review. Its one consumer, gather-project-knowledge, could report a project whose design lives under another name as having no architecture file; that is a gap in a summary the pull request names openly, not a wrong action by any reader of the three settings. A possible follow-up for the owner, not a merge blocker. — `.agent/scripts/discover_governance.sh`
+- [x] (suggestion, PR text "Left as they are") double-quoted free-text arguments in skill text this pull request does not otherwise touch (`review_progress.sh persist --title "<issue title>"` in six skills; agent-written `git commit -m`, `gh issue create --title`, `gh label create --description` text). Ruling: may stay a listed limit, parked for the owner. This branch neither adds nor changes any of them, so it breaks no ordinary case; the one real case (an issue title holding a backtick or `$`) predates this branch and is workspace-wide. The quoting fix this branch does make covers every place it writes a stored or user-given value into a command. — skill text outside this pull request's changes
