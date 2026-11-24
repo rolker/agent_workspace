@@ -1359,6 +1359,15 @@ grep -qF '<path name>: <t> of <n> done. Not yet: <its first unmet line, as writt
     && ! grep -qF 'nothing advances it."' <<< "$sk_flat" \
     && pass "(skill 8) with paths: one line per group, no single Next:, groups with no work on this machine named; 'nothing on this machine'" \
     || fail "(skill 8) per-path report wording missing"
+# Without paths, "nothing on this machine" only when step 5 looked;
+# otherwise the Running: line says it was not looked up and why (issue #563).
+grep -qF 'Running: not looked up for the next step: <why: its line names no issue of this repository | the branches could not be listed | the pull request list could not be read>.' "$SKILL" \
+    && grep -qxF 'Running: nothing on this machine.' "$SKILL" \
+    && grep -qF 'When step 5 looked and matched nothing, it reads "Running: nothing on this machine."' <<< "$sk_flat" \
+    && grep -qF 'so when step 5 did not look, the line reads "Running: not looked up for the next step: <why>", one per reason' <<< "$sk_flat" \
+    && ! grep -qF 'When step 5 matched nothing, it reads' <<< "$sk_flat" \
+    && pass "(skill 8) without paths: 'nothing on this machine' only when step 5 looked, else not looked up and why" \
+    || fail "(skill 8) no-paths Running: wording missing or still states an unchecked absence"
 
 echo "TEST: sit-rep step 5 takes issue numbers from the line's own cells only, text kept as written"
 cat > "$WS/.agent/scripts/worktree_list.sh" <<'EOF'

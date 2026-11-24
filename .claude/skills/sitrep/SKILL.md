@@ -1124,6 +1124,8 @@ Done: <t> of <n> steps.
 Not yet: <first unmet line, as written> — <its result in words>.
 Next: <the line's text as an action>.
 Running: <branch>: <its state>.
+Running: nothing on this machine.
+Running: not looked up for the next step: <why: its line names no issue of this repository | the branches could not be listed | the pull request list could not be read>.
 
 <one line per followed part, from step 1's next steps:>
 <sub-roadmap path>: Not yet: <its first unmet line> — <its result in words>.
@@ -1236,8 +1238,19 @@ Rules for the report:
   through Y" becomes "Onboard X through Y"). The `Running:` line under it
   gives the branch step 5 matched and step 3's state for it, then, when
   step 5 matched one, "; pull request <M>: <draft or ready>". It does not
-  print the issue's title. When step 5 matched nothing, it reads
-  "Running: nothing on this machine."
+  print the issue's title. When step 5 looked and matched nothing, it
+  reads "Running: nothing on this machine." Step 5 looked when its block
+  printed `issues_named=` with a number, listed the branches, and read
+  the pull request list (with no pull-request source for the root, the
+  branches alone). The report never states an absence it did not check,
+  so when step 5 did not look, the line reads "Running: not looked up
+  for the next step: <why>", one per reason, the reasons of In flight's
+  "Not looked up for <group>:" lines: its line names no issue of this
+  repository (`issues_named=none`), the branches could not be listed
+  (`branches: could not be listed`), or the pull request list could not
+  be read (`pull_requests=not looked up`). When step 5 looked up no line
+  (step 1 printed no rows, or every line is true), there is no
+  `Running:` line under `Next:`: the work in flight is in In flight.
 - Only when every line is `true` (with paths, every line of every group)
   does Suggested next come from
   elsewhere, from the first of these with an item: a due deferral; work
