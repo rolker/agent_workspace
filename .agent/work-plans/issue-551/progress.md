@@ -524,3 +524,13 @@ Scope: the round-3 review's two suggestions and the fix diff since `28f5462f` (6
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 22:28 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: host (round-4 pre-push review approved with nothing open; the host's full pre-commit pass passed, exit 0)
+**After**: publish
+**Decision**: publish
+
+Pushing and opening PR 1 of 2 (Part of #551).
