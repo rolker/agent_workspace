@@ -1462,3 +1462,108 @@ Pull requests 513 and 514 (part 1) and 562 (part 4: validate, build and test cal
 **Plan**: `.agent/work-plans/issue-503/plan.md` at `f484a921`
 
 Revision: part 2 (registration from a manifest) planned in full. register_project.sh takes --manifest (local file), --distro, --role, --with, --fetch-from and hands them to the adapter's setup, which runs init --distro-dirs --yes; nothing is recorded in the registry line or settings file. A URL or git location is refused before anything is written until issue 498. Findings 1 to 3 of #599 are folded in; part 3 stays a named later part. Three open questions for the owner.
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-24 13:40 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: ready
+
+**Issue**: #503 — ros2_colcon adapter: call the manifest tool's commands, and register a project from a manifest
+**Plan**: `.agent/work-plans/issue-503/plan.md` at `f484a921`
+**Branch**: `feature/issue-503`
+
+Scope of this review: the section "Part 2 (revised 2026-11-24)" and what it changes elsewhere. Read in full: `docs/manifest/design.md`, `docs/manifest/roadmap.md`, `docs/design.md` (Registry and adapters, around lines 414-596), `register_project.sh` (argument checks, type choice, settings check, dry run, rollback, `failed`, the run), `register_session_root.sh`, `_project_registry.sh` (`_REGISTRATION_KEYS`, `_registration_conf_parse`, `_registration_value_error`), the adapter's `_rc_route`, `_rc_refuse_removed_source`, `_rc_require_manifest`, `adapter_setup`, `adapter_sync`, `_rc_tool_sync`, the dispatcher's argument handling, `registration.conf` and `registration_refused`, the tool's `init.py`, issue 599, and the assertions in the five suites that the change touches. Ready on the condition that the directions under Recommended Actions are followed; each is exact and leaves no design choice open.
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | One pull request: two scripts, the adapter, the registry helper, two `registration.conf` files, three suites, docs. About +250 code lines, +420 test lines. |
+| Issue alignment | Good | Serves: "Easy to use and Modular (`README.md#workspace-goals`); `docs/design.md#registry-and-adapters`, `docs/manifest/design.md#a-project-instance-is-a-system-directory`." Both anchors exist. It makes the roadmap line "Registration passes the manifest's location, role, distro and fetch settings to `init`" true. Issue 599's three findings are folded in (findings 4 and 5 below fix the test and the advice text). |
+| File targeting | Needs work | Missing: `test_adapter.sh` (its valid-file fixtures lack the new key, finding 6). `docs/design.md` line 487 lists what `registration.conf` holds, and there is no Change log row (finding 9). |
+| Consequences | Needs work | Existing assertions on texts the plan rewrites are not listed (finding 6). A `bootstrap_url` record is not refused early (finding 3). |
+| Principle alignment | Needs work | "Test what breaks": the test for 599 finding 1 cannot fail as written (finding 4). "Verify before claiming": the plan says the adapter handles the signal itself and exits 128+n, but the adapter has no trap. Only the tool handles it (finding 2). |
+| ADR compliance | Good | ADR-0017: the design text in `docs/manifest/design.md` is rewritten in the same pull request, and the target is unchanged. ADR-0020/0021: the session-root path goes through `register_session_root.sh` unchanged. No other ADR is triggered. |
+| ROS conventions | N/A | Workspace plan. |
+
+### Answers to the host's questions
+
+1. **Command line and records.** The plan matches the design. "Everything about the manifest is given once, at registration, and passed to `init` ... After that the tool's record in `.repos-manifest/` is the one record", and "The registry line keeps ... its name, its type and its path." Everything the workspace needs later reads the tool's files, not the registry:
+   - the distro: the calling directory plus `resolved/<d>/`;
+   - `validate`: `status --json`, with the manifest read from `config.yaml`;
+   - worktree creation: `worktree_repos`/`worktree_env` over `resolved/`;
+   - `sync`: the tool's `sync`.
+
+   The bootstrap route still reads `distro=`, but a root registered with `--manifest` is never on that route. A `registration.conf` key is the right place, because that file is already "what register_project.sh does for the type". `validate_adapter.sh` needs no code of its own: adding `manifest` to `_REGISTRATION_KEYS` makes `registration_conf_problems` check it. `_registration_value_error` needs a `manifest)` case, though. Without one, the value falls through to the word-list check with `allowed` unset.
+2. **Failure and rollback.** The plan matches `init.py`: every refusal comes before `make_system_dir`, the rename is held over signals, and a failure after it is `FINISH`. Three defects: an existing empty directory is reported as "created by setup" and `KEPT=` (finding 2); a TERM ends the adapter before its cleanup (finding 2); and the next step after a failure that comes after setup is not stated (finding 8). The adapter's `rmdir`-only cleanup cannot remove anything that belongs to the user. A temporary directory left by a killed `init` (`.repos-manifest.tmp-<pid>-*`) makes `rmdir` fail. That is safe, and the next `init` sweeps it.
+3. **Refusals.** All of them sit in the parse phase before line 837, so `--dry-run` refuses too, and the registered-name refusal runs under the lock. Gaps:
+   - `--manifest` without `--distro` is not listed;
+   - the order of the set-up-root and non-empty checks decides which advice is shown;
+   - the URL test has to come after the "an existing file is a file" test;
+   - `bootstrap_url` is missing (finding 3);
+   - the advice in finding 2 of issue 599 names a command that refuses an unregistered name (finding 5).
+
+   The other messages' advice is true.
+4. **Issue 599.** Findings 2 and 3 are fixed fully. Finding 1's fix is right, but its planned test asserts a refusal that the fixed code does not give (finding 4). With finding 4's test and finding 5's text, "Closes #599" holds.
+5. **Owner questions and decisions.** See the table below.
+6. **Issue 498.** The seam is clean. The URL refusal is one check, removed when the `registration.conf` value changes. Turning `--manifest` into an absolute path applies only to a local file, which stays true after 498. The two new options are pass-throughs. Nothing here records a location that 498 would have to migrate, because the tool's `config.yaml` is the only record.
+7. **Tests.** Every refusal and both rollback cases are covered with the stub tool and no network. The real-tool test uses local git repos. Without the edits in finding 6, `test_adapter.sh` (valid-file fixtures), `test_register_project.sh:697` and `test_ros2_colcon.sh` 2777/2829/2833/4008 fail or have to change. `test_project_registry.sh` and `test_register_session_root.sh` do not assert any text the plan changes.
+
+| Item | Design says | Call |
+|---|---|---|
+| Q1: refuse a non-empty directory that is not set up | "Setting the instance up in a new, empty directory instead keeps the two apart"; the owner's example starts from `mkdir` | Answered by the design. A sound mechanism choice, and easy to loosen later. Not an owner question. "Empty" must allow `.claude` (finding 1). |
+| Q2: `--dry-run` does not run `show` | Step 3: "The session shows what the manifest comes to ... (`repos-manifest show`) and asks before fetching" | Answered by the design: `show` belongs to the session. Not an owner question. |
+| Q3: `role=`/`distro=` stay accepted on the line for a root set up by hand | "Until every instance is on the tool, the bootstrap route still reads `distro=`"; "they stay accepted ... until all five go together" | Answered by the design. On a root that holds `.repos-manifest/`, the gate already refuses them, so the only mechanism question is whether to refuse them earlier (finding 10). Not an owner question. |
+| D: `--yes` always passed | Step 3 makes the question the session's; `init` refuses without a terminal and without `--yes` | A sound mechanism choice. |
+| D: one `--distro` | "the manifest's location, the role, the first distro" | Answered by the design. |
+| D: adopting a registered name with `--manifest` refused | "for a directory that is not set up yet"; "An existing instance is not converted in place" | Answered by the design. |
+
+None of the six is an owner question.
+
+### Findings
+
+1. **[Issue alignment] (high)** "A directory that exists and holds anything" is refused, but `register_session_root.sh --manifest` always runs in an existing folder: the session's own. In the owner's acceptance case 2, that folder can already hold `.claude/`. Claude Code writes `.claude/settings.local.json` there when a permission prompt (that script's own, per its header) is answered "don't ask again". The refusal would then block the flow this part builds for issue 473. Resolution: treat a directory as empty when its only entry is `.claude`, and test it with `register_session_root.sh`.
+2. **[Consequences] (medium)** The rollback the plan describes is not the code's:
+   - `rollback()` sets `KEPT=$PROJECT_ROOT` and prints "created by setup" whenever `SETUP_RAN=1` and the root exists. An existing empty directory is therefore misreported, and `KEPT=` contradicts the header ("only when setup created a directory").
+   - `failed()` then says "setup is not run again on the kept ...", which is false for an empty directory, because a re-run with `--manifest` does run setup.
+   - The plan's "the adapter ... handles the signal itself and exits 128+n" is wrong: `adapter.sh` has no `trap`. On a TERM to the process group, bash ends the adapter before its `rmdir` cleanup runs. Only `init` handles the signal.
+3. **[Consequences] (medium)** `--manifest` together with `bootstrap_url`, from `--set` or from a kept settings file, is not refused. On the tool route, `validate` refuses `bootstrap_url` as a second record, so registration would run `init` (a clone of every repo), fail the gate, and leave the directory with `KEPT=`.
+4. **[Principle alignment] (medium)** The test for 599 finding 1 is described as "`_rc_route` ... answers `tool` once, then `bootstrap`; `setup` and `sync` ... read it once and are refused". With the fix, a single read of `tool` sends the call to `_rc_tool_sync`, not to a refusal. Also, `_rc_route` is read again by `_rc_manifest_dir`, `_rc_require_manifest` and other helpers, so "called once" cannot be asserted over a whole verb.
+5. **[Consequences] (medium)** For the kept-file case (599 finding 2), the existing `registration_refused` reason and `final` advice say "register ... without --set source=". There is no `--set` in that case. The obvious alternative, `project_setting.sh unset`, refuses an unregistered name (`project_setting.sh:144`), and the name is unregistered after `--remove --keep-settings`.
+6. **[File targeting] (low)** Existing tests that the change breaks are not listed.
+   - `test_adapter.sh` 444 and 470 write a `registration.conf` with three keys and expect it to be valid.
+   - `_project_registry.sh:2390` lists the keys in its message.
+   - `test_register_project.sh:697` asserts the current `registration_refused` reason text.
+   - `test_ros2_colcon.sh` 2777, 2829, 2833 and 4008 assert `_rc_refuse_removed_source`'s `init <manifest> --distro-dirs --distro ...` text.
+
+   The plan says these texts change and that the existing tests "keep passing unchanged". Both cannot be true.
+7. **[Consequences] (low)** These refusals are left unspecified:
+   - `--manifest` with no `--distro` (`init --distro-dirs` needs one, and the adapter refuses a flat root);
+   - the order of the checks: a root that holds `.repos-manifest` has to be refused for being set up (advice: register without `--manifest`), not for being non-empty;
+   - the URL pattern: it has to be tested only when the argument is not an existing regular file.
+8. **[Consequences] (low)** After `init` has succeeded, a failure of the static gate, the user-tier check or a signal leaves `.repos-manifest/` in a kept root. The next step printed says to re-run `register_project.sh`. Re-run with `--manifest`, it is refused, so the step has to say "without `--manifest`".
+9. **[File targeting] (low)** Two gaps in `docs/design.md`: line 487 lists what `registration.conf` holds and needs the new key, and the Registry and adapters change needs a Change log row, as the 2026-11-24 rows for issue 569 have.
+10. **[Consequences] (suggestion)** `--role`/`--distro` without `--manifest` on a root that holds `.repos-manifest/` always fails the gate (a second record). Registration still writes the line first and then rolls it back. Refusing it before anything is written is cheap, and it settles Q3's mechanism.
+
+### Summary
+
+The design reading is right: options handed to `init`, nothing recorded, `setup` as the one place `init` runs, and a clean seam for issue 498. The defects are in the details of the rollback and the refusals, one test that cannot fail, and existing assertions the plan overlooks. None needs a design choice. With the directions below the plan is ready, and the pull request can say "Closes #599". None of the three open questions or three listed decisions needs the owner.
+
+### Recommended Actions
+
+- [ ] F1: in `register_project.sh`, a directory is "empty" when it has no entries, or only `.claude`. Test: an existing directory that holds only `.claude/settings.local.json`, registered through `register_session_root.sh --manifest`, is set up. One that holds any other entry is refused, and nothing is written.
+- [ ] F2: record `ROOT_EXISTED` before setup. In `rollback()`, when `--manifest` was given:
+  - (a) the root did not exist and `rmdir "$PROJECT_ROOT"` succeeds: print "removed $PROJECT_ROOT (empty, made by setup)" and leave `KEPT` unset;
+  - (b) the root did not exist and is not empty: `KEPT=` as today;
+  - (c) the root existed: never `KEPT=`. When it is no longer empty, print "$PROJECT_ROOT existed before; it holds what init left".
+
+  In `failed()`, append "setup is not run again on the kept ..." only when `KEPT` is set. Drop the adapter-signal claim. The script's `rmdir` is the backstop for an adapter ended by a signal. Test it with a stub tool that runs `kill -TERM $PPID` before making anything: no line, no settings file, no directory, no `KEPT=`.
+- [ ] F3: with `--manifest`, refuse before anything is written when `bootstrap_url` is in `--set` or in the existing settings file. The reason: on the tool route it is a second record. Test both cases, with and without `--dry-run`.
+- [ ] F4: write the 599 finding 1 test as a `_rc_route` stub that answers `tool` on its first call and `bootstrap` after that. Assert, for `setup` and for `sync`: the stub tool's `sync` is called and the bootstrap fetch (the `curl` stub) is never called. Check that the test fails on the code before the fix. Add the case where the first answer is `bootstrap`: refused, nothing fetched. Scope the plan's "read once" to the route decision in `adapter_setup`/`adapter_sync`.
+- [ ] F5: in the kept-file refusal, name the file and say: remove the `source`, `source_ref` and `source_path` lines from `.agent/projects.d/<name>`, or remove the file, then re-run. Assert that text in the kept-file test.
+- [ ] F6: make `manifest` a required key (local-file|none) with a `manifest)` case in `_registration_value_error`, and update the key list at `_project_registry.sh:2390`. Add `manifest=none` to the fixtures at `test_adapter.sh` 444 and 470, and add one invalid-value case. Either keep the substrings asserted at `test_register_project.sh:697` and `test_ros2_colcon.sh` 2777/2829/2833/4008, or update those assertions in the same commit, and list them in Files to Change.
+- [ ] F7: make `--manifest` without `--distro` a usage error (exit 2). Check the set-up root before the non-empty check. Apply the URL pattern only to an argument that is not an existing regular file. Add one test for each.
+- [ ] F8: when `KEPT` holds `.repos-manifest`, the next step is "cd <root> && <tool> sync --distro <d> when the sync did not finish, then register_project.sh <root> without --manifest". Test it on a gate failure after a successful stub `init`.
+- [ ] F9: add `manifest=` to `docs/design.md` line 487 and a Change log row for the Registry and adapters change.
+- [ ] F10: refuse `--role`/`--distro` without `--manifest` on a root that holds `.repos-manifest/`, before anything is written. Test with and without `--dry-run`.
