@@ -238,3 +238,20 @@ Part 1 of 3 reviewed as part 1 (parts 2 and 3 are deliberately off this branch p
 **Decision**: publish
 
 Part 1 of 3: the one row of the tool's roadmap. The full pass ran with no SKIP over the files changed since origin/main; every hook that applied passed, and no script suite applied (no script changed). Outside reviewers on round 1: Codex ran and found nothing; Gemini ran and made three suggestions, all dropped by the reviewer as without substance for this change. The pull request says "Part of #569".
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 09:16 -05:00
+**By**: claude-code (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #571 at `e6ef187f`
+**Sources**: 2 (Local Review (Pre-Push) @ `81267304` (covers e6ef187f via bookkeeping), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending
+
+### Findings
+
+None. The PR changes one row of `tools/repos-manifest/docs/roadmap.md` (the migration-note line becomes "The prototype's reader and `docs/prototype.md` are removed"). Checked: no other reference to the removed wording in `tools/` or `docs/`; the empty check cell is deliberate, since `sitrep_checks.sh` has no absence check (plan, part 1 item 2). The pre-push local review approved with no findings; no GitHub review or conversation comment exists. CI: Validate Documentation passed; Lint (pre-commit), Validate Adapter Contract and the repos-manifest tests (Python 3.10, 3.14) were still pending after a 150-second wait.
+
+### False positives
