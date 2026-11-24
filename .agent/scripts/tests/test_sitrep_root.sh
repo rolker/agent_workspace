@@ -223,6 +223,29 @@ root_of "$R/nonedoc"
 OUTR="$(bash "$WSC/.agent/scripts/sitrep_checks.sh" --root "$R/nonedoc" 2>&1)"
 [[ "$(cut -f1-2 <<< "$OUTR")" == $'section\t(roadmap not found: '"$R"'/nonedoc keeps no roadmap (roadmap=none))' ]] \
     && pass "none: the check runner, given no roadmap, does not read the candidate either" || fail "nonedoc rows: '$OUTR'"
+RC=0; OUTR="$(bash "$WSC/.agent/scripts/sitrep_checks.sh" --root "$R/nonedoc" --list-paths 2>&1)" || RC=$?
+[[ $RC -eq 0 && -z "$OUTR" ]] \
+    && pass "none: --list-paths, given no roadmap, lists nothing (the candidate is not read)" || fail "nonedoc list-paths rc=$RC '$OUTR'"
+# The path rows and --list-paths (issue #563) read the setting's file, both
+# with the roadmap sitrep_root.sh gives (as the sit-rep passes it) and with
+# none given (the checker's own lookup); the candidate is a decoy.
+printf '%s\n' '## Direction' '' '**Path 1, Kept.** Set roadmap. More.' '' '| Line | Check |' '|---|---|' \
+    '| Kept line | file-exists notes/plan.md |' '' '**Acceptance case.** From the setting.' > "$R/keyed/notes/plan.md"
+printf '%s\n' '## Direction' '' '**Path 1, Decoy.** Candidate.' '' '| Line | Check |' '|---|---|' \
+    '| Decoy line | file-exists docs/roadmap.md |' '' '**Acceptance case.** From the candidate.' > "$R/keyed/docs/roadmap.md"
+root_of "$R/keyed"
+for ra in given own; do
+    a=(); [[ $ra == own ]] || a=(--roadmap "$(val roadmap)")
+    RC=0; LP="$(bash "$WSC/.agent/scripts/sitrep_checks.sh" --root "$R/keyed" "${a[@]}" --list-paths 2>&1)" || RC=$?
+    [[ $RC -eq 0 && "$LP" == $'group\tPath 1, Kept\tSet roadmap.\nacceptance\tPath 1, Kept\tFrom the setting.' ]] \
+        && pass "set ($ra roadmap): --list-paths gives the setting's paths and acceptance case, not the candidate's" || fail "keyed list-paths ($ra) rc=$RC '$LP'"
+    RC=0; OUTR="$(bash "$WSC/.agent/scripts/sitrep_checks.sh" --root "$R/keyed" "${a[@]}" 2>&1)" || RC=$?
+    [[ $RC -eq 0 && "$(cut -f1-3 <<< "$OUTR")" == $'path\tPath 1, Kept\ttrue\nline\tKept line\ttrue' ]] \
+        && pass "set ($ra roadmap): the path rows are the setting's file's" || fail "keyed path rows ($ra) rc=$RC '$OUTR'"
+done
+printf '%s\n' "$OUTR" > "$SB/rows-keyed.tsv"
+NS="$(bash "$WSC/.agent/scripts/sitrep_checks.sh" --next-steps-from "$SB/rows-keyed.tsv" 2>&1)"
+[[ "$NS" == $'Path 1, Kept\tnone open' ]] && pass "set: the next step is the setting's path's" || fail "keyed next steps: '$NS'"
 root_of "$R/upper"
 [[ "$(val roadmap)" == "$R/upper/docs/ROADMAP.md" ]] && pass "unset: docs/ROADMAP.md is a candidate (the shared list)" || fail "upper: '$OUT'"
 root_of "$R/gone"

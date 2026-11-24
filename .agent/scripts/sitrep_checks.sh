@@ -87,7 +87,8 @@
 #              the section), and the paragraph's text after the bold,
 #              joined into one line. No `group` line for a section with
 #              no path paragraph, and nothing for a roadmap that is
-#              missing or unreadable. Exit 0. The sit-rep reads the paths
+#              missing or unreadable, a `roadmap` setting of `none`, or one
+#              that cannot be read (--roadmap above). Exit 0. The sit-rep reads the paths
 #              and the acceptance case through this, so it reads them by
 #              the checker's rules, never its own.
 #   --next-steps-from <rows-file>
