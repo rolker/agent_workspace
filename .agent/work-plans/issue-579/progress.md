@@ -50,3 +50,17 @@ issue: 579
 - [ ] Scope the issue to the "PR number" form of review-plan step 1 (lines 70-79). Drop the "never reads PR comments" part, since the plan is not in comments.
 - [ ] In the plan, name which of lines 72 and 75 this issue owns and which `-R` insertions 581 owns, so the two plans stay apart.
 - [ ] State in the plan that the change is skill text only and has no test, or name the test if one is added.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:13 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review confirms the defect and narrows the issue to it; what it drops is not something the owner asked for in his own words, and the fix stays what the triage row he accepted said: plan review reads the current plan file)
+**After**: issue-actions
+**Decision**: proceed
+
+The owner started this drive with "start those 3" (2026-11-24), after accepting the triage row "plan review reads the pull request body, not the current plan file". Instructions for the plan (host decisions, listed for the owner's veto):
+- Scope: the "PR number" form of review-plan step 1 (lines 70 to 79 of the skill): fetch the head commit, take the issue number from the plan's path or the Closes line and not from the first #N in the body, and read the plan file at the pull request's head, never the body.
+- Dropped from the issue's text: "never reads PR comments". In this repository a plan is never in a comment and earlier findings are on the timeline, so reading comments would not fix the defect. If the owner wants plan review to read pull request comments for another reason, that is a separate change.
+- Issue 581 is driven at the same time and adds a repository name to the gh calls in the same lines (72, 75) and at line 156; this plan leaves the naming of the repository to that issue and says so, and whichever merges second takes main in first.
+- Skill text only. If no test pins it, say so; if one can cheaply pin the wording in test_skill_paths.sh, add it.
