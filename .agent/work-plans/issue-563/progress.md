@@ -606,3 +606,28 @@ False positive: Gemini's "step 5's jq fails silently without jq" (step 3's workt
 - test_skill_paths.sh: "test_skill_paths: 199 passed, 0 failed"
 - test_sitrep_root.sh: "test_sitrep_root: 69 passed, 0 failed"
 - CI checks the push; the host owns it.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 09:46 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a9816ccec6fda3061, resume 1 of 3)
+**Verdict**: approved
+
+**PR**: #572 at `1e295fe9`
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 1
+
+Scope: the findings of the Local Review at `4c765965` and the fix diff 9c6d247f..1e295fe9 (cc8b6995, 1270565e). Cross-model: skipped (round-3 convergence check, per handoff). Specialists: static analysis (shellcheck not installed, not run; `bash -n` clean on sitrep_checks.sh and its test), governance and plan drift (lead; the fix stays inside the plan's In flight rule; two suggestions declined on the host's directions), Claude adversarial (fresh; no must-fix; old and new script compared on six fixtures; test_sitrep_checks 300/0, test_skill_paths 199/0, test_sitrep_root 69/0).
+
+Prior findings:
+- Must-fix (the "No branch or pull request" bullet stating unchecked absences): closed. A group is named only when step 5 named an issue of this repository, listed the branches and read the pull request list; otherwise "Not looked up for <group>: <why>"; with no pull-request source the bullet is "No branch for the next step of:". The conditions match what step 5's block prints (`issues_named=none`, `branches: could not be listed`, `pull_requests=not looked up`); the ordinary case (gh working, a bare `(#N)`) reads as before.
+- Literal TABs: closed (`$'^path\t'`, `$'^group\t'`; no TAB left in the file).
+- Leading space: closed (new test; the live roadmap's `--list-paths` output unchanged apart from it).
+- "prints nothing" prose: closed.
+- PR description: declined on host direction; the host has updated it.
+- Unclosed Across row order: declined on host direction (the row is still shown).
+- Pull request with no worktree when step 1 printed no rows: closed ("path unknown (steps not checked)").
+
+### Findings
+- [ ] (suggestion) Step 5's new sentence says a line not looked up is reported "so and why, never that nothing exists", but in a root with no path paragraph the unchanged `Running:` rule still reads "Running: nothing on this machine." whenever step 5 matched nothing, including when it did not look; same as main there (that roadmap is read as before), so not a regression; one clause in the `Running:` rule would make the two agree — `.claude/skills/sitrep/SKILL.md:1239`
