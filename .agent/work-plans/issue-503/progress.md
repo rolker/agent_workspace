@@ -1579,3 +1579,27 @@ The design reading is right: options handed to `init`, nothing recorded, `setup`
 This answer starts part 2: registration from a manifest (`register_project.sh <path> --manifest <file> --distro <d> ...`, handed to the adapter's `setup`, which runs the tool's `init`; nothing about the manifest recorded in the workspace). The implement handoff quotes the review's directions F1 to F10 in full and tells the implementer to follow them where they differ from the plan's text. The part also fixes the three findings of issue 599, so its pull request says "Closes #599" and "Part of #503".
 
 Host decisions, listed for the owner's veto, each answered by the design as the review quotes it: a directory that holds anything but `.claude` is refused for registration with a manifest; `--dry-run` does not run the tool's `show`; `role=` and `distro=` stay accepted on the registry line for a root set up by hand, and are refused with no `--manifest` on a root the tool set up; `--yes` is always passed to `init`; one `--distro` at registration, a second distro being the later part's `add-distro`; adopting an already registered name with `--manifest` is refused; a manifest given as a URL or a git location is refused until issue 498 lands.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 14:06 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Branch**: feature/issue-503 at `19374b0a`
+
+Part 2 of issue 503 (registration from a manifest), built as "Part 2 (revised 2026-11-24)" lays it out, with the Plan Review's directions F1 to F10 where they differ. Commits c3d20c77, 1c7072e6, 25b8234a, 1eafafff, 19374b0a.
+
+- `registration.conf` gains a required key `manifest` (`local-file` for ros2_colcon, `none` for single_project); the parser checks it, the key list names it; `test_adapter.sh` fixtures carry it, with an invalid-value case (F6).
+- The adapter's `setup --manifest <file> --distro <d> [--role] [--with]... [--fetch-from]` runs `<tool> init <abs file> --distro-dirs --distro <d> ... --yes` in the root, making the root (and missing parents) and removing them with rmdir when init makes nothing; refuses a set-up root (naming the tool's sync) and a second record (source keys, bootstrap_url, role=/distro=) before anything is made.
+- `adapter_setup` and `adapter_sync` read `_rc_route` once and pass it to `_rc_refuse_removed_source` (issue 599 finding 1, F4); the test with a `_rc_route` stub answering tool then bootstrap fails on the code before the fix (4 failures) and passes after.
+- `register_project.sh --manifest` (and `register_session_root.sh` passing the options): type chosen by `manifest=local-file`; refusals before anything is written as listed in the script header (F1 `.claude`-only counts as empty, F3 bootstrap_url, F7 usage and order, F10 role/distro on a set-up root, URL or git location naming issue 498); rollback per F2 (ROOT_EXISTED, rmdir of what setup made, "existed before; holds what init left", "not run again" only with KEPT); next step per F8. A settings file kept by `--remove --keep-settings` that sets a `registration_refused` key is refused naming the file and the lines (issue 599 finding 2, F5).
+- Docs: `docs/manifest/design.md` (what is recorded, "A root that sets source" with the package-worktree sentence of issue 599 finding 3, "The tool route", "What the workspace records"), `docs/design.md` (registration, `registration.conf`'s key, Change log row, F9), the roadmap line "Registration passes the manifest's location, role, distro and fetch settings to init" gets its check `file-contains .agent/project_types/ros2_colcon/registration.conf manifest=local-file`, script reference, `projects.local.example`, onboard-project step 1.
+
+Suites run (each on its own, after the last change unless noted):
+- `test_ros2_colcon.sh`: `=== Results: 1240 passed, 0 failed, 0 skipped ===` (real-tool tests ran, none skipped)
+- `test_register_project.sh`: `test_register_project: 294 passed, 0 failed`
+- `test_register_session_root.sh`: `test_register_session_root: 87 passed, 0 failed`
+- `test_adapter.sh`: `=== Results: 260 passed, 0 failed ===`
+- `validate_adapter.sh`: `✅ ros2_colcon: all 13 verbs implemented`, `✅ single_project: all 13 verbs implemented`
+- `test_script_tests_hook_scope.sh`: `test_script_tests_hook_scope: 366 passed, 0 failed` (failed 3 before 19374b0a: the adapter named register_project.sh)
+- Before 19374b0a (a comment and message change in adapter.sh only): `test_project_registry.sh` 425 passed, 0 failed; `test_project_file.sh` 701 passed, 0 failed; `test_design_anchors.sh` 82 passed, 0 failed; `test_skill_paths.sh` 212 passed, 0 failed; and every other suite naming a changed script, each 0 failed: test_capture, test_discover_governance, test_dispatch_phase, test_fresh_clone_no_project, test_gh_create_issue, test_gh_create_pr, test_merge_pr_gate, test_merge_pr, test_merge_pr_skill, test_precommit_hook_path, test_project_documents, test_project_integration_audit, test_pr_status, test_session_start_layer, test_sitrep_checks, test_sitrep_root, test_user_tier_guard, test_validate_workspace_stale, test_worktree_create, test_worktree_enter_stderr, test_worktree_remove.
+- The full pre-commit pass and every other suite are left to the host; commits made with `SKIP=validate-script-tests`.
