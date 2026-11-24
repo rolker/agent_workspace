@@ -1504,7 +1504,8 @@ fi
 
 # Review suggestion 3: a single-repository project worktree gets -R on the
 # create, list and comment lines. The project's origin is a local bare repo
-# whose path holds github.com/acme/demo15.git, so the slug reads acme/demo15.
+# whose path ends fake_remotes/github.com/acme/demo15.git, so the slug reads
+# acme/demo15.
 SB15="$SANDBOX/ws15"
 make_ws_repo "$SB15"
 GH_LOG15="$SANDBOX/gh15.log"
@@ -1512,8 +1513,8 @@ make_recording_gh "$SB15/stubbin" "$GH_LOG15"
 P15="$SANDBOX/proj15"
 gitq init -q -b main "$P15"
 gitq -C "$P15" commit -q --allow-empty -m "project init"
-mkdir -p "$SANDBOX/github.com/acme"
-make_refusing_origin "$P15" "$SANDBOX/github.com/acme/demo15.git"
+mkdir -p "$SANDBOX/fake_remotes/github.com/acme"
+make_refusing_origin "$P15" "$SANDBOX/fake_remotes/github.com/acme/demo15.git"
 printf 'demo15 single_project %s\n' "$P15" >> "$SB15/.agent/projects.local"
 OUT="$(cd "$SB15" && PATH="$SB15/stubbin:$PATH" "$SB15/.agent/scripts/worktree_create.sh" \
     --issue 91 --type project --project demo15 --plan-file "$PLAN11" 2>&1)"

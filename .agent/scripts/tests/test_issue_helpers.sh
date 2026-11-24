@@ -7,7 +7,8 @@
 # One table of URLs runs through extract_gh_slug and through gh_slug (the
 # Python block sitrep_root.sh defines, taken from the script itself), so the
 # two grammars cannot drift apart unnoticed. The intended differences are
-# marked in the table ("differs"): the local test-fixture path form only.
+# marked in the table ("differs"): the local test-fixture path form only
+# (an absolute path ending fake_remotes/github.com/<owner>/<repo>[.git]).
 #
 # Hermetic: sources the helper file (it only defines functions) and runs
 # python3 on text read from sitrep_root.sh. No git, no gh, no network.
@@ -50,6 +51,10 @@ TABLE=(
     '/tmp/x/fake_remotes/github.com/o/r.git|o/r|differs'
     '/tmp/x/fake_remotes/github.com/o/r|o/r|differs'
     '/tmp/github.com/a/fake_remotes/github.com/o/r.git|o/r|differs'
+    '/home/u/go/src/github.com/o/r||same'
+    '/home/u/ghq/github.com/o/r.git||same'
+    '/tmp/x/remotes/github.com/o/r.git||same'
+    '/tmp/x/not_fake_remotes/github.com/o/r.git||same'
     'git@gitlab.com:o/r.git||same'
     'git@gitlab.com:acme/w.git||same'
     'https://gitlab.com/o/r||same'
@@ -63,9 +68,9 @@ TABLE=(
     'https://github.example.com/o/r||same'
     'git@gitlab.com:group/github.com/o/r.git||same'
     'https://gitlab.com/github.com/o/r||same'
-    '/x/notgithub.com/o/r.git||same'
-    '/x/github.com.evil/o/r.git||same'
-    '/x/GITHUB.COM/o/r.git||same'
+    '/x/fake_remotes/notgithub.com/o/r.git||same'
+    '/x/fake_remotes/github.com.evil/o/r.git||same'
+    '/x/fake_remotes/GITHUB.COM/o/r.git||same'
     'x/github.com/o/r.git||same'
     'file:///x/github.com/o/r.git||same'
     'ssh://git@github.com/tmp/x/github.com/o/r.git||same'

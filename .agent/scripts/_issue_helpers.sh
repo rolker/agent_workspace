@@ -36,12 +36,13 @@
 # safe answer. Known differences from gh_slug:
 #   - www.github.com and ssh.github.com (the port-443 form) are not
 #     accepted, as in gh_slug; GitHub Enterprise hosts are not either.
-#   - Test fixtures only: an absolute local path whose last three segments
-#     are github.com/<owner>/<repo>[.git] gives <owner>/<repo>. The test
-#     sandboxes serve their origins from local bare clones at
-#     .../fake_remotes/github.com/<owner>/<repo>.git; gh_slug says such a
-#     path is not on GitHub. Only a path starting with / qualifies, and the
-#     segment must be exactly github.com.
+#   - Test fixtures only: an absolute local path whose last four segments
+#     are fake_remotes/github.com/<owner>/<repo>[.git] gives <owner>/<repo>.
+#     The test sandboxes serve their origins from local bare clones there;
+#     gh_slug says such a path is not on GitHub. Only a path starting with /
+#     qualifies, and the segments must be exactly fake_remotes/github.com,
+#     so a real local layout such as ~/go/src/github.com/<o>/<r> or
+#     ~/ghq/github.com/<o>/<r> gives nothing.
 # Keep the grammar in step with sitrep_root.sh: test_issue_helpers.sh runs
 # one table through both.
 extract_gh_slug() {
@@ -51,7 +52,7 @@ extract_gh_slug() {
     local owner repo
     if [[ "$url" =~ ${prefix_re}${slug_re} ]]; then
         owner="${BASH_REMATCH[6]}"; repo="${BASH_REMATCH[7]}"
-    elif [[ "$url" == /* && "$url" =~ /github\.com/${slug_re} ]]; then
+    elif [[ "$url" == /* && "$url" =~ /fake_remotes/github\.com/${slug_re} ]]; then
         owner="${BASH_REMATCH[1]}"; repo="${BASH_REMATCH[2]}"
     else
         return 0
