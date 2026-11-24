@@ -1444,3 +1444,13 @@ Note for the host, not a code finding: the pull request body's `## Decision summ
 **Decision**: merge
 
 The owner's answer in the dialog, to "Merge pull request #562 with F1 deferred to a later part of issue #503?": "Merge, defer F1 (Recommended)". The dialog showed: the Integrated Review at 98a3505a (no must-fix, CI all-pass on d5e64448, no GitHub reviews or comments, one suggestion classified as deferred); what the pull request does on the tool's route; six review rounds, four defects found and fixed, the adapter suite at 1551 passed, 0 failed, 0 skipped on CI with both real-tool tests run. F1, the open suggestion: when the suite runs as root the chmod 000 case prints SKIPPED without being counted, with eight more such uncounted skips already on main, none possible on CI, one counter for all nine about 20 lines; deferred to a later part of issue 503. F2, to know: a root assembled by hand without a distros mapping now fails validate, and package selection through the adapter's build is narrower. F3, to know: the last review round was a check of the fixes only, with no outside reviewers, by the host's direction; a full re-review was offered and not chosen. The pull request's text was brought up to date with the two fix passes before the question was asked.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:16 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan checkpoint after a merge; the plan names its remaining work only as "Later parts", with no reviewed steps, so proceed is not open)
+**After**: plan
+**Decision**: revise
+
+Pull requests 513 and 514 (part 1) and 562 (part 4: validate, build and test call the tool) are merged; the issue is still open because registration from a manifest and the rest of the later parts remain. Since part 4, issue 569 part 2 (pull request 597, merged 2026-11-24) cut the adapter's manifest route: the adapter now has two routes, `register_project.sh` refuses `--set source=` for a `ros2_colcon` project through the new `registration_refused` list, and the settings keys `source`, `source_ref` and `source_path` are read by no route. The plan is revised to plan the next part against that code: registration passes the manifest's location, role, distro and fetch settings to the tool's `init` (the manifest roadmap's line), with the later parts named so a later run can tell which are delivered. The owner asked on 2026-11-24 for manifest work that can run in parallel; this issue's files (the registration scripts and the adapter) do not overlap the tool's, where issues 569 and 498 are working.
