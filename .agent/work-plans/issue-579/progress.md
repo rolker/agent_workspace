@@ -345,3 +345,13 @@ No GitHub review, inline comment or conversation comment; no Copilot review was 
 - [x] (PR text, host edit) Decision summary: "The host's full pre-commit pass passed" was on 3a56f8b7, before the two post-publish code commits f31885eb and e01d7bf3 (those commits used SKIP=validate-script-tests); CI's Lint (pre-commit) runs the full set on the head, so the head is covered once it passes. The summary also does not say the last convergence check, at 821faa34, approved with nothing open. Wording for the host; no change to the branch.
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 14:08 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner's answer in the dialog, to "Merge pull request 604 now?": "Merge (Recommended)". The dialog showed: two pre-push rounds with four suggestions fixed; the Codex cold read's must-fix and the re-check's must-fix, both fixed (the step could read another repository's plan of the same number; it could not tell a missing plan from a commit never fetched); the last re-check (135ac1cc) and the final triage (d80d05fd) with nothing open; Gemini ran once, Codex ran the cold read, Copilot not requested; reading pull request comments as the plan dropped on purpose; that issue 581 edits the same lines and whichever merges second takes main in; CI with all 10 checks passed on 821faa34; no hosted review or comment; mergeable, clean.
