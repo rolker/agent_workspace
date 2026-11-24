@@ -238,10 +238,11 @@ def _align_table(rows: Sequence[str]) -> List[Tuple[str, List[int]]]:
     Returns, per row, the display line and its display-to-file column map.
     """
     parsed = [_table_cells(row) for row in rows]
-    # A separator row is one whose every cell is dashes; a lone "-" in a data
-    # row (a common N/A) is data and is shown as typed.
+    # The delimiter row is the block's second row, when every cell is dashes.
+    # Any other row of dashes (a row of N/A) is data and is shown as typed.
     separator = [
-        bool(cells) and all(SEPARATOR_CELL_RE.match(c) for _, c in cells) for _, cells in parsed
+        k == 1 and bool(cells) and all(SEPARATOR_CELL_RE.match(c) for _, c in cells)
+        for k, (_, cells) in enumerate(parsed)
     ]
     widths: List[int] = []
     for is_sep, (_, cells) in zip(separator, parsed):

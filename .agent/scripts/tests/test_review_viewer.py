@@ -160,6 +160,10 @@ class LightFormatTest(unittest.TestCase):
         fmt = rv.light_format("| a | b |\n|---|---|\n| x | - |\n")
         self.assertEqual(fmt.lines, ["| a   | b   |", "| --- | --- |", "| x   | -   |"])
 
+    def test_dash_data_row_is_not_a_separator(self):
+        fmt = rv.light_format("| a | b |\n|---|---|\n| - | - |\n")
+        self.assertEqual(fmt.lines, ["| a   | b   |", "| --- | --- |", "| -   | -   |"])
+
     def test_escaped_pipe_stays_in_cell(self):
         fmt = rv.light_format("| a\\|b | c |\n| x | y |\n")
         self.assertEqual(fmt.lines, ["| a\\|b | c   |", "| x    | y   |"])
