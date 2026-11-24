@@ -64,3 +64,11 @@ The owner started this drive with "start those 3" (2026-11-24), after accepting 
 - Dropped from the issue's text: "never reads PR comments". In this repository a plan is never in a comment and earlier findings are on the timeline, so reading comments would not fix the defect. If the owner wants plan review to read pull request comments for another reason, that is a separate change.
 - Issue 581 is driven at the same time and adds a repository name to the gh calls in the same lines (72, 75) and at line 156; this plan leaves the naming of the repository to that issue and says so, and whichever merges second takes main in first.
 - Skill text only. If no test pins it, say so; if one can cheaply pin the wording in test_skill_paths.sh, add it.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-24 13:15 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-579/plan.md` at `fbbd8387`
+
+Edit only the review-plan skill's PR-number block (step 1): add headRefOid, take the issue number from the plan path, read the plan at the PR head and say the body is a snapshot; one wording check added to test_skill_paths.sh. Repository flag on the same lines is left to issue 581.
