@@ -208,8 +208,9 @@ the stored value, or exits 1 when the key is not stored. Each row's status:
 
 - `set <path>[#<heading>]`: **Present** (recorded), the path in the row.
   Check that git tracks it, `git -C <repo-dir> ls-files --error-unmatch --
-  <path>`: an untracked file is a finding (only this checkout has it, so a
-  worktree or another clone finds nothing there).
+  <path>` with `<path>` taken before any `#<heading>`: an untracked file is
+  a finding (only this checkout has it, so a worktree or another clone
+  finds nothing there). A project without git has no tracked check.
 - `fallback <path>`: **Present** (not recorded; the readers' fixed list
   finds it).
 - `none`: **Not kept** (`<key>=none`, the project's answer); no finding.
