@@ -176,7 +176,7 @@ class Formatted:
         return cmap[min(max(col, 0), len(cmap) - 1)]
 
 
-FENCE_RE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
+FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 HEADING_RE = re.compile(r"^\s{0,3}#{1,6}(\s|$)")
 INLINE_CODE_RE = re.compile(r"(`+)(.+?)\1")
 BOLD_RE = re.compile(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1")
@@ -257,6 +257,36 @@ def _align_table(rows: Sequence[str]) -> List[Tuple[str, List[int]]]:
     return out
 
 
+def fenced_lines(raw: Sequence[str]) -> List[bool]:
+    """Which lines are inside a code fence, its opening and closing lines included.
+
+    As CommonMark has it: a backtick fence's info string holds no backtick
+    (so a line starting with triple-backtick inline code opens no fence), and
+    a closing fence is the same character, at least as long, with nothing
+    after it but spaces (so an info-string line inside a fence does not close
+    it). An unclosed fence runs to the end of the draft.
+    """
+    out: List[bool] = []
+    opener: Optional[str] = None
+    for line in raw:
+        m = FENCE_RE.match(line)
+        if opener is not None:
+            out.append(True)
+            if (
+                m
+                and m.group(1)[0] == opener[0]
+                and len(m.group(1)) >= len(opener)
+                and not m.group(2).strip()
+            ):
+                opener = None
+        elif m and not (m.group(1)[0] == "`" and "`" in m.group(2)):
+            opener = m.group(1)
+            out.append(True)
+        else:
+            out.append(False)
+    return out
+
+
 def light_format(text: str) -> Formatted:
     """Display lines, column maps and style spans for the draft text.
 
@@ -267,7 +297,7 @@ def light_format(text: str) -> Formatted:
     lines = list(raw)
     colmaps: List[Optional[List[int]]] = [None] * len(raw)
     spans: List[Span] = []
-    in_fence: Optional[str] = None
+    fenced = fenced_lines(raw)
     table_start: Optional[int] = None
 
     def flush_table(end: int) -> None:
@@ -280,16 +310,9 @@ def light_format(text: str) -> Formatted:
                 colmaps[idx] = cmap
 
     for i, line in enumerate(raw):
-        fence = FENCE_RE.match(line)
-        if in_fence is not None:
-            spans.append((i + 1, 0, len(line), "code"))
-            if fence and fence.group(1)[0] == in_fence[0] and len(fence.group(1)) >= len(in_fence):
-                in_fence = None
-            continue
-        if fence:
+        if fenced[i]:
             flush_table(i)
             table_start = None
-            in_fence = fence.group(1)
             spans.append((i + 1, 0, len(line), "code"))
             continue
         if line.lstrip().startswith("|"):
@@ -300,17 +323,9 @@ def light_format(text: str) -> Formatted:
             table_start = None
     flush_table(len(raw))
 
-    in_fence = None
     for i, disp in enumerate(lines):
-        fence = FENCE_RE.match(raw[i])
-        if in_fence is not None:
-            if fence and fence.group(1)[0] == in_fence[0] and len(fence.group(1)) >= len(in_fence):
-                in_fence = None
-            continue
-        if fence:
-            in_fence = fence.group(1)
-            continue
-        spans.extend(_inline_spans(i + 1, disp))
+        if not fenced[i]:
+            spans.extend(_inline_spans(i + 1, disp))
     spans.sort()
     return Formatted(lines, colmaps, spans)
 

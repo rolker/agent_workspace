@@ -118,6 +118,23 @@ class LightFormatTest(unittest.TestCase):
         self.assertEqual(tags.get(3), "code")
         self.assertNotIn(5, tags)
 
+    def test_inline_triple_backticks_open_no_fence(self):
+        text = "```x``` is inline code\n# heading\n"
+        self.assertEqual(rv.fenced_lines(rv.split_lines(text)), [False, False])
+        tags = {s[0]: s[3] for s in rv.light_format(text).spans if s[3] == "heading"}
+        self.assertEqual(tags, {2: "heading"})
+
+    def test_info_string_line_does_not_close_a_fence(self):
+        text = "```\n```python\nstill code\n```\nafter\n"
+        self.assertEqual(rv.fenced_lines(rv.split_lines(text)), [True] * 4 + [False])
+
+    def test_tilde_fence_may_hold_backticks_in_info(self):
+        text = "~~~ a`b\ncode\n~~~\nplain\n"
+        self.assertEqual(rv.fenced_lines(rv.split_lines(text)), [True, True, True, False])
+
+    def test_four_space_indent_is_no_fence(self):
+        self.assertEqual(rv.fenced_lines(["    ```", "x"]), [False, False])
+
     def test_table_alignment_with_uneven_cells(self):
         fmt = rv.light_format(TABLE_DRAFT)
         rows = fmt.lines[2:6]
