@@ -433,3 +433,30 @@ Suites run one at a time from the worktree. The full pre-commit pass is left to 
 - test_project_documents.sh: `test_project_documents: 174 passed, 0 failed`
 - test_skill_paths.sh: `test_skill_paths: 200 passed, 0 failed`
 - test_script_tests_hook_scope.sh: `352 passed, 1 failed` on the merge alone (the missing `ROOT_READERS` entry above). After 7763df53: `test_script_tests_hook_scope: 359 passed, 0 failed`
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-23 22:05 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent a6ccd3d48db033a11, resume 2 of 3)
+
+**Branch**: feature/issue-551 at `61623b58`
+**Base**: main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 2
+**Round**: 3 | **Ship**: recommended — no must-fix findings; remaining suggestions can be applied or tracked
+
+Scope: the round-2 findings and the fix diff since `f53fef8c` (c8e2c303, 2d0f02a7, 262907d4), the merge 5c79c7b1's two conflict resolutions and 7763df53; PR 566's own content not reviewed. Cross-model: skipped (round-3 convergence check, per handoff). Suites run: test_project_documents 174/0, test_update_roadmap 16/0, test_design_anchors 82/0.
+
+Round-2 findings, checked against the host decisions:
+- Must-fix 1 (unset key, candidate outside the root): fixed. The candidate loop reads a regular file outside the root with one warning ("read as before, since <key> is not set"); a dangling candidate (new return 3) is passed over, as main's `-e`/`-f` did; only a set key that is unusable returns 2 (the set path maps every non-1 file error to 2). update_roadmap.sh no longer skips it: edited as on main, with a warning.
+- Must-fix 2 (bookkeeping exemption): fixed. `bookkeeping_roadmap_paths` escapes every character but `[A-Za-z0-9._/-]`, so `_only_bookkeeping_between` and merge_pr.sh match the setting literally (test: `notes/!(nope).md` matches itself, not `notes/other.md`, extglob on). The value rule refuses README.md, AGENTS.md, CLAUDE.md, CODEX.md (any directory, any case), docs/design.md, and (`_project_document_pair_error`, in the parser and the fail-open path) the design setting's file.
+- Writers do nothing when it cannot be told: `PROJECT_DOC_STRICT=1` returns 3 for an unparsable registry or unreadable settings file; update_roadmap.sh and the bookkeeping list set it; readers keep warning plus fallback and say "cannot be told" when no fallback exists. Another key's bad line is not "untold" (the key's own line is read), as decided.
+- Suggestions: `design=none` behaviour stated in the header; dangling set key exits 2; one warning per shell with a normalised path; `env -u GIT_DIR ...` for the lookup's git calls; Target stays `proposed`, said in the change-log row. All verified in the diff.
+
+Merge: script_reference.md keeps main's #452 rows and this branch's #551 rows; the change log keeps both sides' rows with their own counts and adds a merge row with the merged file's count (1258 = `wc -l docs/design.md`). Right: it follows the same pattern as the three earlier merge rows (2026-11-13 twice, 2026-11-18 for #488) and keeps old rows true. 7763df53's `ROOT_READERS` entry matches what the suite copies.
+
+### Findings
+- [ ] (suggestion) An in-root symlinked candidate (key unset) is now edited through the link and reported under the target's path; when the target is not one of the fixed three (e.g. `ROADMAP.md -> notes/plan.md`), merge_pr.sh commits a path the bookkeeping list does not name, so the review goes stale; on main the link was replaced by `ROADMAP.md`, which is bookkeeping. Edit through only when the target is a fixed candidate, else as on main — `update_roadmap.sh` candidate loop
+- [ ] (suggestion) `project_document_query`'s once-per-shell check uses the warning text unquoted as a `case` pattern, so a warning holding `*`, `?` or `[` (a path) may print twice; quote `"$line"` in the pattern — `_project_registry.sh` `project_document_query`
