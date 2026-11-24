@@ -380,3 +380,37 @@ Codex ran (EXIT=0, review complete) on the title, URL and diff only, work-plan f
 
 ### Findings
 - [ ] (suggestion) Add a check that the four scripts, run from inside a workspace worktree outside the main checkout, refuse with the guard's message, and that remove deletes nothing (the suite runs only `wt_main_root` there) — `.agent/scripts/tests/test_worktree_main_root.sh:194`
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 14:38 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #609 at `95cc260`
+**Sources**: 3 (Local Review (Pre-Push) round 3 @ `a4c3cea7` (covers 95cc260 via bookkeeping), Local Review (Codex cold read) @ `95cc260`, CI rollup); no hosted review and no comment on the pull request; no Copilot review requested
+**Cross-source confirmations**: 0
+**CI**: pending (Validate Documentation: pass x2; Validate Adapter Contract: pass x2; Lint (pre-commit): pending x2; repos-manifest tests Python 3.10: pending x2; repos-manifest tests Python 3.14: pending x2)
+
+Pre-push rounds 1 and 2 (`00a0130c`, `3e739e87`) are stale for this head and every finding in them is ticked (fixed); round 3 approved with nothing open. The only open finding at this head is the cold read's suggestion.
+
+Ruling on the cold read's suggestion: valid, not a must-fix. The refusal it wants tested is the existing `registry_require_root` guard (`_project_registry.sh:727`), which each of the four scripts runs right after `wt_main_root` and before any registry read, cd, git call or delete (`worktree_remove.sh:145,153`). Both halves are already tested: `test_worktree_main_root.sh:194` checks the helper prints the main checkout for a worktree outside the worktrees folder, and `test_user_tier_guard.sh` runs all four scripts (remove with `--force`) with a cwd outside the workspace and checks each refuses with "refusing to run". The reviewer also ran the end-to-end case by hand: clear refusal, nothing deleted. Missing is only the end-to-end pin of a behaviour this pull request changes (before it, the copy took the outside worktree as root and acted there). The test is short (the fixture at line 194 exists), so it may go in a short fix round or a follow-up; the box stays open for the owner's merge question.
+
+Rulings on "Not fixed here, by decision", each may stay a listed limit:
+- Other scripts that take their root from their location, and `merge_pr.sh`, `dispatch_phase.sh` and four others reading the first `git worktree list` line: outside issue 585's scope (its four worktree scripts); the first-line reads are right in an ordinary linked worktree and wrong only for a `--separate-git-dir` layout. No open issue tracks the list, so it is lost at merge unless one is opened (the owner's call at the merge question).
+- `_registry_main_checkout_status` reporting a failed git call as a main checkout: `wt_main_root` no longer depends on it; its other callers only read for messages and lookups and delete nothing.
+- A project repository carrying its own copy of the scripts: not a supported way to get them; acting on that copy's own main checkout is consistent.
+- A workspace worktree made by hand outside the worktrees folder: a clear refusal of an unusual layout, by the owner's rule fine; the scripts never make one (a Claude Code native worktree under `.claude/worktrees/` is inside the main checkout and passes the guard).
+- Table 1 citations already wrong on main: documentation drift that predates this change and is named; like the first item, no issue tracks it.
+- The Makefile case: issue 239 is open and is that case.
+
+Pull request text checked against the branch (counts, the 100-failure red run, 245 checks, the six first-line readers, the script list, the remove-script ordering, the design.md citations): right, except
+- "its history row": this change adds two Change log rows (`docs/design.md`, the 1288 and 1289 rows), not one.
+- The Review section predates the Codex cold read after publishing (approved, no must-fix after the lead's ruling, one suggestion); add it before the merge question.
+- The Tests bullet names only the new suite; five existing suites changed too (`test_merge_pr.sh`, `test_ros2_colcon.sh`, `test_worktree_create.sh`, `test_worktree_enter_stderr.sh`, `test_script_tests_hook_scope.sh`). An omission, not a wrong statement.
+
+### Findings
+- [ ] (suggestion, Local Review (Codex cold read) @ `95cc260`) Add a check that the four scripts, run as the copy inside a workspace worktree outside the main checkout's worktrees folder with the cwd there, refuse with the guard's "refusing to run" message, and that `worktree_remove.sh` plain and `--force` deletes nothing (a real worktree on the path it would act on survives, folder, branch and git entry); the suite now runs only `wt_main_root` there. Not a merge blocker: the guard and the helper's answer are each tested and the reviewer verified the composition by hand; fix now or defer at the owner's merge question — `.agent/scripts/tests/test_worktree_main_root.sh:194`
+
+### False positives
+- (Codex cold read, raised as must-fix, already ruled by the lead) A workspace worktree outside the main checkout's worktrees folder is refused when its copies run from inside it — a deliberate, clear refusal by the existing guard (one ERROR line, exit 1, nothing deleted), named in the pull request text; not an ordinary layout, since `worktree_create.sh` never makes one.
