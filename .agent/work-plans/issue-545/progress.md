@@ -300,3 +300,29 @@ Cross-model: gemini complete, codex complete. Claude adversarial complete (no mu
 - `bash .agent/scripts/tests/test_script_tests_hook_scope.sh`: `test_script_tests_hook_scope: 357 passed, 0 failed`
 - test_skill_paths.sh not run: no skill or knowledge text changed this round.
 - Commits ran every hook except validate-script-tests (SKIP per #465). The full pre-commit pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-23 22:14 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: approved
+**Dispatch**: resumed (agent ada1d3b19e629ea27, resume 2 of 3)
+
+**Branch**: feature/issue-545 at `c3b4be74`
+**Base**: main
+**Depth**: Standard (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — no must-fix findings
+
+Scope: the round-2 review's 7 findings and the fix diff since `0c509811` (7 commits). Cross-model: skipped (round-3 convergence check, per handoff). Static analysis (pre-commit on `review_viewer.py` and its test) clean; `test_review_viewer.sh` 90 tests OK (1 skipped, xvfb). The GUI was not launched. All 7 findings were verified fixed:
+- `--help` now prints the notes format ahead of the chat fallback (checked the output).
+- Both dialogs are built inside `_modal()`.
+- `_run_dialog` restores a minimised main window before `wait_visibility`. It catches TclError from `wait_visibility` and `grab_set`, and waits only if `winfo_exists()`, which returns 0 rather than raising for a destroyed dialog. A close during startup or a failed grab neither nests a second dialog nor orphans one. Fake-tk tests cover both.
+- Only a table's second row is the delimiter row (checked: `| - | - |` shows as typed).
+- A pipe is escaped only after an odd run of backslashes.
+- `_resolve`, `check_paths` and `read_text` turn OSError/RuntimeError into a one-line exit 1, while UsageError still passes through `read_text`.
+- The exit-2 CLI tests skip on macOS and Windows.
+- `.prev` order: the new content is in the temp file before the old notes move, and a failed final rename moves them back, so the notes path is never empty. A failed rotate leaves everything in place. The named side effect is accepted. When the final rename fails, the `.prev` from two rounds back has already been overwritten. A successful write would overwrite it the same way, since only one level of history is kept (plan review suggestion 3), so nothing is lost that a success would keep.
+
+### Findings
+- [ ] No issues found. LGTM.
