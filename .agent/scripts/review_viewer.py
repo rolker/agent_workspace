@@ -54,7 +54,9 @@ highlights the added or changed lines (a deleted run marks the line after it).
 
 Exit codes: 0 the window closed (read the notes file for the decision);
 1 an error, said on stderr: a usage error before any window (a bad or
-missing argument, a missing draft or ``--previous`` file, unreadable text),
+missing argument, a missing draft or ``--previous`` file, unreadable text,
+a ``--notes`` path that is a folder or whose notes, ``.prev`` or snapshot
+would overwrite the draft or the ``--previous`` file),
 or the window failed (an internal error in the window, with its traceback,
 or a save on close that failed and the owner chose to close anyway; the
 notes file may lack the decision);
@@ -63,6 +65,9 @@ notes file may lack the decision);
 A save that fails on close keeps the window open with the error in its
 status line; closing again retries, and the owner may close anyway.
 """
+
+# One file on purpose: the window is launched by path with no install step.
+# pylint: disable=too-many-lines
 
 import argparse
 import dataclasses
@@ -526,6 +531,47 @@ class UsageError(Exception):
     """A problem with the arguments or the files they name (exit 1)."""
 
 
+def _same_file(a: Path, b: Path) -> bool:
+    if a.resolve() == b.resolve():
+        return True
+    try:
+        return a.exists() and b.exists() and os.path.samefile(a, b)
+    except OSError:
+        return False
+
+
+def check_paths(draft: Path, notes: Path, previous: Optional[Path] = None) -> None:
+    """Refuse a notes path whose writes would land on an input or a folder.
+
+    The window writes three paths: the notes file, its ``.prev`` and the
+    ``.reviewed`` snapshot. None may be a folder, and none may be the draft
+    or the ``--previous`` file, except that the snapshot may be the
+    ``--previous`` file: that file is read at launch, and replacing it on
+    close is what every round does to the snapshot.
+    """
+    if notes.is_dir():
+        raise UsageError(f"--notes names a folder, not a file: {notes}")
+    written = {
+        "notes file": notes,
+        "notes .prev file": Path(str(notes) + ".prev"),
+        ".reviewed snapshot": snapshot_path(notes),
+    }
+    inputs = {"draft": draft}
+    if previous is not None:
+        inputs["--previous file"] = previous
+    for wname, wpath in written.items():
+        if wpath.is_dir():
+            raise UsageError(f"the {wname} path is a folder: {wpath}")
+        for iname, ipath in inputs.items():
+            if wname == ".reviewed snapshot" and iname == "--previous file":
+                continue
+            if _same_file(wpath, ipath):
+                raise UsageError(
+                    f"the {wname} would overwrite the {iname} ({wpath}); "
+                    "choose another --notes path"
+                )
+
+
 def read_text(path: Path, what: str) -> str:
     if not path.is_file():
         raise UsageError(f"{what} not found: {path}")
@@ -545,6 +591,7 @@ class Session:
 
     def __init__(self, draft: Path, notes_path: Path, previous: Optional[Path] = None):
         self.draft = draft
+        check_paths(draft, notes_path, previous)
         self.raw_text = read_text(draft, "draft")
         self.formatted = light_format(self.raw_text)
         self.writer = NotesWriter(notes_path)

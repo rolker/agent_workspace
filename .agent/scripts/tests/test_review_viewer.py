@@ -342,6 +342,75 @@ class SessionTest(TempDirTest):
         self.assertEqual(leftovers, [])
 
 
+class CheckPathsTest(TempDirTest):
+    """--notes may not write over the draft, --previous, or a folder."""
+
+    def setUp(self):
+        super().setUp()
+        self.draft = self.dir / "plan.md"
+        self.draft.write_text("x\n", encoding="utf-8")
+        self.old = self.dir / "old.md"
+        self.old.write_text("y\n", encoding="utf-8")
+
+    def refused(self, notes, previous=None, needle=""):
+        with self.assertRaises(rv.UsageError) as ctx:
+            rv.check_paths(self.draft, notes, previous)
+        self.assertIn(needle, str(ctx.exception))
+        return str(ctx.exception)
+
+    def test_default_and_elsewhere_are_fine(self):
+        rv.check_paths(self.draft, Path(str(self.draft) + ".notes.md"))
+        rv.check_paths(self.draft, self.dir / "sub" / "r.notes.md", self.old)
+
+    def test_notes_is_the_draft(self):
+        self.refused(self.draft, needle="notes file would overwrite the draft")
+
+    def test_notes_through_another_spelling(self):
+        self.refused(self.dir / "sub" / ".." / "plan.md", needle="overwrite the draft")
+
+    def test_prev_is_the_draft(self):
+        notes = self.dir / "plan"
+        draft = self.dir / "plan.prev"
+        draft.write_text("x\n", encoding="utf-8")
+        with self.assertRaises(rv.UsageError) as ctx:
+            rv.check_paths(draft, notes)
+        self.assertIn(".prev file would overwrite the draft", str(ctx.exception))
+
+    def test_snapshot_is_the_draft(self):
+        draft = self.dir / "x.reviewed"
+        draft.write_text("x\n", encoding="utf-8")
+        with self.assertRaises(rv.UsageError) as ctx:
+            rv.check_paths(draft, self.dir / "x.notes.md")
+        self.assertIn("snapshot would overwrite the draft", str(ctx.exception))
+
+    def test_notes_or_prev_is_previous(self):
+        self.refused(self.old, self.old, needle="notes file would overwrite the --previous file")
+        prev_target = self.dir / "n.md.prev"
+        prev_target.write_text("z\n", encoding="utf-8")
+        self.refused(
+            self.dir / "n.md", prev_target, needle=".prev file would overwrite the --previous"
+        )
+
+    def test_snapshot_may_be_previous(self):
+        snap = self.dir / "plan.md.reviewed"
+        snap.write_text("x\n", encoding="utf-8")
+        rv.check_paths(self.draft, Path(str(self.draft) + ".notes.md"), snap)
+
+    def test_folders_refused(self):
+        self.refused(self.dir, needle="--notes names a folder")
+        self.refused(Path("/"), needle="--notes names a folder")
+        (self.dir / "r.reviewed").mkdir()
+        self.refused(self.dir / "r.notes.md", needle="snapshot path is a folder")
+        (self.dir / "q.notes.md.prev").mkdir()
+        self.refused(self.dir / "q.notes.md", needle=".prev file path is a folder")
+
+    def test_draft_left_untouched_by_refused_session(self):
+        with self.assertRaises(rv.UsageError):
+            rv.Session(self.draft, self.draft)
+        self.assertEqual(self.draft.read_text(encoding="utf-8"), "x\n")
+        self.assertFalse(Path(str(self.draft) + ".prev").exists())
+
+
 class DisplayCheckTest(unittest.TestCase):
     @staticmethod
     def ok():
@@ -414,6 +483,12 @@ class CliTest(TempDirTest):
     def test_missing_previous_exits_1(self):
         result = self.run_cli([str(self.draft()), "--previous", str(self.dir / "gone.md")], {})
         self.assert_one_line(result, 1, "--previous file not found")
+
+    def test_notes_on_the_draft_exits_1(self):
+        draft = self.draft()
+        result = self.run_cli([str(draft), "--notes", str(draft)], {"DISPLAY": ":0"})
+        self.assert_one_line(result, 1, "would overwrite the draft")
+        self.assertEqual(draft.read_text(encoding="utf-8"), "hello\n")
 
     def test_unknown_option_exits_1_not_2(self):
         """2 is reserved for "no window"; argparse's own usage exit is 2."""
