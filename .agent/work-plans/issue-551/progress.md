@@ -866,3 +866,27 @@ Round 1's M1 and S1 to S8 are all closed; each was checked against the skill tex
 - [x] (suggestion) "What a stored value changes" says goals is read by this skill, audit-project and design-discussion only; since round 1's fixes, brainstorm, plan-task, review-plan and review-issue also read goals and design through the lookup, and the integration audit's ignore check follows roadmap — `.claude/skills/onboard-project/SKILL.md:436-441`
 - [x] (suggestion) design-discussion step 0 and brainstorm read every exit-2 result as a refused setting, and neither handles exit 3. Round 1's S3 mapped both codes in onboard-project and audit-project only. With a broken registry, brainstorm then reads ARCHITECTURE.md as the design. Map the registry reason and exit 3 here too — `.claude/skills/design-discussion/SKILL.md:145-149`, `.claude/skills/brainstorm/SKILL.md:95-98`
 - [x] (suggestion) two brainstorm references are now stale. The path paragraph gives `docs/design.md` "in the project list below" as an example, but the round 1 fix removed that path from the list. The digest line says "#551 may move it", and this pull request closes #551 without moving it — `.claude/skills/brainstorm/SKILL.md:49-50,77`
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 12:29 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**Branch**: feature/issue-551 at `f46d375f`
+**Addressed**: Local Review (Pre-Push) at `e985201b` (2026-11-24 12:24 -05:00)
+**Commits**: 9a06fbdd, 6949cac5, e537dd3b, 17069ea9, f46d375f
+
+Round 2's 2 must-fix and 3 suggestions, all fixed as the host's directions gave them (host decisions, listed for the owner's veto). Text and test pins only, no script changed.
+
+### Actions
+- [x] (must-fix A) the `set` example puts `'<key>=<value>'` in single quotes and says a `'` is written `'\''`, since a backtick or `$` in a heading would run in double quotes. The same fix where a stored or user-given value enters a command in onboard-project: the registration `--set 'build=<command>'` / `--set 'test=<command>'` (the prose and both commands, steps 1-2), step 2's `set <settings-name> 'build=<command>'`, and step 6's fix-now `set` line. Pins in `test_skill_paths.sh` updated to the single-quoted forms, plus the quoting note in both skills — `.claude/skills/onboard-project/SKILL.md:447-453`, `.claude/skills/design-discussion/SKILL.md:152-155`, 9a06fbdd
+- [x] (must-fix B) docs/design.md's onboarding bullet (Sessions and roots) adds `goals`, `design` and `roadmap` to the footprint questions, and a change-log row (1285 lines); `check_design_anchors.sh` exit 0 — `docs/design.md:288-290`, 6949cac5
+- [x] (S1) "What a stored value changes" names the readers as they are: goals and design through the lookup in this skill, audit-project, design-discussion, brainstorm, plan-task, review-plan and review-issue; roadmap also for triage-reviews' coverage rule, the integration audit's ignore check, and the skills that read it — `.claude/skills/onboard-project/SKILL.md:438-448`, e537dd3b
+- [x] (S2) design-discussion and brainstorm map `doc` exit 2 with `the registry <file> has errors` and exit 3 as onboard-project and audit-project do; brainstorm lists the three as unknown and reads no `ARCHITECTURE.md` in their place. Two pins added — `.claude/skills/design-discussion/SKILL.md:150-153`, `.claude/skills/brainstorm/SKILL.md:99-102`, 17069ea9
+- [x] (S3) brainstorm's relative-path example names `docs/decisions/` (still in the list), and the digest line drops "#551 may move it" — `.claude/skills/brainstorm/SKILL.md:49-50,77`, f46d375f
+
+### Notes
+- Quoting checked, not changed: `<settings-name>`, `<name>` and `<project>` are registry names (`[A-Za-z0-9][A-Za-z0-9._-]*`), and a stored `<path>` is limited by `set` to ASCII letters, digits, `.`, `_`, `-` and `/`, so audit-project's `git ls-files -- <path>` and the `doc`/`get`/`unset` lines need no quoting; brainstorm's issue heredocs already read the title from a file. Left as they are, outside this fix: the `--title "<issue title>"` of `review_progress.sh persist` in six skills (plan-task, review-plan, review-issue, triage-reviews, review-code, address-findings), a workspace-wide convention this issue did not touch; and agent-written text in double quotes (onboard-project's `git commit -m "<what changed>"` and `gh issue create --title "<item title>"`, audit-project's `gh label create --description "<what it is>"`). The `ros2_colcon` adapter's own message still prints `project_setting.sh set demo build=<command>` (pinned in `test_adapter.sh`); a script, not changed here.
+
+### Tests (each suite on its own)
+test_skill_paths: 212 passed, 0 failed; test_design_anchors: 82 passed, 0 failed. No script changed, so no script suite applies. Full pre-commit pass left to the host. Not pushed.
