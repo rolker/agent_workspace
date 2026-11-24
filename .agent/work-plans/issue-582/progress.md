@@ -56,3 +56,13 @@ No open findings. The pre-push review approved with nothing open; the pull reque
 Checked at this head: the roadmap diff is the one deferral row, matching the Decision summary's row word for word; `sitrep_checks.sh --root .` reads it as one deferral, result `false`, no `format` row, `--summary` gives `deferrals 3/11`; issues 582, 580, 583, 208 and 209 are open and titled as the row describes. Decision summary: accurate, with one imprecision noted for the host (its "the diff is that row alone" holds for `docs/roadmap.md`; the pull request also carries this issue's `progress.md` bookkeeping).
 
 ### False positives
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 12:38 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner's answer in the dialog, to "Merge pull request 600 now?": "Merge (Recommended)". The dialog showed the row in full; its effect (due in the sit-rep once issues 208 and 209 close, no path's count changed, deferrals 10 to 11); a light review approved with nothing open, with no Gemini or Codex and no Codex cold read (the host's decision, listed for his veto; he was offered "Cold read first" and chose to merge); no issue review or plan because the text is his word for word; CI with all 10 checks passed on 8cd42af7; no hosted review or comment; mergeable, clean; and that issue 582 stays open.
