@@ -1126,7 +1126,7 @@ Running: <branch>: <its state>.
 - Running: <name>: <issue title> (issue <N>)<, the next step>: <state>. <path>.
 - And <k> more:
   - <name>
-- No work on this machine for: <the groups whose first unmet line step 5 matched no branch or pull request for>.
+- No branch or pull request for the next step of: <the groups whose first unmet line step 5 matched no branch or pull request for>.
 
 **Problems**:
 
@@ -1256,9 +1256,11 @@ Rules for the report:
   and each of them is among the five shown, except when more than five
   are matched: then the first five of them, in step 3's order, are
   shown, and the rest are named under "And <k> more:" with the others;
-  then one bullet "No work on
-  this machine for:" names the groups whose first unmet line step 5
-  matched no branch or pull request for (left out when there is none). A line is filled in
+  then one bullet "No branch or pull request for the next step of:"
+  names the groups whose first unmet line step 5 matched no branch of
+  the root's own worktrees and no open pull request for (left out when
+  there is none). It says nothing about the group's other lines: work
+  for them can be in flight above, marked with the group. A line is filled in
   part by part, and a part the branch does not have is left out:
   - `<name>` is the branch, or for a worktree that is not the root's
     own (`own` is `no`: another repository's work a Direction line of

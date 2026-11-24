@@ -1343,7 +1343,7 @@ grep -qF 'otherwise the mark of the group whose line names its issue, read from 
 # With paths there is one line per group at the top, no single Next:, and
 # In flight names the groups with no work on this machine (issue #563).
 grep -qF '<path name>: <t> of <n> done. Not yet: <its first unmet line, as written> — <its result in words>.' "$SKILL" \
-    && grep -qF -- '- No work on this machine for: ' "$SKILL" \
+    && grep -qF -- '- No branch or pull request for the next step of: ' "$SKILL" \
     && grep -qF 'There is no single `Next:` and `Running:` pair' <<< "$sk_flat" \
     && grep -qF '"Running: nothing on this machine."' <<< "$sk_flat" \
     && ! grep -qF 'nothing advances it."' <<< "$sk_flat" \
