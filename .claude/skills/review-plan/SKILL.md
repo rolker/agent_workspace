@@ -83,13 +83,16 @@ later edits to the plan file never reach it. Never review the body, or a PR
 comment, as the plan: read the plan file at the PR's head commit. From the
 top folder of the repository the PR belongs to, fetch the head first
 (`<headRefOid>` from the first command; the Step 5 note reads the plan SHA
-the same way). `origin` must be that repository. If the fetch fails, or
-`git show` fails for any reason other than the file not existing at that
-commit (the no-plan-file case below), stop and show git's message; never
-read another copy:
+the same way). `origin` must be that repository. The `cat-file` line is
+there because `git show` prints the same "does not exist" message for a
+commit that was never fetched as for a file missing at that commit; once
+it passes, a failing `git show` can only mean the file is not at the head
+(the no-plan-file case below). If the fetch or the `cat-file` check fails,
+stop and show git's message; never read another copy:
 
 ```bash
 git fetch -q origin "pull/<N>/head"
+git cat-file -e "<headRefOid>^{commit}"
 git show <headRefOid>:./.agent/work-plans/issue-<issue>/plan.md
 ```
 
@@ -355,8 +358,10 @@ WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
 # PR-number form's local fallback when the head has no plan file):
 $WS_ROOT/.agent/scripts/review_progress.sh plan-sha --plan <path>
 # PR-number form, plan read at the PR head (every other PR case): fetch the
-# head (<N> is the PR number), then ask by ref — no local checkout needed.
+# head (<N> is the PR number), check the commit is here (stop if not),
+# then ask by ref — no local checkout needed.
 git fetch -q origin "pull/<N>/head"
+git cat-file -e "<headRefOid>^{commit}"
 $WS_ROOT/.agent/scripts/review_progress.sh plan-sha --plan ./.agent/work-plans/issue-<issue>/plan.md --ref "<headRefOid>"
 ```
 

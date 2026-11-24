@@ -1179,6 +1179,7 @@ has "$SKILLS/review-plan/SKILL.md" "review-plan's PR form reads the plan at head
     'Only when that file does not exist at the head' \
     'Never search other worktrees or registered projects' \
     "stop and show git's message; never read another copy" \
+    'git cat-file -e "<headRefOid>^{commit}"' \
     'The PR body is a snapshot of the plan' \
     'Never review the body, or a PR comment, as the plan' \
     'git fetch -q origin "pull/<N>/head"' \
