@@ -688,3 +688,23 @@ The Integrated Review at d7eb59c5 left one box open: in a root with no path para
 - test_sitrep_checks.sh: "test_sitrep_checks: 301 passed, 0 failed"
 - test_skill_paths.sh: "test_skill_paths: 199 passed, 0 failed"
 - The full pass is left to the host; CI checks the push.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 09:55 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a9816ccec6fda3061, resume 2 of 3)
+**Verdict**: approved
+
+**PR**: #572 at `0d1c577f`
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+
+Scope: the Integrated Review's must-fix (at `1e295fe9`) and the fix diff 6a6938ac..0d1c577f (d5f7368f: SKILL.md step 8's `Running:` rule and no-paths template, one test). Cross-model: skipped (round-3 convergence check, per handoff). Specialists: governance and plan drift (lead), Claude adversarial (fresh; no must-fix; test_sitrep_checks 301/0, test_skill_paths 199/0), static analysis (no script changed; nothing to lint beyond the test file's wording pins).
+
+Must-fix closed: with no path paragraph, "Running: nothing on this machine." is printed only when step 5 looked (an issue of this repository named, branches listed, pull request list read; with no pull-request source, the branches alone); otherwise "Running: not looked up for the next step: <why>", one per reason, the same three reasons step 5 prints and In flight uses; and no `Running:` line when step 5 looked up no line (no rows, or every line true). No contradiction found with the With paths bullet (no Running: there), the "Only when every line is true" rule (Next comes from elsewhere), the In flight "Not looked up" rule, or step 5's own prose. Ordinary case unchanged: a no-path roadmap whose next line names a bare `(#N)` with gh working reads as before; the one change, a next line naming no issue, now says "not looked up" instead of "nothing on this machine", which is the fix.
+
+Dropped by the silence filter: the adversarial reviewer's note that a matched branch with an unreadable pull request list drops the failed half unmentioned (no absence is claimed; narrow; pre-existing), and that the template's three `Running:` forms carry no "one of" marker (the template's path lines list alternatives the same way, and the rule makes the choice). The "implemented, no pull request yet" case the fix pass left alone was not ruled on, per handoff.
+
+### Findings
+- [ ] No issues found. LGTM.
