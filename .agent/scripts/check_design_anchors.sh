@@ -16,8 +16,9 @@
 # only when it resolves, by the rules below, to the root's design; one that
 # resolves elsewhere is not a citation. A design.md at another path than
 # the setting's is a part's design, as below. `design=none`: no root design
-# is checked (no in-file links, no register guards), parts' designs still
-# are. The roadmap whose pointer table is read is the `roadmap` setting's
+# is checked (no register guards, no root citations), parts' designs still
+# are -- and a docs/design.md left in the tree is then one of them (its
+# in-file links and the citations of it are checked as a part's). The roadmap whose pointer table is read is the `roadmap` setting's
 # file, else the first of docs/roadmap.md, docs/ROADMAP.md, ROADMAP.md.
 #
 # Purpose: renaming or dropping a design section must not silently break the
@@ -149,11 +150,13 @@
 #   0  no findings
 #   1  one or more findings
 #   2  usage error, root is not a directory, the root's design file missing
-#      (or its setting names a missing file), the design or roadmap key
-#      itself is unusable (set twice, an invalid value) or names a file
-#      outside the root (a fallback file too), or _project_registry.sh
-#      cannot be loaded. A registry or settings file unreadable for another
-#      reason gives a warning and the fallback, not an exit.
+#      (or its setting names a missing file), the design or roadmap key is
+#      set but unusable (set twice, an invalid value, a file outside the
+#      root or a dangling link), or _project_registry.sh cannot be loaded.
+#      An unset key's fallback file outside the root is read with a
+#      warning; a registry or settings file unreadable for another reason
+#      gives a warning and the fallback (or "cannot be told" when that
+#      fallback is missing too), not an exit.
 
 set -uo pipefail
 LC_ALL=C

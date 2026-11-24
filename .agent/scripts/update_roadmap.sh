@@ -20,15 +20,19 @@
 #   - unset, or --root belongs to no registered project (the workspace):
 #     every one of the candidates docs/roadmap.md, docs/ROADMAP.md,
 #     ROADMAP.md that exists (a path that is the same file as one already
-#     processed -- case-insensitive filesystems -- is skipped; one that
-#     resolves outside --root is skipped with a message);
-#   - the registry or the settings file cannot be read for a reason outside
-#     the roadmap key (a bad registry line, another key's bad line): a
-#     warning, then the key as written if its own line is valid, else the
-#     candidates (as with no setting);
+#     processed -- case-insensitive filesystems -- is skipped). A candidate
+#     that is a symbolic link to a file inside --root is edited through the
+#     link (the link stays); one that leads outside --root is handled as
+#     before the setting existed (the edited copy replaces the link; the
+#     file outside is not touched), with a warning;
+#   - another key's bad line in the settings file: a warning, then the
+#     roadmap key from its own line if valid, else the candidates;
+#   - whether the key is set cannot be told (the registry cannot be parsed,
+#     the settings file cannot be read): nothing is updated, with "cannot
+#     be told: <reason>" -- a writer never ticks a file the project may not
+#     have chosen (PROJECT_DOC_STRICT=1);
 #   - the roadmap key itself is unusable (set twice, an invalid value, a
-#     file outside --root or a symbolic link), or the first existing
-#     candidate resolves outside --root: nothing is updated, with the
+#     file outside --root, a symbolic link): nothing is updated, with the
 #     reason.
 # A file is read, written and reported under its stored name, whichever
 # candidate spelling found it.
@@ -187,9 +191,8 @@ _try_checklist_format() {
 # This script never blocks a merge, so without the registry helper it uses
 # the same list as written here and says why.
 ROADMAP_CANDIDATES=("ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md")
-# With the helper, each candidate is checked to stay inside --root
-# (_project_document_file_error), as the lookup checks the first.
-CHECK_CANDIDATE=false
+# The candidate the lookup chose (it has warned about that one already).
+LOOKUP_FALLBACK=""
 REGISTRY_HELPER="$SCRIPT_DIR/_project_registry.sh"
 # shellcheck source=_project_registry.sh
 if [[ -f "$REGISTRY_HELPER" ]] && source "$REGISTRY_HELPER" 2>/dev/null \
@@ -198,9 +201,10 @@ if [[ -f "$REGISTRY_HELPER" ]] && source "$REGISTRY_HELPER" 2>/dev/null \
     ROADMAP_CANDIDATES=()
     for ((_i = ${#_shared[@]} - 1; _i >= 0; _i--)); do ROADMAP_CANDIDATES+=("${_shared[_i]}"); done
     _ws="$(registry_main_checkout "$SCRIPT_DIR/../..")"
-    # A registry or settings file that cannot be read leaves a warning on
-    # stderr and the candidates; only an unusable roadmap key stops here.
-    project_document_query project_document_for_dir "$_ws" "$ROOT_DIR" roadmap
+    # A writer: when whether the key is set cannot be told, it does nothing
+    # (return 3); another key's bad line leaves a warning and the key's own
+    # line, else the candidates; an unusable roadmap key stops here.
+    PROJECT_DOC_STRICT=1 project_document_query project_document_for_dir "$_ws" "$ROOT_DIR" roadmap
     if [[ $PROJECT_DOC_RC -eq 0 && "$PROJECT_DOC_LINE" == none ]]; then
         echo "  This project keeps no roadmap (roadmap=none in its settings); nothing to update for #${ISSUE_NUM}" >&2
         exit 0
@@ -211,11 +215,15 @@ if [[ -f "$REGISTRY_HELPER" ]] && source "$REGISTRY_HELPER" 2>/dev/null \
         # tick a candidate the project did not choose.
         echo "  ⚠️  roadmap=${PROJECT_DOC_LINE#set } names a file not in $ROOT_DIR; nothing updated for #${ISSUE_NUM}" >&2
         exit 0
-    elif [[ $PROJECT_DOC_RC -ne 0 && $PROJECT_DOC_RC -ne 1 ]]; then
-        echo "  ⚠️  could not tell which file is the roadmap (${PROJECT_DOC_WHY:-unknown error}); nothing updated for #${ISSUE_NUM}" >&2
+    elif [[ $PROJECT_DOC_RC -eq 3 ]]; then
+        echo "  ⚠️  which file is the roadmap cannot be told: ${PROJECT_DOC_WHY:-unknown error}; nothing updated for #${ISSUE_NUM}" >&2
         exit 0
+    elif [[ $PROJECT_DOC_RC -ne 0 && $PROJECT_DOC_RC -ne 1 ]]; then
+        echo "  ⚠️  the roadmap setting cannot be used (${PROJECT_DOC_WHY:-unknown error}); nothing updated for #${ISSUE_NUM}" >&2
+        exit 0
+    elif [[ "$PROJECT_DOC_LINE" == "fallback "* ]]; then
+        LOOKUP_FALLBACK="${PROJECT_DOC_LINE#fallback }"
     fi
-    CHECK_CANDIDATE=true
 else
     echo "  ⚠️  _project_registry.sh could not be loaded next to update_roadmap.sh; using the candidate roadmap files" >&2
 fi
@@ -226,16 +234,27 @@ PROCESSED_ROADMAPS=()
 for rel_path in "${ROADMAP_CANDIDATES[@]}"; do
     roadmap="$ROOT_DIR/$rel_path"
     [[ -f "$roadmap" ]] || continue
-    if $CHECK_CANDIDATE && ! _why="$(_project_document_file_error "$ROOT_DIR" "$rel_path")"; then
-        echo "  ⚠️  skipping $rel_path: ${_why}" >&2
-        continue
-    fi
     # Use the stored name: on a case-insensitive filesystem the
     # docs/ROADMAP.md probe also opens a stored docs/roadmap.md; reporting
     # (stdout feeds merge_pr.sh's git add) and the write-back (mv of a temp
     # file onto the path) must use the name the file really has.
     rel_path="$(real_case_relpath "$ROOT_DIR" "$rel_path")"
     roadmap="$ROOT_DIR/$rel_path"
+    # A candidate that is a symbolic link: edit the file it leads to when
+    # that is inside --root, so the link stays a link; one that leads
+    # outside is edited as before (the copy replaces the link, the outside
+    # file is untouched), with a warning unless the lookup gave one.
+    if [[ -L "$roadmap" ]]; then
+        _root_abs="$(cd "$ROOT_DIR" && pwd -P)"
+        _real="$(readlink -f -- "$roadmap" 2>/dev/null)" || _real=""
+        if [[ -n "$_real" && "$_real" == "$_root_abs/"* ]]; then
+            roadmap="$_real"
+            echo "  ${rel_path} is a link: editing ${_real#"$_root_abs"/} through it" >&2
+            rel_path="${_real#"$_root_abs"/}"
+        elif [[ "$rel_path" != "$LOOKUP_FALLBACK" ]]; then
+            echo "  ⚠️  ${rel_path} leads outside $ROOT_DIR (${_real:-unresolved}); edited as before: the edited copy replaces the link" >&2
+        fi
+    fi
     # On a case-insensitive filesystem docs/ROADMAP.md and docs/roadmap.md
     # are one file — process it once.
     already=false

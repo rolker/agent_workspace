@@ -30,28 +30,36 @@ if ! declare -F project_document_for_dir >/dev/null && [[ -f "$_BK_DIR/_project_
     source "$_BK_DIR/_project_registry.sh" 2>/dev/null || true
 fi
 
-# bookkeeping_roadmap_paths <wt> -- print the roadmap paths a post-review
-# commit in checkout <wt> may touch and still be bookkeeping, one per line:
+# bookkeeping_roadmap_paths <wt> -- print the roadmap path PATTERNS a
+# post-review commit in checkout <wt> may touch and still be bookkeeping,
+# one per line (callers match them with [[ == ]]):
 # BOOKKEEPING_ROADMAP_PATHS, plus the file the project's `roadmap` setting
 # names (project_document_for_dir, the same lookup update_roadmap.sh uses)
-# when <wt> is the top of a checkout of the project root's own repository
-# (the root itself, or a worktree of it: only there is the root-relative
-# path also the path git diffs). Nothing is added for any other checkout --
-# the workspace (unregistered), a package repository of a multi-repository
-# project, a root inside another repository -- nor when the setting is
-# unset, `none`, names a missing file, or cannot be read (a stale review is
-# the safe side). Always returns 0.
+# with every character but letters, digits and . _ / - escaped, so it
+# matches only itself (a value may hold ( ) | ! @ +, which extglob reads)
+# -- when <wt> is the top of a checkout of the project root's own
+# repository (the root itself, or a worktree of it: only there is the
+# root-relative path also the path git diffs). Nothing is added for any
+# other checkout -- the workspace (unregistered), a package repository of
+# a multi-repository project, a root inside another repository -- nor when
+# the setting is unset, `none`, names a missing file, cannot be used, or
+# whether it is set cannot be told (PROJECT_DOC_STRICT=1: a broken
+# registry, an unreadable settings file); a stale review is the safe side.
+# The setting can never name README.md, an agent instruction file or the
+# design (_project_document_value_error, _project_document_pair_error).
+# Always returns 0.
 bookkeeping_roadmap_paths() {
     local wt="$1" ws line top abs
     printf '%s\n' "${BOOKKEEPING_ROADMAP_PATHS[@]}"
     declare -F project_document_for_dir >/dev/null || return 0
     abs="$(cd "$wt" 2>/dev/null && pwd -P)" || return 0
-    top="$(git -C "$abs" rev-parse --show-toplevel 2>/dev/null)" && top="$(cd "$top" 2>/dev/null && pwd -P)" || return 0
+    top="$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_COMMON_DIR git -C "$abs" rev-parse --show-toplevel 2>/dev/null)" \
+        && top="$(cd "$top" 2>/dev/null && pwd -P)" || return 0
     [[ "$top" == "$abs" ]] || return 0
     ws="$(registry_main_checkout "$_BK_DIR/../..")"
-    line="$(project_document_for_dir "$ws" "$abs" roadmap 2>/dev/null)" || return 0
+    line="$(PROJECT_DOC_STRICT=1 project_document_for_dir "$ws" "$abs" roadmap 2>/dev/null)" || return 0
     [[ "$line" == "set "* ]] || return 0
-    printf '%s\n' "${line#set }"
+    sed 's/[^A-Za-z0-9._/-]/\\&/g' <<< "${line#set }"
     return 0
 }
 

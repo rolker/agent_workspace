@@ -1659,7 +1659,8 @@ fi
 # a review one: a document commit needs no new CI round whoever's timeline
 # it is), plus the roadmap set shared with the review policy
 # (_bookkeeping.sh; with the PR's worktree, bookkeeping_roadmap_paths adds
-# the file the project's `roadmap` setting names, issue #551). One
+# the file the project's `roadmap` setting names, issue #551, escaped so
+# the pattern match below takes it literally). One
 # definition, read by Step 2's allowed set and by the walk-back below.
 MERGE_PR_CI_BOOKKEEPING_PATTERNS=(".agent/work-plans/*")
 if [[ -n "$_ci_wt" ]]; then

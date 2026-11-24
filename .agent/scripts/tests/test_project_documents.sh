@@ -93,6 +93,7 @@ mkroot escape
 mkdir -p "$R/escape/docs"
 printf '# Outside\n' > "$SB/outside.md"
 ln -s ../../../outside.md "$R/escape/docs/link.md"
+ln -s ../../../outside.md "$R/escape/docs/link2.md"
 commit_all "$R/escape"
 # arch: design=ARCHITECTURE.md, a file not named design.md.
 mkroot arch
@@ -171,6 +172,25 @@ done
 printf 'Ptr.\n' > "$R/ptr/README.md"
 commit_all "$R/ptr"
 
+# globr: a roadmap whose name holds extglob characters.
+mkroot globr
+mkdir -p "$R/globr/notes"
+printf '# Plan\n' > "$R/globr/notes/!(nope).md"
+printf '# Other\n' > "$R/globr/notes/other.md"
+commit_all "$R/globr"
+# dangl: roadmap names a dangling link; docs/design.md (unset) is one too.
+mkroot dangl
+mkdir -p "$R/dangl/notes" "$R/dangl/docs"
+ln -s nowhere.md "$R/dangl/notes/gone.md"
+ln -s nowhere.md "$R/dangl/docs/design.md"
+commit_all "$R/dangl"
+# candin: no settings; ROADMAP.md is a link to docs/roadmap.md, inside.
+mkroot candin
+mkdir -p "$R/candin/docs"
+printf '# Roadmap\n\n- [ ] Candin item (#7)\n' > "$R/candin/docs/roadmap.md"
+ln -s docs/roadmap.md "$R/candin/ROADMAP.md"
+commit_all "$R/candin"
+
 cat > "$WSC/.agent/projects.local" <<REG
 keyed    single_project  $R/keyed
 plain    single_project  $R/plain
@@ -189,6 +209,9 @@ candout  single_project  $R/candout
 mydes    single_project  $R/mydes
 nonec    single_project  $R/nonec
 ptr      single_project  $R/ptr
+globr    single_project  $R/globr
+dangl    single_project  $R/dangl
+candin   single_project  $R/candin
 REG
 
 PS() { (cd "$WSC" && bash "$S/project_setting.sh" "$@"); }
@@ -211,7 +234,7 @@ out="$(PS set fam design=docs/design.md 2>&1)"; rc=$?
 check "set refuses a parent root (settings belong to instances)" test "$rc" -ne 0
 check "none is accepted" PS set nonep design=none roadmap=none goals=none
 PS set missing design=docs/gone.md roadmap=notes/gone.md >/dev/null 2>&1 || fail "set missing"
-PS set escape design=docs/link.md roadmap=docs/link.md >/dev/null 2>&1 || fail "set escape"
+PS set escape design=docs/link.md roadmap=docs/link2.md >/dev/null 2>&1 || fail "set escape"
 PS set arch design=ARCHITECTURE.md >/dev/null 2>&1 || fail "set arch"
 PS set headed 'design=docs/design.md#Overview' >/dev/null 2>&1 || fail "set headed"
 PS set sub roadmap=notes/plan.md >/dev/null 2>&1 || fail "set sub"
@@ -219,6 +242,25 @@ PS set linkr roadmap=notes/link.md >/dev/null 2>&1 || fail "set linkr"
 PS set mydes design=docs/my-design.md >/dev/null 2>&1 || fail "set mydes"
 PS set nonec design=none >/dev/null 2>&1 || fail "set nonec"
 PS set ptr roadmap=notes/plan.md >/dev/null 2>&1 || fail "set ptr"
+PS set globr 'roadmap=notes/!(nope).md' >/dev/null 2>&1 || fail "set globr"
+PS set dangl roadmap=notes/gone.md >/dev/null 2>&1 || fail "set dangl"
+
+echo "TEST: roadmap may not name README, an agent instruction file or the design"
+for bad in README.md docs/readme.md AGENTS.md CLAUDE.md sub/CODEX.md docs/design.md docs/Design.md; do
+    out="$(PS set plain "roadmap=$bad" 2>&1)"; rc=$?
+    check "set refuses roadmap=$bad" test "$rc" -ne 0
+done
+out="$(PS set keyed roadmap=docs/arch/design.md 2>&1)"; rc=$?
+check "set refuses a roadmap that is the design setting's file" test "$rc" -ne 0
+[[ "$out" == *"names the design's file"* ]] && pass "the pair refusal says why" || fail "pair: '$out'"
+check "keyed keeps its roadmap" test "$(PS get keyed roadmap 2>/dev/null)" = "notes/plan.md"
+printf 'design=notes/x.md#Part\nroadmap=notes/x.md\n' > "$WSC/.agent/projects.d/plain"
+out="$(PS check plain 2>&1)"; rc=$?
+check "the parser refuses a hand-written roadmap equal to design" test "$rc" -eq 2
+printf 'design=notes/x.md\nroadmap=notes/x.md\nbuild=a;b\n' > "$WSC/.agent/projects.d/plain"
+out="$(PS doc plain roadmap 2>&1)"; rc=$?
+check "beside another bad line, a roadmap equal to design still exits 2" test "$rc" -eq 2
+rm -f "$WSC/.agent/projects.d/plain"
 
 echo "TEST: roadmap names a Markdown file; the path is checked before the heading"
 for bad in src/main.py ROADMAP notes/plan.txt; do
@@ -265,7 +307,12 @@ check "the merge gate's bookkeeping paths are the fixed list" test "$(wc -l < "$
 printf 'build=make; rm -rf /\ndesign=docs/other.md\n' > "$LF"
 out="$(PS doc loose design 2>"$SB/err")"; rc=$?
 check "an unrelated bad key beside a valid design: the setting is read" test "$rc:$out" = "0:set docs/other.md"
-grep -q '^warning: .*other lines' "$SB/err" && pass "the warning says the key is read as written" || fail "warning2: '$(cat "$SB/err")'"
+grep -q '^warning: .*read from its own line' "$SB/err" && pass "the warning says the key is read from its own line" || fail "warning2: '$(cat "$SB/err")'"
+out="$(bash "$S/check_design_anchors.sh" "$R/loose" 2>&1)"
+check "a reader asking for two documents warns once ($out)" test "$(grep -c '^warning:' <<< "$out")" -eq 1
+[[ "$out" != *"/../"* ]] && pass "the warning's path is normalised" || fail "path: '$out'"
+out="$(bash "$S/sitrep_root.sh" --dir "$R/loose" 2>&1 >/dev/null)"
+check "sitrep_root.sh warns once ($out)" test "$(grep -c '^warning:' <<< "$out")" -eq 1
 printf 'build=make; rm -rf /\ndesign=../x.md\n' > "$LF"
 out="$(PS doc loose design 2>&1)"; rc=$?
 check "an unrelated bad key beside an invalid design: exit 2" test "$rc" -eq 2
@@ -301,8 +348,14 @@ check "doc for an unknown project: exit 3" test "$rc" -eq 3
 out="$(PS doc linkr roadmap 2>&1)"; rc=$?
 check "a roadmap setting that is a symbolic link: exit 2" test "$rc" -eq 2
 [[ "$out" == *"symbolic link"* ]] && pass "the link is named" || fail "link: '$out'"
-out="$(PS doc candout design 2>&1)"; rc=$?
-check "an unset key whose candidate leaves the root: exit 2 (fails closed)" test "$rc" -eq 2
+out="$(PS doc candout design 2>"$SB/err")"; rc=$?
+check "an unset key whose candidate leaves the root: read as before" test "$rc:$out" = "0:fallback docs/design.md"
+grep -q '^warning: design: .*resolves outside' "$SB/err" && pass "with a warning" || fail "candout warning: '$(cat "$SB/err")'"
+out="$(PS doc dangl roadmap 2>&1)"; rc=$?
+check "a roadmap setting that is a dangling link: exit 2" test "$rc" -eq 2
+[[ "$out" == *"resolves to no file"* ]] && pass "the dangling link is named" || fail "dangl: '$out'"
+out="$(PS doc dangl design 2>&1)"; rc=$?
+check "an unset key whose candidate is a dangling link: passed over (exit 1)" test "$rc" -eq 1
 check "the candidates split on blanks whatever the caller's IFS" \
     test "$( (source "$S/_project_registry.sh"; IFS=,; project_document_candidates roadmap) | wc -l)" -eq 3
 
@@ -319,6 +372,10 @@ check "the workspace is no project" test -z "$(name_of "$WSC" 2>/dev/null)"
 check "a workspace worktree is no project" test -z "$(name_of "$WSC/worktrees/wsb" 2>/dev/null)"
 check "a parent root is its own name" test "$(name_of "$R/fam")" = fam
 check "the worktree reads the setting" test "$(for_dir "$R/keyed/worktrees/wt" roadmap)" = "set notes/plan.md"
+check "an inherited GIT_DIR (another repository's hook) does not change the answer" \
+    test "$(GIT_DIR="$WSC/.git" name_of "$R/keyed")" = keyed
+check "an inherited GIT_DIR: a worktree is still its project" \
+    test "$(GIT_DIR="$WSC/.git" GIT_WORK_TREE="$WSC" name_of "$R/keyed/worktrees/wt")" = keyed
 check "the workspace reads docs/design.md" test "$(for_dir "$WSC" design)" = "fallback docs/design.md"
 check "a workspace worktree reads docs/design.md" test "$(for_dir "$WSC/worktrees/wsb" design)" = "fallback docs/design.md"
 check "an unregistered directory reads the candidates" test "$(for_dir "$R/host" design 2>/dev/null; echo "rc=$?")" = "rc=1"
@@ -341,8 +398,15 @@ printf 'See docs/design.md#overview.
 ' > "$SB/unreg/README.md"
 out="$(bash "$S/check_design_anchors.sh" "$SB/unreg" 2>&1)"; rc=$?
 check "a broken registry: an unregistered root is still checked ($out)" test "$rc" -eq 0
-out="$(bash "$S/update_roadmap.sh" --issue 7 --root "$R/plain" --dry-run 2>&1 >/dev/null)"
-[[ "$out" == *"docs/ROADMAP.md: #7"* ]] && pass "a broken registry: update_roadmap.sh uses the candidates" || fail "broken registry roadmap: '$out'"
+out="$(bash "$S/update_roadmap.sh" --issue 7 --root "$R/keyed/worktrees/wt" 2>&1 >/dev/null)"
+[[ "$out" == *"cannot be told"* ]] && pass "a broken registry: update_roadmap.sh (a writer) says cannot be told" || fail "broken registry roadmap: '$out'"
+grep -qF -- '- [ ] Decoy item (#7)' "$R/keyed/worktrees/wt/docs/roadmap.md" && pass "a broken registry: the decoy candidate is not ticked" || fail "decoy ticked"
+grep -qF -- '- [ ] Keyed item (#7)' "$R/keyed/worktrees/wt/notes/plan.md" && pass "a broken registry: nothing is ticked" || fail "keyed ticked"
+check "a broken registry: the bookkeeping paths are the fixed list" \
+    test "$( (source "$S/_bookkeeping.sh"; bookkeeping_roadmap_paths "$R/keyed/worktrees/wt") | wc -l)" -eq 3
+out="$(bash "$S/check_design_anchors.sh" "$R/keyed" 2>&1)"; rc=$?
+check "a broken registry, no fallback design: exit 2" test "$rc" -eq 2
+[[ "$out" == *"cannot be told"* && "$out" != *"is not set"* ]] && pass "the reason says cannot be told, not not set" || fail "untold: '$out'"
 out="$( (source "$S/_project_registry.sh"; project_document_path "$WSC" plain design "$R/plain") 2>/dev/null)"; rc=$?
 check "a broken registry: project_document_path with a directory reads the candidates" test "$rc:$out" = "0:fallback docs/design.md"
 cp "$SB/projects.local.good" "$WSC/.agent/projects.local"
@@ -367,15 +431,19 @@ check "unset: the docs/ROADMAP.md candidate is edited" test "$out" = "$R/plain/d
 out="$(bash "$UR" --issue 7 --root "$WSC" 2>/dev/null)"
 check "the workspace root: docs/roadmap.md is edited" test "$out" = "$WSC/docs/roadmap.md"
 out="$(bash "$UR" --issue 7 --root "$R/escape" 2>&1)"
-[[ "$out" == *"could not tell which file is the roadmap"* ]] && pass "a setting that leaves the root: nothing is edited, with the reason" || fail "escape: '$out'"
+[[ "$out" == *"the roadmap setting cannot be used"* ]] && pass "a setting that leaves the root: nothing is edited, with the reason" || fail "escape: '$out'"
 out="$(bash "$UR" --issue 7 --root "$R/linkr" 2>&1)"
 check "a roadmap setting that is a link: the link is left a link" test -L "$R/linkr/notes/link.md"
 grep -qF -- '- [ ] Link item (#7)' "$R/linkr/notes/real.md" && pass "a roadmap setting that is a link: nothing is edited (refused)" || fail "link ticked"
 [[ "$out" == *"symbolic link"* ]] && pass "the refusal names the link" || fail "link message: '$out'"
 out="$(bash "$UR" --issue 7 --root "$R/candlink" 2>"$SB/err")"
-check "unset: a candidate linked out of the root is skipped, the inside one edited" test "$out" = "$R/candlink/docs/roadmap.md"
+check "unset: a candidate linked out of the root is handled as before" test "$(tr '\n' ' ' <<< "$out")" = "$R/candlink/ROADMAP.md $R/candlink/docs/roadmap.md "
 grep -qF -- '- [ ] Outside item (#7)' "$SB/outside_roadmap.md" && pass "the file outside the root is not edited" || fail "outside ticked"
-grep -q 'skipping ROADMAP.md' "$SB/err" && pass "the skip is said" || fail "skip message: '$(cat "$SB/err")'"
+grep -q 'ROADMAP.md leads outside' "$SB/err" && pass "with a warning" || fail "outside message: '$(cat "$SB/err")'"
+out="$(bash "$UR" --issue 7 --root "$R/candin" 2>/dev/null)"
+check "unset: a candidate linked inside the root is edited through the link" test "$out" = "$R/candin/docs/roadmap.md"
+check "the link stays a link" test -L "$R/candin/ROADMAP.md"
+grep -qF -- '- [x] Candin item (#7)' "$R/candin/docs/roadmap.md" && pass "its target is ticked" || fail "candin not ticked"
 g -C "$WSC" checkout -q -- docs/roadmap.md
 
 echo "TEST: check_design_anchors.sh reads the design setting"
@@ -454,6 +522,20 @@ check "merge_pr.sh's CI patterns with a keyed worktree add the set roadmap" \
     test "$(ci_patterns "$R/keyed/worktrees/wt" | tr '\n' ' ')" = ".agent/work-plans/* ROADMAP.md docs/ROADMAP.md docs/roadmap.md notes/plan.md "
 check "merge_pr.sh's CI patterns without a worktree are the fixed list" \
     test "$(ci_patterns "" | tr '\n' ' ')" = ".agent/work-plans/* ROADMAP.md docs/ROADMAP.md docs/roadmap.md "
+pats="$( (source "$S/_bookkeeping.sh"; bookkeeping_roadmap_paths "$R/globr") | tail -n1)"
+# shellcheck disable=SC2053  # unquoted on purpose: the callers' pattern match
+lit() { [[ "$1" == $pats ]]; }
+check "an extglob roadmap name matches itself" lit 'notes/!(nope).md'
+check "an extglob roadmap name matches no other file" bash -c '! [[ "$1" == $2 ]]' _ notes/other.md "$pats"
+# shellcheck disable=SC2053  # unquoted on purpose, as above
+(shopt -s extglob; [[ notes/other.md == $pats ]]) && fail "with extglob on, the name matched another file" || pass "with extglob on, it still matches no other file"
+GB="$R/globr"
+REV="$(g -C "$GB" rev-parse HEAD)"
+printf 'x\n' >> "$GB/notes/other.md"; g -C "$GB" commit -q -am other
+why="$(bash "$S/_bookkeeping.sh" --review "$GB" "$REV" "$(g -C "$GB" rev-parse HEAD)" 7)"; rc=$?
+check "a commit to another .md after review is not bookkeeping ($why)" test "$rc" -eq 1
+check "an inherited GIT_DIR: the bookkeeping paths still add the setting" \
+    test "$( (source "$S/_bookkeeping.sh"; GIT_DIR="$WSC/.git" bookkeeping_roadmap_paths "$R/keyed/worktrees/wt") | tail -n1)" = "notes/plan.md"
 WT="$R/keyed/worktrees/wt"
 g -C "$WT" add -A && g -C "$WT" commit -q -m "code"
 REVIEWED="$(g -C "$WT" rev-parse HEAD)"

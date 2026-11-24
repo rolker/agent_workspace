@@ -108,21 +108,26 @@
 #                           not a URL; goals and design may add
 #                           #<heading> (a section of the file), roadmap may
 #                           not (its readers use the file's '## Direction'
-#                           section, or the whole file) and must end in .md
-#                           (the merge gate counts commits to it as
-#                           bookkeeping). Read through
+#                           section, or the whole file), must end in .md
+#                           and may not be README.md, AGENTS.md, CLAUDE.md,
+#                           CODEX.md, docs/design.md or the design
+#                           setting's file (the merge gate counts commits
+#                           to it as bookkeeping). Read through
 #                           project_document_path, which checks again that
 #                           the file exists and does not resolve outside the
 #                           root (and that a roadmap is no symbolic link).
 #                           Unset, a reader uses the first existing
 #                           candidate: roadmap docs/roadmap.md,
 #                           docs/ROADMAP.md, ROADMAP.md; design
-#                           docs/design.md; goals none. A candidate that
-#                           resolves outside the root stops the reader
-#                           (exit 2), set or not. A registry or settings
+#                           docs/design.md; goals none; a candidate that
+#                           resolves outside the root is read as before,
+#                           with a warning. A set key that is unusable stops
+#                           the reader (exit 2); a registry or settings
 #                           file unreadable for a reason outside the key
-#                           read gives a warning and the key as written,
-#                           or the candidates (fails open). A part's documents
+#                           gives a warning and the key's own line, or the
+#                           candidates (fails open) -- except for a writer
+#                           (PROJECT_DOC_STRICT=1), which does nothing when
+#                           whether the key is set cannot be told. A part's documents
 #                           are named only by the root roadmap's
 #                           `| Sub-roadmap | Root |` table (ADR-0022), never
 #                           here. Every type reads these keys.
@@ -1293,6 +1298,10 @@ _project_file_parse() {
         echo "ERROR: ${file}: $reason" >&2
         return 2
     fi
+    if ! reason="$(_project_document_pair_error "$(_project_file_value_of "$entries" roadmap)" "$(_project_file_value_of "$entries" design)")"; then
+        echo "ERROR: ${file}: $reason" >&2
+        return 2
+    fi
     [ -n "$entries" ] && printf '%s\n' "$entries"
     return 0
 }
@@ -1418,6 +1427,15 @@ _project_document_value_error() {
             echo "roadmap must name a Markdown file (a path ending in .md): commits to it after review count as bookkeeping in the merge gate; got '$value'"
             return 1
         fi
+        case "$(tr '[:upper:]' '[:lower:]' <<< "${path##*/}")" in
+            readme.md|agents.md|claude.md|codex.md)
+                echo "roadmap must not name ${path##*/}: commits to the roadmap after review count as bookkeeping in the merge gate, so it may not be the project's README or an agent instruction file; got '$value'"
+                return 1 ;;
+        esac
+        if [ "$(tr '[:upper:]' '[:lower:]' <<< "$path")" = "$(tr '[:upper:]' '[:lower:]' <<< "${_PROJECT_DOCUMENT_CANDIDATES_design%% *}")" ]; then
+            echo "roadmap must not name the design fallback ${_PROJECT_DOCUMENT_CANDIDATES_design%% *}: commits to the roadmap after review count as bookkeeping in the merge gate; got '$value'"
+            return 1
+        fi
         if [[ "$value" == *#* ]]; then
             echo "roadmap takes a file, not a section ('#$heading'): the sit-rep reads the file's '## Direction' section and update_roadmap.sh edits the whole file, so name the file alone (roadmap=$path)"
             return 1
@@ -1427,6 +1445,20 @@ _project_document_value_error() {
             echo "$key: the heading after '#' must not be empty or hold control characters, got '$value'"
             return 1
         fi
+    fi
+    return 0
+}
+
+# The roadmap and design settings together: the roadmap may not be the
+# design's file (compared without #heading, ignoring case), since commits
+# to the roadmap after review count as bookkeeping. Prints the reason and
+# returns 1; empty values (unset) and 'none' always pass. Pure.
+_project_document_pair_error() {
+    local roadmap="$1" design="${2%%#*}"
+    [ -n "$roadmap" ] && [ -n "$design" ] && [ "$roadmap" != none ] && [ "$design" != none ] || return 0
+    if [ "$(tr '[:upper:]' '[:lower:]' <<< "$roadmap")" = "$(tr '[:upper:]' '[:lower:]' <<< "$design")" ]; then
+        echo "roadmap=$roadmap names the design's file (design=$2): commits to the roadmap after review count as bookkeeping in the merge gate, so it must be a file of its own"
+        return 1
     fi
     return 0
 }
@@ -1450,13 +1482,20 @@ _project_document_value_error() {
 # reads the candidates; matching every registered root's git common
 # directory would cost a git call per project on every lookup.
 # Usage: name="$(project_document_name_for_root "$ws_root" "$dir")"
+# git for the lookups below, without the repository an outer git (a hook
+# of another repository, say) exports: GIT_DIR or GIT_WORK_TREE would make
+# every `git -C` answer for that repository instead of the directory named.
+_project_document_git() {
+    env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_COMMON_DIR git "$@"
+}
+
 project_document_name_for_root() {
     local ws="$1" dir="$2" abs top wscommon common entry rc=0 name path pabs ptop pcommon
     abs="$(cd "$dir" 2>/dev/null && pwd -P)" || return 1
-    top="$(git -C "$abs" rev-parse --show-toplevel 2>/dev/null)" && top="$(cd "$top" 2>/dev/null && pwd -P)" || top=""
-    common="$(git -C "$abs" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
+    top="$(_project_document_git -C "$abs" rev-parse --show-toplevel 2>/dev/null)" && top="$(cd "$top" 2>/dev/null && pwd -P)" || top=""
+    common="$(_project_document_git -C "$abs" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
         && common="$(cd "$common" 2>/dev/null && pwd -P)" || common=""
-    wscommon="$(git -C "$ws" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
+    wscommon="$(_project_document_git -C "$ws" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
         && wscommon="$(cd "$wscommon" 2>/dev/null && pwd -P)" || wscommon=""
     # A checkout of the workspace's own repository is the workspace.
     if [ -n "$top" ] && [ "$top" = "$abs" ] && [ -n "$common" ] && [ "$common" = "$wscommon" ]; then
@@ -1474,9 +1513,9 @@ project_document_name_for_root() {
     fi
     # A worktree: the root must be the top of its own repository, and <dir>
     # the top of a checkout sharing that repository.
-    ptop="$(git -C "$pabs" rev-parse --show-toplevel 2>/dev/null)" && ptop="$(cd "$ptop" 2>/dev/null && pwd -P)" || return 1
+    ptop="$(_project_document_git -C "$pabs" rev-parse --show-toplevel 2>/dev/null)" && ptop="$(cd "$ptop" 2>/dev/null && pwd -P)" || return 1
     [ "$ptop" = "$pabs" ] || return 1
-    pcommon="$(git -C "$pabs" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
+    pcommon="$(_project_document_git -C "$pabs" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
         && pcommon="$(cd "$pcommon" 2>/dev/null && pwd -P)" || return 1
     [ -n "$top" ] && [ "$top" = "$abs" ] && [ "$common" = "$pcommon" ] || return 1
     printf '%s\n' "$name"
@@ -1484,13 +1523,18 @@ project_document_name_for_root() {
 
 # Is <rel> an existing regular file inside <dir>, also after symlinks are
 # followed? Prints the reason and returns 1 when it is missing (or not a
-# regular file), 2 when it resolves outside <dir>.
+# regular file), 2 when it resolves outside <dir>, 3 when it is a symbolic
+# link that resolves to nothing (dangling, a loop).
 _project_document_file_error() {
     local dir="$1" rel="$2" dabs real
     dabs="$(cd "$dir" 2>/dev/null && pwd -P)" || { echo "$dir is not a directory"; return 1; }
     if [ ! -e "$dabs/$rel" ] && [ ! -L "$dabs/$rel" ]; then
         echo "$rel does not exist in $dabs"
         return 1
+    fi
+    if [ ! -e "$dabs/$rel" ]; then
+        echo "$rel in $dabs is a symbolic link that resolves to no file (to '$(readlink -- "$dabs/$rel" 2>/dev/null)')"
+        return 3
     fi
     real="$(readlink -f -- "$dabs/$rel" 2>/dev/null)" || real=""
     if [ -z "$real" ] || { [ "$real" != "$dabs" ] && [[ "$real" != "$dabs/"* ]]; }; then
@@ -1534,24 +1578,36 @@ _project_document_raw_values() {
 # Returns 0 for these; 1 with the reason on stderr when there is nothing to
 # read (unset goals, no candidate exists, or the file a set key names is
 # missing -- then "set <value>" is still printed, so a reader can name the
-# file the project chose); 2 with the reason when the key itself cannot be
-# used: it is set more than once or to an invalid value, the file it names
-# resolves outside <dir>, or (roadmap only) that file is a symbolic link or
-# reached through one (update_roadmap.sh replaces the file it edits, and
-# the merge gate's bookkeeping exemption names the path, not a link's
-# target). A candidate that resolves outside <dir> also returns 2.
-# Fails open, as when nothing is set (issue #551: "with no setting, each
-# keeps today's fixed search"): when the key cannot be read for a reason
-# outside it -- the registry cannot be parsed, <name> is not registered,
-# a parent root holds a settings file, the settings file cannot be read,
-# or another line of it is invalid -- one "warning: ..." line names the
-# problem on stderr and the key is read as written if its own line is
-# valid, else as unset (the candidates). Without <dir> there is nowhere to
-# look for them, and the return is 2.
+# file the project chose); 2 with the reason when a SET key cannot be used:
+# it is set more than once or to an invalid value (also a roadmap naming
+# the design's file), the file it names resolves outside <dir> or is a
+# symbolic link that resolves to nothing, or (roadmap only) that file is a
+# symbolic link or reached through one (update_roadmap.sh replaces the file
+# it edits, and the merge gate's bookkeeping exemption names the path, not
+# a link's target).
+# Fails open where nothing is set (issue #551: "with no setting, each
+# keeps today's fixed search"):
+#   - an unset key's candidate that resolves outside <dir> is read as
+#     before, with a warning (a dangling one is passed over, as before);
+#   - when the key cannot be read for a reason outside it -- the registry
+#     cannot be parsed, <name> is not registered, a parent root holds a
+#     settings file, the settings file cannot be read, or another line of
+#     it is invalid -- one "warning: ..." line names the problem on stderr
+#     and the key is read from its own line when that is valid, else as
+#     unset (the candidates). Where whether the key is set cannot be told
+#     at all (the registry cannot be parsed, the settings file cannot be
+#     read) and PROJECT_DOC_STRICT=1 is set, as a writer sets it, the
+#     return is 3 with the reason instead: a writer does nothing it cannot
+#     tell the project chose.
+# Without <dir> there is nowhere to look for candidates, and a registry
+# problem returns 2.
 # Usage: line="$(project_document_path "$ws_root" "$name" roadmap [<dir>])"
 project_document_path() {
-    local ws="$1" name="$2" key="$3" dir="${4:-}" entry entries value="" rc=0 path reason c file
-    local -a vals=()
+    local ws="$1" name="$2" key="$3" dir="${4:-}" entry entries value="" rc=0 path reason c file real
+    # Set by project_document_for_dir when the registry cannot be parsed.
+    local untold="${_project_document_untold:-}"
+    local -a vals=() dvals=()
+    ws="$(cd "$ws" 2>/dev/null && pwd -P)" || ws="$1"
     case "$key" in goals|design|roadmap) ;; *)
         echo "ERROR: project_document_path: unknown document '$key' (goals, design or roadmap)" >&2; return 2 ;;
     esac
@@ -1567,9 +1623,9 @@ project_document_path() {
                 return 2
             fi
             if [ "$rc" -eq 2 ]; then
-                echo "warning: the registry $(registry_file "$ws") has errors, so the $key setting of '$name' cannot be read; using the fixed candidates" >&2
+                untold="the registry $(registry_file "$ws") has errors"
             else
-                echo "warning: project '$name' is not registered in $(registry_file "$ws"); using the fixed candidates for $key" >&2
+                echo "warning: project '$name' is not registered in $(registry_file "$ws"); its documents are the fixed candidates" >&2
             fi
             name=""
         else
@@ -1577,12 +1633,12 @@ project_document_path() {
             file="$(project_file_path "$ws" "$name")"
             if [ "$(cut -f1 <<< "$entry")" = "$REGISTRY_PARENT_TYPE" ]; then
                 if [ -e "$file" ] || [ -L "$file" ]; then
-                    echo "warning: $file: '$name' is a parent root, so nothing reads this file (remove it); using the fixed candidates for $key" >&2
+                    echo "warning: $file: '$name' is a parent root, so nothing reads this file (remove it); its documents are the fixed candidates" >&2
                 fi
             elif entries="$(project_file_entries "$ws" "$name" 2>/dev/null)"; then
                 value="$(_project_file_value_of "$entries" "$key")" || value=""
             elif reason="$(_project_file_path_error "$file")"; then
-                echo "warning: $reason; using the fixed candidates for $key" >&2
+                untold="$reason"
             else
                 mapfile -t vals < <(_project_document_raw_values "$file" "$key")
                 if [ "${#vals[@]}" -gt 1 ]; then
@@ -1594,17 +1650,29 @@ project_document_path() {
                         echo "ERROR: $file: $reason" >&2
                         return 2
                     fi
+                    if [ "$key" = roadmap ]; then
+                        mapfile -t dvals < <(_project_document_raw_values "$file" design)
+                        if [ "${#dvals[@]}" -eq 1 ] && ! reason="$(_project_document_pair_error "${vals[0]}" "${dvals[0]}")"; then
+                            echo "ERROR: $file: $reason" >&2
+                            return 2
+                        fi
+                    fi
                     value="${vals[0]}"
-                    echo "warning: $file has errors in other lines (.agent/scripts/project_setting.sh check $name names them); reading $key=$value" >&2
-                else
-                    echo "warning: $file has errors (.agent/scripts/project_setting.sh check $name names them); $key is not set in it, so the fixed candidates are read" >&2
                 fi
+                echo "warning: $file has errors (.agent/scripts/project_setting.sh check $name names them); each document setting is read from its own line, an absent one as unset" >&2
             fi
         fi
     fi
     if [ -z "$dir" ]; then
         echo "ERROR: project_document_path: no directory to read $key in" >&2
         return 2
+    fi
+    if [ -n "$untold" ]; then
+        if [ "${PROJECT_DOC_STRICT:-}" = 1 ]; then
+            echo "whether $key is set cannot be told: $untold" >&2
+            return 3
+        fi
+        echo "warning: $untold, so whether a document is set cannot be told; using the fixed candidates" >&2
     fi
     if [ "$value" = none ]; then
         echo "none"
@@ -1620,7 +1688,7 @@ project_document_path() {
         fi
         if [ "$rc" -ne 0 ]; then
             echo "$key=$value (project '$name'): $reason" >&2
-            return "$rc"
+            return 2
         fi
         if [ "$key" = roadmap ] && [ "$(readlink -f -- "$dir/$path" 2>/dev/null)" != "$(cd "$dir" 2>/dev/null && pwd -P)/$path" ]; then
             echo "$key=$value (project '$name'): $path is a symbolic link or is reached through one; name the file itself (update_roadmap.sh replaces the file it edits)" >&2
@@ -1633,9 +1701,19 @@ project_document_path() {
         [ -n "$c" ] || continue
         rc=0; reason="$(_project_document_file_error "$dir" "$c")" || rc=$?
         [ "$rc" -eq 0 ] && { printf 'fallback %s\n' "$c"; return 0; }
-        [ "$rc" -eq 2 ] && { echo "$key: $reason" >&2; return 2; }
+        if [ "$rc" -eq 2 ]; then
+            # Unset: read as before this setting existed, with a warning.
+            real="$(readlink -f -- "$dir/$c" 2>/dev/null)" || real=""
+            if [ -n "$real" ] && [ -f "$real" ]; then
+                echo "warning: $key: $reason; read as before, since $key is not set" >&2
+                printf 'fallback %s\n' "$c"
+                return 0
+            fi
+        fi
     done < <(project_document_candidates "$key")
-    if [ "$key" = goals ]; then
+    if [ -n "$untold" ]; then
+        echo "whether $key is set cannot be told ($untold), and none of $(project_document_candidates "$key" | tr '\n' ' ' | sed 's/ $//') exists in $dir" >&2
+    elif [ "$key" = goals ]; then
         echo "goals is not set${name:+ for project '$name'} (there is no fallback for goals)" >&2
     else
         echo "$key is not set${name:+ for project '$name'} and none of $(project_document_candidates "$key" | tr '\n' ' ' | sed 's/ $//') exists in $dir" >&2
@@ -1647,15 +1725,15 @@ project_document_path() {
 # (project_document_name_for_root): a registered root or a worktree of its
 # own repository reads the project's setting; any other directory (the
 # workspace) reads the candidates in <dir>. When the registry cannot be
-# parsed, one "warning: ..." line says so and the candidates in <dir> are
-# read. Same output and returns.
+# parsed, whether <dir> has a setting cannot be told: one "warning: ..."
+# line and the candidates, or with PROJECT_DOC_STRICT=1 return 3. Same
+# output and returns.
 # Usage: line="$(project_document_for_dir "$ws_root" "$dir" design)"
 project_document_for_dir() {
-    local ws="$1" dir="$2" key="$3" name="" rc=0
+    local ws="$1" dir="$2" key="$3" name="" rc=0 _project_document_untold=""
+    ws="$(cd "$ws" 2>/dev/null && pwd -P)" || ws="$1"
     name="$(project_document_name_for_root "$ws" "$dir")" || rc=$?
-    if [ "$rc" -eq 2 ]; then
-        echo "warning: the registry $(registry_file "$ws") has errors, so whether $dir has a $key setting cannot be told; using the fixed candidates" >&2
-    fi
+    [ "$rc" -eq 2 ] && _project_document_untold="the registry $(registry_file "$ws") has errors"
     [ "$rc" -eq 0 ] || name=""
     project_document_path "$ws" "$name" "$key" "$dir"
 }
@@ -1666,8 +1744,11 @@ project_document_for_dir() {
 # key names a missing file) and PROJECT_DOC_WHY (the last line of its
 # reason, tabs, CRs and other control characters made blanks, so it fits
 # a TSV row or a key=value line). Its "warning: ..." lines are passed on to
-# stderr. No temporary file: the two streams are told apart by content
-# (an answer is "set ...", "fallback ..." or "none"; no reason starts so).
+# stderr, each once per shell (a reader asking for two documents gets one
+# warning about one bad settings file). No temporary file: the two streams
+# are told apart by content (an answer is "set ...", "fallback ..." or
+# "none"; no reason starts so).
+PROJECT_DOC_WARNED=""
 project_document_query() {
     local fn="$1" all line
     shift
@@ -1679,7 +1760,11 @@ project_document_query() {
     while IFS= read -r line; do
         case "$line" in
             "set "*|"fallback "*|none) PROJECT_DOC_LINE="$line" ;;
-            warning:*) printf '%s\n' "$line" >&2 ;;
+            warning:*)
+                case "$PROJECT_DOC_WARNED" in
+                    *$'\n'"$line"$'\n'*) ;;
+                    *) printf '%s\n' "$line" >&2; PROJECT_DOC_WARNED="${PROJECT_DOC_WARNED:-$'\n'}$line"$'\n' ;;
+                esac ;;
             "") ;;
             *) PROJECT_DOC_WHY="$line" ;;
         esac
