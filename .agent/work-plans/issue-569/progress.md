@@ -270,3 +270,22 @@ Codex (EXIT=0) read the PR title, URL and final diff only and reported no issues
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 09:33 -05:00
+**By**: claude-code (claude-opus-5-5)
+**Reviews-read**: 6040846319
+
+**PR**: #571 at `e6ef187f`
+**Sources**: 4 (Local Review (Pre-Push) @ `81267304` (covers e6ef187f via bookkeeping), Local Review (Codex cold read) @ `e6ef187f`, Copilot @ `e6ef187f` (could not review), CI rollup)
+**Cross-source confirmations**: 0
+**CI**: all-pass
+
+### Findings
+
+None. The change is one row of `tools/repos-manifest/docs/roadmap.md`. The Codex cold read (newest `## Local Review`, approved) found nothing; its "No issues found. LGTM." line is a verdict, not a finding, and the `sources` helper returned no open local findings at this head. Copilot's review 6040846319 at `e6ef187f` says, in its own words, "Copilot was unable to review this pull request because the user who requested the review has insufficient remaining quota": it holds no findings because it did not review, not because it reviewed and found nothing. No conversation comments, no inline comments.
+
+CI at `e6ef187f`: Lint (pre-commit), Validate Adapter Contract, Validate Documentation, and the repos-manifest tests (Python 3.10 and 3.14) all succeeded (each reported twice, push and pull_request). The `copilot-pull-request-reviewer` check-run concluded `failure`; that is Copilot's quota notice above, not a CI failure of the change, and it is not counted as a failing check.
+
+### False positives
