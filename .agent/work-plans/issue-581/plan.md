@@ -25,7 +25,7 @@ What a bare number means (answers the issue's fourth row): the issue of the repo
 
    | # | Case | stdout | Exit |
    |---|---|---|---|
-   | 1 | `owner/repo#N` naming this checkout's repository (origin's slug, or the header's in a package issue checkout), case ignored: no gh call | `owner/repo` | 0 |
+   | 1 | `owner/repo#N` naming this checkout's repository (origin's slug, or the header's in a package issue checkout), case ignored: no gh call | that repository, in this checkout's casing | 0 |
    | 1b | `owner/repo#N` naming another repository (the session-root rule: an issue of another repository is worked from a checkout of it; the skills stop before any record is read or written); or any `owner/repo#N` in a checkout from which no GitHub repository is read (another host, an SSH host alias, `ssh.github.com:443`, no origin), where it cannot be shown to be this checkout's; no `gh` call (gh would answer with the remote it prefers) | none | 6 |
    | 2 | bare number; origin is github.com and the only github.com remote, no `gh-resolved`, `GH_REPO` unset: decided locally, no `gh` call (works offline) | origin's slug | 0 |
    | 3 | bare number; another github.com remote (`upstream`) or a `gh-resolved` setting or `GH_REPO` set, gh asked and names origin's repository | origin's slug | 0 |

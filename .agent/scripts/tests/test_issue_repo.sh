@@ -207,7 +207,7 @@ PINNED="repo view --json nameWithOwner --jq .nameWithOwner | cwd=%s GH_HOST=gith
 
 echo "=== case 1: a qualified ref names this checkout's repository, or is refused ==="
 run "$BETA" "$NOGH" -- "own/beta#7";   expect "own/beta#7 from beta (upstream other/beta): this checkout's, no gh call" "own/beta" 0 0
-run "$ALPHA" "$NOGH" -- "OWN/Alpha#7"; expect "case ignored, printed as given" "OWN/Alpha" 0 0
+run "$ALPHA" "$NOGH" -- "OWN/Alpha#7"; expect "case ignored, printed in this checkout's casing" "own/alpha" 0 0
 run "$CHARS" "$NOGH" -- "Own-x_1/re_po.x-1#12"; expect "owner and repo characters a GitHub repository may hold" "Own-x_1/re_po.x-1" 0 0
 run "$ALPHA" "$STUB_PATH" -- "own/beta#7"
 expect "own/beta#7 from alpha: another repository's issue, refused (exit 6), no gh call" "" 6 0
@@ -222,6 +222,8 @@ expect "up/pkg#7 from a package worktree's top folder: exit 3, no gh call" "" 3 
 err_has "qualified ref, top folder: names the issue checkout" "$PW/src/pkg"
 run "$PW/src/pkg" "$NOGH" -- "up/pkg#7"
 expect "up/pkg#7 in its issue checkout (origin the fork): the header's repository, no gh call" "up/pkg" 0 0
+run "$PW/src/pkg" "$NOGH" -- "UP/Pkg#7"
+expect "UP/Pkg#7 there: printed in the header's casing" "up/pkg" 0 0
 run "$PW/src/pkg" "$STUB_PATH" -- "fork/pkg#7"
 expect "fork/pkg#7 in up/pkg#7's issue checkout: refused" "" 6 0
 err_has "fork ref in the issue checkout: says the header decides" "up/pkg's (from the package worktree's manifest)"

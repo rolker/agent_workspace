@@ -20,8 +20,9 @@
 # (exit 6) before any skill reads or writes a record or posts anything.
 #
 # What a bare number means: issue N of this checkout's repository. A
-# qualified owner/repo#N is printed as given when owner/repo is this
-# checkout's repository. The ref grammar is dispatch_phase.sh's
+# qualified owner/repo#N is accepted when owner/repo is this checkout's
+# repository, and the repository is printed as this checkout names it
+# (its casing, not the caller's). The ref grammar is dispatch_phase.sh's
 # parse_issue_ref, with no leading zeros (issue_checkout_of and the
 # records paths compare the number as text).
 #
@@ -203,7 +204,7 @@ ask_gh() {
 if [[ -n "$REF_REPO" ]]; then
     if [[ -n "$EXPECTED" ]]; then
         if [[ "${REF_REPO,,}" == "${EXPECTED,,}" ]]; then
-            echo "$REF_REPO"
+            echo "$EXPECTED"
             exit 0
         fi
         from=""
