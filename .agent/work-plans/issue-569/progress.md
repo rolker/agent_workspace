@@ -120,3 +120,13 @@ The split into three parts and their order are right, and the bootstrap route is
 - [ ] Part 3: name `schema.py`, `merge.py`, `selectors.py`, `validate.py`, `emit.py` for removal along with `extends.py`'s old path; keep `ManifestError` imported from `yamlload`.
 - [ ] Part 3: list every affected test file (findings 4), and re-point `test_project11.py` and `test_base_reading.py` instead of deleting the p11 fixture out from under them.
 - [ ] Serves: name the goal as "Light touch on projects".
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 09:01 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the Plan Review's verdict is needs-work with three high findings, all about the plan's delete lists; none changes what the work is for)
+**After**: plan
+**Decision**: revise
+
+The host read the Plan Review at 8c8e27df. The three parts and their order stand. The plan is revised to fix all eight findings: the adapter's delete and keep lists (`_rc_source_setup` and `_rc_resolver_bin` are used by every route and stay; helpers left without a caller go), the refusal for a root with `source` set and no `.repos-manifest/` placed where every verb passes through it, the full list of old-reader modules and their tests in the tool, the fixtures that the new reader's tests still use, and the documents that still point at the removed route (the root design's Registry and adapters text, `projects.local.example`, `register_project.sh`'s header and hint, the bootstrap route's error message).
