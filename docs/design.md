@@ -131,9 +131,9 @@ Direction section: `| Sub-roadmap | Root |`, the file and the directory its chec
 row, a pointer inside a sub-roadmap is listed as not followed, and a part's lines stay out of the root's
 totals in the run record. One level is the checker's limit, not the rule's: the rule puts none on levels
 of planning and design. The same grammar serves a project's roadmap, since the sit-rep reads the session
-root's own. `update_roadmap.sh` reads only the root's three candidate roadmap paths (`ROADMAP.md`,
-`docs/ROADMAP.md`, `docs/roadmap.md`), so it never edits a sub-roadmap at any other path (checked by
-`test_update_roadmap.sh`); a sub-roadmap at one of those three would be edited like the root's. A pointer into another repository is not supported
+root's own. `update_roadmap.sh` edits only the root's roadmap (below), so it never edits a sub-roadmap
+at any other path (checked by `test_update_roadmap.sh`); a sub-roadmap at one of the fallback paths
+would be edited like the root's. A pointer into another repository is not supported
 until there is a case.
 
 `.agent/scripts/discover_governance.sh` lists the governance files it finds in the workspace root and in
@@ -142,6 +142,15 @@ read the legacy `project/` checkout before), under six types: `principles`, `arc
 `agents-config`, `agent-guide`, `adr` and `workspace-context`. It does not know the seven roles
 (checked in the script's `scan_scope`).
 
+A project says where it keeps three of the roles, goals, design and direction, in its settings file
+(owner decision 2026-11-23, #551): `goals`, `design` and `roadmap`, each `none` or a file inside the
+project, optionally `#<heading>` for a section (not for `roadmap`); a place outside the project or in
+another repository is refused. Every reader (the sit-rep, `update_roadmap.sh`, `check_design_anchors.sh`,
+the merge gate's bookkeeping paths) asks one lookup in `_project_registry.sh`; an unset setting falls
+back to `docs/roadmap.md`, `docs/ROADMAP.md`, `ROADMAP.md` (roadmap) and `docs/design.md` (design), and
+goals has no fallback. The workspace is not registered and uses the fallback. A part's documents stay
+named only by the pointer table.
+
 **Target**
 
 Status: `proposed`
@@ -149,16 +158,17 @@ Status: `proposed`
 Proposed: a project records its own mapping of the seven roles, seeded from the types that
 `discover_governance.sh` already finds, and never forced on it: a convention is encouraged where a
 project has no documentation (owner goal of 2026-09-23, issue #335), and a project may leave a role
-unmapped. Where that mapping is kept is not decided. A project's roadmap may carry a `## Direction`
+unmapped. Where the mapping is kept is decided for three roles (Now, #551); the other four have no
+setting yet. A project's roadmap may carry a `## Direction`
 section in the workspace's format, by its own choice: `onboard-project` offers one to a project whose
 settings say `instructions=tracked`, and never requires it (#332 D3). The sit-rep reads the session's
-own root (#418): in a project session it checks that project's Direction section (`docs/roadmap.md`,
-else `ROADMAP.md`), lists its worktrees and pull requests and reports the problems its own files allow,
+own root (#418): in a project session it checks that project's Direction section (in its roadmap,
+found as above), lists its worktrees and pull requests and reports the problems its own files allow,
 and in the workspace it reports the workspace, with project work only where a workspace Direction line
 names it; `sitrep_root.sh` decides the root once. A view that combines the workspace and every project
 is not part of it (owner, 2026-11-09); it belongs with a later skill for the personal root. A part
 with documents of its own (ADR-0022) is one instance of such a mapping, inside a root; it does not
-answer OQ-1, where a project records its mapping.
+answer OQ-1.
 
 ## Rules
 
@@ -435,7 +445,8 @@ Status: `decided`
   read and never sourced; #332): its own `build`, `test` and `install` commands, `bootstrap_url`,
   `source`, `source_ref` and `source_path` (where its source description lives, #436), the records
   settings `location`, `location_path` and `tracking` (see [Worktrees](#worktrees), Target),
-  and `instructions`. A command is split into words and run without a shell, or is `none` for "this
+  `instructions`, and `goals`, `design` and `roadmap`, where it keeps those documents (#551, see
+  [Documentation layers](#documentation-layers)). A command is split into words and run without a shell, or is `none` for "this
   project has none"; anything that needs a shell is a script the key points at, and environment setup
   (an SDK path, `PATH`) belongs in that script too. The grammar and keys
   are in the header of `_project_registry.sh`, `project_setting.sh` reads and writes the file, and a
@@ -1044,7 +1055,7 @@ ADR pointers and the roadmap belong to the pull request that does that wiring, n
 
 | ID | Question | Who decides | What it changes |
 |---|---|---|---|
-| OQ-1 | Where does a project record its own mapping of the seven documentation roles? | Owner | The Target of [Documentation layers](#documentation-layers); nothing built depends on it yet |
+| OQ-1 | Where does a project record its own mapping of the seven documentation roles? Answered for three roles by #551: goals, design and direction are settings in the project's settings file (Now of [Documentation layers](#documentation-layers)). Still open: the other four roles (how it works, principles, decisions, measures), which have no setting | Owner | The Target of [Documentation layers](#documentation-layers); nothing built depends on the other four yet |
 | OQ-2 | ADR-0016 stayed Provisional until the `/run-issue` acceptance run from a project root, and its promotion condition names #317, which closed on 2026-09-23. Where is the acceptance run tracked, and who runs it? Answered by #423: the run was tracked in the roadmap's Direction section, and the owner ran it, through `/orchestrator` and `/run-issue` in a session started at the registered project's root, answering the merge checkpoint himself; it passed on 2026-11-09 and ADR-0016 is Accepted | Owner | The [Sessions and roots](#sessions-and-roots) Now block is `decided`; the Registry inventory can now be read to settle #295 |
 | C4 | How does one project live on two machines? How are mixed-flavour projects (#310) described? Answered by #332: a project is registered by `register_project.sh` from the workspace (or, since #466, by `register_session_root.sh` from a session in its own folder) and onboarded at its root, and a line written by hand is adopted by the same script; unregistering removes the registry line and the settings file, and leaves the project, its plans, timelines and memory, and the user tier (the plugin is at user scope since #446) alone | Owner | The Target of [Registry and adapters](#registry-and-adapters); no code depends on the open part yet |
 | C5 | What must a review finding contain (a principle, a row in the review guide, or design text only), and how independent must its reviewers be? If design text only it goes in [Review loop and timeline](#review-loop-and-timeline); if a principle, it is a separate change | Owner | Whether `## Review loop and timeline` gains a rule, or `docs/principles.md` and the review guide change |
@@ -1161,6 +1172,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-21 | Documentation layers | The Decisions row adds the anchor issue's comments as the home of a design discussion's reasons (`/design-discussion` posts each as a signed comment): an entry in the issue's `progress.md` would derail a later `/run-issue` on that issue, which reads its next phase from those entries (owner decision 2026-11-21; workflow kinds sharing that machinery go to #544) | #370 | 1214 |
 | 2026-11-23 | Registry and adapters | The tool route's `build` runs the manifest tool's `build` with the distro's environment sourced first, `test` gives colcon the resolved repos on disk, and `validate` reads the tool's `status --json` (issue 503 part 4); the sentence that said `build` and `test` are the colcon loop and `validate` checks the last resolve is replaced. Registry and adapters grows by 1 line; the mapping from `status` to `validate` lives in `docs/manifest/design.md` | #503 | 1216 |
 | 2026-11-23 | Documentation layers | The Direction row and the gaps paragraph follow the roadmap's new Direction section: five paths, Paths 1 to 4 with a line table each and one line across the paths, the acceptance case as the test of Path 1, parts with no design yet as deferral rows. Until #563 the sit-rep reads the tables as one list and marks work by the three earlier paths, checking first whether a line names it, so work any path's line names is marked Path 1 and Paths 4 and 5 are never marked (owner's design review, 2026-11-23) | #560 | 1217 |
+| 2026-11-23 | Documentation layers, Registry and adapters, Open questions | Where a project keeps its goals, design and roadmap (owner decisions 2026-11-23): three settings in its settings file, a file inside the project or `none`, read by every reader through one lookup with the fallback paths for an unset one; the sit-rep's roadmap fallback gains `docs/ROADMAP.md`, `update_roadmap.sh`'s sentence names the root's roadmap, the Target says the mapping's home is decided for three roles, OQ-1 is answered for those three and stays open for the other four. Documentation layers grows by 10 lines, already past the 60-line prompt: the value grammar, fallbacks and each reader's handling live in the `_project_registry.sh` header and `script_reference.md` | #551 | 1229 |
 
 ## Glossary
 
