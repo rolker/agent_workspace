@@ -1309,6 +1309,14 @@ done
 has "$SKILLS/plan-task/SKILL.md" "plan-task: the draft PR's head names origin's owner when origin is a fork of \$_REPO" \
     '_HEAD="${_ORIGIN_SLUG%%/*}:$CURRENT_BRANCH"' \
     'gh pr create -R "github.com/$_REPO" --draft --head "$_HEAD"'
+has "$SKILLS/plan-task/SKILL.md" "plan-task: an existing PR is matched on the head repository's owner too, and two stop the step" \
+    '--json url,headRepositoryOwner' 'select((.headRepositoryOwner.login | ascii_downcase) == \"${_HEAD_OWNER,,}\")' \
+    'not editing any:'
+if grep -qF ".[0].url" "$SKILLS/plan-task/SKILL.md"; then
+    fail "plan-task: still takes the first pull request on the branch name (.[0].url)"
+else
+    pass "plan-task: no first-match pull request lookup"
+fi
 has "$SKILLS/review-plan/SKILL.md" "review-plan: step 0 names both branch forms and which number <N> is in the PR form" \
     '`feature/ISSUE-<issue>-<description>` (case ignored), else the pull request number `<N>`' \
     '`<N>` is the issue number everywhere except in step 1'"'"'s **PR number** form and the Step 5 note'"'"'s PR lines, where `<N>` is the pull request number and `<issue>` the issue number'

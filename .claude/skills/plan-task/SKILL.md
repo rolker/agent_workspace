@@ -409,7 +409,10 @@ origin; when origin is another repository than `$_REPO` (a package
 worktree's issue checkout whose origin is a fork of the manifest header's
 repository), the pull request's head names origin's owner
 (`--head <owner>:<branch>`), which `gh pr create -R` needs to find the
-branch in the fork:
+branch in the fork. An existing pull request is the one from that head:
+the branch name and the head repository's owner both match (another
+fork's pull request can carry the same branch name); when more than one
+matches, the block stops and lists them:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
@@ -434,12 +437,22 @@ CURRENT_BRANCH=$(git branch --show-current)
 # owner when origin is another repository than $_REPO (a fork)
 _ORIGIN_SLUG=$(extract_gh_slug "$(git remote get-url origin 2>/dev/null)")
 _HEAD="$CURRENT_BRANCH"
+_HEAD_OWNER="${_REPO%%/*}"
 if [ -n "$_ORIGIN_SLUG" ] && [ "${_ORIGIN_SLUG,,}" != "${_REPO,,}" ]; then
     _HEAD="${_ORIGIN_SLUG%%/*}:$CURRENT_BRANCH"
+    _HEAD_OWNER="${_ORIGIN_SLUG%%/*}"
 fi
 
-# Check for existing PR on this branch
-EXISTING_PR=$(gh pr list -R "github.com/$_REPO" --head "$CURRENT_BRANCH" --json url --jq '.[0].url // ""' 2>/dev/null || echo "")
+# An existing PR from this head: the branch name and the head repository's
+# owner (--head takes no owner:branch, and another fork's PR can carry the
+# same branch name). More than one: stop and list them.
+EXISTING_PR=$(gh pr list -R "github.com/$_REPO" --head "$CURRENT_BRANCH" --json url,headRepositoryOwner \
+    --jq ".[] | select((.headRepositoryOwner.login | ascii_downcase) == \"${_HEAD_OWNER,,}\") | .url" 2>/dev/null || echo "")
+if [ "$(printf '%s\n' "$EXISTING_PR" | grep -c .)" -gt 1 ]; then
+    echo "More than one open pull request into $_REPO from $_HEAD_OWNER's $CURRENT_BRANCH; not editing any:"
+    printf '%s\n' "$EXISTING_PR"
+    exit 1
+fi
 
 # Build PR body: prepend Closes reference, then plan content
 BODY_FILE=$(mktemp /tmp/gh_body.XXXXXX.md)

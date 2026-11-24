@@ -26,7 +26,8 @@
 #     (leading zeros included): 1;
 #   - plan-task step 8's block, run as written in the skill: the draft pull
 #     request's head names origin's owner when origin is a fork of the
-#     repository the helper names, and an issue title holding a backtick,
+#     repository the helper names, an existing pull request is taken only
+#     from that head's owner (two from it: stop), and an issue title holding a backtick,
 #     $(...) and $VAR reaches gh literally, with nothing run.
 #
 # Hermetic: one mktemp -d sandbox with its own HOME and git config;
@@ -76,8 +77,20 @@ case "${GH_STUB:-}" in
     fail) echo "To get started with GitHub CLI, please run:  gh auth login (not logged in)" >&2; exit 4 ;;
     silent) exit 0 ;;
 esac
-# plan-task step 8's pull request calls: logged above, answered with nothing.
-case "$1 $2" in "pr list"|"pr create"|"pr edit") exit 0 ;; esac
+# plan-task step 8's pull request calls, logged above. `pr list` answers from
+# the JSON file GH_STUB_PRS (none: no pull request): the entries whose
+# headRefName is the --head value, through the --jq expression, as gh does.
+if [ "$1 $2" = "pr list" ]; then
+    head="" jqx="."
+    while [ $# -gt 0 ]; do
+        case "$1" in --head) head="$2"; shift ;; --jq) jqx="$2"; shift ;; esac
+        shift
+    done
+    [ -n "${GH_STUB_PRS:-}" ] || exit 0
+    jq --arg h "$head" '[.[] | select(.headRefName == $h)]' "$GH_STUB_PRS" | jq -r "$jqx"
+    exit
+fi
+case "$1 $2" in "pr create"|"pr edit") exit 0 ;; esac
 [ "$1 $2" = "repo view" ] || { echo "stub gh: unexpected call: $*" >&2; exit 9; }
 if [ -n "${GH_REPO:-}" ]; then echo "${GH_REPO#*github.com/}"; exit 0; fi
 pick=""
@@ -412,9 +425,20 @@ mkplanrepo() {  # <dir> <origin slug> [upstream slug]
     echo "# Plan" > "$d/.agent/work-plans/issue-7/plan.md"
     git -C "$d" add -A && git -C "$d" commit -q -m plan
 }
-run_step8() {  # <dir>
+run_step8() {  # <dir> [<pull requests JSON>]
     : > "$GH_LOG"
-    OUT=$(cd "$1" && env -u WORKTREE_ISSUE PATH="$STUB_PATH" "$BASH_BIN" -c "$STEP8" 2>&1 </dev/null); RC=$?
+    local prs=""
+    if [[ -n "${2:-}" ]]; then prs="$SANDBOX/prs.json"; printf '%s\n' "$2" > "$prs"; fi
+    OUT=$(cd "$1" && env -u WORKTREE_ISSUE GH_STUB_PRS="$prs" PATH="$STUB_PATH" "$BASH_BIN" -c "$STEP8" 2>&1 </dev/null); RC=$?
+}
+pr_json() {  # <owner:url>...: open pull requests on feature/issue-7
+    local sep="" o
+    printf '['
+    for o in "$@"; do
+        printf '%s{"url":"%s","headRefName":"feature/issue-7","headRepositoryOwner":{"login":"%s"}}' "$sep" "${o#*:}" "${o%%:*}"
+        sep=","
+    done
+    printf ']'
 }
 if [[ -z "$STEP8" ]] || ! grep -q 'gh pr create' <<< "$STEP8"; then
     fail "plan-task step 8: the block was not found in $SKILL"
@@ -445,6 +469,26 @@ else
         pass "origin is the repository: --head is the bare branch"
     else
         fail "origin is the repository: exit $RC; gh pr create: '${created:-none}'; output: ${OUT:0:400}"
+    fi
+    # Another fork's pull request on the same branch name is never edited.
+    run_step8 "$PW7/src/pkg" "$(pr_json Someone:https://x/pull/2 FORK2:https://x/pull/1)"
+    edited=$(grep '^pr edit ' "$GH_LOG")
+    if [[ $RC -eq 0 && "$edited" == "pr edit https://x/pull/1 -R github.com/up/pkg "* ]] && ! grep -q '^pr create ' "$GH_LOG"; then
+        pass "fork origin: of two pull requests on the branch name, the one from fork2 is edited (owner compared without case)"
+    else
+        fail "fork origin, two pull requests: exit $RC; gh log: $(cut -c1-200 "$GH_LOG" | tr '\n' ' '); output: ${OUT:0:300}"
+    fi
+    run_step8 "$PLANR" "$(pr_json someone:https://x/pull/2)"
+    if [[ $RC -eq 0 ]] && ! grep -q '^pr edit ' "$GH_LOG" && grep -q '^pr create .*--head feature/issue-7 ' "$GH_LOG"; then
+        pass "only another owner's pull request on the branch name: not edited, a new one is created"
+    else
+        fail "another owner's pull request only: exit $RC; gh log: $(cut -c1-200 "$GH_LOG" | tr '\n' ' '); output: ${OUT:0:300}"
+    fi
+    run_step8 "$PLANR" "$(pr_json own:https://x/pull/3 own:https://x/pull/4)"
+    if [[ $RC -ne 0 ]] && ! grep -qE '^pr (edit|create) ' "$GH_LOG" && grep -qF 'https://x/pull/3' <<< "$OUT" && grep -qF 'https://x/pull/4' <<< "$OUT"; then
+        pass "two pull requests from this head: stops and lists them, edits none"
+    else
+        fail "two pull requests from this head: exit $RC; gh log: $(cut -c1-200 "$GH_LOG" | tr '\n' ' '); output: ${OUT:0:300}"
     fi
     if compgen -G "$SANDBOX/**/PWNED*" >/dev/null || [[ -e "$PW7/src/pkg/PWNED1" || -e "$PW7/src/pkg/PWNED2" || -e "$PLANR/PWNED1" || -e "$PLANR/PWNED2" ]]; then
         fail "the issue title ran a command"
