@@ -11,8 +11,12 @@ between runs: every read is fresh.
 
 git is run as it is set up on the machine, in the environment `gitenv.require_git` gives:
 whatever lets a person clone the repo by hand lets the tool read the manifest (ssh keys, an
-ssh agent, `~/.ssh/config`, a credential helper). Only the url's own transport is allowed
-(`GIT_ALLOW_PROTOCOL`), so a redirect cannot take an https read to plain http or anywhere else.
+ssh agent, `~/.ssh/config`, a credential helper), but for one case below. Only the url's own
+transport is allowed (`GIT_ALLOW_PROTOCOL`), so a redirect cannot take an https read to plain
+http or anywhere else. git checks that after it applies a url rewrite from the person's
+configuration (`url.<base>.insteadOf`), so a rewrite to another transport, such as https to
+ssh for a forge, is refused; the message then says to give the url the rewrite leads to, which
+`git ls-remote --get-url <url>` prints, as the manifest's url.
 
 With a terminal, git runs in the tool's process group and may ask for a password or a
 passphrase, with no time limit; it is ended by its pid on a stop signal. With none, as in CI,
@@ -27,6 +31,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -37,7 +42,7 @@ from typing import List, Optional, Tuple
 from .gitenv import Env, require_git
 from .location import GitLocation
 from .manifest import decode_text, version_ref
-from .masking import mask_urls
+from .masking import mask_url, mask_urls
 from .yamlload import ManifestError, has_unsafe_char
 
 # The read of one manifest from a git repo, with no terminal: seconds for the whole read.
@@ -51,6 +56,10 @@ _OTHER_MODES = {"120000": "a link", "160000": "a submodule", "040000": "a direct
 
 # What git (in the C locale) prints when the branch or tag asked for is not in the repo.
 _NOT_FOUND = re.compile(r"Remote branch .* not found in upstream")
+# What git prints when the transport it would use is not in `GIT_ALLOW_PROTOCOL`: since the url
+# given always has its own allowed, a rewrite in git's configuration led it to another. (A
+# redirect to another transport is refused by curl in other words.)
+_NOT_ALLOWED = re.compile(r"transport '[^']*' not allowed")
 
 
 class _TimedOut(Exception):
@@ -104,7 +113,7 @@ def read_git_file(location: GitLocation, env: Optional[Env] = None) -> str:
         args += ["--", location.url, clone]
         code, _, err = _git(args, env, directory, deadline, terminal, label)
         if code != 0:
-            raise ManifestError(_clone_failed(label, location.version, code, err))
+            raise ManifestError(_clone_failed(label, location, code, err))
         at = ["--git-dir", clone]
         if kind is not None:
             _check_kind(at, env, directory, deadline, terminal, location, kind, name)
@@ -119,12 +128,20 @@ def read_git_file(location: GitLocation, env: Optional[Env] = None) -> str:
         shutil.rmtree(directory, ignore_errors=True)
 
 
-def _clone_failed(label: str, version: Optional[str], code: int, err: str) -> str:
+def _clone_failed(label: str, location: GitLocation, code: int, err: str) -> str:
     said = f"{label}: git could not fetch the repo (exit status {code}): {_git_words(err)}"
+    version = location.version
     if version is not None and _NOT_FOUND.search(err):
         said += (
             f"; the repo has no branch or tag {version}: a branch or tag is meant (a manifest"
             " is not read at a commit in this version)"
+        )
+    elif _NOT_ALLOWED.search(err):
+        command = f"git ls-remote --get-url {shlex.quote(mask_url(location.url))}"
+        said += (
+            "; the read allows only the transport the url names, and a url rewrite in git's"
+            " configuration (url.<base>.insteadOf) can lead git to another; give as the"
+            f" manifest's url the url the rewrite leads to, which `{command}` prints"
         )
     return said
 

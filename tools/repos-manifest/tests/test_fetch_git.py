@@ -250,8 +250,43 @@ def test_reads_over_http_and_follows_a_redirect_within_http(tmp_path, served):
 def test_a_redirect_to_another_transport_is_refused(tmp_path, served):
     repo = make_repo(tmp_path, {"m.yaml": MANIFEST})
     served.redirects["/old.git"] = f"file://{repo}"
-    with pytest.raises(ManifestError, match="git could not fetch the repo"):
+    with pytest.raises(ManifestError, match="git could not fetch the repo") as raised:
         read_git_file(GitLocation(f"{served.url}/old.git", None, "m.yaml"))
+    # No rewrite is involved, and the message does not point at one.
+    assert "insteadOf" not in str(raised.value)
+
+
+def test_a_rewrite_to_another_transport_is_refused_with_the_url_to_give(tmp_path, monkeypatch):
+    """A url rewrite in the person's git configuration (`insteadOf`) from an https url to
+    another transport: git checks the transport after the rewrite, so the read is refused, and
+    the message names the command that prints the url to give. That url, given, is read."""
+    repo = make_repo(tmp_path, {"m.yaml": MANIFEST})
+    config = tmp_path / "gitconfig"
+    config.write_text(f'[url "file://{repo}"]\n\tinsteadOf = https://example.invalid/sys.git\n')
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
+    with pytest.raises(ManifestError) as raised:
+        read_git_file(GitLocation("https://example.invalid/sys.git", None, "m.yaml"))
+    said = str(raised.value)
+    assert "transport 'file' not allowed" in said
+    assert "a url rewrite in git's configuration (url.<base>.insteadOf)" in said
+    assert (
+        "give as the manifest's url the url the rewrite leads to, which `git ls-remote"
+        " --get-url https://example.invalid/sys.git` prints"
+    ) in said
+    assert read_git_file(GitLocation(f"file://{repo}", None, "m.yaml")) == MANIFEST
+
+
+def test_the_rewrite_step_masks_the_url(tmp_path, monkeypatch):
+    repo = make_repo(tmp_path, {"m.yaml": MANIFEST})
+    config = tmp_path / "gitconfig"
+    url = "https://someone:s3cret@example.invalid/sys.git"
+    config.write_text(f'[url "file://{repo}"]\n\tinsteadOf = {url}\n')
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
+    with pytest.raises(ManifestError) as raised:
+        read_git_file(GitLocation(url, None, "m.yaml"))
+    said = str(raised.value)
+    assert "s3cret" not in said and "someone" not in said
+    assert "`git ls-remote --get-url 'https://***@example.invalid/sys.git'` prints" in said
 
 
 def test_with_no_terminal_a_password_is_not_asked_for_and_the_read_fails_at_once(served):

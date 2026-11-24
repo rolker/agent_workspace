@@ -384,6 +384,10 @@ manifest:
 The git form is read by making a shallow clone of the branch or tag and taking the file out
 of it, with `git` as it is set up on the machine. Whatever lets a person clone that repo by hand lets the tools
 read the manifest: ssh keys, an ssh agent, entries in `~/.ssh/config`, a credential helper.
+One exception: a url rewrite in the person's git configuration (`url.<base>.insteadOf`) that
+leads to another transport, such as https to ssh for a forge, is refused, because the read
+allows only the transport the URL names (below). The message then says what to give instead:
+the URL the rewrite leads to, which `git ls-remote --get-url <url>` prints, as the manifest's URL.
 When a command is run at a terminal and git or ssh needs a password or passphrase, it asks.
 When there is no terminal, as in CI, it fails with a message and does not wait.
 
@@ -395,7 +399,9 @@ temporary directory named `repos-manifest-...` in the system's temporary directo
 never in the system directory, and it is removed when the read ends, a stop signal included;
 only a SIGKILL of the tool can leave it there. git is allowed only the URL's own transport, so
 a redirect cannot take an https read to plain http or elsewhere (an http read may go to
-https). With a terminal git may ask, and has no time limit. With none, git runs in a session
+https). git checks the transport after it applies a url rewrite, so a rewrite to another
+transport is refused too. With a terminal git may ask, and has no time limit. With none, git
+runs in a session
 of its own with its prompts turned off, the read has 60 seconds as a whole, and then git and
 the helpers it started, such as ssh, are ended. The file is the one entry at exactly the path
 given, written from the top of the repo as git names it (no `./`, no `/` at the end, not
@@ -1975,7 +1981,10 @@ git config --global url."git@github.com:example/".insteadOf "https://github.com/
 ```
 
 Neither changes the URL written in a clone's configuration, which is what the url rule compares,
-so `sync` and `status` read such a clone as following the manifest. `remote.origin.pushurl` does
+so `sync` and `status` read such a clone as following the manifest. A manifest read from a git
+repo at such a URL is the exception: the read allows only the transport the URL names, so the
+`insteadOf` rewrite to ssh is refused there, and the manifest's URL is given as the ssh URL the
+rewrite leads to ("Where the manifest comes from"). `remote.origin.pushurl` does
 the same for one clone. `fetch_from` is for a machine that fetches every repo from another place,
 which a rewrite per owner would only approximate.
 

@@ -112,6 +112,10 @@ file in a git repo (the repo's url with `--manifest-path` and, for a branch or t
 the default, `--manifest-ref`), and clones its repos. A manifest in a git repo is read from the
 repo afresh by every `sync`, `status` and `show` in the system, with `git` as it is set up on the
 machine, so a private repo over ssh is read as a person clones it, and nothing of it is kept.
+The read allows only the transport the url names, so a url rewrite in the person's git
+configuration (`url.<base>.insteadOf`) that leads to another transport, such as https to ssh,
+is refused; give as the manifest's url the one the rewrite leads to, which
+`git ls-remote --get-url <url>` prints.
 `sync` clones the repos that are missing and updates the ones that are there, with `git`. A
 clean clone on the manifest's branch is fast-forwarded, and one `sync` left on the version the
 manifest named before is moved to the one it names now. A clone a person has changed
