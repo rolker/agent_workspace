@@ -228,3 +228,13 @@ Part 1 of 3 reviewed as part 1 (parts 2 and 3 are deliberately off this branch p
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 09:13 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the pre-push review at 82ea5179 approved with no findings, and the host's full pre-commit pass over the branch's files passed)
+**After**: publish
+**Decision**: publish
+
+Part 1 of 3: the one row of the tool's roadmap. The full pass ran with no SKIP over the files changed since origin/main; every hook that applied passed, and no script suite applied (no script changed). Outside reviewers on round 1: Codex ran and found nothing; Gemini ran and made three suggestions, all dropped by the reviewer as without substance for this change. The pull request says "Part of #569".
