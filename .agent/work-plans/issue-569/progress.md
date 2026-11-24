@@ -685,3 +685,31 @@ Outside reviewers on this pull request: Codex ran in pre-push rounds 1 and 2 and
 The merge of pull request 597 on his answer of the same day did not land. `merge_pr.sh --pr 597 --type workspace` passed its review gate ("approved review at head `6771dcb` and a decision summary are present") and its CI wait ("CI checks passed on `6771dcb`"), then stopped with: "ERROR: PR #597 has merge conflicts (mergeable: CONFLICTING) — resolve them before merging". Pull request 568 (issue 551) had merged into main while this one waited on queued CI. The script recorded no merge entry.
 
 The open finding for the fix pass, which the dialog showed him: merge origin/main into this branch and resolve its two conflicts, both in documents. In `.agent/knowledge/script_reference.md` both sides edited the rows for `validate_adapter.sh`, `project_setting.sh` and `register_project.sh`; each row keeps what both sides say. In `docs/design.md` both sides added change-log rows; the rows of both are kept, main's first, with the line counts redone by the change log's own convention for a merge. A trial merge showed no other conflict: the adapter and the tests merged cleanly. A narrow re-review and a triage follow before the merge question is asked again. The other choice offered was stop.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 11:50 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #597 at `ff9ce164`
+**Addressed**: merge conflicts with main at `6771dcb` (Checkpoint 2026-11-24 11:42 -05:00, `**After**: merge`, `**Decision**: address`)
+**Commits**: ff9ce164 (merge of origin/main, after pull request 568 for issue 551)
+
+### Actions
+- [x] Merged origin/main into the branch with a merge commit (no rebase); two conflicts, both in documents, as the trial merge showed.
+- [x] `.agent/knowledge/script_reference.md`: main changed only the `project_setting.sh` row of the three. The `validate_adapter.sh` and `register_project.sh` rows are this branch's (the `registration_refused` list; the `register_project.sh` refusal of a listed `--set` key). The `project_setting.sh` row keeps main's `doc <name> <goals|design|roadmap>` subcommand and its `goals`/`design`/`roadmap` keys, and this branch's `source` text (accepted but read by no route, refused at use, the manifest-route text removed). Checked against the merged `project_setting.sh` (`doc` at line 252) and `register_project.sh` (`registration_refused_setting` at line 655).
+- [x] `docs/design.md`, change log: main's four #551 rows (1258, 1272, 1274 and the first) first, then this branch's two #569 rows with their own counts (1252, 1262), following the change log's own convention ("their line counts are each side's own file at the time"), then one new row recording this merge in the same words as #551's, with the merged file's count, 1283. The rest of the file was checked: the settings paragraph merged cleanly and reads as one (this branch's `source` and `registration_refused` sentences, main's `goals`, `design` and `roadmap` keys); main's Documentation layers text names no manifest route; nothing needed changing.
+- [x] Beyond the conflicts: main's side (work-plans aside) adds no mention of `source=`, the manifest route, `manifest-resolved` or three routes (grep of every file main changed; the one `manifest route` hit, in `test_design_anchors.sh`, is a fixture older than both sides). Main's new keys `goals`, `design` and `roadmap` are read by every type, so no `registration_refused` entry is due. Main did not touch `register_project.sh` or `validate_adapter.sh`; its `_project_registry.sh` and `project_setting.sh` changes (the document lookup, the `doc` subcommand, the three keys in `_PROJECT_FILE_KEYS`) merged cleanly beside this branch's list reader, and `validate_adapter.sh` passes on the merged tree.
+
+### Checks
+Each suite run on its own from the worktree after the merge:
+- `test_ros2_colcon.sh`: === Results: 1203 passed, 0 failed, 0 skipped ===
+- `test_register_project.sh`: test_register_project: 225 passed, 0 failed
+- `test_project_file.sh`: === Results: 701 passed, 0 failed ===
+- `test_project_registry.sh`: === Results: 425 passed, 0 failed ===
+- `test_adapter.sh`: === Results: 258 passed, 0 failed ===
+- `test_design_anchors.sh`: test_design_anchors: 82 passed, 0 failed
+- `test_skill_paths.sh`: test_skill_paths: 199 passed, 0 failed
+- `test_project_documents.sh` (issue 551's suite): test_project_documents: 204 passed, 0 failed
+
+The full pre-commit pass is left to the host; commits made with `SKIP=validate-script-tests` per the dispatched-pass hook rule.
