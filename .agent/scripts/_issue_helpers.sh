@@ -27,7 +27,9 @@
 # /; the host in any case, the rest of the URL as written. Anything else
 # gives nothing, so a remote hosted elsewhere is never read as a GitHub
 # repository: another host (git@gitlab.com:o/r), a host that only contains
-# the name (notgithub.com, github.com.evil.example), a path with more than
+# the name (notgithub.com, github.com.evil.example), a user part holding ?
+# or # (https://evil.example?@github.com/o/r is fetched from evil.example),
+# a repository named . or .. (after the .git suffix), a path with more than
 # two segments, or a bare owner/repo with no host (no caller passes one:
 # every caller passes `git remote get-url` output). No gh call is made: the
 # callers run offline or before gh is signed in, where an empty slug is the
@@ -45,7 +47,7 @@
 extract_gh_slug() {
     local url="$1" host='[Gg][Ii][Tt][Hh][Uu][Bb]\.[Cc][Oo][Mm]'
     local slug_re='([A-Za-z0-9][A-Za-z0-9-]*)/([A-Za-z0-9_.][A-Za-z0-9_.-]*)/?$'
-    local prefix_re="^(https?://([^@/[:space:]]+@)?${host}/|ssh://([^@/[:space:]]+@)?${host}(:[0-9]+)?/|git://${host}/|([^@/:[:space:]]+@)?${host}:)"
+    local prefix_re="^(https?://([^@/?#[:space:]]+@)?${host}/|ssh://([^@/?#[:space:]]+@)?${host}(:[0-9]+)?/|git://${host}/|([^@/:[:space:]]+@)?${host}:)"
     local owner repo
     if [[ "$url" =~ ${prefix_re}${slug_re} ]]; then
         owner="${BASH_REMATCH[6]}"; repo="${BASH_REMATCH[7]}"
@@ -57,6 +59,8 @@ extract_gh_slug() {
     # One trailing .git is the suffix, not part of the name (".git" alone
     # is a name).
     [[ "$repo" == *?.git ]] && repo="${repo%.git}"
+    # . and .. name no repository (o/.. would be the owner's parent).
+    [[ "$repo" == . || "$repo" == .. ]] && return 0
     echo "$owner/$repo"
 }
 

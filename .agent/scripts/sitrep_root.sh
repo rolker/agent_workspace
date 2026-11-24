@@ -228,10 +228,11 @@ def git(d, *args):
 # sitrep_checks.sh's owner/repo grammar for gh-issue references.
 SLUG = r"[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.][A-Za-z0-9_.-]*?"
 GH_URL = re.compile(
-    r"(?:https?://(?:[^@/\s]+@)?(?i:github\.com)/"
-    r"|ssh://(?:[^@/\s]+@)?(?i:github\.com)(?::[0-9]+)?/"
+    r"(?:https?://(?:[^@/?#\s]+@)?(?i:github\.com)/"
+    r"|ssh://(?:[^@/?#\s]+@)?(?i:github\.com)(?::[0-9]+)?/"
     r"|git://(?i:github\.com)/"
     r"|(?:[^@/:\s]+@)?(?i:github\.com):)"
+    r"(?![^/]*/\.\.?(?:\.git)?/?$)"
     r"(" + SLUG + r")(?:\.git)?/?")
 
 def gh_slug(url):
