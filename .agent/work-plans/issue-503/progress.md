@@ -1645,3 +1645,29 @@ Suites run (each on its own, after the last change unless noted):
 - Claude adversarial (fresh subagent): ran; source of both must-fixes (the leading-dash one also found by the lead) and most suggestions.
 - Codex: ran; 4 findings it called must-fix, classified here as suggestions (credential printing, rollback ownership race, register_session_root flattened check) or folded into must-fix 1 (CDPATH).
 - Gemini: skipped, failed earlier today (every run: "empty response; 1 tool action(s) were auto-denied in headless mode (Bash)").
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 14:39 -05:00
+**By**: claude-code (claude-opus-5-5)
+
+**Branch**: feature/issue-503 at `1cd3f882`
+**Addressed**: Local Review (Pre-Push) at `bb91e0b3` (2026-11-24 14:16 -05:00)
+**Commits**: 59b0880a, 117ac74a, 1cd3f882
+
+### Actions
+- [x] (must-fix) A relative `--manifest` named `-...` (bare `-m.yaml`) was read as an option by `dirname`/`basename`, and an exported CDPATH changed the `cd`: the path is now anchored to `$PWD` first, each call takes `--`, and the `cd` runs with `CDPATH=''`, in both scripts. Tests (dry run in test_register_project.sh, adapter setup in test_ros2_colcon.sh): `./-m.yaml`, a bare `-m.yaml` (the parser lets it through as the value), and `sub/m.yaml` with CDPATH exported; the bare `-m.yaml` and CDPATH cases fail without the fix (`./-m.yaml` was already handled and is kept as a guard) — `.agent/scripts/register_project.sh:843`, `.agent/project_types/ros2_colcon/adapter.sh:1341` (59b0880a)
+- [x] (must-fix) Every next step for a root the tool has set up now says to "re-run the same register_project.sh command without --manifest, --distro, --role, --with and --fetch-from" (manifest_next, so the failure and signal paths; the set-up-already refusal; the registered-already refusal and its NEXT; the on_exit text, which no longer adds "or re-run register_project.sh"). Asserted in test_register_project.sh (set up already, registered already, kept root, existing root, a new unexpected-stop test) and test_register_session_root.sh — `.agent/scripts/register_project.sh:299`, `:669`, `:829`, `:1252`, `:1391` (117ac74a)
+- [x] (suggestion 1, promoted by the host) A `--fetch-from` prefix's user name and password are masked where printed (setup banner, dry-run setup and init lines, the adapter's `Running:` line) by one helper, `mask_url_userinfo` in `_project_registry.sh` (a short form of the tool's `mask_url`, which the comment names as the fuller one); `https://user:secret@example.invalid/field/` shows as `https://***@example.invalid/field/`, an ssh url's bare user name and `git@host:path` are kept as the tool keeps them, and the tool is handed the value as given. Tests: dry run and real run with the stub tool never show `secret`, the stub receives it unmasked; the adapter test the same — `.agent/scripts/_project_registry.sh`, `.agent/scripts/register_project.sh:1015`, `.agent/project_types/ros2_colcon/adapter.sh:1358` (1cd3f882)
+
+Left open on purpose (the host's instruction: they go to one follow-up issue when the pull request merges): suggestions 2 to 9 in the review entry (boxes at indexes 3 to 10). Suggestion 7 (on_exit's "or re-run register_project.sh") is resolved in passing by must-fix 2, but its box is left open as instructed.
+
+### Checks
+Each suite run on its own, one after another, from this worktree:
+test_register_project.sh: `test_register_project: 302 passed, 0 failed`;
+test_register_session_root.sh: `test_register_session_root: 87 passed, 0 failed`;
+test_ros2_colcon.sh: `=== Results: 1246 passed, 0 failed, 0 skipped ===`;
+test_adapter.sh: `=== Results: 260 passed, 0 failed ===`;
+test_script_tests_hook_scope.sh: `test_script_tests_hook_scope: 366 passed, 0 failed`;
+and the suites that name a changed file (register_project.sh, adapter.sh, _project_registry.sh), all exit 0 with 0 failed: test_project_registry (425), test_project_file (701), test_design_anchors (82), test_fresh_clone_no_project (26), test_gh_create_issue (88), test_precommit_hook_path (19), test_gh_create_pr (113), test_capture (41), test_discover_governance (32), test_project_documents (204), test_dispatch_phase (244), test_sitrep_root (82), test_merge_pr (175), test_pr_status (3), test_skill_paths (212), test_merge_pr_skill (132), test_project_integration_audit (286), test_session_start_layer (52), test_sitrep_checks (301), test_validate_workspace_stale (126), test_worktree_remove (136), test_worktree_enter_stderr (35), test_merge_pr_gate (213), test_user_tier_guard (64), test_worktree_create (112).
+Each new test was run against the pre-fix scripts and failed there (test_register_project: 11 failed; test_ros2_colcon: 4 failed). `shellcheck --severity=warning` clean on every file touched. The full pre-commit pass is left to the host.
