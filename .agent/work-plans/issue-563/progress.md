@@ -377,3 +377,28 @@ Specialists: static analysis (shellcheck not installed, not run; the touched sui
 - test_update_roadmap.sh: "test_update_roadmap:16 passed, 0 failed"
 - test_skill_paths.sh: "test_skill_paths: 199 passed, 0 failed"
 - The full pass is left to the host.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 08:56 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent aca953caa507aacb5, resume 1 of 3)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-563 at `a1e42449`
+**Base**: main
+**Depth**: Deep (reason: whole branch diff 1571 changed lines in 12 files, skill and knowledge files among them; fix round classified on the whole diff)
+**Must-fix**: 2 | **Suggestions**: 4
+**Round**: 2 | **Ship**: continue — round 2: must-fix rising (1 -> 2)
+
+Round 1's findings are all closed: the closing question's names now come from the `path` rows or `--list-paths`; the five-branch overflow rule, `acceptance_path=`, bracketed issue lists, the count source and the checker edge cases (format rows) are all in. Both new must-fix items are in code the fix round added or touched, and both are mechanical. On the real roadmap: no `format` row, `--list-paths` prints the six groups, step 3's last block gives each path's first sentence and `acceptance_path=Path 1, ROS 2 projects`.
+
+Specialists: static analysis (shellcheck not installed, not run; test_sitrep_checks 286/0 run by the fresh Claude adversarial reviewer), governance, plan drift (the fix round's `--list-paths` mode follows plan item 12's intent), Claude adversarial (fresh; no must-fix, 2 suggestions), Gemini (ran, 6 findings: 1 dropped as a false positive, jq is already used in step 3; the rest kept, two downgraded), Codex (ran, 1 finding, kept; its claim that the checker reads a path after `---` is wrong, but its case holds for `***` and `___`, and `---` exposes a checker defect).
+
+### Findings
+- [ ] (must-fix) A `---` thematic break directly above a path paragraph (blank line before the break, none after) opens no group: the open test uses THEMATIC_RE, which has only `*` and `_`, so `**Path 2` is not read and its lines are counted under Path 1, with no row saying so (header says a thematic break allows an opening). Reproduced: `--no-follow` prints only `Path 1` with both lines under it — `.agent/scripts/sitrep_checks.sh:980-985`
+- [ ] (must-fix) Step 3's last block splits paragraphs by rules other than the checker's: a thematic break (`***`, `___`) or a fence directly above a path paragraph is not a boundary, so the checker reads the path but the block gives it an empty first sentence and a wrong `acceptance_path=` (reproduced: `acceptance_path=Path 1, One` for an Acceptance case under Path 2); fences also toggle without char or length, and `/^## Direction/` matches `## Directions` (Codex, Gemini, Claude adversarial) — `.claude/skills/sitrep/SKILL.md:604-614`
+- [ ] (suggestion) The `haspaths` fallback drops a failed `--list-paths` (`2>/dev/null`, empty output) as "no paths", so worktrees get no path word instead of `path unknown (steps not checked)`, while the last block of the same step says `paths=unknown` (Gemini) — `.claude/skills/sitrep/SKILL.md:338-343, 456-464`
+- [ ] (suggestion) "No work on this machine for: <group>" is decided by step 5's match on the group's first unmet line only, and a pull request with no worktree here also suppresses it; a worktree advancing another line of the group sits in In flight marked with that group just above. Word the bullet as what it checks (Gemini) — `.claude/skills/sitrep/SKILL.md:1159, 1286-1288`
+- [ ] (suggestion) Across edges: in a section with no path paragraph, bold `Across the paths, …` (or an unclosed one) still emits a `format` row, against "rows exactly as before"; a second Across paragraph gives two `across` labels with no `format` row, which step 8's "no label repeats" rule relies on (Gemini) — `.agent/scripts/sitrep_checks.sh:1005-1025, 1061-1068`
+- [ ] (suggestion) `acceptance_path=` is "the nearest path or Across paragraph above it" in step 3 but "the nearest path paragraph above it" in step 8; say what step 8 prints when it is `Across the paths` (Claude adversarial) — `.claude/skills/sitrep/SKILL.md:590, 1220-1226`
