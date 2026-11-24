@@ -616,3 +616,20 @@ None. `review_progress.sh sources` at `860476c` returned no open local findings 
 None.
 
 CI after waiting about 3 minutes: Validate Adapter Contract and Validate Documentation passed (both runs); Lint (pre-commit) and repos-manifest tests (Python 3.10, 3.14) were still pending in both runs. No failures seen. The copilot-pull-request-reviewer check-run belongs to the could-not-review notice, not to the change.
+
+## Local Review
+**Status**: complete
+**When**: 2026-11-24 11:16 -05:00
+**By**: claude-code (claude-opus-5-5)
+**Verdict**: approved
+
+**PR**: #597 at `860476c`
+**Depth**: Deep (reason: cold read, cross-model only: codex, per handoff)
+**Must-fix**: 0 | **Suggestions**: 3
+
+Codex was the only reviewer, run by `cross_model_review.sh --pr 597 --issue 569 --agents codex` (EXIT=0, complete). It was given the pull request's title, URL and whole diff with `.agent/work-plans/` left out (the script's #312 filter). No plan-context section and no earlier review entries or findings went into the prompt. Nothing else in the diff was left out or cut short. Codex rated findings 1 and 2 must-fix. The lead checked both against the code and kept them as suggestions. Finding 1 needs `.repos-manifest/` to be removed while `setup` is running. Even then, only the project's own configured bootstrap fetch runs, and `_rc_require_manifest` refuses before any `vcs import`. Finding 2 ends in a loud failure that the registration rolls back, and `registration_refused` documents the check as covering `--set` only. The dry run still reports, wrongly, that the registration would go through.
+
+### Findings
+- [ ] (suggestion) `adapter_setup` decides the route twice (`_rc_refuse_removed_source`, then `_rc_route`). If `.repos-manifest/` is removed between the two checks, a root that sets `source` reaches `_rc_bootstrap_manifest` and fetches before the later refusal. Decide the route once and pass it to both checks. — `.agent/project_types/ros2_colcon/adapter.sh:1265`
+- [ ] (suggestion) The `registration_refused` check reads only `--set` arguments. A settings file kept by `--remove --keep-settings` that sets `source` passes it: `--dry-run` reports the registration would go through, and a real run writes the registry line and then fails at setup or the static gate, which rolls the registration back. Check the settings file as it would be after the run, before the dry-run report and before anything is written. — `.agent/scripts/register_project.sh:653`
+- [ ] (suggestion) The migration text says to remove the old checkouts once the new ones are in use. It does not mention package worktrees, whose `env.sh` was written once against the old `layers/main` overlays: they keep sourcing those overlays, and they break once the overlays are removed. Say to save the work in those worktrees and make them again on the tool layout before removing the old checkouts. — `docs/manifest/design.md:97`
