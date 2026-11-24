@@ -224,3 +224,13 @@ Round 1's four, each closed: (1) `closingIssuesReferences` replaces the body gre
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 13:35 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 2 of the pre-push review approved with nothing open, Ship: recommended; the host's full pre-commit pass over the changed files passed, every hook, no SKIP, on 3a56f8b7)
+**After**: publish
+**Decision**: publish
+
+Two pre-push rounds: round 1 approved with four suggestions, fixed before publishing on the host's answer; round 2, a convergence check with no outside reviewers, found all four closed and nothing new. Outside reviewers in round 1: Gemini ran (three points kept); Codex did not run (usage limit).
