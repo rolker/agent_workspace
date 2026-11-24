@@ -922,3 +922,13 @@ This branch neither added nor changed any of them, so it brings in no broken ord
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 12:39 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (round 3 of the pre-push review approved with nothing open, Ship: recommended; the host's full pre-commit pass over the changed files passed, every hook, no SKIP, on b4947dd7)
+**After**: publish
+**Decision**: publish
+
+Part 2 of the issue. Three pre-push rounds: round 1 found 1 must-fix and 8 suggestions, round 2 found 2 must-fix and 3 suggestions, round 3 (a convergence check, no cross-model reviewers) found every one closed and nothing new. Gemini and Codex ran in rounds 1 and 2. Left for the owner as a possible follow-up, in the inbox and not in this pull request: double-quoted free-text arguments in skill text this branch does not otherwise touch.
