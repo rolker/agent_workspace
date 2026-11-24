@@ -135,17 +135,24 @@ class Part:
 
 
 def _read_text(path: Path, label: str) -> str:
-    # newline="": the text as it is on the disk, so a carriage return is not turned into a
-    # newline before the check on the text sees it.
     try:
-        with open(path, encoding="utf-8", newline="") as file:
-            return file.read()
+        with open(path, "rb") as file:
+            data = file.read()
     except FileNotFoundError:
         raise ManifestError(f"{label}: not found") from None
-    except UnicodeDecodeError:
-        raise ManifestError(f"{label}: cannot be read as UTF-8 text") from None
     except OSError as exc:
         raise ManifestError(f"{label}: cannot be read ({exc.strerror or 'an OS error'})") from None
+    return decode_text(data, label)
+
+
+def decode_text(data: bytes, label: str) -> str:
+    """A manifest's bytes as text, whether read from the disk or from a git repo: UTF-8, and
+    as it is, so a carriage return is not turned into a newline before the check on the text
+    sees it."""
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise ManifestError(f"{label}: cannot be read as UTF-8 text") from None
 
 
 def parse_part(text: str, source: str) -> Part:
@@ -185,6 +192,13 @@ def check_url(url, where: str, source: str) -> str:
     that does not come from a manifest, such as one `fetch_from` builds: an error names
     `source` and `where`. Returns the url."""
     return _Checker(source).url(url, where)
+
+
+def check_version(version, where: str, source: str) -> str:
+    """`version` checked by the rules a manifest's `version` is checked by
+    (`_Checker.version`), for a version that does not come from a manifest, such as the one of
+    a manifest's own location: an error names `source` and `where`."""
+    return _Checker(source).version(version, where)
 
 
 def url_path(url, where: str, source: str) -> str:

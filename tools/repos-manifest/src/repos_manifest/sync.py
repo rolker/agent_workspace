@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import errno
 import os
-import re
 import shlex
 import shutil
 import subprocess
@@ -26,6 +25,7 @@ from . import fetch_from, selection, update
 from .manifest import Manifest
 from .masking import mask_urls
 from .output import make_writable, output_files, process_has_ended, signals_held, write_output
+from .gitenv import Env, require_git
 from .selection import Resolved, Selected
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
 from .yamlload import ManifestError
@@ -62,21 +62,9 @@ from .system import (
 FINISH = "run `repos-manifest sync` to finish"
 
 
-Env = Dict[str, str]
-
-# Named by `git rev-parse --local-env-vars` but carrying configuration, not a repository's place.
-CONFIGURATION_VARIABLES = frozenset({"GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT"})
-
-
 def require_tools() -> Env:
     """`vcs` and `git` are on PATH, and `vcs --version` runs; what it prints is not read.
-    Returns the environment every `vcs` and `git` of the run is given: this process's, without
-    the variables that point git at a particular repository or its parts, so that a run from a
-    git hook or `git submodule foreach` acts on its own clones. Those are the names
-    `git rev-parse --local-env-vars` prints, less `GIT_CONFIG_PARAMETERS` and
-    `GIT_CONFIG_COUNT`, which carry configuration (`git -c`, `GIT_CONFIG_KEY_<n>`) and are
-    kept, as git keeps them when it runs a command in another repository; and
-    `GIT_NAMESPACE`, which that list does not name."""
+    Returns the environment every `vcs` and `git` of the run is given (`gitenv.require_git`)."""
     vcs = shutil.which("vcs")
     if vcs is None:
         raise Refusal("`vcs` is not found on PATH", "Install vcs2l or vcstool, which provide it")
@@ -96,65 +84,6 @@ def require_tools() -> Env:
     if not works:
         raise Refusal(f"`{vcs} --version` does not run", "Repair or reinstall vcs2l or vcstool")
     return require_git()
-
-
-def require_git() -> Env:
-    """`git` is on PATH, runs, and is new enough: the git half of `require_tools`, for a command
-    that runs git and never `vcs` (`status`). Returns the environment `require_tools` returns."""
-    git = shutil.which("git")
-    if git is None:
-        raise Refusal("`git` is not found on PATH", "Install git")
-    try:
-        done = subprocess.run(
-            [git, "rev-parse", "--local-env-vars"],
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-    except OSError:
-        done = None
-    if done is None or done.returncode != 0:
-        raise Refusal(f"`{git} rev-parse --local-env-vars` does not run", "Repair or reinstall git")
-    require_git_version(git)
-    local = set(done.stdout.split()) - CONFIGURATION_VARIABLES | {"GIT_NAMESPACE"}
-    return {name: value for name, value in os.environ.items() if name not in local}
-
-
-# The oldest git that has every command `sync` runs: `git switch` (with `--no-overwrite-ignore`
-# and `--detach`) came in 2.23. The others are older: a fetch that does not replace a tag
-# without `--force` (2.20), `config --type` (2.18), `fetch --no-prune-tags` (2.17), `rev-parse
-# --is-shallow-repository` (2.15), `status --porcelain=v2` (2.11), `worktree list --porcelain`
-# and `for-each-ref --contains` (2.7), `fetch --refmap` (2.1).
-GIT_MINIMUM = (2, 23)
-_GIT_VERSION = re.compile(r"git version (\d+)\.(\d+)")
-
-
-def require_git_version(git: str) -> None:
-    """Stop with a plain message when `git --version` names a version older than
-    `GIT_MINIMUM`. A version it does not print in the usual form is not judged."""
-    try:
-        printed = subprocess.run(
-            [git, "--version"],
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            check=False,
-            env={**os.environ, "LC_ALL": "C"},
-        ).stdout
-    except OSError:
-        raise Refusal(f"`{git} --version` does not run", "Repair or reinstall git") from None
-    match = _GIT_VERSION.match(printed.strip())
-    if match is None:
-        return
-    found = (int(match.group(1)), int(match.group(2)))
-    if found < GIT_MINIMUM:
-        need = ".".join(str(n) for n in GIT_MINIMUM)
-        raise Refusal(
-            f"git {found[0]}.{found[1]} is on PATH, and this tool needs git {need} or later"
-            " (for `git switch`); nothing was changed",
-            f"Install git {need} or later",
-        )
 
 
 def sweep_temporaries(directory: Path) -> None:

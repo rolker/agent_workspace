@@ -25,10 +25,13 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import yaml
 
-from .base import load_manifest
+from .base import load_manifest, parse_git_manifest
+from .fetch import read_git_file
 from .fetch_from import FetchFrom, check_prefix
+from .gitenv import Env
+from .location import GitLocation, Location
 from .manifest import UNNAMED_LAYER, Manifest
-from .yamlload import ManifestError
+from .yamlload import ManifestError, Refusal  # noqa: F401  (Refusal: imported from here too)
 
 SYSTEM_DIR = ".repos-manifest"
 CONFIG_FILE = "config.yaml"
@@ -58,13 +61,6 @@ SETUP_TEXT = (
 )
 
 Parts = Tuple[str, ...]
-
-
-class Refusal(ManifestError):
-    """A command refuses to go on; nothing was changed. The message gives the next step."""
-
-    def __init__(self, condition: str, next_step: str):
-        super().__init__(f"{condition}. {next_step}")
 
 
 def oserror_message(exc: OSError) -> str:
@@ -755,11 +751,19 @@ def put_built_layers(system: Path, distro: Optional[str], layers: Dict[str, Laye
 # --- The manifest ---------------------------------------------------------------------------
 
 
-def read_manifest(location: str, base: Path, shown: Optional[str] = None) -> Manifest:
-    """Read the manifest at `location`, a path taken from `base` when relative, and the
-    manifests it builds on through its own `base` key (``base.py``); the one place a command
-    reads a manifest. It is named `shown` in messages and output, `location` by default. Its
-    warnings go to stderr."""
+def read_manifest(
+    location: Location, base: Path, shown: Optional[str] = None, env: Optional[Env] = None
+) -> Manifest:
+    """Read the manifest at `location` and the manifests it builds on through its own `base`
+    key (``base.py``); the one place a command reads a manifest. A path is taken from `base`
+    when relative, and named `shown` in messages and output, `location` by default. A file in
+    a git repo is read afresh (``fetch.py``), with the git environment `env` when the caller has
+    it, and named by its label, its url masked. Its warnings go to stderr."""
+    if isinstance(location, GitLocation):
+        loaded = parse_git_manifest(read_git_file(location, env), location.label())
+        for warning in loaded.warnings:
+            warn(warning)
+        return loaded
     path = base / location
     if "://" in location and not os.path.lexists(path):
         raise ManifestError(

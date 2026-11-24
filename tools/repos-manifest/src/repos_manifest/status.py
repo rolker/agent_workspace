@@ -27,7 +27,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
-from . import sync, update
+from . import gitenv, sync, update
 from .masking import mask_url, mask_urls, remember_url
 from .selection import Selected
 from .system import (
@@ -145,7 +145,7 @@ def run_status(named_distros: Sequence[str], as_json: bool) -> int:
             )
         config = read_config(system)
         distros = distros_for(system, config, named_distros, cwd)
-        env = {**sync.require_git(), **NO_LAZY_FETCH}  # `status` runs git, never `vcs`
+        env = {**gitenv.require_git(), **NO_LAZY_FETCH}  # `status` runs git, never `vcs`
         plan = _plan(system, config, distros)
         results = [distro_status(system, config, each, env) for each in plan]
     ok = all(result.ok for result in results)
