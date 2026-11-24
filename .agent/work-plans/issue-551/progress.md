@@ -620,3 +620,13 @@ Re-triage after the merge of origin/main (7a29404e, after PR 567) at the owner's
 
 ### False positives
 - None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-23 23:09 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Decided-by**: owner
+**After**: merge
+**Decision**: merge
+
+The owner's answer at the previous merge checkpoint, "Resolve, then merge", authorized this merge once the conflict resolution was clean. It is: the PR-mode re-review approved with no findings, the re-triage found nothing open, the PR shows no reviews, and the PR body has its Decision summary. CI on the head was still finishing; merge_pr.sh waits for it and refuses on a failure.
