@@ -7,6 +7,7 @@ import textwrap
 import pytest
 
 from repos_manifest.base import load_manifest, parse_manifest
+from repos_manifest.cli import main
 from repos_manifest.yamlload import ManifestError, has_unsafe_char
 
 REPO = "    type: git\n    url: https://example.org/a.git\n"
@@ -300,6 +301,141 @@ def test_the_file_is_loaded_as_data():
     _refused("repositories: !!python/object:os.system {}\n", "invalid YAML")
 
 
+# The YAML loader's own refusals. A message from PyYAML or a traceback can quote the value it
+# failed on, which may hold a secret; these are one fixed line, with a position where there is
+# one and never the value.
+SECRET = "s3cr3tT0ken"
+
+
+def _exact(text, message):
+    with pytest.raises(ManifestError) as info:
+        _m(text)
+    assert str(info.value) == message
+
+
+def test_invalid_yaml_is_a_fixed_message_with_its_position_only():
+    _exact(
+        f"repositories: !https://u:{SECRET}@host/a {{}}\n",
+        "m.yaml: invalid YAML at line 1, column 15",
+    )
+
+
+# PyYAML's constructor raises ValueError or KeyError for these, not a YAMLError, and both the
+# exception's text and its traceback quote the value.
+@pytest.mark.parametrize(
+    "value", [f"!!float {SECRET}", f"!!int 0x{SECRET}", f"!!bool {SECRET}", "2024-13-45"]
+)
+def test_a_value_yaml_cannot_construct_is_a_fixed_message(value, tmp_path, capsys):
+    _exact(_one_repo(f"    version: {value}\n"), "m.yaml: invalid YAML")
+    path = tmp_path / "m.yaml"
+    path.write_text(_one_repo(f"    version: {value}\n"))
+    assert main(["validate", "--manifest", str(path)]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == f"ERROR: {path}: invalid YAML\n"
+
+
+HUGE_INT = "0x" + "f" * 4000
+
+
+@pytest.mark.parametrize(
+    "text, line, column",
+    [
+        (_one_repo(f"    optional: {HUGE_INT}\n"), 5, 15),
+        (f"repositories:\n  ? {HUGE_INT}\n  : {{type: git, url: https://e.org/a.git}}\n", 2, 5),
+    ],
+)
+def test_an_integer_too_large_is_refused_with_its_position(text, line, column):
+    # PyYAML builds a hex integer of any length; past Python's limit of digits, turning it into
+    # text later raises a ValueError.
+    _exact(text, f"m.yaml: invalid YAML at line {line}, column {column}: a number too large")
+
+
+def test_the_integer_bound_is_64_bits():
+    _refused(_one_repo("    optional: 0x" + "f" * 16 + "\n"), "must be true or false, got a int$")
+    _refused(_one_repo("    optional: 0x1" + "0" * 16 + "\n"), "a number too large$")
+
+
+def test_aliases_are_refused():
+    _exact(
+        "layers: &a [core, *a]\n" + _one_repo(),
+        "m.yaml: invalid YAML at line 1, column 19: aliases (*name) are not allowed",
+    )
+    bomb = "a: &a [x, x, x, x, x, x, x, x, x, x]\n" + "".join(
+        f"{chr(98 + i)}: &{chr(98 + i)} [{', '.join(['*' + chr(97 + i)] * 10)}]\n" for i in range(8)
+    )
+    _refused(bomb + _one_repo(), "aliases \\(\\*name\\) are not allowed")
+
+
+def test_deep_nesting_is_an_error_not_a_crash():
+    _exact(
+        "layers: " + "[" * 5000 + "]" * 5000 + "\n" + _one_repo(),
+        "m.yaml: invalid YAML: nested too deeply",
+    )
+
+
+def test_a_repeated_top_level_key_is_refused():
+    _exact(
+        "layers: [core]\nlayers: [site]\n" + _one_repo(),
+        "m.yaml: invalid YAML at line 2, column 1: a mapping repeats a key",
+    )
+
+
+def test_a_manifest_that_is_not_utf8_is_a_message_without_the_bytes(tmp_path, capsys):
+    path = tmp_path / "m.yaml"
+    path.write_bytes(_one_repo().encode() + b"    version: \xff" + SECRET.encode() + b"\n")
+    assert main(["validate", "--manifest", str(path)]) == 1
+    captured = capsys.readouterr()
+    assert captured.err == f"ERROR: {path}: cannot be read as UTF-8 text\n"
+    assert SECRET not in captured.out
+
+
+def test_a_manifest_is_read_as_utf8_whatever_the_locale(tmp_path, monkeypatch):
+    # Read with the locale's encoding, a manifest would read on one machine and not another.
+    import builtins
+
+    from repos_manifest import manifest
+
+    seen = []
+
+    def spy(*args, **kwargs):
+        seen.append(kwargs.get("encoding"))
+        return builtins.open(*args, **kwargs)
+
+    monkeypatch.setattr(manifest, "open", spy, raising=False)
+    path = tmp_path / "m.yaml"
+    path.write_bytes(("# \u00e9\n" + _one_repo()).encode("utf-8"))
+    assert load_manifest(path).repositories["a"].type == "git"
+    assert seen == ["utf-8"]
+
+
+def test_an_unreadable_manifest_is_a_message(tmp_path, capsys):
+    import os
+
+    if os.geteuid() == 0:
+        pytest.skip("root reads any file")
+    path = tmp_path / "m.yaml"
+    path.write_text(_one_repo())
+    path.chmod(0)
+    try:
+        assert main(["validate", "--manifest", str(path)]) == 1
+    finally:
+        path.chmod(0o600)
+    assert capsys.readouterr().err == f"ERROR: {path}: cannot be read (Permission denied)\n"
+
+
+def test_a_symlink_loop_is_a_message(tmp_path, capsys):
+    (tmp_path / "l1").symlink_to(tmp_path / "l2")
+    (tmp_path / "l2").symlink_to(tmp_path / "l1")
+    leaf = tmp_path / "m.yaml"
+    leaf.write_text("base: [l1]\n")
+    for path in (tmp_path / "l1", leaf):
+        assert main(["validate", "--manifest", str(path)]) == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err.startswith("ERROR: ") and captured.err.count("\n") == 1
+
+
 @pytest.mark.parametrize(
     "top",
     [
@@ -571,7 +707,7 @@ def test_an_invisible_character_in_a_key_is_refused(char):
 
 @pytest.mark.parametrize("char", _INVISIBLE)
 def test_the_walk_over_parsed_values_also_refuses_them(char):
-    # The check on the parsed values, which the earlier reader uses, holds the same rule.
+    # The check on the parsed values holds the same rule as the check on the text.
     assert has_unsafe_char(f"a{char}b")
 
 
