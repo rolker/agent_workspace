@@ -656,3 +656,13 @@ Decision summary checked against the branch: the change bullets, the review hist
 
 ### False positives
 None.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 09:50 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (address is the one answer the host may give at findings; the open box is a must-fix whose fix is one clause in a rule and its template plus a test pin, and merging past it would be the owner's alone)
+**After**: findings
+**Decision**: address
+
+The Integrated Review at d7eb59c5 left one box open: in a root with no path paragraph, "Running: nothing on this machine." is printed when step 5 did not look up the next line, against the branch's own rule that the report never states an absence it did not check. Fix as the box says: print "nothing on this machine" only when step 5 looked; otherwise a Running: line saying it was not looked up and why (the same three reasons as "Not looked up for <group>:"), in the rule and the no-paths template, with a test pin beside the existing wording test. Nothing else in this round.
