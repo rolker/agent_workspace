@@ -428,3 +428,13 @@ Run: test_ros2_colcon.sh 1154 passed 0 failed 0 skipped; test_register_project.s
 - [ ] (suggestion) "Some of what the adapter gives today is not in the tool's design yet" is stale: the lock, fetch limits and kept directory are now what the removed route gave — `docs/manifest/design.md:331`
 - [ ] (suggestion) `test_tool_route_order` runs only env and validate with `source` set on a tool root; add a `setup` (and `sync`) call before the settings file is replaced — `.agent/scripts/tests/test_ros2_colcon.sh:2718`
 - [ ] (suggestion) No test that `register_project.sh <new path> ros2_colcon --set source=...` (the formerly documented way) is refused at setup with the new message and rolled back — `.agent/scripts/tests/test_register_project.sh`
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 10:12 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the pre-push review at eb8d6e00 approved with four suggestions; all four are small, real and within reach, and the workspace's quality standard says not to leave them)
+**After**: publish
+**Decision**: address
+
+All four suggestions of the round-1 review are fixed before the push, none deferred: the refusal's way on for a URL `source` and for a manifest with no `distros:`; the stale sentence in `docs/manifest/design.md`; `setup` and `sync` added to `test_tool_route_order`; and a test that registering a new path with `--set source=` is refused at setup with the new message and rolled back. The host's full pre-commit pass was not run on this head, since the fix pass changes it. Outside reviewers on round 1: Codex ran and its two points became the first suggestion; Gemini failed (the headless run denied a tool call and returned nothing).
