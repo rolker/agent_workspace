@@ -148,13 +148,13 @@ project, optionally `#<heading>` for a section (not for `roadmap`); a place outs
 another repository is refused. Every reader (the sit-rep, `update_roadmap.sh`, `check_design_anchors.sh`,
 the merge gate's bookkeeping paths) asks one lookup in `_project_registry.sh`; an unset setting falls
 back to `docs/roadmap.md`, `docs/ROADMAP.md`, `ROADMAP.md` (roadmap) and `docs/design.md` (design), and
-goals has no fallback. A `roadmap` names a Markdown file, never a symbolic link (the merge gate counts
-commits to it as bookkeeping). A setting that cannot be read for a reason outside its own key (a bad
-registry line, another key's bad line) gives a warning and is read as written when its own line is
-valid, else as unset; only a key that is itself
-unusable, or a file (a fallback one too) that resolves outside the project, stops a reader. The
-workspace is not registered and uses the fallback. A part's documents stay named only by the pointer
-table.
+goals has no fallback. A `roadmap` names a Markdown file of its own, never a symbolic link, README, an
+agent instruction file or the design (the merge gate counts commits to it as bookkeeping, matched
+literally). Only a set key that is unusable stops a reader; with no setting, a fallback file is read as
+before, with a warning if it leads outside the project. A bad registry or settings line outside the key
+gives a warning and the key's own line, else the fallback; a writer (`update_roadmap.sh`, the
+bookkeeping paths) does nothing when it cannot tell whether the key is set. The workspace is not
+registered and uses the fallback. A part's documents stay named only by the pointer table.
 
 **Target**
 
@@ -1177,7 +1177,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-21 | Documentation layers | The Decisions row adds the anchor issue's comments as the home of a design discussion's reasons (`/design-discussion` posts each as a signed comment): an entry in the issue's `progress.md` would derail a later `/run-issue` on that issue, which reads its next phase from those entries (owner decision 2026-11-21; workflow kinds sharing that machinery go to #544) | #370 | 1214 |
 | 2026-11-23 | Registry and adapters | The tool route's `build` runs the manifest tool's `build` with the distro's environment sourced first, `test` gives colcon the resolved repos on disk, and `validate` reads the tool's `status --json` (issue 503 part 4); the sentence that said `build` and `test` are the colcon loop and `validate` checks the last resolve is replaced. Registry and adapters grows by 1 line; the mapping from `status` to `validate` lives in `docs/manifest/design.md` | #503 | 1216 |
 | 2026-11-23 | Documentation layers | The Direction row and the gaps paragraph follow the roadmap's new Direction section: five paths, Paths 1 to 4 with a line table each and one line across the paths, the acceptance case as the test of Path 1, parts with no design yet as deferral rows. Until #563 the sit-rep reads the tables as one list and marks work by the three earlier paths, checking first whether a line names it, so work any path's line names is marked Path 1 and Paths 4 and 5 are never marked (owner's design review, 2026-11-23) | #560 | 1217 |
-| 2026-11-23 | Documentation layers, Registry and adapters, Open questions | Where a project keeps its goals, design and roadmap (owner decisions 2026-11-23): three settings in its settings file, a file inside the project or `none`, read by every reader through one lookup with the fallback paths for an unset one; the sit-rep's roadmap fallback gains `docs/ROADMAP.md`, `update_roadmap.sh`'s sentence names the root's roadmap, the Target says the mapping's home is decided for three roles, OQ-1 is answered for those three and stays open for the other four. Documentation layers grows by 14 lines, already past the 60-line prompt (4 of them, from the pre-push review, say how a reader treats a setting it cannot read: fail open outside the key, closed on the key itself): the value grammar, fallbacks and each reader's handling live in the `_project_registry.sh` header and `script_reference.md` | #551 | 1234 |
+| 2026-11-23 | Documentation layers, Registry and adapters, Open questions | Where a project keeps its goals, design and roadmap (owner decisions 2026-11-23): three settings in its settings file, a file inside the project or `none`, read by every reader through one lookup with the fallback paths for an unset one; the sit-rep's roadmap fallback gains `docs/ROADMAP.md`, `update_roadmap.sh`'s sentence names the root's roadmap, the Target says the mapping's home is decided for three roles, OQ-1 is answered for those three and stays open for the other four. The Target keeps `Status: proposed` (not `decided`, as the plan first said): only three of its seven roles have a home, so the Target as a whole is not yet decided. Documentation layers grows by 14 lines, already past the 60-line prompt (4 of them, from the pre-push reviews, say how a reader treats a setting it cannot read: closed only on a set key that is unusable, open otherwise, and a writer does nothing it cannot tell; and what a roadmap may name): the value grammar, fallbacks and each reader's handling live in the `_project_registry.sh` header and `script_reference.md` | #551 | 1234 |
 
 ## Glossary
 
