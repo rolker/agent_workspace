@@ -752,6 +752,10 @@ MD="$SANDBOX/manifests"
 mkdir -p "$MD"
 printf 'format: 1\ndistros: [fakefox]\nrepositories: {}\n' > "$MD/m.yaml"
 mreg() { : > "$MLOG"; reg "$WSM" "$@"; }
+# The next step that registers a root the tool has set up: the command as
+# given, with the manifest's options dropped (not a bare path, which would
+# drop --name, --set and the rest).
+MRERUN="re-run the same register_project.sh command without --manifest, --distro, --role, --with and --fetch-from"
 
 echo "TEST: --manifest: usage errors write nothing"
 MR1="$SANDBOX/mroots/one"
@@ -799,8 +803,8 @@ echo notes > "$SANDBOX/mroots/full/README"
 for dry in "" --dry-run; do
     out="$(mreg "$SANDBOX/mroots/setup" --manifest "$MD/m.yaml" --distro fakefox $dry)"; rc=$?
     check "a root set up already ${dry:-(real run)}: refused as set up, naming the tool's sync and registering without --manifest, not as holding files" \
-        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"is set up already (it holds .repos-manifest/)"* && "$2" == *"cd $3 && "*"/repos-manifest sync --distro fakefox"* && "$2" == *"NEXT=register it without --manifest: register_project.sh $3"* && "$2" != *"holds files already"* ]]' \
-        _ "$rc" "$out" "$SANDBOX/mroots/setup"
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"is set up already (it holds .repos-manifest/)"* && "$2" == *"cd $3 && "*"/repos-manifest sync --distro fakefox"* && "$2" == *"NEXT=register it: $4"* && "$2" != *"register_project.sh $3"* && "$2" != *"holds files already"* ]]' \
+        _ "$rc" "$out" "$SANDBOX/mroots/setup" "$MRERUN"
     out="$(mreg "$SANDBOX/mroots/full" --manifest "$MD/m.yaml" --distro fakefox $dry)"; rc=$?
     check "a root holding a file ${dry:-(real run)}: refused, left as it was" \
         bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"holds files already"* ]] && [ "$(ls -A "$3")" = README ]' _ "$rc" "$out" "$SANDBOX/mroots/full"
@@ -840,7 +844,7 @@ cp "$WSM/.agent/projects.local" "$SANDBOX/mreg.before"
 for target in known "$SANDBOX/mroots/known"; do
     out="$(mreg "$target" --manifest "$MD/m.yaml" --distro fakefox)"; rc=$?
     check "'$target': refused, the line kept, no tool run" \
-        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"is registered already"* && "$2" == *"NEXT=drop --manifest, or give a new directory"* ]] && cmp -s "$3" "$4" && [ ! -s "$5" ]' \
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"is registered already"* && "$2" == *"NEXT=drop --manifest, --distro, --role, --with and --fetch-from, or give a new directory"* && "$2" == *"is registered by the same register_project.sh command without --manifest, --distro, --role, --with and --fetch-from)"* ]] && cmp -s "$3" "$4" && [ ! -s "$5" ]' \
         _ "$rc" "$out" "$WSM/.agent/projects.local" "$SANDBOX/mreg.before" "$MLOG"
 done
 reg "$WSM" --remove known >/dev/null
@@ -903,7 +907,7 @@ out="$(export STUB_INIT=made-fail; mreg "$MRK" --manifest "$MD/m.yaml" --distro 
 check "exit 1, STATUS=refused, KEPT= the root, which holds the system" \
     bash -c '[ "$1" -eq 1 ] && [[ "$2" == *$'"'"'\nKEPT='"'"'"$3"$'"'"'\n'"'"'* ]] && [ -d "$3/.repos-manifest" ]' _ "$rc" "$out" "$MRK"
 check "NEXT= names the tool's sync for the distro, then registering without --manifest, and that setup is not run again" \
-    has "$out" "NEXT=fix what the manifest tool reports; then cd $MRK && $WSM/.venv/bin/repos-manifest sync --distro fakefox when the sync did not finish, then register_project.sh $MRK without --manifest (setup is not run again on the kept $MRK; remove it first to start over)"
+    has "$out" "NEXT=fix what the manifest tool reports; then cd $MRK && $WSM/.venv/bin/repos-manifest sync --distro fakefox when the sync did not finish, then $MRERUN (setup is not run again on the kept $MRK; remove it first to start over)"
 check "no line, no settings file" bash -c '! grep -q "^kept2 " "$1" && [ ! -e "$2" ]' _ "$WSM/.agent/projects.local" "$(pfile "$WSM" kept2)"
 
 echo "TEST: --manifest: init succeeds and the gate fails, in a directory that existed: never on KEPT=, named as holding what init left, the next step the tool's"
@@ -914,8 +918,18 @@ check "exit 1, STATUS=refused, the gate failed" \
 check "no KEPT=, no word of setup not being run again; the directory is named as holding what init left" \
     bash -c '[[ "$1" != *KEPT=* && "$1" != *"not run again"* && "$1" == *"$2 existed before; it holds what init left"* ]]' _ "$out" "$SANDBOX/mroots/was"
 check "NEXT= names the tool's sync, then registering without --manifest" \
-    has "$out" "; then cd $SANDBOX/mroots/was && $WSM/.venv/bin/repos-manifest sync --distro fakefox when the sync did not finish, then register_project.sh $SANDBOX/mroots/was without --manifest"
+    has "$out" "; then cd $SANDBOX/mroots/was && $WSM/.venv/bin/repos-manifest sync --distro fakefox when the sync did not finish, then $MRERUN"
 check "no line, no settings file" bash -c '! grep -q "^was " "$1" && [ ! -e "$2" ]' _ "$WSM/.agent/projects.local" "$(pfile "$WSM" was)"
+
+echo "TEST: --manifest: an unexpected stop after init set the root up: the next step is the tool's sync, then the same command without the manifest's options"
+cp "$WSM/.agent/scripts/register_project.sh" "$SANDBOX/register_project.sh.orig"
+sed -i 's|^# 2\. The static gate\.$|: "$REGISTER_TEST_UNSET_VARIABLE"\n&|' "$WSM/.agent/scripts/register_project.sh"
+check "the fault is in the sandbox copy, after setup" grep -q REGISTER_TEST_UNSET_VARIABLE "$WSM/.agent/scripts/register_project.sh"
+out="$(export STUB_INIT=made; mreg "$SANDBOX/mroots/unx" --manifest "$MD/m.yaml" --distro fakefox)"; rc=$?
+cp "$SANDBOX/register_project.sh.orig" "$WSM/.agent/scripts/register_project.sh"
+check "stopped unexpectedly; NEXT= the tool's sync, then the same command without the manifest's options, never a bare re-run" \
+    bash -c '[ "$1" -ne 0 ] && [[ "$2" == *"stopped unexpectedly"* && "$2" == *"NEXT=cd $4 && "*"sync --distro fakefox when the sync did not finish, then $3, and report the error above if it recurs"* && "$2" != *"or re-run register_project.sh"* ]]' \
+    _ "$rc" "$out" "$MRERUN" "$SANDBOX/mroots/unx"
 
 echo "TEST: --manifest: the adapter ended by TERM before init made anything: the rollback removes the root setup made"
 MRS="$SANDBOX/mroots/sig/three"

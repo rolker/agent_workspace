@@ -329,8 +329,8 @@ check "the real call: the folder holding only .claude/ is set up, init run in it
     [ "$(cat "$MSTUB_LOG" 2>/dev/null)" = "INIT_IN:$EMPTY ARGS:init $MDIR/m.yaml --distro-dirs --distro fakefox --role dev --with g1 --with g2 --fetch-from git@example.invalid:field/ --yes" ]
 check "the stub's root fails the gate: refused and rolled back, the folder (which existed) not on KEPT=" \
     bash -c '[ "$1" -eq 1 ] && [ "$2" = refused ] && [[ "$3" != *KEPT=* ]] && [ "$4" = "$5" ]' _ "$rc" "$(status_of "$out")" "$out" "$(reg_snapshot)" "$snap"
-check "the next step is the tool's sync, then registering without --manifest" \
-    has "$out" "cd $EMPTY && $WS/.venv/bin/repos-manifest sync --distro fakefox when the sync did not finish, then register_project.sh $EMPTY without --manifest"
+check "the next step is the tool's sync, then the same register_project.sh command without the manifest's options" \
+    has "$out" "cd $EMPTY && $WS/.venv/bin/repos-manifest sync --distro fakefox when the sync did not finish, then re-run the same register_project.sh command without --manifest, --distro, --role, --with and --fetch-from"
 rm -f "$MSTUB_LOG"
 OTHER="$SANDBOX/fresh/lambda"
 mkdir -p "$OTHER/.claude"

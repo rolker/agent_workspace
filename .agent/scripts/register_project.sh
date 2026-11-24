@@ -296,6 +296,10 @@ if [ -n "$MANIFEST" ]; then
     M_DISTRO="$F_distro"; M_ROLE="$F_role"
     F_distro=""; F_role=""
 fi
+# The next step that registers a root the manifest tool has set up: the
+# command as given, keeping its other options (--name, --set and the rest).
+M_OPTS="--manifest, --distro, --role, --with and --fetch-from"
+M_RERUN="re-run the same register_project.sh command without $M_OPTS"
 
 # ------------------------------------------------------------ detection ---
 
@@ -661,8 +665,8 @@ fi
 
 # --manifest sets a new root up: never on a registered name or path.
 if [ -n "$MANIFEST" ] && [ "$ADOPT" -eq 1 ]; then
-    echo "ERROR: '$NAME' is registered already, at $PROJECT_ROOT; --manifest sets a new root up and registers it, and is not used on a registered project (a root set up with the manifest tool already is registered by register_project.sh $PROJECT_ROOT, without --manifest)" >&2
-    final refused "drop --manifest, or give a new directory" 1
+    echo "ERROR: '$NAME' is registered already, at $PROJECT_ROOT; --manifest sets a new root up and registers it, and is not used on a registered project (a root set up with the manifest tool already is registered by the same register_project.sh command without $M_OPTS)" >&2
+    final refused "drop $M_OPTS, or give a new directory" 1
 fi
 
 # The --set keys, validated one by one (the whole file is validated again
@@ -822,7 +826,7 @@ if [ -n "$MANIFEST" ]; then
     fi
     if [ -e "$PROJECT_ROOT/.repos-manifest" ] || [ -L "$PROJECT_ROOT/.repos-manifest" ]; then
         echo "ERROR: $PROJECT_ROOT is set up already (it holds .repos-manifest/), so the manifest tool's init is not run there again; when its first sync did not finish, the tool's sync finishes it: cd $PROJECT_ROOT && $TOOL_BIN sync --distro $M_DISTRO" >&2
-        final refused "register it without --manifest: register_project.sh $PROJECT_ROOT" 1
+        final refused "register it: $M_RERUN" 1
     fi
     if [ "$ROOT_EXISTED" -eq 1 ] && [ ! -d "$PROJECT_ROOT" ]; then
         echo "ERROR: $PROJECT_ROOT is there and is not a directory" >&2
@@ -1245,7 +1249,7 @@ rollback_manifest_root() {
 manifest_next() {
     [ -n "$MANIFEST" ] && [ "$SETUP_RAN" -eq 1 ] || return 0
     [ -e "$PROJECT_ROOT/.repos-manifest" ] || [ -L "$PROJECT_ROOT/.repos-manifest" ] || return 0
-    echo "cd $PROJECT_ROOT && $TOOL_BIN sync --distro $M_DISTRO when the sync did not finish, then register_project.sh $PROJECT_ROOT without --manifest"
+    echo "cd $PROJECT_ROOT && $TOOL_BIN sync --distro $M_DISTRO when the sync did not finish, then $M_RERUN"
 }
 # What a rollback cut short leaves (an exit inside it): each step it had
 # not finished, under the conditions that step undoes, checked on disk
@@ -1384,7 +1388,7 @@ on_exit() {
     rollback
     local mnext
     mnext="$(manifest_next)"
-    rolled_back_final "${mnext:+$mnext; or }re-run register_project.sh, and report the error above if it recurs" "$rc"
+    rolled_back_final "${mnext:-re-run register_project.sh}, and report the error above if it recurs" "$rc"
 }
 trap on_exit EXIT
 
