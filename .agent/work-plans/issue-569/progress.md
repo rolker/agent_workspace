@@ -542,3 +542,23 @@ Round 3 of part 2: the round-2 findings and the fix diff b34cfe6b..a66382af only
 The three round-3 findings are fixed before the push: the script reference and the root design's settings paragraph name the new `registration_refused` list; the advice to run `git pull` in the hand clone is reworded so it is right when `source_ref` is a tag; and the newest change-log row's line count is corrected after the merge of main. This is the host's first address answer at the rounds checkpoint. The reviewer's Ship line was "recommended" once these are fixed.
 
 Recorded here for the part's later merge checkpoint, the owner's answer of 2026-11-24 to the one design question this part raised (cut the manifest route now and state that a manifest in a git repo needs a clone kept by hand, or wait until the tool reads a manifest from git): "Which ever is easier, I don't think much of this functionality will be used by any other agents until we are done". The host took the cut with the gap stated as the easier of the two, and told him so.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 10:58 -05:00
+**By**: claude-code (claude-opus-5-5)
+
+**Branch**: feature/issue-569 at `785cd360`
+**Addressed**: Local Review (Pre-Push) at `81c9477d` (2026-11-24 10:55 -05:00)
+**Commits**: 89cc4863, e85f8aaa, 785cd360
+
+### Actions
+- [x] (must-fix) The per-type `registration_refused` list is named in the `validate_adapter.sh` row (checked like `unused_settings`) and the `register_project.sh` row (a `--set` key in it is refused with its reason before anything is written) of the script reference, and beside `unused_settings` in the settings paragraph of the design, each sentence checked against `_project_registry.sh`, `register_project.sh` and `validate_adapter.sh`; no other text describes `unused_settings` as the only per-type list (`registration.conf`, the onboard-project skill and the knowledge files mention it only for `build` and `test`) — `.agent/knowledge/script_reference.md:26`, `.agent/knowledge/script_reference.md:28`, `docs/design.md:454`
+- [x] (suggestion) "run git pull in it before each sync" now reads "keep it at source_ref by hand before each sync (a git pull for a branch)" in the refusal, its test and the manifest design; the root design never had the phrase — `.agent/project_types/ros2_colcon/adapter.sh:648`, `.agent/scripts/tests/test_ros2_colcon.sh:2816`, `docs/manifest/design.md:88`
+- [x] (suggestion) The newest change-log row counts the file's lines after the change (`wc -l`, per the log's header): 1262 after all three fixes, and its text names the settings-paragraph addition and a section growth of 6 lines — `docs/design.md:1208`
+
+### Checks
+- `test_ros2_colcon.sh`: === Results: 1203 passed, 0 failed, 0 skipped ===
+- `test_design_anchors.sh`: test_design_anchors: 82 passed, 0 failed
+- `test_skill_paths.sh`: test_skill_paths: 199 passed, 0 failed
+- The other suites the grep names for `adapter.sh` (test_adapter, test_project_file, test_register_project, test_project_registry, test_worktree_create) match the generic file name; none asserts the changed message, so they were left to the host's full pass, as was the full pre-commit pass.
