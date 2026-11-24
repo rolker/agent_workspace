@@ -53,10 +53,11 @@ highlights the added or changed lines (a deleted run marks the line after it).
 ``--previous FILE`` diffs against FILE instead. No notes are carried over.
 
 Exit codes: 0 the window closed (read the notes file for the decision);
-1 an error, said on stderr: a usage error before any window (missing draft
-or ``--previous`` file, unreadable text), or the window failed (an internal
-error in the window, with its traceback, or a save on close that failed and
-the owner chose to close anyway; the notes file may lack the decision);
+1 an error, said on stderr: a usage error before any window (a bad or
+missing argument, a missing draft or ``--previous`` file, unreadable text),
+or the window failed (an internal error in the window, with its traceback,
+or a save on close that failed and the owner chose to close anyway; the
+notes file may lack the decision);
 2 no display or no tkinter (one line on stderr, no traceback).
 
 A save that fails on close keeps the window open with the error in its
@@ -901,8 +902,16 @@ class ViewerApp:  # pragma: no cover - needs a display; smoke-tested under xvfb
 # ---------------------------------------------------------------------------
 
 
+class _Parser(argparse.ArgumentParser):
+    """argparse exits 2 on a usage error; 2 here means "no window": exit 1."""
+
+    def error(self, message):
+        self.print_usage(sys.stderr)
+        self.exit(1, f"{self.prog}: error: {message}\n")
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _Parser(
         prog="review_viewer.py",
         description="Review a draft in a local window and leave line-anchored notes.",
         epilog=CHAT_FALLBACK,

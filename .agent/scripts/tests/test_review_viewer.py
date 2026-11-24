@@ -415,6 +415,17 @@ class CliTest(TempDirTest):
         result = self.run_cli([str(self.draft()), "--previous", str(self.dir / "gone.md")], {})
         self.assert_one_line(result, 1, "--previous file not found")
 
+    def test_unknown_option_exits_1_not_2(self):
+        """2 is reserved for "no window"; argparse's own usage exit is 2."""
+        result = self.run_cli([str(self.draft()), "--bogus", "x"], {})
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("unrecognized arguments", result.stderr)
+
+    def test_no_draft_argument_exits_1(self):
+        result = self.run_cli([], {})
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("required", result.stderr)
+
     def test_help_has_chat_fallback(self):
         result = self.run_cli(["--help"], {})
         self.assertEqual(result.returncode, 0)
