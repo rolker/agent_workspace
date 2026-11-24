@@ -18,8 +18,50 @@
 # The roadmap files the workflow updates on a reviewed branch
 # (update_roadmap.sh, merge_pr.sh Step 1). docs/roadmap.md is the #334
 # spelling (docs reorganisation); the uppercase paths stay for checkouts
-# and branches that predate it.
+# and branches that predate it. A project's `roadmap` setting may name
+# another file (issue #551): bookkeeping_roadmap_paths adds it.
 BOOKKEEPING_ROADMAP_PATHS=("ROADMAP.md" "docs/ROADMAP.md" "docs/roadmap.md")
+
+# The registry helper, for the roadmap setting. Loaded once; a copy without
+# it (or one that fails to load) keeps the fixed list above.
+_BK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)"
+if ! declare -F project_document_for_dir >/dev/null && [[ -f "$_BK_DIR/_project_registry.sh" ]]; then
+    # shellcheck source=_project_registry.sh
+    source "$_BK_DIR/_project_registry.sh" 2>/dev/null || true
+fi
+
+# bookkeeping_roadmap_paths <wt> -- print the roadmap path PATTERNS a
+# post-review commit in checkout <wt> may touch and still be bookkeeping,
+# one per line (callers match them with [[ == ]]):
+# BOOKKEEPING_ROADMAP_PATHS, plus the file the project's `roadmap` setting
+# names (project_document_for_dir, the same lookup update_roadmap.sh uses)
+# with every character but letters, digits and . _ / - escaped, so it
+# matches only itself (a value may hold ( ) | ! @ +, which extglob reads)
+# -- when <wt> is the top of a checkout of the project root's own
+# repository (the root itself, or a worktree of it: only there is the
+# root-relative path also the path git diffs). Nothing is added for any
+# other checkout -- the workspace (unregistered), a package repository of
+# a multi-repository project, a root inside another repository -- nor when
+# the setting is unset, `none`, names a missing file, cannot be used, or
+# whether it is set cannot be told (PROJECT_DOC_STRICT=1: a broken
+# registry, an unreadable settings file); a stale review is the safe side.
+# The setting can never name README.md, an agent instruction file or the
+# design (_project_document_value_error, _project_document_pair_error).
+# Always returns 0.
+bookkeeping_roadmap_paths() {
+    local wt="$1" ws line top abs
+    printf '%s\n' "${BOOKKEEPING_ROADMAP_PATHS[@]}"
+    declare -F project_document_for_dir >/dev/null || return 0
+    abs="$(cd "$wt" 2>/dev/null && pwd -P)" || return 0
+    top="$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_COMMON_DIR git -C "$abs" rev-parse --show-toplevel 2>/dev/null)" \
+        && top="$(cd "$top" 2>/dev/null && pwd -P)" || return 0
+    [[ "$top" == "$abs" ]] || return 0
+    ws="$(registry_main_checkout "$_BK_DIR/../..")"
+    line="$(PROJECT_DOC_STRICT=1 project_document_for_dir "$ws" "$abs" roadmap 2>/dev/null)" || return 0
+    [[ "$line" == "set "* ]] || return 0
+    sed 's/[^A-Za-z0-9._/-]/\\&/g' <<< "${line#set }"
+    return 0
+}
 
 # _bk_display <text> -- print <text> as safe ASCII for a reason line.
 # Reasons end up in the terminal and, through the merge gate's
@@ -151,7 +193,7 @@ _only_bookkeeping_between() {
 # _review_bookkeeping_between <wt> <review-sha> <head-sha> <issue>
 # The review policy: is a review recorded at <review-sha> still a review of
 # <head-sha>? Yes when only THIS issue's work-plan directory and the roadmap
-# files changed in between. Another issue's work-plan directory is not
+# files (bookkeeping_roadmap_paths <wt>) changed in between. Another issue's work-plan directory is not
 # exempt (a stray commit of it is a real change to this branch). The SHAs
 # may be short; each must resolve to exactly one commit in <wt>.
 # Returns 0 covered; 1 stale (a verified code/other-path change or a
@@ -186,8 +228,10 @@ _review_bookkeeping_between() {
         echo "head \`$(_bk_display "${to:-?}")\` does not resolve to one commit in $(_bk_display "$wt")"
         return 3
     fi
+    local -a roadmaps=()
+    mapfile -t roadmaps < <(bookkeeping_roadmap_paths "$wt")
     _only_bookkeeping_between "$wt" "$from_full" "$to_full" \
-        ".agent/work-plans/issue-${issue}/*" "${BOOKKEEPING_ROADMAP_PATHS[@]}"
+        ".agent/work-plans/issue-${issue}/*" "${roadmaps[@]}"
 }
 
 # Bridge for non-bash callers. Arguments are passed as data, never evaluated.

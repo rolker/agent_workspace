@@ -33,7 +33,7 @@ report is about the session's own root, `$ROOT`: the workspace in a
 workspace session, the registered project root in a project session.
 `$WS_ROOT/.agent/scripts/sitrep_root.sh` decides it, once per block, and
 prints it with the facts the steps below need (`root=`, `type=`,
-`record_name=`, `roadmap=`, `own_repo=`, `default_branch=`, `pr_source=`
+`record_name=`, `roadmap=`, `design=`, `own_repo=`, `default_branch=`, `pr_source=`
 with `pr_source_why=` and which Problems checks the root's files allow; the script's header
 has the rules). When it decides no root (the directory is outside every
 root, or the project registry cannot be parsed) it prints nothing, gives
@@ -74,7 +74,9 @@ Memory notes, earlier conversation and earlier reports are not sources. If somet
 the gap.
 
 The authored part lives in the `## Direction` section of the root's
-roadmap (`docs/roadmap.md`, else `ROADMAP.md`): lines that must be true
+roadmap (the file the project's `roadmap` setting names, else the first
+of `docs/roadmap.md`, `docs/ROADMAP.md` and `ROADMAP.md`; `sitrep_root.sh`'s
+`roadmap=`): lines that must be true
 for the acceptance case, each
 with a check, and deferrals, each with a revisit check. The check runner
 reads that section and prints one row per item. The result words are a
@@ -917,13 +919,15 @@ else
     echo "main_behind_origin=unknown (no origin/$DB)"
 fi
 
-# Audit: the Re-examined column of docs/design.md's Decision register.
+# The root's design file (the `design` setting's, else docs/design.md).
+DES="$(rv design)"
+# Audit: the Re-examined column of the design file's Decision register.
 # An escaped pipe (\|) inside a cell is not a column break: drop it before
 # the line is split. Separator rows (| --- | :-: |) are skipped.
 if [ "$(rv check_decision_register)" != run ]; then
     echo "audit=$(rv check_decision_register)"
 else
-    reg="$(show "$ROOT/docs/design.md" | awk -F'|' '
+    reg="$(show "$DES" | awk -F'|' '
         { gsub(/\\\|/, "") }
         /^## Decision register/ { s = 1; next }
         s && /^## / { exit }
@@ -970,13 +974,13 @@ print("digest_entries=%d past_30_days=%d past_90_days=%d oldest_days=%s undated=
     max(ages) if ages else "none", undated))'
 fi
 
-# Documentation: work since docs/design.md last changed on the default branch.
+# Documentation: work since the design file last changed on the default branch.
 if [ "$(rv check_documentation)" != run ]; then
     echo "design_doc=$(rv check_documentation)"
 else
-    d=""; [ -z "$DB" ] || d="$(git -C "$ROOT" log -1 --format='%H %cs' "$DB" -- docs/design.md)"
+    d=""; [ -z "$DB" ] || d="$(git -C "$ROOT" log -1 --format='%H %cs' "$DB" -- "${DES#"$ROOT"/}")"
     if [ -z "$d" ]; then
-        echo "design_doc=cannot tell (docs/design.md has no commit on the default branch)"
+        echo "design_doc=cannot tell (${DES#"$ROOT"/} has no commit on the default branch)"
     else
         echo "design_doc_changed=${d#* } days=$(days_since "${d#* }") commits_since_touching_agent_claude_docs=$(since "${d%% *}" .agent .claude docs)"
     fi
@@ -1004,7 +1008,7 @@ due", "recent" or "cannot tell" (a date or count is missing).
   (the research skill's Staleness rules): any entry past 30
   days means "probably due"; none means "recent". Print the counts past 30
   and past 90 days and the `Last full refresh` date.
-- **Documentation**: days since `docs/design.md` last changed and the
+- **Documentation**: days since the design file (`design=`) last changed and the
   commits since that touched `.agent/`, `.claude/` or `docs/`: work that
   may have outrun the design. Judge from the numbers. The report names
   them in words, "the design document" and, by the root's `type`, "the
@@ -1023,7 +1027,7 @@ due", "recent" or "cannot tell" (a date or count is missing).
   root's files do not allow (`audit=skipped (...)`, `research=skipped
   (...)`, `design_doc=skipped (...)`, `design_anchors=skipped (...)`) is
   one line naming what is missing, e.g. "Audit: skipped, this project has
-  no docs/design.md". `git_facts=skipped` is one line too: "No history
+  no design file" (or "keeps no design document", for `design=none`). `git_facts=skipped` is one line too: "No history
   read: this root is not a git repository of its own".
 
 ### 7. Start a due check, or offer it

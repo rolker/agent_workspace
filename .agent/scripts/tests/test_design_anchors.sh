@@ -833,6 +833,8 @@ expect "usage: DESIGN_ANCHORS_ROOT selects the root when no argument is given" 1
 mkdir -p "$SANDBOX/sym/repo/.agent/scripts" "$SANDBOX/sym/elsewhere"
 SYM_REPO="$(cd "$SANDBOX/sym/repo" && pwd -P)"
 cp "$CHECKER" "$SYM_REPO/.agent/scripts/check_design_anchors.sh"
+# The design file comes from the document lookup beside the checker (#551).
+cp "$SCRIPT_DIR/../_project_registry.sh" "$SYM_REPO/.agent/scripts/_project_registry.sh"
 ln -s .agent/scripts "$SYM_REPO/scripts"
 mkdir -p "$SYM_REPO/docs"
 plain_design "$SYM_REPO/docs/design.md"
