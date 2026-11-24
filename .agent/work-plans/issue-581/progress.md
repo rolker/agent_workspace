@@ -406,3 +406,21 @@ Suites run, each on its own, in the foreground, after the last code commit:
 - `test_checkpoint_269.sh`: "test_checkpoint_269: 43 passed, 0 failed"
 
 The full pre-commit pass and the full suite run are left to the host. No command was refused.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 14:26 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a2c0e2713a95f3063, resume 2 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-581 at `e826e829`
+**Base**: origin/main
+**Depth**: Standard (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — no must-fix findings
+
+Round 2's five, all closed: N1 (a qualified ref where origin is not on github.com is exit 6 with no gh call; re-run with a stub gh that prefers upstream: GitLab origin plus GitHub upstream, `other/repo#7` is 6, gh log empty); N2 (step 8 matches branch and head owner, stops on two; suite cases); N3 (`--issue` looks in this checkout, then the workspace worktree from its top level, then stops naming both; the dispatched route and the main-checkout route for a workspace issue both found the plan in a sandbox run of the block as written); casing (prints this checkout's spelling); plan-task steps 6 and 7 (own shell, quoted heredocs, `printf` for the Plan line). The merged PR-number block of review-plan step 1: 604's three cases and stop messages intact, `-R "github.com/$_REPO"` on all three `gh pr view` calls, a stop before the origin fetch when origin is not `$_REPO`, and `<N>` (pull request) / `<issue>` used as step 0 now says. Ordinary cases on the fix diff: bare number in a checkout and its worktree, 0, no gh call; no GitHub remote, 4, and the records blocks go on; dispatched and offline paths unchanged. Cross-model skipped (round-3 convergence check, per handoff). Static: shellcheck --severity=warning clean. Suites, foreground: test_issue_repo 113/0, test_skill_paths 260/0, test_project_registry 423/0, test_script_tests_hook_scope 374/0.
+
+### Findings
+- [ ] No issues found. LGTM.
