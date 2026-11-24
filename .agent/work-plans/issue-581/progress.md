@@ -495,3 +495,29 @@ The cold read's finding (review-plan's file path form read a plan in another che
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 14:41 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #608 at `d82934d3`
+**Sources**: 6 (Local Review (Pre-Push) rounds 1–3 @ `2afab6f5`, `fe3881ae`, `e826e829`; Local Review (cold read by Codex) @ `1c2193eb`; Local Review (convergence) @ `d82934d3`; CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending (read 14:40, two runs for the last push: run 45472118741 Validate Documentation pass, Validate Adapter Contract pass, Lint (pre-commit) pending, repos-manifest tests Python 3.10 pending, Python 3.14 pending; run 45472132577 all five pending: Lint (pre-commit), Validate Adapter Contract, Validate Documentation, repos-manifest tests Python 3.10 and 3.14)
+
+No pull-request review and no conversation comment on GitHub; no Copilot review was requested. `review_progress.sh sources` at `d82934d3`: no open local findings, no dropped entries. Every must-fix and suggestion of the three pre-push rounds and the cold read is ticked, each with its fix commit in an Implementation entry; the convergence check at `d82934d3` re-ran the fixed block and approved. The branch is mergeable, main has no commits past it.
+
+Rulings (owner direction: a clear refusal of an unusual input is fine; a silent wrong result or a broken ordinary case must be fixed):
+- The convergence note (from the main workspace checkout, the file path form refuses a plan in a linked worktree of the same repository while `--issue` finds it): may stay. The refusal names the plan's checkout and says to run review-plan from there (`.claude/skills/review-plan/SKILL.md:210`); `--issue <N>` from the main checkout still reads that worktree's plan; nothing silent, and the ordinary routes (dispatched phase in the issue's worktree, own plan by relative or absolute path) go on.
+- Not covered: bare `gh` calls in address-findings, triage-reviews and review-code: may stay out. Issue 581 asks for review-issue only; this change already extends to plan-task and review-plan; the other three are unchanged behaviour, not a regression. No follow-up issue exists yet (searched open issues): the host should open one or the owner say it is not wanted, so it is not lost.
+- Not covered: `issue_repo.sh` not on `.agent/user_tier_scripts.txt`: may stay. In a project session it costs a permission prompt per call, a visible stop, never a wrong result; `review_progress.sh`, which the same skills call, is not on the list either. The PR text's reason is partly wrong (see below).
+- Not covered: an SSH host alias or `ssh.github.com:443` origin is not read as GitHub: may stay. A bare number takes exit 4 (no `gh` call, the issue's text from the owner) and a qualified ref is refused (exit 6), each with a message naming the case (`.agent/scripts/issue_repo.sh:225`, `:234`); tested with no `gh` call.
+- Difference from the issue as written (working on another repository's issue from any folder answered by a refusal, exit 6): the owner's call at the merge question under the session-root rule, not a finding.
+
+Decision summary checked against the branch. Wrong: "as the skills' other workspace scripts are not either": four of the scripts these skills use are on `.agent/user_tier_scripts.txt` (`_issue_helpers.sh`, `_resolve_work_plans_dir.sh`, `worktree_create.sh`, `worktree_enter.sh`); `review_progress.sh` and `_worktree_helpers.sh` are not. Missing: the file path form now refuses, from the main checkout, a plan in the same repository's linked worktree (use `--issue`); in the SSH-alias bullet, that `owner/repo#N` is refused there (exit 6); the removed test of the dropped registered-projects fallback in `test_project_registry.sh` (47 lines); that the host's full pre-commit pass ran at `e826e829`, before the cold-read fix `0c180902` (CI Lint covers the final head once it settles). The rest (exit codes 1–6, 116 checks, three `gh pr view` calls with `-R`, the `--issue` lookup order, the 604 merge) matches the branch.
+
+### Findings
+
+### False positives
