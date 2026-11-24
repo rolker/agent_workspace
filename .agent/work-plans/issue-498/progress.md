@@ -1421,3 +1421,35 @@ Suites run (worktree source on `PYTHONPATH`, the main checkout's venv):
 - `bash .agent/scripts/tests/test_design_anchors.sh`: `test_design_anchors: 82 passed, 0 failed`
 
 The full pre-commit pass over the branch was left to the host (each commit ran its hooks with `SKIP=validate-script-tests`).
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 14:27 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-498 at `c2da3363`
+**Base**: origin/main
+**Depth**: Deep (reason: network fetch on manifest- and command-line-supplied values; 30 files, +2159 -405)
+**Must-fix**: 2 | **Suggestions**: 10
+**Round**: 1 | **Ship**: continue — round 1: 2 must-fix; the script's rule asks a re-review, but the owner set one review round for the manifest work (2026-11-24): fix the must-fix items, defer the suggestions to one follow-up issue
+
+Part 2b-1 of the plan: a manifest in a git repo for `init` and `sync`, with `status` and `show` reading it afresh, and `fetch_from` on the manifest's own repo. Reviewers: static analysis (pre-commit on the changed .py/.sh files: clean), governance and plan drift (lead), a fresh Claude adversarial subagent, Codex (ran, complete). Gemini: skipped, failed earlier today ("empty response; 1 tool action(s) were auto-denied in headless mode (Bash)").
+
+### Findings
+- [ ] (must-fix) `status` and `show` run the git read outside `signals_end_the_run()`: on SIGTERM or SIGHUP with no terminal the tool dies at once, git and its helper (own session) keep running with no limit and the `repos-manifest-*` temporary clone stays; Ctrl-C gives a traceback (KeyboardInterrupt is not caught by `main`). Reproduced for both (exit -15, git helpers alive, temporary left); `sync` and `init` clean. The design and `fetch.py` say the clone is removed "a stop signal included". Fix: wrap `run_status`'s body and `cmd_show`'s read in `with signals_end_the_run():`, catch `Stopped` and return `stop_exit(exc, f"stopped by {signal_name(exc)}; nothing was changed")`; add a SIGTERM test per command like `test_a_stop_signal_during_the_read_ends_git_and_leaves_no_temporary` — `tools/repos-manifest/src/repos_manifest/status.py:138`, `cli.py:141`
+- [ ] (must-fix) A person's `url.<base>.insteadOf` that changes transport (the common `https://github.com/` to `git@github.com:`) makes the read fail with git's "transport 'ssh' not allowed" and no next step, because `GIT_ALLOW_PROTOCOL` is checked after the rewrite (reproduced: a hand clone works, the same url with `GIT_ALLOW_PROTOCOL=https` gives "fatal: transport 'file' not allowed"). The design ("Whatever lets a person clone that repo by hand lets the tools read the manifest"), the README ("read as a person clones it") and `fetch.py`'s docstring say it works. Fix (keeping the transport rule): say in `docs/design.md` "Where the manifest comes from", the README and `fetch.py`'s docstring that a url rewrite to another transport is refused, and when git's text says "transport '<x>' not allowed" add the next step "give the url the rewrite leads to (git ls-remote --get-url <url>) as the manifest's url"; a test with an insteadOf rewrite. (Or widen the rule to the rewritten url's transport, from `git ls-remote --get-url`, checked by `check_url`.) — `tools/repos-manifest/src/repos_manifest/fetch.py:92`
+- [ ] (suggestion) The redirect test proves nothing about `GIT_ALLOW_PROTOCOL`: with the env set to `https:http:ssh:file` it still passes (curl never follows a redirect to `file://`); only the unit test of `allowed_protocols` covers the rule. Test the effect, e.g. an `insteadOf` from the served http url to `file://` that must fail — `tools/repos-manifest/tests/test_fetch_git.py:250`
+- [ ] (suggestion) `tags/x` when the repo has both a branch and a tag `x` is refused (git's `--branch` takes the branch); the message is true, but fetching `refs/tags/x` exactly would read what was asked — `tools/repos-manifest/src/repos_manifest/fetch.py:100`
+- [ ] (suggestion) With no terminal, `GIT_ASKPASS`/`SSH_ASKPASS` are left as set, so a desktop askpass can still put up a dialog until the 60 s limit; the design's "fails with a message and does not wait" is a little strong — `fetch.py:93`
+- [ ] (suggestion) A run backgrounded at a terminal (`sync &`) has a terminal it cannot read: a prompt stops on SIGTTIN and with no limit the run waits; `has_terminal` could also require `os.tcgetpgrp(fd) == os.getpgrp()` — `fetch.py:60`
+- [ ] (suggestion) With a terminal, a SIGTERM to the tool alone ends git by pid and can leave ssh at a passphrase prompt (by the plan's choice; say so in the design) — `fetch.py:264`
+- [ ] (suggestion) A second size guard on the bytes `cat-file` returns, and a bound on the clone itself at a terminal (`--filter=blob:limit=1m` where supported); not exploitable now, the ls-tree size is the hash-checked object's — `fetch.py:112`
+- [ ] (suggestion) `config.yaml` records the url in full (by design, as the resolved files and a clone's `.git/config` do) and is written 0644 under the usual umask; the design could say that, or write it 0600 when the url carries a password — `tools/repos-manifest/src/repos_manifest/system.py:122`
+- [ ] (suggestion) The status safety walk (`STATUS_MAY_CALL`) does not reach `fetch.py`, whose git commands `status` now runs; a walk or test that they write only the temporary directory — `tools/repos-manifest/tests/test_update_safety.py:446`
+- [ ] (suggestion) The adapter's printed `init` command interpolates `source`, `source_ref` and `source_path` unquoted (as the line above it already does), the hint covers only `^(https?|file)://` sources, and the commit sentence only 40-hex refs (not abbreviated or SHA-256) — `.agent/project_types/ros2_colcon/adapter.sh:647`
+- [ ] (suggestion) Pre-existing, now more visible: a `config.yaml` `manifest` string such as `host:m.yaml` is read as a local path (`is_url` looks only for `://`), while the spec calls it a URL — `tools/repos-manifest/src/repos_manifest/system.py:176`
+
+Not findings: an absolute path with `--manifest-path` refused by `init` (raised by Codex and the Claude adversarial pass) follows the Plan Review's direction 2 and the design's refusal row, `file://` being the local git form; the missing `docs/manifest/roadmap.md` line (Codex) is left out on purpose.
+
+Verified: `PYTHONPATH=src .venv python -m pytest` on test_fetch_from, test_fetch_git, test_init_refusals, test_manifest_in_git, test_manifest_reading, test_system, test_update_safety, test_url_messages: 757 passed in 25.96s; `bash .agent/scripts/tests/test_ros2_colcon.sh`: 1207 passed, 0 failed, 0 skipped; the whole tool suite not rerun (the implementer's result: 1275 + 837 passed). Rule-off checks in a scratch copy: exact-name rule off fails 3 tests, size limit off fails 1, git `base` refusal off fails 2, the transport rule off fails none (suggestion above). Root `docs/design.md` is 1286 lines after the merge of main, as its new change-log row says.
