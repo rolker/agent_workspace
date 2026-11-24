@@ -22,7 +22,11 @@
 #   - a package worktree's top folder (whatever its header), and a matching
 #     header whose issue checkout cannot be found: exit 3;
 #   - no git repository: exit 3; no GitHub remote: exit 4; a bad ref
-#     (leading zeros included): 1.
+#     (leading zeros included): 1;
+#   - plan-task step 8's block, run as written in the skill: the draft pull
+#     request's head names origin's owner when origin is a fork of the
+#     repository the helper names, and an issue title holding a backtick,
+#     $(...) and $VAR reaches gh literally, with nothing run.
 #
 # Hermetic: one mktemp -d sandbox with its own HOME and git config;
 # remotes are only URLs (nothing is fetched), local ones of the form
@@ -73,6 +77,8 @@ case "${GH_STUB:-}" in
     fail) echo "To get started with GitHub CLI, please run:  gh auth login (not logged in)" >&2; exit 4 ;;
     silent) exit 0 ;;
 esac
+# plan-task step 8's pull request calls: logged above, answered with nothing.
+case "$1 $2" in "pr list"|"pr create"|"pr edit") exit 0 ;; esac
 [ "$1 $2" = "repo view" ] || { echo "stub gh: unexpected call: $*" >&2; exit 9; }
 if [ -n "${GH_REPO:-}" ]; then echo "${GH_REPO#*github.com/}"; exit 0; fi
 pick=""
@@ -388,6 +394,69 @@ run "$ALPHA" "$STUB_PATH" -- 008
 err_has "leading zeros: says why" "without leading zeros"
 run "$ALPHA" "$STUB_PATH" -- 7 8
 expect "two arguments: exit 1" "" 1 0
+
+echo "=== plan-task step 8: the draft pull request's head, and the title kept literal ==="
+# The block exactly as the skill writes it, placeholders filled in. Its
+# WS_ROOT comes from ~/.claude/agent-workspace-root (this checkout, so it
+# runs this branch's scripts); origin is a bare repository at a
+# fake_remotes path, so the push is local.
+SKILL="$(cd "$SCRIPT_DIR/../../.." && pwd)/.claude/skills/plan-task/SKILL.md"
+mkdir -p "$HOME/.claude"
+(cd "$SCRIPT_DIR/../../.." && pwd) > "$HOME/.claude/agent-workspace-root"
+STEP8=$(awk '/^### 8\. /{s=1} s && /^```bash$/{b=1; next} b && /^```$/{exit} b' "$SKILL")
+TITLE='`touch PWNED1` $(touch PWNED2) $HOME it'"'"'s "q"'
+STEP8=${STEP8//"<ref>"/7}
+STEP8=${STEP8//"<N>"/7}
+STEP8=${STEP8//"<issue title>"/"$TITLE"}
+mkplanrepo() {  # <dir> <origin slug> [upstream slug]
+    local d="$1"
+    git init -q --bare "$(fr "$2")"
+    mkrepo "$d" "origin=$(fr "$2")" ${3:+"upstream=$(fr "$3")"}
+    git -C "$d" checkout -q -b feature/issue-7
+    mkdir -p "$d/.agent/work-plans/issue-7"
+    echo "# Plan" > "$d/.agent/work-plans/issue-7/plan.md"
+    git -C "$d" add -A && git -C "$d" commit -q -m plan
+}
+run_step8() {  # <dir>
+    : > "$GH_LOG"
+    OUT=$(cd "$1" && env -u WORKTREE_ISSUE PATH="$STUB_PATH" "$BASH_BIN" -c "$STEP8" 2>&1 </dev/null); RC=$?
+}
+if [[ -z "$STEP8" ]] || ! grep -q 'gh pr create' <<< "$STEP8"; then
+    fail "plan-task step 8: the block was not found in $SKILL"
+else
+    # The fork-origin package checkout: origin fork2/pkg, the header up/pkg#7.
+    PW7="$SANDBOX/pw7"
+    mkdir -p "$PW7/src"
+    printf '# project=p issue=up/pkg#7 layer=main\n%s\tsrc/pkg\tfeature/issue-7\n' "$(fr fork2/pkg)" > "$PW7/.worktree-repos"
+    mkplanrepo "$PW7/src/pkg" fork2/pkg up/pkg
+    run_step8 "$PW7/src/pkg"
+    created=$(grep '^pr create ' "$GH_LOG")
+    if [[ $RC -eq 0 && "$created" == "pr create -R github.com/up/pkg --draft --head fork2:feature/issue-7 --title [PLAN] $TITLE --body-file "* ]]; then
+        pass "fork origin: the pull request goes to up/pkg with --head fork2:feature/issue-7, the title literal"
+    else
+        fail "fork origin: exit $RC; gh pr create: '${created:-none}'; output: ${OUT:0:400}"
+    fi
+    if git --git-dir="$(fr fork2/pkg)" rev-parse -q --verify refs/heads/feature/issue-7 >/dev/null; then
+        pass "fork origin: the branch was pushed to origin"
+    else
+        fail "fork origin: the branch is not on origin"
+    fi
+    # The ordinary case: origin is the repository the helper names.
+    PLANR="$SANDBOX/planr"
+    mkplanrepo "$PLANR" own/planr
+    run_step8 "$PLANR"
+    created=$(grep '^pr create ' "$GH_LOG")
+    if [[ $RC -eq 0 && "$created" == "pr create -R github.com/own/planr --draft --head feature/issue-7 --title [PLAN] $TITLE --body-file "* ]]; then
+        pass "origin is the repository: --head is the bare branch"
+    else
+        fail "origin is the repository: exit $RC; gh pr create: '${created:-none}'; output: ${OUT:0:400}"
+    fi
+    if compgen -G "$SANDBOX/**/PWNED*" >/dev/null || [[ -e "$PW7/src/pkg/PWNED1" || -e "$PW7/src/pkg/PWNED2" || -e "$PLANR/PWNED1" || -e "$PLANR/PWNED2" ]]; then
+        fail "the issue title ran a command"
+    else
+        pass "the issue title ran no command"
+    fi
+fi
 
 echo ""
 echo "test_issue_repo: $PASS passed, $FAIL failed"

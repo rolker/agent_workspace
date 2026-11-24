@@ -404,7 +404,12 @@ Otherwise, push the branch and create (or update) a draft PR with a `[PLAN]`
 title prefix and the plan as the body. The prefix prevents agents from
 confusing the PR number with the issue number. The repository is asked for
 again (a new shell). The issue title goes in through a quoted heredoc, so a
-backtick or `$` in it is never run or expanded.:
+backtick or `$` in it is never run or expanded. The branch is pushed to
+origin; when origin is another repository than `$_REPO` (a package
+worktree's issue checkout whose origin is a fork of the manifest header's
+repository), the pull request's head names origin's owner
+(`--head <owner>:<branch>`), which `gh pr create -R` needs to find the
+branch in the fork:
 
 ```bash
 WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"
@@ -421,8 +426,17 @@ TITLE_EOF
 )
 # shellcheck source=../../../.agent/scripts/_resolve_work_plans_dir.sh
 source "$WS_ROOT/.agent/scripts/_resolve_work_plans_dir.sh"
+# shellcheck source=../../../.agent/scripts/_issue_helpers.sh
+source "$WS_ROOT/.agent/scripts/_issue_helpers.sh"
 WORK_PLANS_DIR=$(resolve_work_plans_dir <N>) || exit 1
 CURRENT_BRANCH=$(git branch --show-current)
+# The pull request's head: the branch just pushed to origin, with origin's
+# owner when origin is another repository than $_REPO (a fork)
+_ORIGIN_SLUG=$(extract_gh_slug "$(git remote get-url origin 2>/dev/null)")
+_HEAD="$CURRENT_BRANCH"
+if [ -n "$_ORIGIN_SLUG" ] && [ "${_ORIGIN_SLUG,,}" != "${_REPO,,}" ]; then
+    _HEAD="${_ORIGIN_SLUG%%/*}:$CURRENT_BRANCH"
+fi
 
 # Check for existing PR on this branch
 EXISTING_PR=$(gh pr list -R "github.com/$_REPO" --head "$CURRENT_BRANCH" --json url --jq '.[0].url // ""' 2>/dev/null || echo "")
@@ -437,7 +451,7 @@ if [ -n "$EXISTING_PR" ]; then
     gh pr edit "$EXISTING_PR" -R "github.com/$_REPO" --title "[PLAN] $ISSUE_TITLE" --body-file "$BODY_FILE"
 else
     # Create new draft PR
-    gh pr create -R "github.com/$_REPO" --draft --title "[PLAN] $ISSUE_TITLE" --body-file "$BODY_FILE"
+    gh pr create -R "github.com/$_REPO" --draft --head "$_HEAD" --title "[PLAN] $ISSUE_TITLE" --body-file "$BODY_FILE"
 fi
 rm -f "$BODY_FILE"
 ```

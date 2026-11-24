@@ -1306,6 +1306,9 @@ for name in review-issue plan-task review-plan; do
     has "$f" "$name: the issue title goes through a quoted heredoc" \
         "ISSUE_TITLE=\$(cat <<'TITLE_EOF' <issue title> TITLE_EOF )"
 done
+has "$SKILLS/plan-task/SKILL.md" "plan-task: the draft PR's head names origin's owner when origin is a fork of \$_REPO" \
+    '_HEAD="${_ORIGIN_SLUG%%/*}:$CURRENT_BRANCH"' \
+    'gh pr create -R "github.com/$_REPO" --draft --head "$_HEAD"'
 # The pin itself catches a block that lost its guard or a gh line that lost
 # its -R (a mutation of review-issue's text).
 MUT="$(mktemp)"
