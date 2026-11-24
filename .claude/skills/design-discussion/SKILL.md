@@ -13,8 +13,9 @@ session_scope: both
 > bare number as the project's issue). Revisit when both uses are done, or on 2026-12-31 if they are not,
 > whichever comes first; at that point the skill is revised or removed, not left as a
 > trial. That date judges Part 1 only. Create (a level with no goals, design or roadmap)
-> comes in Part 2, which waits on #551 (where a project keeps its goals, design and
-> roadmap); its own trial use keeps the trial open for that use. A rule marked *untested*
+> comes in Part 2, which waited on #551 (where a project keeps its goals, design and
+> roadmap: now its `goals`, `design` and `roadmap` settings, Step 0); its own trial use
+> keeps the trial open for that use. A rule marked *untested*
 > came from no observed failure and is here for the trial to test. A rule with a *Why*
 > came from a failure seen in a real session (the dated comments on #370); it can go when
 > its reason does.
@@ -121,21 +122,55 @@ session.
   modular-workflow issue (#544: GitHub-optional backends, files as work items, work keyed
   by branch) and the records-lookup issue (#393: where a project's records live) are
   where that support comes from.
-- **Documents.** Find the level's documents in the places today's readers accept. Where
-  one is missing, say so and ask; never guess a location.
-  - **Roadmap:** the root's `docs/roadmap.md`, else `ROADMAP.md`, which is what
-    `"$WS_ROOT/.agent/scripts/sitrep_root.sh"` reports as `roadmap=` (`update_roadmap.sh`
-    also reads `docs/ROADMAP.md`). A part's roadmap is the sub-roadmap file its parent's
-    `| Sub-roadmap | Root |` row names.
-  - **Design:** the root's `docs/design.md`. A part's design is the `design.md` in the
-    same directory as its sub-roadmap file (`check_design_anchors.sh` reads "the design.md
-    beside it"); the row's `Root` cell is only the directory the sub-roadmap's check paths
-    resolve against, not where the design is. Cite a part's design section as
-    `<path>/design.md#<section>`, `<path>` being the design file's directory.
-  - **Goals:** for the workspace, `README.md#workspace-goals`; for a project, the goals
-    its own design or README names; for a part, the goals section of its `design.md`. If
-    none is found, say so and ask where they are, and record the answer on the anchor
-    issue (where a project keeps them is settled for good by #551).
+- **Documents.** Find the level's documents where every reader finds them. Where one is
+  missing, say so and ask; never guess a location.
+  - **A project's root:** its goals, design and roadmap are where the project's settings
+    say. `"$WS_ROOT/.agent/scripts/session_root.sh"` prints the project's name as
+    `project=`; ask the one lookup every reader uses, once per document:
+
+    ```bash
+    WS_ROOT="$(cat ~/.claude/agent-workspace-root 2>/dev/null || echo .)"; WS_ROOT="${WS_ROOT:-.}"
+    "$WS_ROOT/.agent/scripts/project_setting.sh" doc <project> goals
+    "$WS_ROOT/.agent/scripts/project_setting.sh" doc <project> design
+    "$WS_ROOT/.agent/scripts/project_setting.sh" doc <project> roadmap
+    ```
+
+    - `set <path>[#<heading>]`: the project's recorded answer. Use it without asking.
+    - `none`: the project keeps no such document, by its own answer. Look nowhere else;
+      Step 7's "No document" applies to it.
+    - `fallback <path>`: not recorded; a fixed list of names (roadmap: `docs/roadmap.md`,
+      `docs/ROADMAP.md`, `ROADMAP.md`; design: `docs/design.md`) found `<path>`. It is a
+      suggestion: ask whether it is the project's roadmap (or design) before relying on
+      it.
+    - nothing, with the reason on stderr: not recorded and nothing found (exit 1; goals
+      has no fixed list, so unrecorded goals always land here), a recorded file that is
+      missing (exit 1), or a recorded value the lookup refuses (exit 2). Say so, with the
+      reason. For goals, offer the goals the project's own design or README names; else
+      ask where they are.
+
+    When the user names or confirms a place that is not recorded, offer to record it,
+    `"$WS_ROOT/.agent/scripts/project_setting.sh" set <project> "<key>=<value>"` (the
+    value quoted as one argument, `<path>` or `<path>#<heading>`), as a write on its own
+    yes. That settings file lives in the workspace checkout, per machine and untracked;
+    it is the one thing a project session writes outside its root. `set` refuses a value
+    a reader cannot follow and says why (the limits are listed in `onboard-project`
+    step 3c: inside the project, only ASCII letters, digits, `.`, `_`, `-` and `/` in
+    the path, and a roadmap that is a whole Markdown file, not the README, an agent
+    instruction file or the design): show the refusal as printed, as a limit of the
+    workspace's readers, never as a fault of the project, and never suggest moving the
+    project's files to fit. When it cannot be recorded, or the user declines, record the
+    answer on the anchor issue instead, so later sessions find it.
+  - **The workspace:** it is not a registered project and has no settings.
+    `"$WS_ROOT/.agent/scripts/sitrep_root.sh"` reports its roadmap as `roadmap=` and its
+    design as `design=` (the fixed lists above); its goals are
+    `README.md#workspace-goals`.
+  - **A part:** its roadmap is the sub-roadmap file its parent's `| Sub-roadmap | Root |`
+    row names (a part has no settings of its own; ADR-0022). Its design is the
+    `design.md` in the same directory as its sub-roadmap file (`check_design_anchors.sh`
+    reads "the design.md beside it"); the row's `Root` cell is only the directory the
+    sub-roadmap's check paths resolve against, not where the design is. Cite a part's
+    design section as `<path>/design.md#<section>`, `<path>` being the design file's
+    directory. Its goals are the goals section of its `design.md`.
 
 ### 1. Prepare quietly
 
