@@ -490,7 +490,9 @@ Status: `decided`
   `make install-repos-manifest`, called by CLI only. The manifest route that the settings file's
   `source` once selected is removed (issue 569): a root without `.repos-manifest/` whose settings file
   sets `source` is refused by every verb that reads the manifest and by `setup` and `sync`, before
-  anything is fetched, and the message names `repos-manifest init` in the root and
+  anything is fetched, and the message names `repos-manifest init --distro-dirs` in the root (for a
+  manifest that lists its distros; for a URL `source`, on the file at `source_path` in a clone at
+  `source_ref`, as `init` reads a local file only) and
   `project_setting.sh unset <name> source source_ref source_path`. A manifest in the new format is
   registered by running the tool's `init` in the root first, then registering the root; onboarding an
   empty session folder from a manifest is #473's.

@@ -2767,6 +2767,8 @@ test_source_without_tool_root_refused() {
         assert_contains "$label: says source selects no route" "source no longer selects a route" "$out"
         assert_contains "$label: names the manifest tool's init" "init <manifest> --distro-dirs --distro <distro>" "$out"
         assert_contains "$label: names the unset" "project_setting.sh unset tiered source source_ref source_path" "$out"
+        assert_contains "$label: says the manifest must list distros" "The manifest must list its distros (a distros: key)" "$out"
+        assert_not_contains "$label: a path source gets no clone step" "init reads a file on this machine only" "$out"
     done
     assert_eq "nothing imported: vcs not run" "" "$(cat "$sb/vcs.log" 2>/dev/null)"
     assert_eq "nothing built or tested: colcon not run" "false" "$([ -e "$sb/colcon.log" ] && echo true || echo false)"
@@ -2781,6 +2783,18 @@ test_source_without_tool_root_refused() {
         assert_eq "fresh root, $verb: exit 1" "1" "$rc"
         assert_contains "fresh root, $verb: refused" "source no longer selects a route" "$out"
     done
+    # A URL source: init reads a local file only, so the message names the
+    # clone at source_ref and the file at source_path inside it.
+    printf 'source=https://example.invalid/m.git\nsource_ref=v1\nsource_path=sys/m.yaml\n' > "$sb/.agent/projects.d/tiered"
+    rc=0; out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
+    assert_eq "URL source, setup: exit 1" "1" "$rc"
+    assert_contains "URL source: names the clone and the file" \
+        "init reads a file on this machine only: clone https://example.invalid/m.git at v1 and give init the file sys/m.yaml inside the clone" "$out"
+    printf 'source=https://example.invalid/m.git\nsource_ref=v1\n' > "$sb/.agent/projects.d/tiered"
+    out="$(run_adapter "$sb" setup 2>&1)" || true
+    assert_contains "URL source without source_path: the file is manifest.yaml" \
+        "give init the file manifest.yaml inside the clone" "$out"
+    printf 'source=%s\n' "$sb/m.yaml" > "$sb/.agent/projects.d/tiered"
     assert_eq "nothing fetched: curl not run" "false" "$([ -e "$sb/curl.log" ] && echo true || echo false)"
     assert_eq "fresh root: no configs/ made" "false" "$([ -e "$fresh/configs" ] && echo true || echo false)"
     # Verbs that never read the manifest are not refused.

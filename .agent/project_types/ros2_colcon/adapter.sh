@@ -614,7 +614,10 @@ _rc_route() {
 # refused, never taken down the bootstrap route: the route `source`
 # selected (a manifest resolved from it by the adapter) is removed (issue
 # #569). The message names the way on: the manifest tool's
-# init in the root, then the `unset` of the old keys. Run first by every
+# init --distro-dirs in the root (it needs a manifest that lists distros:,
+# and reads a local file only, so a URL source is cloned at source_ref
+# first and init given the file at source_path, manifest.yaml when unset,
+# inside the clone), then the `unset` of the old keys. Run first by every
 # verb that reads the manifest (_rc_require_manifest) and by setup and
 # sync, before anything is fetched. On the tool route the keys are
 # validate's to name (_rc_tool_validate: a second record).
@@ -626,6 +629,10 @@ _rc_refuse_removed_source() {
     root="$(_rc_root)" || return 1
     echo "ERROR: project '$name' sets source in ${ACTIVE_PROJECT_FILE:-its settings file}, and $root holds no .repos-manifest/: source no longer selects a route (the route it selected is removed; a manifest in the new format is read only from a root the manifest tool set up)" >&2
     echo "Set the root up with the manifest tool: in $root, run $(_rc_resolver_bin) init <manifest> --distro-dirs --distro <distro> [--role <role>]; the registered root then takes the tool route" >&2
+    echo "The manifest must list its distros (a distros: key): init --distro-dirs refuses one that does not, and a root set up without --distro-dirs is refused here" >&2
+    if [[ "$ACTIVE_PROJECT_SOURCE" =~ ^(https?|file):// ]]; then
+        echo "init reads a file on this machine only: clone $ACTIVE_PROJECT_SOURCE at ${ACTIVE_PROJECT_SOURCE_REF:-<source_ref>} and give init the file ${ACTIVE_PROJECT_SOURCE_PATH:-manifest.yaml} inside the clone" >&2
+    fi
     echo "Then remove the old keys: .agent/scripts/project_setting.sh unset $name source source_ref source_path (and role= and distro= from its line in .agent/projects.local, if set)" >&2
     return 1
 }
