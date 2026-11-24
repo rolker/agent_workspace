@@ -301,3 +301,13 @@ CI at `e6ef187f`: Lint (pre-commit), Validate Adapter Contract, Validate Documen
 "Merge (Recommended)"
 
 Asked at the merge checkpoint for pull request 571 (part 1 of 3: the one row of the tool's roadmap) after the Integrated Review at 0fcef131 with no open findings. The dialog gave: the old and new row text; the pre-push review approved with no findings and two triages with nothing open; all 10 CI checks passing on head e6ef187f, with the copilot-pull-request-reviewer check's failure named as its quota notice; the outside reviewers (Codex and Gemini before the push, Copilot requested and not available for lack of quota, the Codex cold read of the final diff with nothing found); and that the issue stays open, with the plan revised for the second Plan Review's seven findings and reviewed again before part 2. The other choices offered were hold and stop.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 09:38 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the plan checkpoint after a merge; the second Plan Review at af2b47b4 left seven findings on parts 2 and 3 that the plan has not taken in, so proceed is not open to the host)
+**After**: plan
+**Decision**: revise
+
+Pull request 571 (part 1 of 3, the tool's roadmap row) merged on 2026-11-24. The issue is still open because parts 2 and 3 are to come. Delivered: part 1. Not delivered: part 2 (cut the adapter's manifest route) and part 3 (remove the reader). The plan is unchanged since its last review (774fb12d), but that review's verdict was needs-work for parts 2 and 3, and the host's proceed of the same day covered part 1 only. The plan now takes in all seven findings and is reviewed again before part 2 is implemented. Main has moved since the plan was written (other merges changed `test_ros2_colcon.sh` and `worktree_create.sh`), so the plan's line numbers are re-read from this branch.
