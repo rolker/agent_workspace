@@ -890,3 +890,35 @@ Round 2's 2 must-fix and 3 suggestions, all fixed as the host's directions gave 
 
 ### Tests (each suite on its own)
 test_skill_paths: 212 passed, 0 failed; test_design_anchors: 82 passed, 0 failed. No script changed, so no script suite applies. Full pre-commit pass left to the host. Not pushed.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-24 12:31 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Dispatch**: resumed (agent a4ea84dfeed164458, resume 1 of 3)
+**Verdict**: approved
+
+**Branch**: feature/issue-551 at `e8b916e7`
+**Base**: origin/main
+**Depth**: Deep (reason: round 3 convergence check per handoff)
+**Must-fix**: 0 | **Suggestions**: 0
+**Round**: 3 | **Ship**: recommended — no must-fix findings; round 2's five all closed
+
+Narrow check of round 2's findings and the fix diff b5c9c418..e8b916e7 (9a06fbdd, 6949cac5, e537dd3b, 17069ea9, f46d375f). Cross-model: skipped (round-3 convergence check, per handoff). All five closed:
+- Must-fix A: `set` takes '<key>=<value>' in single quotes, with `'\''` for a `'`, in onboard-project step 3c and design-discussion step 0. The three older onboard-project places read correctly and match the step 1 prose: the registration `--set` in the prose and both commands, step 2's `'build=<command>'`, and step 6's fix-now line. No double-quoted form is left in the skills, and no allow rule pins the old form.
+- Must-fix B: the docs/design.md onboarding bullet is true of the branch. The change-log row is in the table's form, with Sessions and roots +1 line and a count of 1285 (equal to `wc -l`). `check_design_anchors.sh` exits 0.
+- Suggestion 1: the reader list in "What a stored value changes" now matches the branch.
+- Suggestion 2: design-discussion and brainstorm map exit 2 with the registry reason and exit 3 as the other two skills do. Brainstorm reads no `ARCHITECTURE.md` in their place.
+- Suggestion 3: both stale brainstorm references are gone.
+
+Tests: test_skill_paths 212/0, test_design_anchors 82/0. Shellcheck is clean on test_skill_paths.sh.
+
+The three things the fix pass left alone are not must-fix for this pull request:
+- the `--title "<issue title>"` of `review_progress.sh persist` in six skills
+- the agent-written `git commit -m`, `gh issue create --title` and `gh label create --description` text
+- the ros2_colcon adapter's example message
+
+This branch neither added nor changed any of them, so it brings in no broken ordinary case. The persist title is used only when progress.md is first created. The host's parked follow-up is the right home: an issue title holding a backtick or `$` is the one real case.
+
+### Findings
+- [ ] No issues found. LGTM.
