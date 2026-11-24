@@ -28,7 +28,8 @@
 #      without --force (issue 428). Refused is everything else: a folder on
 #      the way that cannot be entered (give it back u+rwx by hand), or a
 #      symbolic link on the way or as the entry that does not lead to a
-#      folder inside the worktree: dangling, to a file, or outside. For a
+#      folder inside the worktree: dangling, to a file, or outside; or a
+#      manifest path containing .. (correct .worktree-repos by hand). For a
 #      refused link, remove the link by hand (rm on a link removes only
 #      the link, never what it points to) and run this again. Then check
 #      present entries for uncommitted changes (unless --force; a folder
