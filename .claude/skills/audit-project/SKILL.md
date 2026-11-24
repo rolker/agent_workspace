@@ -221,7 +221,12 @@ the stored value, or exits 1 when the key is not stored. Each row's status:
   setting names is missing.
 - nothing, exit 2: a finding: the setting cannot be used; give the reason
   as printed (a path outside the project, a roadmap that is a symbolic link
-  or reached through one, ...).
+  or reached through one, ...). When the reason is `the registry <file> has
+  errors`, it is the registry that is broken, not the setting: report that
+  once, as a registry finding fixed from a workspace session, and leave the
+  three rows unknown.
+- nothing, exit 3: the project is not registered under `<settings-name>`;
+  not a finding about the document. Recheck the name step 1 resolved.
 
 A setting names the root's own documents; a part's documents are named
 only by the root roadmap's `| Sub-roadmap | Root |` table (ADR-0022). When

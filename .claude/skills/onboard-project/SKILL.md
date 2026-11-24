@@ -410,6 +410,11 @@ Each prints one line, or nothing with the reason on stderr:
   2: the lookup refuses it, the reason says why). Show the reason and offer
   to set another value or remove the key (`project_setting.sh unset
   <settings-name> <key>`), each its own yes.
+- nothing, exit 2 with the reason `the registry <file> has errors`: the
+  registry itself is broken, not this setting. Nothing, exit 3: the
+  project is not registered under that name. Neither is about the
+  document: show the message, ask nothing in 3c, and fix the registry
+  (from a workspace session) or the name first.
 
 The options:
 
