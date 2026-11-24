@@ -666,3 +666,25 @@ None.
 **Decision**: address
 
 The Integrated Review at d7eb59c5 left one box open: in a root with no path paragraph, "Running: nothing on this machine." is printed when step 5 did not look up the next line, against the branch's own rule that the report never states an absence it did not check. Fix as the box says: print "nothing on this machine" only when step 5 looked; otherwise a Running: line saying it was not looked up and why (the same three reasons as "Not looked up for <group>:"), in the rule and the no-paths template, with a test pin beside the existing wording test. Nothing else in this round.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 09:52 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+
+**PR**: #572 at `d5f7368f`
+**Addressed**: Integrated Review at `1e295fe9` (2026-11-24 09:50 -05:00)
+**Commits**: d5f7368f
+
+### Actions
+- [x] (must-fix) In a root with no path paragraph, "Running: nothing on this machine." is printed only when step 5 looked (its block printed `issues_named=` with a number, listed the branches, and read the pull request list; with no pull-request source, the branches alone). Otherwise "Running: not looked up for the next step: <why>", one per reason, the reasons of In flight's "Not looked up for <group>:" lines (its line names no issue of this repository | the branches could not be listed | the pull request list could not be read). The template shows the three Running: forms; a test beside the existing wording test pins them — `.claude/skills/sitrep/SKILL.md` step 8 `Running:` rule and no-paths template, `.agent/scripts/tests/test_sitrep_checks.sh` (d5f7368f)
+
+### Other sentences stating an absence step 5 did not check
+- One found, inside the same rule: "When step 5 matched nothing" also covered step 5 looking up no line at all (step 1 printed no rows, or every line is true). Fixed the same way in the same commit: then there is no `Running:` line under `Next:`; the work in flight is in In flight.
+- Looked through the rest of step 8's rules; no other sentence states an absence step 5 did not check.
+- Noted, not changed (step 3's list, unchanged from main, outside this round): "implemented, no pull request yet" is added "when the root has a pull-request source", which includes a run where step 3's pull request list could not be read — `.claude/skills/sitrep/SKILL.md` step 3 table and the In flight rule.
+
+### Suites (each run on its own from the worktree, on the final content)
+- test_sitrep_checks.sh: "test_sitrep_checks: 301 passed, 0 failed"
+- test_skill_paths.sh: "test_skill_paths: 199 passed, 0 failed"
+- The full pass is left to the host; CI checks the push.
