@@ -53,7 +53,8 @@ This section describes the code as it is. It was checked against
   registry line (name, type and path only) and runs the adapter's `setup` with those options,
   which runs `repos-manifest init <file> --distro-dirs ... --yes` in the directory (under "The
   tool route"). Nothing about the manifest is written to the registry or the settings file.
-  A root set up with `init` by hand is registered with `register_project.sh <dir>`.
+  A root set up with `init` by hand is registered with `register_project.sh <dir>`; so is one
+  whose manifest is a file in a git repo, which `--manifest` does not take yet.
 
 ### Two routes
 
@@ -88,10 +89,12 @@ manifest tool, in its own directory:
    and `role=` and `distro=` from the registry line, which the tool route refuses as a second
    record.
 
-Or the instance is set up in a new, empty directory and registered there in one step,
-`register_project.sh <dir> --manifest <file> --distro <distro> [--role <role>]`, which the
-refusal names too; the old root is then removed from the registry with `register_project.sh
---remove <name>`.
+Or the instance is set up in a new, empty directory, which the refusal names too, and the
+old root is then removed from the registry with `register_project.sh --remove <name>`. For a
+`source` that is a path, the new directory is set up and registered in one step,
+`register_project.sh <dir> --manifest <file> --distro <distro> [--role <role>]`. For a URL
+`source`, the `init` command below is run in the new directory, which is then registered with
+`register_project.sh <dir>`, since `--manifest` takes a file on the local disk only.
 
 For a URL `source`, `init` is given the manifest as a file in a git repo: the URL,
 `--manifest-ref <source_ref>` and `--manifest-path <source_path>` (`manifest.yaml` when it
@@ -117,9 +120,9 @@ A new root is never registered with `source`: `register_project.sh` refuses `sou
 `source_ref` or `source_path` for a `ros2_colcon` project before it writes anything, given
 with `--set` or set by a settings file kept from an earlier registration; for a kept file the
 refusal names it and the lines to remove. The new root is registered from the manifest file
-with `--manifest`, as above. A manifest given to `--manifest` as a URL or a git location is
-refused before anything is written, since `init` reads a file on the local disk only: the
-repo is cloned by hand and the file in the clone is given.
+with `--manifest`, or set up with `init` first and registered without it, as above. A
+manifest given to `--manifest` as a URL or a git location is refused before anything is
+written: registration takes a file on the local disk (under "The tool route").
 
 ### The tool route
 
@@ -141,6 +144,18 @@ fetching is the session's, asked with `repos-manifest show` first. Then the usua
 the adapter's `validate`. When `init` makes nothing, the directories made for it are removed;
 when it made the system and a clone or a later check failed, nothing in the directory is
 removed and the next step named is the tool's `sync`, then registering the directory without `--manifest`.
+
+Registration takes the manifest as a file on the local disk only. A manifest given to
+`--manifest` as a URL or a git location (`scheme://...`, `user@host:path`) that is not an
+existing file is refused before anything is written, a dry run too, with its user name and
+password masked. The tool reads a manifest kept as a file in a git repo, so the refusal names
+the way for it: make the directory and in it run `repos-manifest init <repo url>
+--manifest-path <file> [--manifest-ref <branch or tag>] --distro-dirs --distro <distro>
+[--role <role>]`, with the `--with` and `--fetch-from` given, then register the directory
+with the same command without `--manifest`, `--distro`, `--role`, `--with` and
+`--fetch-from`. A manifest at an `http` or `https` URL that is not a git repo is not read by
+the tool, and the refusal says to save it to the local disk and give that file. Handing the
+git form through to `init` from registration is a later change.
 
 - **What it reads.** Only the tool's resolved files for one distro,
   `.repos-manifest/resolved/<distro>/`: `layers.txt` (the layers in order, the unnamed layer
@@ -416,7 +431,9 @@ without it until the tool does:
   `git` as it is set up on the machine, so a root never goes on using an old manifest without
   a word, as on the removed manifest route, which fetched a URL `source` afresh on every
   `setup` and `sync`. Until the tool's `local_manifest` is built, a manifest edited in the
-  clone of its repo is not read.
+  clone of its repo is not read. Registration with `--manifest` does not hand the git form to
+  `init` yet: such a root is set up with `init` and registered without `--manifest` (under
+  "The tool route").
 - **Time limits on fetches.** The removed manifest route bounded its fetches, and the
   resolver bounded its clones of parent manifests. The tool bounds its read of a manifest
   from a git repo when there is no terminal, at 60 seconds, and at 1 MiB for the file; its
@@ -468,7 +485,8 @@ the resolved `.repos` files and layer order, which are the tool's stated output.
 route none of the five records below is read, and `validate` refuses each one it finds.
 Registration with `--manifest` (under "The tool route") does this today for a manifest file on
 the local disk: the role, the distro, the groups and the fetch prefix go to `init` and nowhere
-else. Until every instance is on the tool, the bootstrap route still reads `distro=` from the
+else. A manifest in a git repo is given to `init` in its git form by hand, and the root is
+then registered without `--manifest`, which records nothing about it either. Until every instance is on the tool, the bootstrap route still reads `distro=` from the
 registry line. `source`, `source_ref` and `source_path` are read by no route (the manifest route that
 read them is removed); they stay accepted in the settings file until all five go together.
 

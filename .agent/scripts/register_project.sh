@@ -57,8 +57,10 @@
 #                  that exists and holds anything but .claude, a manifest
 #                  that is not a regular file, a URL or a git location
 #                  (scheme://..., user@host:path) that is not an existing
-#                  file (the tool reads a local file only in this version;
-#                  issue 498), and bootstrap_url given or in a kept
+#                  file (registration takes a local file only; the
+#                  refusal names the tool's init in the git form for a
+#                  file in a git repo, then registering without
+#                  --manifest), and bootstrap_url given or in a kept
 #                  settings file (the bootstrap route's setting, a second
 #                  record on the tool's route)
 #   --parent, --distro, --role, --worktrees, --default-instance
@@ -811,11 +813,13 @@ root_is_empty() {
     done
     return 0
 }
-# A location the manifest tool does not read in this version: a URL or a
-# git location (scheme://..., user@host:path). Checked only for an
-# argument that is not an existing regular file. The one place this script
-# knows it; issue 498 replaces it (the tool reading a manifest from a git
-# repo, and registration.conf then saying which locations a type takes).
+# A location registration does not take: a URL or a git location
+# (scheme://..., user@host:path). Checked only for an argument that is not
+# an existing regular file. The one place this script knows it. The tool
+# reads a manifest kept as a file in a git repo (init's git form), and the
+# refusal names that way; handing the git form through to init here, with
+# registration.conf then saying which locations a type takes, is a later
+# change.
 manifest_is_remote() {
     [[ "$1" == *://* ]] || [[ "$1" =~ ^[^/:@]+@[^/:]+: ]]
 }
@@ -845,8 +849,17 @@ if [ -n "$MANIFEST" ]; then
         case "$MANIFEST" in /*) _m="$MANIFEST" ;; *) _m="$PWD/$MANIFEST" ;; esac
         M_ABS="$(CDPATH='' cd -- "$(dirname -- "$_m")" && pwd -P)/$(basename -- "$_m")"
     elif manifest_is_remote "$MANIFEST"; then
-        echo "ERROR: --manifest $_m_shown: the manifest tool reads a manifest from the local disk only in this version (issue 498 adds a URL or a file in a git repo); clone the repo that holds it, keep the clone up to date by hand, and give the file in the clone (docs/manifest/design.md, \"A root that sets source\")" >&2
-        final refused "give --manifest a file on the local disk" 1
+        # The tool's init with the options given here, for a manifest
+        # kept as a file in a git repo (the git form, which goes with
+        # --distro-dirs); a --fetch-from value is shown masked too.
+        _m_init="$TOOL_BIN init <repo url> --manifest-path <file in the repo> [--manifest-ref <branch or tag>] --distro-dirs --distro $M_DISTRO"
+        if [ -n "$M_ROLE" ]; then _m_init="$_m_init --role $M_ROLE"; else _m_init="$_m_init [--role <role>]"; fi
+        for _g in ${M_WITH[@]+"${M_WITH[@]}"}; do _m_init="$_m_init --with $_g"; done
+        [ -n "$M_FETCH" ] && _m_init="$_m_init --fetch-from $(mask_url_userinfo "$M_FETCH")"
+        echo "ERROR: --manifest $_m_shown: registration with --manifest takes a manifest file on the local disk" >&2
+        echo "For a manifest kept as a file in a git repo, set the root up with the manifest tool, which reads the file from the repo afresh at every sync: make the directory $PROJECT_ROOT and in it run $_m_init; then $M_RERUN" >&2
+        echo "A manifest at an http or https URL that is not a git repo is not read by the manifest tool: save it to the local disk and give --manifest that file (docs/manifest/design.md, \"The tool route\")" >&2
+        final refused "give --manifest a file on the local disk, or set the root up with the manifest tool's init and register it without --manifest" 1
     elif [ -e "$MANIFEST" ]; then
         echo "ERROR: --manifest $_m_shown is not a regular file" >&2
         final refused "give --manifest a manifest file" 1

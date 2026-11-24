@@ -814,7 +814,7 @@ for dry in "" --dry-run; do
     for loc in "https://user:secret@example.invalid" "https://user:secret@example.invalid/field/m.yaml"; do
         out="$(mreg "$SANDBOX/mroots/url" --manifest "$loc" --distro fakefox $dry)"; rc=$?
         check "$loc ${dry:-(real run)}: refused with the URL masked, the password nowhere in the output, no tool run" \
-            bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"--manifest https://***@example.invalid"*": the manifest tool reads a manifest from the local disk only"* && "$2" != *secret* ]] && [ ! -s "$3" ] && [ ! -e "$4" ]' \
+            bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"--manifest https://***@example.invalid"*": registration with --manifest takes a manifest file on the local disk"* && "$2" != *secret* ]] && [ ! -s "$3" ] && [ ! -e "$4" ]' \
             _ "$rc" "$out" "$MLOG" "$SANDBOX/mroots/url"
     done
 done
@@ -835,10 +835,14 @@ for dry in "" --dry-run; do
     check "a root that is a file ${dry:-(real run)}: refused" bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"is there and is not a directory"* ]]' _ "$rc" "$out"
     for loc in https://example.invalid/m.yaml git@example.invalid:owner/m.git; do
         out="$(mreg "$SANDBOX/mroots/url" --manifest "$loc" --distro fakefox $dry)"; rc=$?
-        check "$loc ${dry:-(real run)}: refused naming issue 498 and the clone by hand, nothing written" \
-            bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"reads a manifest from the local disk only in this version (issue 498 adds a URL or a file in a git repo); clone the repo that holds it, keep the clone up to date by hand, and give the file in the clone"* ]] && [ ! -e "$3" ] && [ ! -s "$4" ] && ! grep -q "^url " "$5" 2>/dev/null' \
-            _ "$rc" "$out" "$SANDBOX/mroots/url" "$MLOG" "$WSM/.agent/projects.local"
+        check "$loc ${dry:-(real run)}: refused naming init in the git form and registering without --manifest, nothing written" \
+            bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"--manifest $6: registration with --manifest takes a manifest file on the local disk"* && "$2" == *"For a manifest kept as a file in a git repo, set the root up with the manifest tool, which reads the file from the repo afresh at every sync: make the directory $3 and in it run "*"/repos-manifest init <repo url> --manifest-path <file in the repo> [--manifest-ref <branch or tag>] --distro-dirs --distro fakefox [--role <role>]; then $7"* && "$2" == *"A manifest at an http or https URL that is not a git repo is not read by the manifest tool: save it to the local disk and give --manifest that file"* && "$2" == *"NEXT=give --manifest a file on the local disk, or set the root up with the manifest tool'"'"'s init and register it without --manifest"* && "$2" != *"issue 498"* && "$2" != *"by hand"* ]] && [ ! -e "$3" ] && [ ! -s "$4" ] && ! grep -q "^url " "$5" 2>/dev/null' \
+            _ "$rc" "$out" "$SANDBOX/mroots/url" "$MLOG" "$WSM/.agent/projects.local" "$loc" "$MRERUN"
     done
+    out="$(mreg "$SANDBOX/mroots/url" --manifest git@example.invalid:owner/m.git --distro fakefox --role sim --with extra --fetch-from "https://user:secret@example.invalid/field/" $dry)"; rc=$?
+    check "a git location with --role, --with and --fetch-from ${dry:-(real run)}: the init named carries them, the prefix masked, nothing written" \
+        bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"--distro-dirs --distro fakefox --role sim --with extra --fetch-from https://***@example.invalid/field/; then "* && "$2" != *secret* ]] && [ ! -e "$3" ] && [ ! -s "$4" ]' \
+        _ "$rc" "$out" "$SANDBOX/mroots/url" "$MLOG"
     out="$(mreg "$SANDBOX/mroots/url" --manifest "$MD" --distro fakefox $dry)"; rc=$?
     check "a directory as the manifest ${dry:-(real run)}: refused, not a regular file" \
         bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"is not a regular file"* ]] && [ ! -e "$3" ]' _ "$rc" "$out" "$SANDBOX/mroots/url"

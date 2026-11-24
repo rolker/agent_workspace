@@ -523,8 +523,10 @@ Status: `decided`
   hand. `register_project.sh` refuses a `--set` of the three
   keys for a `ros2_colcon` project before it writes anything (the type's `registration_refused` list). A
   manifest in the new format is registered in one step, `register_project.sh <dir> --manifest <file>
-  --distro <d>`, whose `setup` runs the tool's `init` in the new or empty directory (a URL or git
-  location is refused until the tool reads one, issue 498); the skill's part of onboarding an empty
+  --distro <d>`, whose `setup` runs the tool's `init` in the new or empty directory. `--manifest` takes
+  a file on the local disk: a URL or git location is refused before anything is written, and the
+  refusal names the way for a manifest in a git repo, the tool's `init` in its git form run in the
+  directory, then registering it without `--manifest`; the skill's part of onboarding an empty
   session folder from a manifest is #473's.
   Manifest support is a part with its own design (ADR-0022, the rule for parts):
   the routes as built and the design they are moving to (the adapter calling the manifest tool's
@@ -1239,6 +1241,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-24 | Registry and adapters | The manifest tool reads a manifest from a git repo (issue 498 part 2b-1): for a URL `source`, the refusal's `init` command is the git form (the URL, `--manifest-ref <source_ref>`, `--manifest-path <source_path>`), and the tool reads the file from the repo afresh at every `sync`, so the clone kept by hand and its falling behind silently are gone. The section keeps its length | #498 | 1286 |
 | 2026-11-24 | Registry and adapters | Registration from a manifest (issue 503 part 2): `register_project.sh` and `register_session_root.sh` take `--manifest <file> --distro <d>` and `init`'s options, and the type's `adapter setup` runs the tool's `init` in a new or empty root; nothing about the manifest is recorded in the workspace. `registration.conf` gains a required `manifest` key (`local-file` or `none`). A settings file kept from an earlier registration that sets a key of `registration_refused` is refused too (issue 599). The section grows by 7 lines | #503 | 1293 |
 | 2026-11-24 | Change log | Main merged into issue 503's branch after #498 part 2b-1 landed (pull request 611): the rows of both sides are kept, #498's (already on main) before #503's, and their line counts are each side's own file at the time; this row's count is the merged file's | #503 | 1295 |
+| 2026-11-24 | Registry and adapters | Registration's refusal of a manifest given to `--manifest` as a URL or git location is made true after #498 part 2b-1 (issue 503 part 2): the tool reads a manifest from a git repo, so the refusal no longer waits on issue 498; `--manifest` still takes a file on the local disk, and the refusal names the tool's `init` in its git form, then registering without `--manifest`. The section grows by 2 lines | #503 | 1298 |
 
 ## Glossary
 
