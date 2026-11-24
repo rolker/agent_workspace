@@ -277,3 +277,34 @@ Suites run (each on its own, after the last code change unless noted): test_proj
 - A design file not named `design.md` is cited as `<path>#<section>`; the anchors checker counts such a citation only when it resolves to the root design.
 - The merge gate counts a post-review tick of the setting's roadmap as bookkeeping only in a checkout of the project root's own repository.
 - OQ-1 is answered for three of the seven roles; the other four have no setting. PR 2 (onboard-project, audit-project, design-discussion, `project_integration_audit.sh`) follows; this PR is Part of #551.
+
+## Local Review (Pre-Push)
+**Status**: complete
+**When**: 2026-11-23 19:13 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: changes-requested
+
+**Branch**: feature/issue-551 at `1d14eed1`
+**Base**: main
+**Depth**: Deep (reason: 1490 lines over 19 files; merge-gate bookkeeping (`merge_pr.sh`, `_bookkeeping.sh`), the pre-commit anchors hook and design.md)
+**Must-fix**: 3 | **Suggestions**: 10
+**Round**: 1 | **Ship**: continue — round 1: 3 must-fix; first round always re-reviews after fixes
+
+Specialists: static analysis (shellcheck --severity=warning on all changed .sh: clean), governance, plan drift, Claude adversarial, cross-model gemini (complete) and codex (complete). Adversarial ran test_project_documents (86), test_design_anchors (82), test_sitrep_root (72), test_update_roadmap (16), test_project_file (694), test_sitrep_checks (252): all pass.
+
+Implementation deviations judged: (a) registry-backed cases in the new `test_project_documents.sh`: accepted (one sandbox registry; the other suites have none). (b) no `--root` flag on `check_design_anchors.sh`: accepted (positional root, as before). (c) needs `_project_registry.sh` beside it: accepted (same directory; the symlink fixture copies it). (d) unset `sitrep_root.sh` still passes `docs/design.md` when only the default branch has it: correct, it keeps today's behaviour. Workspace independence verified: a workspace checkout returns from `project_document_name_for_root` before the registry is read (adversarial: workspace anchors rc=0 with a broken registry; test covers it); `sitrep_root.sh` passes an empty project name for the workspace.
+
+### Findings
+- [ ] (must-fix) A project with none of the three keys set changes behaviour when its settings file holds an invalid unrelated value (e.g. `build=make; rm -rf /`) or the registry has a bad line: `project_document_path` returns 2 on any `project_file_entries` failure and `project_document_name_for_root` on any registry parse error, so `check_design_anchors.sh` exits 2, `update_roadmap.sh` ticks nothing (merge proceeds with only a warning), `sitrep_root.sh` skips all three design checks and `sitrep_checks.sh` reports the roadmap unreadable; on main all four worked. Also an unregistered non-workspace root (and `test_design_anchors.sh`'s temp roots) now fail on a broken machine registry. Against the owner's "with no setting, each keeps today's fixed search": decide fail-closed only when the read key itself cannot be told, else the candidates; tests for both — `_project_registry.sh:1442,1523`, `check_design_anchors.sh:207`, `update_roadmap.sh:208`, `sitrep_root.sh:368`, `sitrep_checks.sh:374`
+- [ ] (must-fix) `check_design_anchors.sh <relative root>` regressed: `cd "$ROOT"` runs before `project_document_for_dir ... "$ROOT"`, which resolves the relative path again from inside it; reproduced (`check_design_anchors.sh issue-workspace-551` from its parent: exit 2 "no design file", main: exit 0). Use `ROOT="$(pwd -P)"` after the `cd`, add a test — `check_design_anchors.sh:190-207`
+- [ ] (must-fix) A `roadmap` value may name any file (`roadmap=src/main.py`), and `bookkeeping_roadmap_paths` then exempts post-review commits to it from the review-staleness and CI-staleness checks of the merge gate. Restrict roadmap values (e.g. to `*.md`) at `set` and in the parser, with a test — `_project_registry.sh` `_project_document_value_error`, `_bookkeeping.sh:54`
+- [ ] (suggestion) Duplicate citations/findings when the design setting's basename ends in `design.md` (e.g. `docs/my-design.md`): the `design\.md#` regex and the `DESIGN_ALT` scan both emit the token — `check_design_anchors.sh:530,549`
+- [ ] (suggestion) A symlinked candidate (`docs/design.md`, `docs/roadmap.md`) resolving outside the root now fails closed (exit 2) for a project with no keys; intended under ADR-0016 but a behaviour change not stated in the design text or PR — `_project_registry.sh` `_project_document_file_error`
+- [ ] (suggestion) `update_roadmap.sh` (unset key) still ticks every existing candidate with only `[[ -f ]]`; the lookup's containment check covers only the first, so `ROADMAP.md` symlinked outside the root is edited (as on main); check each candidate with `_project_document_file_error` — `update_roadmap.sh:220`
+- [ ] (suggestion) A set roadmap that is a symlink inside the root is accepted, but `update_roadmap.sh` writes by moving a temp file over it, replacing the link and leaving the target unticked; resolve the link or refuse a symlink for `roadmap` — `update_roadmap.sh`, `_project_registry.sh:1472`
+- [ ] (suggestion) A hand-made `git worktree add` of a project outside its root and its `worktrees=` directory reads the candidates, not the settings (worktrees from `worktree_create.sh` are covered); match on the shared git common dir, or state the limit — `_project_registry.sh:1442`
+- [ ] (suggestion) The lookup's reason can carry a tab (from a refused value) into `sitrep_checks.sh`'s TSV `section` row; strip tabs/CRs from `_why` — `sitrep_checks.sh:374`
+- [ ] (suggestion) The roadmap `#heading` refusal suggests `roadmap=<path>` before the path is validated (`roadmap=../r.md#x` advises `roadmap=../r.md`); validate the path first — `_project_registry.sh` `_project_document_value_error`
+- [ ] (suggestion) `project_setting.sh doc` exits 1 for a usage error, the same code as "nothing to read"; use a distinct code — `project_setting.sh:244-247`
+- [ ] (suggestion) `project_document_candidates` word-splits `${!var}` under the caller's IFS; set `local IFS=' '` — `_project_registry.sh:1364`
+- [ ] (suggestion) Test gaps: `sitrep_checks.sh --root` of a keyed project reads `## Direction` from the set file over a decoy `docs/roadmap.md`; `design=none` with clean parts exits 0; a part named in a key-named roadmap's pointer table; `merge_pr.sh`'s `MERGE_PR_CI_BOOKKEEPING_PATTERNS` with a set roadmap — `tests/test_project_documents.sh`
