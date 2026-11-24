@@ -378,3 +378,13 @@ The plan is sound and its lists match the code. Parts 2 and 3 can be implemented
 - [ ] Part 2, adapter.sh `_rc_bootstrap_manifest`: remove the whole `if [ -n "${ACTIVE_PROJECT_NAME:-}" ]` block that echoes `source=` (603-605), and keep the "Or set the root up with the manifest tool" line (606).
 - [ ] Part 2, test_ros2_colcon.sh `test_source_without_tool_root_refused`: before the verbs run, write the curl stub into `$sb/bin`, as `make_tool_root` does at 4212 (`printf '#!/usr/bin/env bash\necho "CURL_RAN:$*" >> "%s"\nexit 1\n' "$sb/curl.log" > "$sb/bin/curl"; chmod +x "$sb/bin/curl"`). Then the "no `$sb/curl.log`" assertion can fail.
 - [ ] Part 2, text: rewrite these to say `source`/`source_ref`/`source_path` are still accepted by `project_setting.sh` but read by no route. A `ros2_colcon` root without `.repos-manifest/` that sets them is refused at use, naming `repos-manifest init` and the `unset`. On the tool route, `validate` names them as a second record. Their removal is the workspace roadmap's own line. The sites: `.agent/knowledge/script_reference.md:27`, `.agent/project_types/ros2_colcon/registration.conf` 9-12, `.agent/scripts/_project_registry.sh` 69-70, adapter.sh header 8-19, root `docs/design.md:439`, and `docs/manifest/design.md` 38-46 (including "three routes" at 46 and `--set source=` at 42). Add one sentence for that refusal to the root design's routes bullet (484-496). Before the PR, also re-grep `adapter.sh`, `docs/` and `.agent/` (work-plans aside) for `three routes`, `manifest-resolved`, `lock.source` and `#436`, and name each remaining hit as history.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 09:46 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the third Plan Review at 99202142 finds the plan ready to implement; its five remaining findings, two medium and three low, are all on part 2, need no design choice, and are written as exact directions for the implementer)
+**After**: plan
+**Decision**: proceed
+
+This answer starts part 2: the cut of the adapter's manifest route, with its tests and the documents that describe it. The plan is unchanged since that review (6530c842), and part 2 is not yet delivered (part 1 is, as pull request 571). The implement handoff quotes the review's "Directions for the implementer" in full and tells the implementer to follow them where they differ from the plan's text: the header comment's range (keep `_rc_route`), the second manifest-only block in `adapter_sync`, the bootstrap error's `source=` block, the curl stub for the refusal test, and the six text sites plus the one sentence for the root design's routes bullet. Part 3 follows as its own pull request after part 2 merges.
