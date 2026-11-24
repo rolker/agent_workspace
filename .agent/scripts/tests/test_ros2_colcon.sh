@@ -2791,7 +2791,20 @@ test_source_without_tool_root_refused() {
         out="$(BOOTSTRAP_URL=file:///nonexistent/bootstrap.yaml run_adapter "$sb" "$verb" 2>&1)" || rc=$?
         assert_eq "fresh root, $verb: exit 1" "1" "$rc"
         assert_contains "fresh root, $verb: refused" "source no longer selects a route" "$out"
+        assert_not_contains "fresh root, $verb: no old checkouts named" "init does not read the old checkouts" "$out"
     done
+    # A root the removed route set up: its checkouts or its generated
+    # directory are named as left unread by init.
+    mkdir -p "$fresh/layers/main/l1_ws/src/pkg_a"
+    out="$(run_adapter "$sb" setup 2>&1)" || true
+    assert_contains "old checkouts: named as unread by init" \
+        "init does not read the old checkouts under $fresh/layers/main/<layer>_ws/src or $fresh/configs/manifest-resolved*: it clones again under $fresh/<distro>/, so push work in them first" "$out"
+    rm -rf "$fresh/layers"
+    mkdir -p "$fresh/configs"
+    ln -s manifest-resolved.gen-abc123 "$fresh/configs/manifest-resolved"
+    out="$(run_adapter "$sb" setup 2>&1)" || true
+    assert_contains "a dangling manifest-resolved link alone: named too" "init does not read the old checkouts" "$out"
+    rm -rf "$fresh/configs"
     # A URL source: init reads a local file only, so the message names the
     # clone at source_ref and the file at source_path inside it.
     printf 'source=https://example.invalid/m.git\nsource_ref=v1\nsource_path=sys/m.yaml\n' > "$sb/.agent/projects.d/tiered"

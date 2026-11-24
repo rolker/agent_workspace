@@ -617,7 +617,10 @@ _rc_route() {
 # init --distro-dirs in the root (it needs a manifest that lists distros:,
 # and reads a local file only, so a URL source is cloned at source_ref
 # first and init given the file at source_path, manifest.yaml when unset,
-# inside the clone), then the `unset` of the old keys. Run first by every
+# inside the clone), that init leaves the removed route's checkouts
+# (layers/main/<layer>_ws/src) and generated directories
+# (configs/manifest-resolved*) unread when the root holds them, then the
+# `unset` of the old keys. Run first by every
 # verb that reads the manifest (_rc_require_manifest) and by setup and
 # sync, before anything is fetched. On the tool route the keys are
 # validate's to name (_rc_tool_validate: a second record).
@@ -642,6 +645,9 @@ _rc_refuse_removed_source() {
     echo "The manifest must list its distros (a distros: key): init --distro-dirs refuses one that does not, and a root set up without --distro-dirs is refused by the adapter" >&2
     if [[ "$ACTIVE_PROJECT_SOURCE" =~ ^(https?|file):// ]]; then
         echo "init reads a file on this machine only: clone $ACTIVE_PROJECT_SOURCE at ${ACTIVE_PROJECT_SOURCE_REF:-<source_ref>} and give init the file ${ACTIVE_PROJECT_SOURCE_PATH:-manifest.yaml} inside the clone" >&2
+    fi
+    if [ -d "$root/layers/main" ] || [ -e "$root/configs/manifest-resolved" ] || [ -L "$root/configs/manifest-resolved" ]; then
+        echo "init does not read the old checkouts under $root/layers/main/<layer>_ws/src or $root/configs/manifest-resolved*: it clones again under $root/<distro>/, so push work in them first" >&2
     fi
     echo "Then remove the old keys: .agent/scripts/project_setting.sh unset $name source source_ref source_path${line:+, and $line from its line in .agent/projects.local}" >&2
     return 1
