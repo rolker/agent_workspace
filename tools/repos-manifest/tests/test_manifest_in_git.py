@@ -6,6 +6,7 @@ Every repo is local (`file://`), or served on 127.0.0.1; the tests run as with n
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 from pathlib import Path
@@ -13,6 +14,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from githttp import GitServer
 from helpers import git, make_remote, repo, run, snapshot, write_manifest
 
 from repos_manifest import fetch
@@ -96,6 +98,83 @@ def test_init_reads_the_branch_or_tag_given(remotes, tmp_path, system):
     assert (system / "src" / "b").is_dir()
     recorded = yaml.safe_load((system / ".repos-manifest/config.yaml").read_text())
     assert recorded["manifest"] == {"url": url, "version": "jazzy", "path": "sys/m.yaml"}
+
+
+def test_sync_reads_the_manifest_afresh_and_gets_what_changed(remotes, tmp_path, system):
+    holder = manifest_repo(tmp_path, manifest_data(remotes, "a"))
+    argv = ["init", f"file://{holder}", "--manifest-path", "sys/m.yaml", "--distro", "jazzy"]
+    assert run(system, *argv, "--yes") == 0
+    assert not (system / "src" / "b").exists()
+    publish(holder, manifest_data(remotes, "a", "b"))
+    assert run(system, "sync") == 0
+    assert (system / "src" / "b").is_dir()
+
+
+def test_sync_with_the_manifests_repo_unreachable_changes_nothing(
+    remotes, tmp_path, system, capsys
+):
+    holder = manifest_repo(tmp_path, manifest_data(remotes, "a"))
+    argv = ["init", f"file://{holder}", "--manifest-path", "sys/m.yaml", "--distro", "jazzy"]
+    assert run(system, *argv, "--yes") == 0
+    capsys.readouterr()
+    shutil.move(holder, tmp_path / "moved")
+    before = snapshot(system)
+    assert run(system, "sync") == 1
+    err = capsys.readouterr().err
+    assert "the manifest is what failed; nothing was changed:" in err
+    assert f"file://{holder}  (its default branch)  sys/m.yaml: git could not fetch" in err
+    assert "a file in a git repo, read from the repo afresh at every run" in err
+    assert snapshot(system) == before
+
+
+def test_status_and_show_read_the_recorded_location(remotes, tmp_path, system, capsys):
+    holder = manifest_repo(tmp_path, manifest_data(remotes, "a"))
+    url = f"file://{holder}"
+    argv = ["init", url, "--manifest-ref", "main", "--manifest-path", "sys/m.yaml"]
+    assert run(system, *argv, "--distro", "jazzy", "--yes") == 0
+    publish(holder, manifest_data(remotes, "a", "b"))
+    capsys.readouterr()
+    # status reads the manifest as sync will: b is new, and missing.
+    assert run(system, "status") == 1
+    out = capsys.readouterr().out
+    assert f"manifest {url}  main  sys/m.yaml\n" in out
+    assert "src/b  missing" in out
+    assert run(system, "status", "--json") == 1
+    document = json.loads(capsys.readouterr().out)
+    assert document["manifest"] == {"url": url, "version": "main", "path": "sys/m.yaml"}
+    assert run(system / "src", "show") == 0
+    out = capsys.readouterr().out
+    assert out.startswith(f"manifest    {url}  main  sys/m.yaml\n")
+    assert "  b   jazzy" in out
+
+
+def test_a_credential_in_the_manifests_url_is_kept_in_config_and_masked_everywhere_else(
+    remotes, tmp_path, system, capsys
+):
+    served = tmp_path / "served"
+    served.mkdir()
+    server = GitServer(served)
+    try:
+        manifest_repo(served, manifest_data(remotes, "a"), name="sys.git")
+        url = f"http://someone:s3cret@127.0.0.1:{server.server_address[1]}/sys.git"
+        argv = ["init", url, "--manifest-path", "sys/m.yaml", "--distro", "jazzy", "--yes"]
+        assert run(system, *argv) == 0
+        init_printed = capsys.readouterr()
+        assert run(system, "status", "--json") == 0
+        document = json.loads(capsys.readouterr().out)
+        assert run(system, "status") == 0
+        assert run(system, "show") == 0
+        printed = capsys.readouterr()
+        resolved = (system / ".repos-manifest/resolved/_unnamed.repos").read_text()
+        config = (system / ".repos-manifest/config.yaml").read_text()
+    finally:
+        server.close()
+    masked = f"http://***@127.0.0.1:{server.server_address[1]}/sys.git"
+    assert document["manifest"]["url"] == masked
+    for text in (init_printed.out, init_printed.err, printed.out, printed.err, resolved):
+        assert "s3cret" not in text and "someone" not in text
+    assert f"# manifest: {masked}  (its default branch)  sys/m.yaml" in resolved
+    assert url in config  # kept in full where urls are kept
 
 
 @pytest.fixture

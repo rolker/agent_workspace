@@ -2,7 +2,9 @@
 acts on (``docs/design.md``, "status").
 
 It reads only. It takes no lock, writes no resolved file, no record and no setup file, and
-makes no network call of its own: every git it runs goes through `update.Git`, which passes
+makes no network call of its own but one, reading a manifest recorded in a git repo as `sync`
+reads it (``fetch.py``, in a temporary directory outside the system). Every git it runs on a
+clone goes through `update.Git`, which passes
 `--no-optional-locks` (so `git status` does not refresh the index), with no fsmonitor hook and
 no lazy fetch (`_reading_git`), and the manifest's version is looked up with
 `update.ask_local`, in the refs the clone had when it was last fetched. The clean filters a
@@ -28,6 +30,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence
 
 from . import gitenv, sync, update
+from .location import GitLocation, Location
+from .location import label as location_label
 from .masking import mask_url, mask_urls, remember_url
 from .selection import Selected
 from .system import (
@@ -145,8 +149,9 @@ def run_status(named_distros: Sequence[str], as_json: bool) -> int:
             )
         config = read_config(system)
         distros = distros_for(system, config, named_distros, cwd)
-        env = {**gitenv.require_git(), **NO_LAZY_FETCH}  # `status` runs git, never `vcs`
-        plan = _plan(system, config, distros)
+        git_env = gitenv.require_git()  # `status` runs git, never `vcs`
+        env = {**git_env, **NO_LAZY_FETCH}
+        plan = _plan(system, config, distros, git_env)
         results = [distro_status(system, config, each, env) for each in plan]
     ok = all(result.ok for result in results)
     if as_json:
@@ -156,11 +161,12 @@ def run_status(named_distros: Sequence[str], as_json: bool) -> int:
     return 0 if ok else 1
 
 
-def _plan(system: Path, config: Config, distros: Sequence[Optional[str]]):
+def _plan(system: Path, config: Config, distros: Sequence[Optional[str]], env: Dict[str, str]):
     """Each distro resolved in memory, as `sync` resolves it; a manifest that cannot be read
-    is reported for every distro."""
+    is reported for every distro. A manifest recorded in a git repo is read from it as `sync`
+    reads it, with the git environment `env`: the one network read of `status`'s own."""
     try:
-        return sync.resolve_all(system, config, distros, changes=False)
+        return sync.resolve_all(system, config, distros, changes=False, env=env)
     except ManifestError as exc:
         return [sync.Reported(distro, str(exc)) for distro in distros]
 
@@ -410,13 +416,22 @@ def _document(system: Path, config: Config, results: Sequence[DistroStatus], ok:
         "format": FORMAT,
         "ok": ok,
         "system": str(system),
-        "manifest": mask_url(config.manifest),
+        "manifest": _manifest_document(config.manifest),
         "role": config.role,
         "groups": list(config.groups),
         "layout": config.layout,
         "recorded_distros": list(config.distros) if config.distros is not None else None,
         "distros": distros,
     }
+
+
+def _manifest_document(location: Location):
+    """`manifest` in the JSON: a path as recorded, a string; a file in a git repo, an object
+    with its `url` (user name and password masked), `version` (null for the default branch)
+    and `path`."""
+    if isinstance(location, GitLocation):
+        return {"url": mask_url(location.url), "version": location.version, "path": location.path}
+    return mask_url(location)
 
 
 def _facts(repo: RepoStatus) -> str:
@@ -437,7 +452,7 @@ def _print(
     results: Sequence[DistroStatus],
 ) -> None:
     print(f"system {system}")
-    print(f"manifest {mask_url(config.manifest)}")
+    print(f"manifest {mask_urls(location_label(config.manifest))}")
     print(f"role {config.role if config.role is not None else '(none)'}")
     print(f"groups {', '.join(config.groups) if config.groups else '(none)'}")
     if config.distros is not None:

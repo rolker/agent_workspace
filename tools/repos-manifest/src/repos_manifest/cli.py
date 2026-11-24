@@ -18,6 +18,7 @@ from . import output, selection
 from .build import run_build
 from .fetch_from import FetchFromError
 from .init import run_init
+from .location import GitLocation
 from .manifest import Manifest
 from .masking import mask_urls
 from .show import render, shown_path
@@ -32,6 +33,7 @@ from .system import (
     one_distro_for,
     read_config,
     read_manifest,
+    read_recorded_manifest,
     reporting_oserror,
 )
 from .yamlload import ManifestError
@@ -113,18 +115,20 @@ def _show_in_system(args: argparse.Namespace, cwd: Path) -> selection.Resolved:
         )
     config = read_config(system)
     distro = one_distro_for(system, config, [args.distro] if args.distro else [], cwd)
-    # The recorded path is read and resolved as sync reads it, from the system directory, which
-    # need not be the current one, and under its recorded name, so every refusal and warning
-    # names it as sync's do. Only once it has read and resolved is it shown, like the
-    # manifests it builds on, as an absolute path with links followed, so that it opens from
-    # where show is run.
+    # The recorded location is read and resolved as sync reads it, a path from the system
+    # directory, which need not be the current one, and under its recorded name, so every
+    # refusal and warning names it as sync's do; a file in a git repo afresh from the repo.
+    # Only once it has read and resolved is a path shown, like the manifests it builds on, as
+    # an absolute path with links followed, so that it opens from where show is run.
     try:
-        manifest = read_manifest(config.manifest, system)
+        manifest = read_recorded_manifest(system, config)
         resolved = resolve_for(manifest, config, distro, fetch_from_named(system))
     except FetchFromError:
         raise
     except ManifestError as exc:
-        raise ManifestError(f"{exc} {recorded_manifest(system)}") from None
+        raise ManifestError(f"{exc} {recorded_manifest(system, config)}") from None
+    if isinstance(config.manifest, GitLocation):
+        return resolved  # named by its label, its url masked
     canonical = os.path.realpath(system / config.manifest)
     for layer in resolved.layers:
         for repo in layer.repos:

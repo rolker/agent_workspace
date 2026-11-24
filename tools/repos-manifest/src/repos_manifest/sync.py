@@ -27,6 +27,7 @@ from .masking import mask_urls
 from .output import make_writable, output_files, process_has_ended, signals_held, write_output
 from .gitenv import Env, require_git
 from .location import GitLocation
+from .location import label as location_label
 from .selection import Resolved, Selected
 from .signals import Stopped, signal_name, signals_end_the_run, stop_exit
 from .yamlload import ManifestError
@@ -52,7 +53,7 @@ from .system import (
     put_distro_state,
     read_built,
     read_config,
-    read_manifest,
+    read_recorded_manifest,
     read_state,
     reporting_oserror,
     resolved_parts,
@@ -633,10 +634,16 @@ def closing(results: Sequence[DistroResult]) -> int:
     return 1 if failed or reported or any(result.setup_failure for result in results) else 0
 
 
-def recorded_manifest(system: Path) -> str:
-    """Said after a message that names the manifest by its recorded path, so that a relative
-    path, taken from the system directory, is not read as taken from the current directory."""
+def recorded_manifest(system: Path, config: Config) -> str:
+    """Said after a message that names the manifest by its recorded location, so that a
+    relative path, taken from the system directory, is not read as taken from the current
+    directory; and a file in a git repo is known to be read from the repo, not from a clone."""
     recorded = system / SYSTEM_DIR / CONFIG_FILE
+    if isinstance(config.manifest, GitLocation):
+        return (
+            f"(the manifest is `manifest` in {recorded}: a file in a git repo, read from the"
+            " repo afresh at every run)"
+        )
     return (
         f"(the manifest's path is `manifest` in {recorded}, taken from the system directory"
         f" {system})"
@@ -672,30 +679,36 @@ def resolve_for(manifest: Manifest, config: Config, distro: Optional[str], named
 
 
 def resolve_all(
-    system: Path, config: Config, distros: Sequence[Optional[str]], changes: bool = True
+    system: Path,
+    config: Config,
+    distros: Sequence[Optional[str]],
+    changes: bool = True,
+    env: Optional[Env] = None,
 ) -> List[Union[Planned, Reported]]:
     """Phase one: read the manifest, then resolve each distro and build its resolved files, in
     memory. A manifest that cannot be read ends the run with nothing changed; a distro that
     does not resolve, or whose files cannot be written out, is reported, and nothing of it is
     changed, while the others go on. `changes` is false for `status`, which changes nothing:
     a distro `fetch_from` refuses is then reported as refused, without `sync`'s words about
-    what it left unchanged."""
+    what it left unchanged. `env` is the run's git environment, for a manifest read from a
+    git repo."""
     try:
-        manifest = read_manifest(config.manifest, system)
+        manifest = read_recorded_manifest(system, config, env)
     except ManifestError as exc:
+        said = recorded_manifest(system, config)
         raise ManifestError(
-            f"the manifest is what failed; nothing was changed: {exc} {recorded_manifest(system)}"
+            f"the manifest is what failed; nothing was changed: {exc} {said}"
         ) from None
     if config.distros is None and manifest.distros is not None:
         # A flat system set up from a manifest with no distros: it cannot gain one.
         return [
             Reported(
                 None,
-                f"{config.manifest}: the manifest now has distros"
+                f"{location_label(config.manifest)}: the manifest now has distros"
                 f" ({', '.join(manifest.distros)}), and this system directory was set up"
                 " without one; nothing in it has been moved or changed. A system with distros"
                 " is set up in a new directory with `repos-manifest init`, with `--distro-dirs`"
-                f" to hold more than one distro. {recorded_manifest(system)}",
+                f" to hold more than one distro. {recorded_manifest(system, config)}",
             )
         ]
     plan: List[Union[Planned, Reported]] = []
@@ -716,7 +729,7 @@ def resolve_all(
                 Reported(
                     distro,
                     f"{named}: the manifest does not resolve for it; nothing of it has been"
-                    f" moved or removed: {exc} {recorded_manifest(system)}",
+                    f" moved or removed: {exc} {recorded_manifest(system, config)}",
                 )
             )
             continue
@@ -727,7 +740,7 @@ def resolve_all(
                 Reported(
                     distro,
                     f"{named}: the manifest's output is what failed; nothing of it was changed:"
-                    f" {exc} {recorded_manifest(system)}",
+                    f" {exc} {recorded_manifest(system, config)}",
                 )
             )
     return plan
@@ -756,8 +769,13 @@ def _sync(named_distros: Sequence[str], changing: List[bool]) -> int:
             )
         config = read_config(system)
         distros = distros_for(system, config, named_distros, cwd)
-        plan = resolve_all(system, config, distros)
-        env = require_tools()
+        if isinstance(config.manifest, GitLocation):
+            # git is needed to read the manifest, so the tools are checked before the read.
+            env = require_tools()
+            plan = resolve_all(system, config, distros, env=env)
+        else:
+            plan = resolve_all(system, config, distros)
+            env = require_tools()
         changing.append(True)
         results = sync_distros(system, config, plan, env)
     return closing(results)

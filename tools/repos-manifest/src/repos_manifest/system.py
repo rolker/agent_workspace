@@ -802,3 +802,10 @@ def read_manifest(
     for warning in loaded.warnings:
         warn(warning)
     return loaded
+
+
+def read_recorded_manifest(system: Path, config: Config, env: Optional[Env] = None) -> Manifest:
+    """The manifest `config.yaml` records, read as every distro of the system reads it: a path
+    taken from the system directory, or a file in a git repo, read afresh. `env` is the run's
+    git environment, when the caller has it."""
+    return read_manifest(config.manifest, system, env=env)
