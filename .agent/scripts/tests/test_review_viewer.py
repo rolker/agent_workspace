@@ -29,6 +29,9 @@ sys.path.insert(0, str(SCRIPTS))
 import review_viewer as rv  # noqa: E402
 
 SCRIPT = str(SCRIPTS / "review_viewer.py")
+# On macOS and native Windows no DISPLAY test applies, so a CLI run there
+# would open a real window instead of exiting 2.
+NATIVE_TK = sys.platform in rv.NATIVE_TK_PLATFORMS
 
 TABLE_DRAFT = """\
 # Plan
@@ -516,11 +519,13 @@ class CliTest(TempDirTest):
         self.assertEqual(len(result.stderr.strip().splitlines()), 1, result.stderr)
         self.assertIn(needle, result.stderr)
 
+    @unittest.skipIf(NATIVE_TK, "Tk draws natively here: a real window would open")
     def test_no_display_exits_2(self):
         result = self.run_cli([str(self.draft())], {})
         self.assert_one_line(result, 2, "no display")
         self.assertFalse((self.dir / "d.md.notes.md").exists())
 
+    @unittest.skipIf(NATIVE_TK, "Tk draws natively here: a real window would open")
     def test_unreachable_display_exits_2(self):
         """F2: Tk() raising TclError (dead X display) exits 2, no traceback."""
         result = self.run_cli([str(self.draft())], {"DISPLAY": ":9999"})
@@ -543,6 +548,7 @@ class CliTest(TempDirTest):
         self.assert_one_line(result, 1, "would overwrite the draft")
         self.assertEqual(draft.read_text(encoding="utf-8"), "hello\n")
 
+    @unittest.skipIf(os.name != "posix", "symlinks need privileges on Windows")
     def test_symlink_loop_exits_1_one_line(self):
         loop = self.dir / "loop.md"
         loop.symlink_to(loop)
