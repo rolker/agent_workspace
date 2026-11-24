@@ -162,3 +162,17 @@ The owner's words are quoted verbatim and the scope matches what he approved, bu
 **Decision**: proceed
 
 The implementer applies F1 to F10 word for word from the Plan Review entry, in place of the plan's text where they differ. Two readings the review lists for the owner's veto are accepted by the host and go into the rule as the review words them: where `next` would start a second review round, the host writes a `publish` checkpoint that `next` did not raise (after its full pre-commit pass), which is how the rule runs with no script change; and on a day Copilot is skipped, a pull request that changes no code gets no cold read, read from his words "one Codex cold read on pull requests that change code". The end of the rule is checked as issue 436 closed as completed.
+
+## Implementation
+**Status**: complete
+**When**: 2026-11-24 14:06 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Branch**: feature/issue-605 at `729e9882`
+
+- `.agent/knowledge/host_standing_rules.md`: two rows appended to the Rules table (manifest-work rule, follow-up issue authorization) and the new section `## Manifest work: the lighter review level`, with Plan Review F1 to F10 applied word for word; the owner's quotes checked character for character against the issue body.
+- `.claude/skills/orchestrator/SKILL.md`: one pointer paragraph after the checkpoint table (F9 wording).
+- `.claude/skills/run-issue/SKILL.md`: pointer paragraph in the Overview (F9 wording; names `host_standing_rules.md` without a path, since `test_skill_paths.sh` rejects a workspace-relative path there) and the 9a pointer, placed after the first paragraph's list.
+- `test_skill_paths.sh`: test_skill_paths: 212 passed, 0 failed (first run failed on the relative path above; fixed and rerun).
+- `test_package_issue_loop.sh`: test_package_issue_loop: 228 passed, 0 failed.
+- `test_dispatch_phase.sh`: test_dispatch_phase: 244 passed, 0 failed.
+- The full pre-commit pass was left to the host.
