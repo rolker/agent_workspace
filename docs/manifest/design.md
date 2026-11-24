@@ -34,87 +34,34 @@ This section describes the code as it is. It was checked against
 
 - The registry, `.agent/projects.local`, is per machine and not committed. A line names the
   instance, its type and its path, and may carry `role=` and `distro=`.
-- The settings file, `.agent/projects.d/<name>`, holds one `key=value` per line. Three keys
-  name a manifest: `source` (an absolute path, or an `https://` or `file:///` URL of a git
-  repo; plain `http://` and a URL that carries credentials are refused), `source_ref`
-  (required for a URL) and `source_path` (the file in the repo, `manifest.yaml` if left
-  out). Work on a manifest that is on the local disk uses the path form.
-- `register_project.sh` writes both, with `--role`, `--distro` and `--set source=...`.
+- The settings file, `.agent/projects.d/<name>`, holds one `key=value` per line. The keys
+  `source`, `source_ref` and `source_path` once named a manifest for the adapter's manifest
+  route, which is removed (issue 569). They are still accepted by `project_setting.sh` but
+  read by no route. A `ros2_colcon` root without `.repos-manifest/` whose settings file sets
+  them is refused at use, by every verb that reads the manifest and by `setup` and `sync`,
+  before anything is fetched; the message names `repos-manifest init` in the root and the
+  `project_setting.sh unset` of the three keys. On the tool route `validate` names them as a
+  second record. Their removal is a line of [roadmap.md](roadmap.md).
+- `register_project.sh` writes both. A root set up from a manifest in the new format is made
+  with `repos-manifest init` in that directory first, then registered.
 
-### Three routes
+### Two routes
 
-The `ros2_colcon` adapter has three routes to the list of repos, taken in this order:
+The `ros2_colcon` adapter has two routes to the list of repos, taken in this order:
 
 - **The tool route** (the root holds `.repos-manifest/`). The root is a system directory the
   manifest tool set up, and the adapter reads the tool's resolved files. It is taken whatever
   the settings file sets. Its own section is below.
-- **The manifest route** (no `.repos-manifest/`, and `source` set).
-- **The bootstrap route** (neither).
-
-The last two:
-
-- **The bootstrap route** (no `source`). The adapter fetches a `bootstrap.yaml` with `curl`
-  from a URL, clones the repo it names, and links `configs/manifest` to a directory in that
-  clone. The directory holds `layers.txt`, `optional_layers.txt` and one `.repos` file per
-  layer, written by hand.
-- **The manifest route** (`source` set). The adapter fetches the manifest and has the
-  resolver turn it into the same three kinds of file.
-
-### The manifest route, step by step
-
-`setup` and `sync` both start the same way:
-
-1. Check that a role and a distro are recorded and that the resolver is installed.
-2. Take a lock on `configs/.lock.source`.
-3. Fetch the manifest. A path is read in place. A URL is fetched afresh every time with the
-   adapter's own git code, into a directory that is removed afterwards; no clone is kept.
-4. Run the resolver:
-   `repos-manifest resolve --manifest <file> --role <role> --distro <distro> --out <dir> --layout manifest-dir --cache-dir <dir>.cache`.
-   The cache directory is new each time and removed afterwards.
-5. Write the result into a new directory, `configs/manifest-resolved.gen-XXXXXX`, record
-   where it came from in `.resolved-from`, and move the link `configs/manifest-resolved` to
-   point at it.
-
-After that:
-
-- `setup` runs `vcs import --skip-existing` for each layer into
-  `layers/main/<layer>_ws/src`.
-- `sync` goes through the repos one at a time. A repo with uncommitted changes is skipped
-  and nothing is fetched for it. A clean repo on the branch the manifest names gets
-  `git pull --rebase`. A clean repo on another branch, or on no branch, gets `git fetch`.
-- `build` runs `colcon build` in each layer in order, with `/opt/ros/<distro>` and the
-  layers before it sourced.
-- `validate` fails, with a non-zero exit status, when `.resolved-from` is missing or does not
-  match the source, ref, path, role or distro recorded now, when no role is recorded or the
-  distro cannot be worked out, when a second source is set beside `source`, or when a checkout
-  or a layer file the manifest calls for is missing. It warns when a manifest at a path has
-  changed since it was resolved, and names checkouts the manifest no longer lists. It fetches
-  nothing and removes nothing. Its check has two limits: a layer marked optional is passed
-  over when its `.repos` file or its `src/` is absent, and a repo counts as checked out when
-  a directory of its name exists, whatever is in it.
-
-Network is needed at `setup` and `sync`, for the source, for the host of every `extends`
-base and for the host of every package repo, and for installing the resolver.
-
-What the route guarantees, and how far each guarantee goes:
-
-- **Never silently stale.** A git `source` is fetched afresh by each `setup` and `sync`, and
-  no clone is kept (the owner's decision of 2026-11-13). Every `extends` base is cloned
-  afresh too.
-- **A failed fetch or resolve changes nothing.** The previous generated directory stays the
-  one in use. This covers the fetch and the resolve only: once the new directory is in use,
-  an import that fails part way leaves it in use, with some repos checked out and some not.
-- **One fetch and resolve at a time.** They hold a lock on `configs/.lock.source`, which is
-  never removed. The lock is released before repos are imported or updated, so two runs can
-  overlap there. Without `flock` on the machine, nothing is locked.
-- **A reader is not cut off.** Every verb reads one generated directory from start to end,
-  and a directory is not removed while a run reads it. Without `flock` the adapter cannot
-  tell, and keeps the directory before the live one instead; two later runs can then remove
-  a directory a long run is still reading.
-- **Bounded and guarded fetches.** The adapter's fetch allows the https, ssh and file
-  transports only and is bounded by `WT_FETCH_TIMEOUT`. The resolver's clone of an `extends`
-  base runs no user hook or filter driver and is bounded by `REPOS_MANIFEST_GIT_TIMEOUT`.
-- **Nothing is deleted.** The adapter removes no checkout and edits no ignore file.
+- **The bootstrap route** (no `.repos-manifest/`). The adapter fetches a `bootstrap.yaml` with
+  `curl` from a URL, clones the repo it names, and links `configs/manifest` to a directory in
+  that clone. The directory holds `layers.txt`, `optional_layers.txt` and one `.repos` file
+  per layer, written by hand. `setup` runs `vcs import --skip-existing` for each layer into
+  `layers/main/<layer>_ws/src`. `sync` goes through the repos one at a time: a repo with
+  uncommitted changes is skipped, a clean repo on the branch its `.repos` file names gets
+  `git pull --rebase`, and any other gets `git fetch`. `build` runs `colcon build` in each
+  layer in order, with `/opt/ros/<distro>` and the layers before it sourced. `validate`
+  fails when the distro cannot be worked out, or when a layer file or a checkout the
+  directory calls for is missing (a layer marked optional is passed over).
 
 ### The tool route
 
@@ -234,7 +181,7 @@ The root need not be a git repository. The registry line holds its name, type an
   fails when the manifest cannot be read, or when a repo that is not optional was added to it
   and not synced yet.
 - **`env`, `repos`, `repo_pin`, `worktree_repos` and `worktree_env`** read the same files and
-  directories, so package worktrees work as on the other routes.
+  directories, so package worktrees work as on the bootstrap route.
 - **A `.repos-manifest/` the adapter cannot use** is an error, never another route, so a root
   the tool set up never reaches the bootstrap route's fetch. One message says what is wrong as
   far as the adapter can tell (it is not a directory, or a link to nothing; it cannot be read;
@@ -267,7 +214,7 @@ expected. `adapter build` (the tool's build) then rebuilds the layer.
 For issue work in a package repo, the adapter makes a worktree of that repo and writes an
 environment script for it. The script sources the ROS distro, then each lower layer of the
 main checkout, then the main checkout's copy of the same layer, then the worktree's own
-build. `layers/main` holds the default checkouts on the bootstrap and manifest routes, and
+build. `layers/main` holds the default checkouts on the bootstrap route, and
 `<root>/<distro>/<layer>` on the tool route; no issue work is done there. A lower layer with no
 `install/local_setup.bash` when the worktree is made is named in a note on its creation.
 
@@ -344,22 +291,22 @@ instance's directory, for one distro.
 
 | Adapter verb | Today | Target |
 |---|---|---|
-| `setup` | Fetch the manifest, resolve, `vcs import` per layer; run again, it imports what is missing | `repos-manifest init`, with `--distro-dirs` when the project has a distro, for a directory that is not set up yet; `repos-manifest add-distro` for a distro the instance does not have yet, with `--manifest-ref` when that distro's manifest is on a branch of its own (how that version is given is part of how a session names its distro, under "Not decided"); `repos-manifest sync` for a distro that is set up, which clones what is missing |
-| `sync` | Fetch the manifest, resolve, update each repo with git | `repos-manifest sync` |
+| `setup` | On the bootstrap route: fetch `bootstrap.yaml`, clone the repo it names, `vcs import` per layer; run again, it imports what is missing | `repos-manifest init`, with `--distro-dirs` when the project has a distro, for a directory that is not set up yet; `repos-manifest add-distro` for a distro the instance does not have yet, with `--manifest-ref` when that distro's manifest is on a branch of its own (how that version is given is part of how a session names its distro, under "Not decided"); `repos-manifest sync` for a distro that is set up, which clones what is missing |
+| `sync` | On the bootstrap route: update each repo with git | `repos-manifest sync` |
 | `build` | `colcon build` per layer | `repos-manifest build`, with that distro's environment sourced first |
 | `test` | `colcon test` per layer | Stays in the adapter: `colcon test` per layer, over the layers the tool resolved. The tool has no test command |
-| `validate` | Fail when what is on disk was resolved from something else, or a checkout is missing | Fail when `repos-manifest status` exits 1: a repo the manifest calls for is missing, is not at its place, or is there and unusable (not a git repo of its own, no commit checked out, no `origin` url, its version not found among the refs of its last fetch, or git cannot read its state), or a distro's manifest cannot be read or resolved, or the system directory cannot be read. Work in progress and lasting setups that `sync` leaves alone (a rebase or merge in progress, an `index.lock`, a sparse checkout, a link at the repo's place) are reported and do not fail it |
+| `validate` | On the bootstrap route: fail when a layer file or a checkout is missing | Fail when `repos-manifest status` exits 1: a repo the manifest calls for is missing, is not at its place, or is there and unusable (not a git repo of its own, no commit checked out, no `origin` url, its version not found among the refs of its last fetch, or git cannot read its state), or a distro's manifest cannot be read or resolved, or the system directory cannot be read. Work in progress and lasting setups that `sync` leaves alone (a rebase or merge in progress, an `index.lock`, a sparse checkout, a link at the repo's place) are reported and do not fail it |
 
 `setup`, `sync`, `build`, `test` and `validate` each act on one distro of the instance: for
 the adapter's commands, the one the directory the call comes from chooses, except that
 `validate` from outside every distro's directory checks each distro in turn (under "The tool
 route"). A session started inside a distro's directory is a later part.
 
-Which route an instance is on is decided in this order, until the older routes are removed:
+Which route an instance is on is decided in this order, until the bootstrap route is removed:
 
 1. The instance's directory holds `.repos-manifest/`: the instance is on the tool.
-2. Otherwise `source` is set: today's manifest route, reading `configs/manifest-resolved`.
-3. Otherwise: the bootstrap route.
+2. Otherwise: the bootstrap route. A `source` set in the settings file selects no route; such
+   an instance is refused (under "What is recorded for a project instance").
 
 The test is the folder being there, as built today (`validate` calls `status` once the route
 is chosen, not to choose it). A folder the
@@ -389,36 +336,38 @@ become thin without it, and it is asked of the tool, not rebuilt in the adapter:
   directory was set up for, and `status` exits 1 when a repo the manifest calls for is missing,
   not at its place or unusable. The adapter's `validate` reads it on the tool route (#503
   part 4, under "The tool route").
-- **Protection against two runs at once.** The adapter locks its fetch and resolve. The
-  tool's design has no lock.
-- **Time limits on fetches.** The adapter bounds its fetches, and the resolver bounds its
-  clones of parent manifests. The tool's design sets no limit on `sync`.
-- **A failed resolve changes nothing.** The adapter keeps the previous generated directory
-  when a fetch or a resolve fails, and swaps the new one in whole. The tool's `resolve`
-  replaces its output whole or not at all, which also keeps a reader from seeing half of it
+- **Protection against two runs at once.** The adapter's manifest route, removed in issue
+  569, locked its fetch and resolve. The tool's design has no lock.
+- **Time limits on fetches.** The removed manifest route bounded its fetches, and the
+  resolver bounded its clones of parent manifests. The tool's design sets no limit on `sync`.
+- **A failed resolve changes nothing.** The removed manifest route kept the previous
+  generated directory when a fetch or a resolve failed, and swapped the new one in whole.
+  The tool's `resolve` replaces its output whole or not at all, which also keeps a reader
+  from seeing half of it
   (the tool's design, under "resolve"). The tool's `sync` updates the manifest's own clone
   before it resolves, so a manifest that does not resolve can leave that clone moved
   forward; the resolved output and every other repo have to stay as they were, and `sync`
   has to say that the manifest is what failed.
-- **A manifest named by a commit.** `source_ref` may be a commit today. The tool's git form
-  takes a branch or a tag. An instance pinned to a commit stays on today's route until the
-  tool takes a commit, or is registered again with a branch or tag.
+- **A manifest named by a commit.** `source_ref` could name a commit on the removed manifest
+  route. The tool's git form takes a branch or a tag, so a manifest pinned to a commit is set
+  up with a branch or tag until the tool takes a commit.
 
-Three of today's guarantees are covered by the tool's design as it is: it reads the manifest
-again on every `sync`, its `sync` deletes nothing and leaves local work alone, and an
+Three of the removed manifest route's guarantees are covered by the tool's design as it is:
+it reads the manifest again on every `sync`, its `sync` deletes nothing and leaves local work alone, and an
 interrupted `init` leaves either nothing, in which case registration is run again, or a
 system whose first sync `sync` finishes.
 
-One is given up on purpose. Today's route refuses plain `http` and a URL that carries
-credentials, and clones a parent manifest's repo with none of the user's git configuration,
-so that no hook or filter driver runs. The tool allows `http` for networks a person trusts,
+One is given up on purpose. The removed manifest route refused plain `http` and a URL that
+carried credentials, and cloned a parent manifest's repo with none of the user's git
+configuration, so that no hook or filter driver ran. The tool allows `http` for networks a person trusts,
 does not look for credentials in a URL, and uses `git` as it is set up on the machine, by
 the owner's decision on how far the tool's checks go (2026-11-17): a manifest is read like
 any code about to be run. What the
 tool does check is in its spec, under "Reading a manifest before using it".
 
 `validate` no longer catches a directory that was set up from the wrong manifest, role or
-distro. Today it can, because the workspace holds a second record to compare with. In the
+distro. The removed manifest route's `validate` could, because the workspace held a second
+record to compare with. In the
 target there is one record, in the instance, and nothing to compare it against; `show` and
 `status` say what it holds. The order in which `sync` updates the manifest and the repos, and how it knows
 what it last put each repo on, are the tool's and are in its design.
@@ -435,13 +384,13 @@ asks the tool for the role and the distros when it needs them, through `status`,
 second copy that could disagree. The one thing it reads from `.repos-manifest/` directly is
 the resolved `.repos` files and layer order, which are the tool's stated output. On the tool
 route none of the five records below is read, and `validate` refuses each one it finds. Until
-every instance is on the tool, the older routes still read `role=` and `distro=` from the
-registry line, so those stay until then, and so do `source`, `source_ref` and `source_path` in
-the settings file. All five go together.
+every instance is on the tool, the bootstrap route still reads `distro=` from the registry
+line. `source`, `source_ref` and `source_path` are read by no route (the manifest route that
+read them is removed); they stay accepted in the settings file until all five go together.
 
-Today's settings keys map onto the manifest's location in its git form:
+The settings keys map onto the manifest's location in its git form, as given to `init`:
 
-| Today | Target, as given to `init` |
+| Settings key | Target, as given to `init` |
 |---|---|
 | `source` (a URL) with `source_ref` and `source_path` | The manifest as a file in a git repo: its URL, `--manifest-ref` (a branch or a tag; see "What the tool has to give" for a commit) and `--manifest-path`. The path is always passed, `manifest.yaml` when none was given, because the tool takes a URL with no path as the file itself |
 | `source` (a path) | The manifest as a path on the local disk |
@@ -455,9 +404,11 @@ checkout, in the way the tool's design gives for changing them after `init`.
 
 ### What the adapter stops doing
 
-- Fetching the manifest with its own git code, afresh on every `setup` and `sync`.
-- Keeping generated directories, the `configs/manifest-resolved` link and its lock, and
-  `.resolved-from`. The tool's `.repos-manifest/` folder takes their place.
+- Fetching the manifest with its own git code, afresh on every `setup` and `sync` (done:
+  the manifest route is removed, issue 569).
+- Keeping generated directories, a link to the current one and its lock, and a record of
+  where each came from (done, with the manifest route). The tool's `.repos-manifest/` folder
+  takes their place.
 - Reading `.repos` files with its own parser to update repos one at a time.
 - The `layers/main/<layer>_ws` layout. The tool's layout, with a directory per distro, is
   `<distro>/<layer>/` in the instance's directory.

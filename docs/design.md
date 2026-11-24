@@ -436,7 +436,10 @@ Status: `decided`
   its own session (issue 503); its type is detected from its `.repos-manifest/`.
 - A registered project may have a settings file, `.agent/projects.d/<name>` (per machine, gitignored,
   read and never sourced; #332): its own `build`, `test` and `install` commands, `bootstrap_url`,
-  `source`, `source_ref` and `source_path` (where its source description lives, #436), the records
+  `source`, `source_ref` and `source_path` (still accepted by `project_setting.sh` but read by no
+  route: a `ros2_colcon` root without `.repos-manifest/` that sets them is refused at use, naming
+  `repos-manifest init` and the `unset`; on the tool route `validate` names them as a second record;
+  their removal is a line of the workspace's manifest roadmap), the records
   settings `location`, `location_path` and `tracking` (see [Worktrees](#worktrees), Target),
   and `instructions`. A command is split into words and run without a shell, or is `none` for "this
   project has none"; anything that needs a shell is a script the key points at, and environment setup
@@ -469,10 +472,10 @@ Status: `decided`
   `_WORKSPACE_ONLY_SYNC_TYPE` (`adapter` line 84: `sync` with no project resolved; ADR-0011 lets the
   dispatcher name a default type), which issue #295's workspace adapter type replaces (2026-11-17).
 - Two types exist. `single_project` is one repository at the hosting directory. `ros2_colcon` is ordered
-  colcon layers driven by a manifest directory, `configs/manifest` or the generated
-  `configs/manifest-resolved`, or the manifest tool's `.repos-manifest/resolved/<distro>/`, and its
+  colcon layers driven by a manifest directory, `configs/manifest` or the manifest tool's
+  `.repos-manifest/resolved/<distro>/`, and its
   `adapter.sh` header holds the layers, the routes, the bootstrap URL order and the distro rules.
-- `ros2_colcon` has three routes to that directory. The tool route is checked first (issue 503 part 1):
+- `ros2_colcon` has two routes to that directory. The tool route is checked first (issue 503 part 1):
   a root holding `.repos-manifest/`, a system directory the manifest tool set up with `--distro-dirs`,
   is read from the tool's resolved files for one distro, chosen by the directory the call comes from
   (the dispatcher's `ACTIVE_PROJECT_FROM`), else the one distro resolved, else refused (`validate`
@@ -481,26 +484,21 @@ Status: `decided`
   first (part 4), `test` is the colcon loop over its layers given the resolved repos on disk, and
   `validate` reads the tool's `status --json` (failing as its exit status does) and refuses a `role=`,
   `distro=` or manifest source recorded beside the tool's. A `.repos-manifest/` the adapter cannot use is an error naming the way out with the tool's own
-  commands, never another route. The other two (#436) are chosen by one fact, the settings file setting
-  `source`. The bootstrap route is the `bootstrap.yaml` flow. On the manifest route the manifest, in the
-  new format, is named by `source` (an absolute path, or a git repository with `source_ref` and,
-  if the file is not `manifest.yaml`, `source_path`) and is resolved for the registry line's `role=` and `distro=` (both required) by the
-  workspace-installed resolver, `<main checkout>/.venv/bin/repos-manifest` from
-  `make install-repos-manifest`, called by CLI only; every verb reads the resulting directory the same way
-  on both routes. One source only: `source` beside any other bootstrap source is a hard error that
-  names it. `validate` fails when the directory was resolved from another source, ref, path, role or
-  distro, or when a checkout the manifest calls for is missing (a layer marked optional is passed over).
-  Network is needed at `setup` and `sync` and for the resolver's install. A package worktree's `env.sh`
-  is not rewritten when `sync` changes the layers; `sync` says to recreate it. Registration works for a
-  path that does not exist yet (`register_project.sh <path> ros2_colcon --role --distro --set
-  source=...` runs `setup`); `source` does not choose the type, and onboarding an empty session folder
-  from a source is #473's.
+  commands, never another route. Otherwise the root takes the bootstrap route, the `bootstrap.yaml`
+  flow (`validate` fails when a checkout the manifest calls for is missing; a layer marked optional is
+  passed over). The tool is the workspace-installed `<main checkout>/.venv/bin/repos-manifest` from
+  `make install-repos-manifest`, called by CLI only. The manifest route that the settings file's
+  `source` once selected is removed (issue 569): a root without `.repos-manifest/` whose settings file
+  sets `source` is refused by every verb that reads the manifest and by `setup` and `sync`, before
+  anything is fetched, and the message names `repos-manifest init` in the root and
+  `project_setting.sh unset <name> source source_ref source_path`. A manifest in the new format is
+  registered by running the tool's `init` in the root first, then registering the root; onboarding an
+  empty session folder from a manifest is #473's.
   Manifest support is a part with its own design (ADR-0022, the rule for parts):
-  how the route fetches, resolves, locks and keeps its generated directory, and the design it is
-  moving to (the adapter calling the manifest tool's own commands, with a project instance as one of
-  the tool's system directories), are in [manifest/design.md](manifest/design.md), the route step by
-  step under [its own section](manifest/design.md#the-manifest-route-step-by-step); the order of that
-  work is in [manifest/roadmap.md](manifest/roadmap.md) (#487). The resolver is the manifest tool in
+  the routes as built and the design they are moving to (the adapter calling the manifest tool's
+  own commands, with a project instance as one of the tool's system directories) are in
+  [manifest/design.md](manifest/design.md), the routes under
+  [their own section](manifest/design.md#two-routes); the order of that work is in [manifest/roadmap.md](manifest/roadmap.md) (#487). The resolver is the manifest tool in
   `tools/repos-manifest`, a part too: its format, its commands and what it relies on are in its own
   design, [tools/repos-manifest/docs/design.md](../tools/repos-manifest/docs/design.md) (the commands
   under [Commands](../tools/repos-manifest/docs/design.md#commands)), and its order of work in its own
@@ -1197,6 +1195,7 @@ makes untrue in the same change (ADR-0017).
 | 2026-11-23 | Merge gate | The running review check-run that holds a merge is one the loop or a person requested; an absent or concluded one holds nothing | #452 | 1240 |
 | 2026-11-23 | Sessions and roots | The hygiene checklist's Copilot review item becomes independent review (a review by someone other than the author's own session; Copilot one way, asked by hand); no finding without the automatic rule | #452 | 1240 |
 | 2026-11-23 | Review loop and timeline | Local draft review bullet: `review_viewer.py` as a way the owner answers on a draft (notes file, decision, window close as the signal, changes since the last round from a `.reviewed` snapshot, exit 2 to a chat review in the same format; no new entry type). The section is past 60 lines: the mechanics stay in the script header and only how it fits the loop is here | #545 | 1253 |
+| 2026-11-24 | Registry and adapters | The `ros2_colcon` manifest route is cut (issue 569 part 2): two routes, the tool route and the bootstrap route. The settings keys `source`, `source_ref` and `source_path` stay accepted but are read by no route; a root without `.repos-manifest/` that sets `source` is refused at every manifest-reading verb and at `setup` and `sync`, naming `repos-manifest init` and the `unset`. The rows of 2026-11-13 and 2026-11-18 about the manifest route stay as history. |
 
 ## Glossary
 

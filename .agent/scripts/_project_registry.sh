@@ -67,7 +67,13 @@
 #     bootstrap_url         http(s):// or file:// URL of a ros2_colcon
 #                           bootstrap.yaml (replaces MANIFEST_BOOTSTRAP_URL)
 #     source                where the project's source description lives
-#                           (for ros2_colcon, its manifest; issue #436): an
+#                           (read by no route today: a ros2_colcon root
+#                           without .repos-manifest/ that sets it is
+#                           refused at use, naming the manifest tool's
+#                           init and the unset; on the tool route validate
+#                           names it as a second record; removing the
+#                           three keys is a line of the workspace
+#                           roadmap): an
 #                           absolute path to the file, or a URL of a git
 #                           repository that holds it, of one of two shapes:
 #                           https://<host>[:port]/<path> (an ASCII host,
