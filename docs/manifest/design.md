@@ -85,7 +85,8 @@ manifest tool, in its own directory:
 cloned by hand at `source_ref`, and `init` is given the file at `source_path` in the clone
 (`manifest.yaml` when it is unset). The tool records that file's path and reads the file
 again on every `sync`, but it never fetches the clone. The clone is kept, since `sync` fails
-without it, and it is brought up to date by hand, with a `git pull` in it before `sync`.
+without it, and it is kept at `source_ref` by hand before each `sync` (a `git pull` for a
+branch).
 Until the tool reads a manifest from a git repo itself (see "What the tool has to give"),
 such a root can go on using an old manifest without a word, which the removed route, by
 fetching the manifest afresh on every `setup` and `sync`, did not allow.

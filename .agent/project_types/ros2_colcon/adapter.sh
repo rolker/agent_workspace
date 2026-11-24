@@ -645,7 +645,7 @@ _rc_refuse_removed_source() {
     echo "ERROR: project '$name' sets source in ${ACTIVE_PROJECT_FILE:-its settings file}, and $root holds no .repos-manifest/: source no longer selects a route (the route it selected is removed); a manifest in the new format is read only from a root the manifest tool set up" >&2
     echo "Set the root up with the manifest tool, from a manifest that lists its distros (the adapter refuses a root set up without --distro-dirs): in $root, run $init" >&2
     if [[ "$ACTIVE_PROJECT_SOURCE" =~ ^(https?|file):// ]]; then
-        echo "init reads a local file only: clone $ACTIVE_PROJECT_SOURCE at ${ACTIVE_PROJECT_SOURCE_REF:-<source_ref>} and give init ${ACTIVE_PROJECT_SOURCE_PATH:-manifest.yaml} in the clone; the clone is kept and never fetched by the tool, so run git pull in it before each sync" >&2
+        echo "init reads a local file only: clone $ACTIVE_PROJECT_SOURCE at ${ACTIVE_PROJECT_SOURCE_REF:-<source_ref>} and give init ${ACTIVE_PROJECT_SOURCE_PATH:-manifest.yaml} in the clone; the clone is kept and never fetched by the tool, so keep it at source_ref by hand before each sync (a git pull for a branch)" >&2
     fi
     if [ -d "$root/layers/main" ] || [ -e "$root/configs/manifest-resolved" ] || [ -L "$root/configs/manifest-resolved" ]; then
         echo "init does not read the old checkouts under $root/layers/main/<layer>_ws/src or $root/configs/manifest-resolved*: it clones again under $root/<distro>/, so push work in them first" >&2

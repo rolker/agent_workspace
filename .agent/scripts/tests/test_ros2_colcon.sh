@@ -2813,7 +2813,7 @@ test_source_without_tool_root_refused() {
     rc=0; out="$(run_adapter "$sb" setup 2>&1)" || rc=$?
     assert_eq "URL source, setup: exit 1" "1" "$rc"
     assert_contains "URL source: names the clone and the file" \
-        "init reads a local file only: clone https://example.invalid/m.git at v1 and give init sys/m.yaml in the clone; the clone is kept and never fetched by the tool, so run git pull in it before each sync" "$out"
+        "init reads a local file only: clone https://example.invalid/m.git at v1 and give init sys/m.yaml in the clone; the clone is kept and never fetched by the tool, so keep it at source_ref by hand before each sync (a git pull for a branch)" "$out"
     printf 'source=https://example.invalid/m.git\nsource_ref=v1\n' > "$sb/.agent/projects.d/tiered"
     out="$(run_adapter "$sb" setup 2>&1)" || true
     assert_contains "URL source without source_path: the file is manifest.yaml" \
