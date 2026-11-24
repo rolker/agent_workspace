@@ -53,3 +53,17 @@ issue: 569
 - [ ] State in the plan whether the adapter's older route is cut here, or land step 1 now and hold step 2 until the route is cut; cutting the route in the same PR is cleaner than leaving the reader with a caller.
 - [ ] Add `.github/workflows/validate.yml` (job name), `tools/repos-manifest/tests/test_documents.py` and the `adapter.sh:751` comment to the step 3 list, and re-grep for `prototype` and `manifest-dir` before closing.
 - [ ] Make the acceptance test for the error concrete: a manifest with no `repositories:` or `base:` key exits non-zero with a message naming the unread format, covered by a test.
+
+## Checkpoint
+**Status**: complete
+**When**: 2026-11-24 08:57 -05:00
+**By**: Claude Code Agent (claude-fable-5-2)
+**Decided-by**: host (the review's open actions are all for the plan and none changes what the work is for; /orchestrator lets the host answer proceed)
+**After**: issue-actions
+**Decision**: proceed
+
+The host read the Issue Review at f1f85471. Its four actions are directions to the plan, passed on in the plan-task handoff. Host decisions, listed for the owner's veto:
+
+- The adapter's older route (its own manifest fetch, `resolve --layout manifest-dir`, the generated directories) is cut in this issue, not waited for. The workspace-side roadmap already has lines for removing it, and the owner said on 2026-11-24 that no machine has anything on the old format.
+- The issue is delivered in parts: the roadmap line first, on its own pull request ("Part of #569"); the cut of the adapter's older route and the removal of the reader after it.
+- The CI job name in `.github/workflows/validate.yml` is a change to CI configuration, which is the owner's to approve (AGENTS.md, Ask First). The plan lists it as waiting for his yes and does not make it without one.
