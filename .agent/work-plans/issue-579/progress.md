@@ -324,3 +324,24 @@ Scope: the last review's finding and the fix diff f3e03e63..821faa34. Cross-mode
 
 ### Findings
 - [ ] No issues found. LGTM.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-24 13:44 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #604 at `821faa34`
+**Sources**: 6 (Local Review (Pre-Push) @ `d4c93c8c` round 1, Local Review (Pre-Push) @ `c6ffd39c` round 2, Local Review @ `b059dcfe` (cold read, Codex), Local Review @ `0ec8c6fb`, Local Review @ `821faa34`, CI rollup)
+**Cross-source confirmations**: 0
+**CI**: pending (both runs at 821faa34, push and pull_request, all queued at 13:44: Lint (pre-commit) x2, Validate Adapter Contract x2, Validate Documentation x2, repos-manifest tests Python 3.10 x2, repos-manifest tests Python 3.14 x2)
+
+No GitHub review, inline comment or conversation comment; no Copilot review was requested. `review_progress.sh sources` at 821faa34: no open local findings, no dropped entries. Every earlier finding is ticked on the timeline and its fix is in the diff: the body is out of every `gh` call, the closed issues come from `closingIssuesReferences`, the plan-file filter is anchored, the head is read before the one local fallback (this checkout only, never other worktrees), and `git cat-file -e "<headRefOid>^{commit}"` sits between the fetch and the read in step 1 and in the Step 5 note. Re-run here: `bash .agent/scripts/tests/test_skill_paths.sh` → 213 passed, 0 failed.
+
+### Findings
+- [x] (deliberate, kept) No repository flag on the three `gh pr view` calls: stays. The old text named none either, the step says to run from the top folder of the PR's own repository, issue 581 (open) adds the flag, and the PR text tells whichever merges second to cover all three calls — `.claude/skills/review-plan/SKILL.md`
+- [x] (deliberate, kept) PR comments are not read as the plan: stays. A comment is a snapshot like the body; a `--plan-file` draft is handled by the head read and then the local fallback, and with neither the step stops and names the path — `.claude/skills/review-plan/SKILL.md`
+- [x] (deliberate, kept) A PR into a branch other than the default one that changes no plan file stops with a message: stays. GitHub lists no closed issue there, and the step stops and says why; a loud stop on an unusual input, not a silent wrong read. With one plan file (PR 211) it still reads it — `.claude/skills/review-plan/SKILL.md`
+- [x] (PR text, host edit) Decision summary: "The host's full pre-commit pass passed" was on 3a56f8b7, before the two post-publish code commits f31885eb and e01d7bf3 (those commits used SKIP=validate-script-tests); CI's Lint (pre-commit) runs the full set on the head, so the head is covered once it passes. The summary also does not say the last convergence check, at 821faa34, approved with nothing open. Wording for the host; no change to the branch.
+
+### False positives
