@@ -2338,7 +2338,13 @@ registry_stale_report() {
 #                      setup` when the hosting directory does not exist)
 #   run                'none', or the verbs (build test) register_project.sh
 #                      runs after the static gate
-_REGISTRATION_KEYS=" required_commands setup run "
+#   manifest           'none' (register_project.sh --manifest refuses the
+#                      type), or 'local-file' (the type's `adapter setup
+#                      --manifest <file> --distro <d> ...` sets a new root
+#                      up from a manifest file on the local disk; with
+#                      --manifest and no type given, register_project.sh
+#                      chooses the one type that says so)
+_REGISTRATION_KEYS=" required_commands setup run manifest "
 
 # Usage: f=$(registration_conf_path "$root" "$type")
 registration_conf_path() {
@@ -2353,6 +2359,11 @@ _registration_value_error() {
         setup)
             case "$value" in never|when-missing) return 0 ;; esac
             echo "setup must be 'never' or 'when-missing', got '$value'"
+            return 1
+            ;;
+        manifest)
+            case "$value" in none|local-file) return 0 ;; esac
+            echo "manifest must be 'none' or 'local-file', got '$value'"
             return 1
             ;;
         required_commands) allowed=" build test install " ;;
@@ -2387,7 +2398,7 @@ _registration_conf_parse() {
     local f="$1" root="${2:-}" ptype="${3:-}" raw line key value lineno=0 bad=0 seen=" " reason k known urc
     local -a out=()
     if [ ! -e "$f" ] && [ ! -L "$f" ]; then
-        echo "$f: missing (every project type needs one: required_commands, setup, run)" >&2
+        echo "$f: missing (every project type needs one: required_commands, setup, run, manifest)" >&2
         return 1
     fi
     if [ ! -f "$f" ] || [ ! -r "$f" ]; then
