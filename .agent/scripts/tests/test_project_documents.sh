@@ -208,6 +208,12 @@ printf 'Broken: docs/a@b/ARCHITECTURE.md#gone\n' > "$R/atp/README.md"
 printf '# Plan\n\n## Direction\n\n| Line | Check |\n|---|---|\n| At line | file-exists README.md |\n\n- [ ] At item (#7)\n' > "$R/atp/notes/a@b.md"
 printf '# Decoy\n\n## Direction\n\n| Line | Check |\n|---|---|\n| Decoy line | file-exists README.md |\n\n- [ ] Decoy item (#7)\n' > "$R/atp/docs/roadmap.md"
 commit_all "$R/atp"
+# dlink: docs/design.md (the design fallback) is a link to notes/plan.md.
+mkroot dlink
+mkdir -p "$R/dlink/docs" "$R/dlink/notes"
+printf '# Plan\n' > "$R/dlink/notes/plan.md"
+ln -s ../notes/plan.md "$R/dlink/docs/design.md"
+commit_all "$R/dlink"
 
 cat > "$WSC/.agent/projects.local" <<REG
 keyed    single_project  $R/keyed
@@ -232,6 +238,7 @@ dangl    single_project  $R/dangl
 candin   single_project  $R/candin
 candplan single_project  $R/candplan
 atp      single_project  $R/atp
+dlink    single_project  $R/dlink
 REG
 
 PS() { (cd "$WSC" && bash "$S/project_setting.sh" "$@"); }
@@ -611,6 +618,12 @@ rm -f "$WSC/.agent/projects.d/atp"
 out="$(bash "$CDA" "$R/atp" 2>&1)"; rc=$?
 check "unset, the same root reads docs/design.md (missing): exit 2 as before ($out)" test "$rc" -eq 2
 
+echo "TEST: a roadmap whose file is the design's through a symbolic link"
+PS set dlink roadmap=notes/plan.md >/dev/null 2>&1 || fail "set dlink"
+out="$(PS doc dlink roadmap 2>&1)"; rc=$?
+check "doc roadmap exits 2 when docs/design.md links to the roadmap's file" test "$rc" -eq 2
+[[ "$out" == *"the design's file docs/design.md is this file through a symbolic link"* ]] && pass "the refusal names the design's file" || fail "dlink: '$out'"
+check "the bookkeeping paths do not add it" test "$(bk_paths "$R/dlink" 2>/dev/null | wc -l)" -eq 3
 
 echo ""
 echo "test_project_documents: ${PASS} passed, ${FAIL} failed"

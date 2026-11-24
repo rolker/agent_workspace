@@ -117,7 +117,8 @@
 #                           to it as bookkeeping). Read through
 #                           project_document_path, which checks again that
 #                           the file exists and does not resolve outside the
-#                           root (and that a roadmap is no symbolic link).
+#                           root (and that a roadmap is no symbolic link,
+#                           nor the design's file reached through one).
 #                           Unset, a reader uses the first existing
 #                           candidate: roadmap docs/roadmap.md,
 #                           docs/ROADMAP.md, ROADMAP.md; design
@@ -1627,7 +1628,7 @@ _project_document_raw_values() {
 # problem returns 2.
 # Usage: line="$(project_document_path "$ws_root" "$name" roadmap [<dir>])"
 project_document_path() {
-    local ws="$1" name="$2" key="$3" dir="${4:-}" entry entries value="" rc=0 path reason c file real
+    local ws="$1" name="$2" key="$3" dir="${4:-}" entry entries value="" dvalue="" rc=0 path dpath reason c file real
     # Set by project_document_for_dir when the registry cannot be parsed.
     local untold="${_project_document_untold:-}"
     local -a vals=() dvals=()
@@ -1661,6 +1662,7 @@ project_document_path() {
                 fi
             elif entries="$(project_file_entries "$ws" "$name" 2>/dev/null)"; then
                 value="$(_project_file_value_of "$entries" "$key")" || value=""
+                dvalue="$(_project_file_value_of "$entries" design)" || dvalue=""
             elif reason="$(_project_file_path_error "$file")"; then
                 untold="$reason"
             else
@@ -1682,6 +1684,7 @@ project_document_path() {
                         fi
                     fi
                     value="${vals[0]}"
+                    [ "${#dvals[@]}" -ne 1 ] || dvalue="${dvals[0]}"
                 fi
                 echo "warning: $file has errors (.agent/scripts/project_setting.sh check $name names them); each document setting is read from its own line, an absent one as unset" >&2
             fi
@@ -1716,6 +1719,13 @@ project_document_path() {
         fi
         if [ "$key" = roadmap ] && [ "$(readlink -f -- "$dir/$path" 2>/dev/null)" != "$(cd "$dir" 2>/dev/null && pwd -P)/$path" ]; then
             echo "$key=$value (project '$name'): $path is a symbolic link or is reached through one; name the file itself (update_roadmap.sh replaces the file it edits)" >&2
+            return 2
+        fi
+        # The design's file (set, else the fallback) may be a link to it:
+        # the pair rule compares the files, not only their names.
+        dpath="${dvalue%%#*}"; dpath="${dpath:-${_PROJECT_DOCUMENT_CANDIDATES_design%% *}}"
+        if [ "$key" = roadmap ] && [ "$dvalue" != none ] && [ "$(readlink -f -- "$dir/$dpath" 2>/dev/null)" = "$(readlink -f -- "$dir/$path")" ]; then
+            echo "$key=$value (project '$name'): the design's file $dpath is this file through a symbolic link; commits to the roadmap after review count as bookkeeping in the merge gate, so it must be a file of its own" >&2
             return 2
         fi
         printf 'set %s\n' "$value"
