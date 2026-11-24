@@ -91,3 +91,11 @@ Plan from the owner's Q1-Q4 answers as recorded, without reopening them. The iss
 - Changes since the last round: on close the viewer saves the text it showed as `<notes stem>.reviewed`; the next launch diffs against it (difflib) and highlights changed lines; `--previous <file>` overrides; first launch shows none.
 - No display: check `DISPLAY`/`WAYLAND_DISPLAY` and catch a failed tkinter import or `Tk()`; exit 2 with one line, no traceback; the agent then runs the review in chat and writes the same notes format. No terminal viewer.
 - Tests on the pure parts (notes writer, line ranges, diff highlighting, light-formatting spans, display check); the GUI layer stays thin. `script_reference.md` row and the design section in the same PR (ADR-0017). Skills offering the viewer: a follow-up, not this PR.
+
+## Plan Authored
+**Status**: complete
+**When**: 2026-11-23 21:29 -05:00
+**By**: Claude Code Agent (claude-sonnet-5-5)
+**Plan**: `.agent/work-plans/issue-545/plan.md` at `354d2251`
+
+Single-PR plan: a stdlib review_viewer.py whose logic (notes format, line ranges, light-format spans, changed lines, display check) is pure and unit-tested, with a thin tkinter layer; design section and script_reference row in the same PR.
