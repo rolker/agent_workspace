@@ -225,6 +225,14 @@ reset_marks
 printf '## Direction\n\n| Line | Check |\n|---|---|\n| No remote | gh-issue 5 closed |\n' > "$SB/noremote/docs/roadmap.md"
 OUT="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/noremote" 2>/dev/null)"
 [[ "$(res 'No remote')" == unknown && ! -e "$MARK/gh" ]] && pass "(gh) root without a GitHub remote is unknown" || fail "(gh) noremote $(row 'No remote')"
+# An scp-form origin on another host (issue 428): before, it gave a garbage
+# slug that reached the stub gh, which answers for any slug.
+reset_marks
+mkdir -p "$SB/elsehost/docs"; git init -q "$SB/elsehost"
+git -C "$SB/elsehost" remote add origin git@gitlab.com:acme/w.git
+printf '## Direction\n\n| Line | Check |\n|---|---|\n| Elsewhere | gh-issue 5 closed |\n' > "$SB/elsehost/docs/roadmap.md"
+OUT="$(cd "$SB/elsewhere" && bash "$SITREP" --root "$SB/elsehost" 2>/dev/null)"
+[[ "$(res 'Elsewhere')" == unknown && ! -e "$MARK/gh" ]] && pass "(gh) root whose scp-form origin is on another host is unknown, gh never called" || fail "(gh) elsehost $(row 'Elsewhere') gh=$(cat "$MARK/gh" 2>/dev/null)"
 
 # --- 3. script checks ----------------------------------------------------------------
 echo "TEST: script forms that must never run"

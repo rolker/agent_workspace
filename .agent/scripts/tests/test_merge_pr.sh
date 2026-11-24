@@ -204,9 +204,10 @@ make_merge_sandbox() {
 # `git ls-remote`/push/pull against it behave exactly as they would against
 # a real (reachable) GitHub remote, deterministically, with no network. The
 # bare clone's path is nested under a `github.com/<owner>/` directory
-# purely so `extract_gh_slug` (plain text substitution on "github.com[:/]",
-# not URL/DNS validation) still resolves it to "<owner>/<name>" the same
-# way it would a real `git@github.com:<owner>/<name>.git` URL.
+# purely so `extract_gh_slug` still resolves it to "<owner>/<name>" the same
+# way it would a real `git@github.com:<owner>/<name>.git` URL: it accepts an
+# absolute local path ending github.com/<owner>/<repo>[.git] as a
+# test-fixture form (issue 428).
 make_origin_repo() {
     local sb="$1" name="$2" owner="${3:-owner}"
     local dir="$sb/origins/$name"
