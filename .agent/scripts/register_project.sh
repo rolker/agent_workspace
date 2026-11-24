@@ -836,19 +836,22 @@ if [ -n "$MANIFEST" ]; then
         echo "ERROR: $PROJECT_ROOT holds files already; a root is set up from a manifest in a new or empty directory (only a .claude/ may be there), so the tool's directories are not mixed with others" >&2
         final refused "give a new or empty directory" 1
     fi
+    # The argument as printed: a URL's user name and password masked
+    # (mask_url_userinfo); the checks below read it as given.
+    _m_shown="$(mask_url_userinfo "$MANIFEST")"
     if [ -f "$MANIFEST" ]; then
         # Anchored first, and -- before each path, so a name that starts
         # with '-' is not read as an option; no CDPATH for this cd.
         case "$MANIFEST" in /*) _m="$MANIFEST" ;; *) _m="$PWD/$MANIFEST" ;; esac
         M_ABS="$(CDPATH='' cd -- "$(dirname -- "$_m")" && pwd -P)/$(basename -- "$_m")"
     elif manifest_is_remote "$MANIFEST"; then
-        echo "ERROR: --manifest $MANIFEST: the manifest tool reads a manifest from the local disk only in this version (issue 498 adds a URL or a file in a git repo); clone the repo that holds it, keep the clone up to date by hand, and give the file in the clone (docs/manifest/design.md, \"A root that sets source\")" >&2
+        echo "ERROR: --manifest $_m_shown: the manifest tool reads a manifest from the local disk only in this version (issue 498 adds a URL or a file in a git repo); clone the repo that holds it, keep the clone up to date by hand, and give the file in the clone (docs/manifest/design.md, \"A root that sets source\")" >&2
         final refused "give --manifest a file on the local disk" 1
     elif [ -e "$MANIFEST" ]; then
-        echo "ERROR: --manifest $MANIFEST is not a regular file" >&2
+        echo "ERROR: --manifest $_m_shown is not a regular file" >&2
         final refused "give --manifest a manifest file" 1
     else
-        echo "ERROR: --manifest $MANIFEST: no such file" >&2
+        echo "ERROR: --manifest $_m_shown: no such file" >&2
         final refused "give --manifest a manifest file on the local disk" 1
     fi
     # bootstrap_url is the bootstrap route's: on the tool's route validate

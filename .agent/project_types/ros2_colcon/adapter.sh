@@ -1358,10 +1358,11 @@ _rc_setup_from_manifest() {
     args+=(${with[@]+"${with[@]}"})
     [ -n "$fetch" ] && args+=(--fetch-from "$fetch")
     args+=(--yes)
-    # Printed with a --fetch-from prefix's user name and password masked
-    # (mask_url_userinfo, from the dispatcher's _project_registry.sh); the
-    # tool is handed the value as given.
+    # Printed with the manifest's and a --fetch-from prefix's user name and
+    # password masked (mask_url_userinfo, from the dispatcher's
+    # _project_registry.sh); the tool is handed the values as given.
     shown=("${args[@]}")
+    shown[1]="$(mask_url_userinfo "$manifest")"
     [ -n "$fetch" ] && shown[${#shown[@]}-2]="$(mask_url_userinfo "$fetch")"
     echo "Running: $bin ${shown[*]} (in $root)"
     (cd "$root" && _rc_nofd "$bin" "${args[@]}") || rc=$?

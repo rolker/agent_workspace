@@ -809,6 +809,16 @@ check "real run: the setup banner and the adapter's Running: line show the prefi
     _ "$rc" "$out" "$MD/m.yaml"
 check "real run: the tool was given the prefix unmasked" has "$(cat "$MLOG")" "--fetch-from $MSECRET --yes"
 
+echo "TEST: --manifest: a manifest URL's user name and password are masked in its refusal, a dry run too"
+for dry in "" --dry-run; do
+    for loc in "https://user:secret@example.invalid" "https://user:secret@example.invalid/field/m.yaml"; do
+        out="$(mreg "$SANDBOX/mroots/url" --manifest "$loc" --distro fakefox $dry)"; rc=$?
+        check "$loc ${dry:-(real run)}: refused with the URL masked, the password nowhere in the output, no tool run" \
+            bash -c '[ "$1" -eq 1 ] && [[ "$2" == *"--manifest https://***@example.invalid"*": the manifest tool reads a manifest from the local disk only"* && "$2" != *secret* ]] && [ ! -s "$3" ] && [ ! -e "$4" ]' \
+            _ "$rc" "$out" "$MLOG" "$SANDBOX/mroots/url"
+    done
+done
+
 echo "TEST: --manifest: each refusal comes before anything is written, a dry run too"
 mkdir -p "$SANDBOX/mroots/setup/.repos-manifest" "$SANDBOX/mroots/full" "$SANDBOX/mroots/afile"
 echo notes > "$SANDBOX/mroots/full/README"
