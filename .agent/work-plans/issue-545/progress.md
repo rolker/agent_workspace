@@ -336,3 +336,22 @@ Scope: the round-2 review's 7 findings and the fix diff since `0c509811` (7 comm
 **Decision**: publish
 
 Pushing and opening the pull request. The GUI window has not been run on a display; that is stated in the Decision summary and offered to the owner before the merge.
+
+## Integrated Review
+**Status**: complete
+**When**: 2026-11-23 22:28 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Reviews-read**: none
+
+**PR**: #567 at `730c9748`
+**Sources**: 4 (Local Review (Pre-Push) round 1 @ `83984c7b` with Gemini and Codex, round 2 @ `b86cca30` with Gemini and Codex, round 3 @ `c3b4be74` (covers 730c9748 via bookkeeping), CI rollup); no PR reviews or conversation comments; no Copilot review was requested
+**Cross-source confirmations**: 0 open (rounds 1 and 2 had several findings raised by two or three reviewers; all fixed before push)
+**CI**: pending
+
+Rounds 1 and 2 raised 7 must-fix and 12 suggestions. All 19 are ticked in the Implementation entries that addressed them, and round 3 at `c3b4be74` checked each fix and approved with nothing open. `review_progress.sh sources` at the head returns no open local findings, no dropped or unverifiable entries, and no GitHub comments. The only change from `c3b4be74` to the head is `progress.md`, so round 3 still covers the code. A spot-check at the head found the fixes in place: `_run_dialog`, `atomic_write(before_replace=...)`, `NATIVE_TK_PLATFORMS`, `check_paths`, and the `_Parser` usage-error override. Still open and not a review finding: the tkinter window has not been run on a display. The PR's Decision summary says so.
+
+### Findings
+None open.
+
+### False positives
+None.
