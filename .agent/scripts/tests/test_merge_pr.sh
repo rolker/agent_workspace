@@ -878,6 +878,40 @@ test_legacy_workspace_pr_regression() {
         "$(git -C "$sb" show-ref --verify --quiet refs/heads/feature/issue-999 && echo true || echo false)"
 }
 
+test_worktree_copy_removes_its_own_worktree() {
+    echo "TEST: merge_pr.sh run as the copy inside the PR's worktree, cwd the main checkout, removes that worktree (issue 585)"
+    local sb out rc=0 wt ws_remote
+    sb="$(make_merge_sandbox)"
+    ws_remote="$(git -C "$sb" remote get-url origin)"
+    # The scripts committed, so the worktree carries its own copy, as a real
+    # one does; the branch is at main's tip, so it counts as merged.
+    git -C "$sb" add .agent/scripts
+    git -C "$sb" -c user.name=t -c user.email=t@t commit --quiet -m "workspace scripts"
+    git -C "$sb" push --quiet origin HEAD
+    git -C "$sb" branch feature/issue-998
+    wt="$sb/worktrees/workspace/issue-workspace-998"
+    mkdir -p "$(dirname "$wt")"
+    git -C "$sb" worktree add --quiet "$wt" feature/issue-998
+    write_pr_view_fixture "$sb" "$ws_remote" 998 "feature/issue-998"
+    if [[ ! -x "$wt/.agent/scripts/merge_pr.sh" ]]; then
+        assert_eq "fixture: the worktree carries its own merge_pr.sh" "true" "false"
+        return
+    fi
+
+    out="$(cd "$sb" && PATH="$sb/stubbin:$PATH" GH_FIXTURES_DIR="$sb/gh_fixtures" GH_CALL_LOG="$sb/gh_calls.log" \
+        MERGE_PR_CI_POLL_SECONDS=0 MERGE_PR_CI_GRACE_SECONDS=5 \
+        "$wt/.agent/scripts/merge_pr.sh" --pr 998 --no-wait --no-roadmap-update --report-only 2>&1)" || rc=$?
+    assert_eq "exit 0" "0" "$rc"
+    assert_contains "the worktree's own copy removed it" "✅ Worktree removed" "$out"
+    assert_eq "the worktree is gone" "false" "$([ -e "$wt" ] && echo true || echo false)"
+    assert_eq "git no longer lists it" "false" \
+        "$(git -C "$sb" worktree list --porcelain | grep -qxF "worktree $wt" && echo true || echo false)"
+    assert_eq "feature branch deleted in the workspace repo" "false" \
+        "$(git -C "$sb" show-ref --verify --quiet refs/heads/feature/issue-998 && echo true || echo false)"
+    assert_eq "the main checkout is intact" "true" \
+        "$([ -f "$sb/.agent/scripts/merge_pr.sh" ] && echo true || echo false)"
+}
+
 test_unregistered_project_checkout_not_used() {
     echo "TEST: an unregistered project/ checkout is not read (issue #265 part 4): its PR is not found and nothing is removed"
     local sb out rc=0 wt bare curbr pj_remote
@@ -1031,6 +1065,7 @@ test_failed_worktree_removal_marks_cleanup_incomplete
 test_kept_worktree_banner
 test_orphaned_local_branch_swept_on_final_merge
 test_legacy_workspace_pr_regression
+test_worktree_copy_removes_its_own_worktree
 test_unregistered_project_checkout_not_used
 test_registered_project_root_pr_regression
 test_ambiguous_project_root_type_project_fails_fast
