@@ -138,3 +138,51 @@ The host read the Plan Review at 8c8e27df. The three parts and their order stand
 **Plan**: `.agent/work-plans/issue-569/plan.md` at `774fb12d`
 
 Revision after the Plan Review. Part 2's delete and keep lists are rebuilt function by function from callers (`_rc_source_setup`, `_rc_resolver_bin` kept; dead helpers removed; `test_ros2_colcon.sh` keeps its resolver-python helpers); the source-without-tool-root refusal sits in `_rc_require_manifest` plus the top of setup and sync, tested over ten verbs; part 3 names every old-reader module and test file and re-points the p11 fixtures; the documents move into part 2; Serves names "Light touch on projects".
+
+## Plan Review
+**Status**: complete
+**When**: 2026-11-24 09:08 -05:00
+**By**: Claude Code Agent (claude-opus-5-5)
+**Verdict**: needs-work
+
+**Issue**: #569 — repos-manifest: remove the prototype's reader, and drop the roadmap line about moving from its format
+**Plan**: `.agent/work-plans/issue-569/plan.md` at `774fb12d`
+**Branch**: `feature/issue-569`
+
+### Evaluation
+
+| Dimension | Verdict | Notes |
+|---|---|---|
+| Scope | Good | Three parts in the right order. Part 1 stands alone: one roadmap row, and `test_documents.py` does not read it. Part 3 depends on part 2 as stated. |
+| Issue alignment | Good | All four steps of the issue and both earlier reviews are covered. Serves: "Workspace goal "Light touch on projects" (`README.md#workspace-goals` ...), `docs/design.md#registry-and-adapters` (part 2) and `tools/repos-manifest/docs/design.md#where-the-manifest-comes-from` (part 3)". The goal is now named, as the first review asked. |
+| File targeting | Needs work | The adapter lists hold up against `grep -nw` (each delete-list function I checked has callers only inside the deleted code, and each keep-list caller is where the plan says). The test boundary at 2396/2397 is right: after line 4012, no `make_mr_*`, `write_mr_*`, `run_mr`, `mr_settings` or `mr_gen` is used. Only `MR_SRC`, `MR_PY`, `MR_SKIPPED` and `mr_test` are, and they live in 2334-2396. The part 3 module list checks out against the imports: no kept module imports `schema`, `merge`, `selectors`, `validate`, `emit` or `extends`, `ManifestError` is defined in `yamlload.py:15`, and `read_problem`/`has_repositories_key` are called only in `cli.py`. Gaps are in findings 1 to 5. |
+| Consequences | Needs work | `single_project/unused_settings` and two root documents are missed (findings 2 and 7). |
+| Principle alignment | Good | Fail loudly: the refusal point is right. Every verb that reads the manifest off the tool route calls `_rc_require_manifest` (env 2015, build 2185, test 2232, validate 2385, repos 2452, worktree_repos 2500, worktree_env 2571, repo_pin 2841), and setup and sync are handled at their tops. `install` (2432), `project_root` (2007) and `scope_for_pr` (2955) read no manifest and need no exemption beyond what the plan says. |
+| ADR compliance | Good | ADR-0017 and ADR-0022: the root design changes in part 2, the tool's own design in part 3. ADR-0013: fine. |
+| ROS conventions | N/A | Workspace plan. |
+
+### First review's findings
+
+All eight are answered in the plan's text, checked against the code. 1: `_rc_source_setup` kept (callers 2116, 2189, 2208, 2268, 2273). 2: `_rc_resolver_bin` kept (605, 835, 850, 1016, 1154, 2109), and the dead helpers are on the delete list. 3: the six modules are named. 4: every affected test file is named, and the p11 fixtures are re-pointed. 5: the documents moved into part 2. 6: the refusal sits at one shared point, and the four helper branches are removed. 7: the `docs/manifest/design.md` lines are listed. Serves: fixed. Finding 4 has one gap in what it deletes (finding 4 below).
+
+### Findings
+
+1. **[File targeting] Medium**: Part 2 says "`ACTIVE_PROJECT_SOURCE_REF` / `_SOURCE_PATH` reads in the adapter go". Two of those reads, at adapter.sh 1293-1294, are in `_rc_tool_validate`, on the tool route. They flag a leftover `source_ref`/`source_path` as a second record and name `project_setting.sh unset`. `test_tool_route_order` (test_ros2_colcon.sh 4357) asserts this check. Resolution: limit the removal to the reads inside the deleted functions (1473-1474, 1661-1674, 1931-1932), and keep 1291-1294.
+2. **[Consequences] Medium**: `.agent/project_types/single_project/unused_settings` lines 9-11 give as the reason "only a ros2_colcon project reads it, as its manifest: register it as type ros2_colcon". That is false after part 2. `test_project_file.sh` 1893-1894 and `test_register_project.sh` 688 assert the text. The plan's "re-read; if ..." should be a concrete edit of all three. It also says `test_project_file.sh` only tests keys that stay, which misses 1893-1894. Related, and the plan should say which way it goes: issue 332's rule ("a setting is never stored and silently ignored") would put `source`, `source_ref` and `source_path` in `ros2_colcon/unused_settings` too, refusing them at `set` time. That conflicts with the tool route's validate message and with the separate roadmap line for removing the keys, so the plan should state why it does not.
+3. **[File targeting] Medium**: In `test_register_project.sh`, the plan replaces the #436 block (692-742) with a registration "where `repos-manifest init` ran ... asserting setup runs". Two problems. First, `register_project.sh` runs setup only when the root does not exist (line 784), so after `init` it does not run. Second, the tool-route registration test already exists at 1056-1080. It uses `MR_SRC`/`MR_PY`, found inside the #436 block ("MR_PY, found above"), along with the fail-or-skip logic at 735-741. Resolution: delete only the #436 test body, and keep the `MR_SRC`/`MR_PY` finder and its fail-or-skip lines so the 1056 test still runs. No new registration test is needed beyond the existing one.
+4. **[File targeting] Medium**: `test_cli.py` 76-95 (`test_cli_any_other_exception_is_one_fixed_line`) is the only test of `cli.py`'s internal-error backstop (line 454; the one other mention, `test_build.py:1760`, only asserts its absence). The plan deletes it because it monkeypatches `resolve_chain`. Resolution: port it to the new reader (monkeypatch `cli.read_manifest` or `selection.resolve`) rather than delete it. The `--out` cannot-be-written case at 97-104 is covered for the new reader by `test_output.py:241`, so deleting that one is fine.
+5. **[File targeting] Low**: `test_output.py` 776-780 asserts "--cache-dir is for a manifest in the earlier format". It goes too once `--cache-dir` is removed (argparse exits 2). The plan names only 772-774 and 842.
+6. **[Principle alignment] Low**: The new refusal test asserts "no `vcs`, `curl` or `git` call logged". `make_toolchain_stubs` has no git or curl stub, and a refusal message that names the resolver through `_rc_resolver_bin` itself runs `git rev-parse`. Resolution: state the check as nothing fetched or imported (an empty `vcs.log`, no curl stub run), or allow that `rev-parse`. `test_tool_route_order` (4344) already covers `source` plus `.repos-manifest/` taking the tool route. Fold the control in there, and drop its now-vacuous "validate does not take the manifest route" assertion (4360). `test_bootstrap_no_url_names_the_tool` (5524) already asserts the `init` text, so the rewritten `test_bootstrap_no_url_names_source` can be folded into it too.
+7. **[Consequences] Low**: `docs/fork_parity.md` is the root's (`docs/fork_parity.md:83`: "the resolver is a tested prototype nothing calls"), not under `tools/repos-manifest/docs/` as part 3 says. Root `docs/roadmap.md:273` says "the adapter's manifest route with #436, whose acceptance is still open". That is current tense and stale after part 2, so it belongs in part 2. And the tool roadmap row at line 31 ("no ... cache of parents kept between runs") becomes true in part 3; the plan should say so.
+
+### Summary
+
+The revision fixes everything the first review raised, and the adapter and module lists now match the code. The refusal sits where every manifest-reading verb passes. Before implementing, correct four specific misreadings: the tool route's validate still reads `source_ref`/`source_path`; the `single_project` refusal text and its tests point at the removed route; `test_register_project.sh` must keep its resolver finder, and its replacement test cannot expect setup to run; and the CLI's internal-error backstop test must be ported, not deleted.
+
+### Recommended Actions
+
+- [ ] Part 2: keep `_rc_tool_validate`'s reads of `ACTIVE_PROJECT_SOURCE_REF`/`_PATH` (1291-1294); limit the variable sweep to the deleted functions.
+- [ ] Part 2: edit `single_project/unused_settings` 9-11 and its asserts in `test_project_file.sh` 1893-1894 and `test_register_project.sh` 688; say whether `ros2_colcon/unused_settings` gains the `source*` keys, and why.
+- [ ] Part 2: in `test_register_project.sh`, delete the #436 test but keep the `MR_SRC`/`MR_PY` finder and its fail-or-skip lines; rely on the existing tool-route registration test (1056).
+- [ ] Part 2: put root `docs/roadmap.md:273` and root `docs/fork_parity.md:83` on the right part's list; fold the new tests into `test_tool_route_order` and `test_bootstrap_no_url_names_the_tool`; restate the "no fetch" check.
+- [ ] Part 3: port `test_cli.py` 76-95 to the new reader; also remove `test_output.py` 776-780; note that tool roadmap row 31 becomes true.
