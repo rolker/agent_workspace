@@ -30,6 +30,13 @@ layers: [core]
 optional_layers: [core]
 """
 
+# A manifest with a `base:` key and its repos under the earlier format's `repos:`.
+EARLIER_FORMAT_WITH_BASE = """\
+base: base.yaml
+repos:
+  core: {}
+"""
+
 
 def _argv(command, manifest, out):
     if command == "show":
@@ -40,15 +47,19 @@ def _argv(command, manifest, out):
 
 @pytest.mark.parametrize(
     "text,keys",
-    [(EARLIER_FORMAT, "`repos:`"), (EARLIER_FORMAT_EXTENDS, "`extends:`, `optional_layers:`")],
+    [
+        (EARLIER_FORMAT, "`repos:`"),
+        (EARLIER_FORMAT_EXTENDS, "`extends:`, `optional_layers:`"),
+        (EARLIER_FORMAT_WITH_BASE, "`repos:`"),
+    ],
 )
 @pytest.mark.parametrize("command", ["resolve", "show", "validate"])
 def test_a_manifest_in_the_earlier_format_is_refused_naming_the_format(
     command, text, keys, tmp_path, capsys, monkeypatch
 ):
-    # The tool reads one format. A manifest with no `repositories:` or `base:` key and the keys
-    # of the earlier format is refused, naming that format and the specification, and nothing
-    # is written.
+    # The tool reads one format. A manifest with no `repositories:` key and a top-level key of
+    # the earlier format is refused, whether or not it has a `base:` (which is not read), naming
+    # that format and the specification, and nothing is written.
     (tmp_path / "old.yaml").write_text(text)
     monkeypatch.chdir(tmp_path)
     out = tmp_path / "out"

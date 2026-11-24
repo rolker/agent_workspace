@@ -832,7 +832,7 @@ Part 3 of 3 (remove the earlier format's reader). Checked: (a) every `repos_mani
 ### Findings
 - [x] (suggestion) The earlier-format refusal is tested for `resolve`, `show`, `validate` only; add cases for `init` (nothing written in the directory) and `sync`/`status` on a system whose recorded manifest is in the earlier format — `tools/repos-manifest/tests/test_cli.py:39`
 - [x] (suggestion) `packages:`, the fourth key in `_EARLIER_FORMAT_KEYS`, is in no test; add it to the CLI or `test_base_reading.py:279` parametrization — `tools/repos-manifest/src/repos_manifest/manifest.py:34`
-- [ ] (suggestion) The test comment says a manifest "with no `repositories:` or `base:` key" is refused; the code checks only for a missing `repositories:` (a `base:` plus `repos:` manifest is refused too) — `tools/repos-manifest/tests/test_cli.py:46`
+- [x] (suggestion) The test comment says a manifest "with no `repositories:` or `base:` key" is refused; the code checks only for a missing `repositories:` (a `base:` plus `repos:` manifest is refused too) — `tools/repos-manifest/tests/test_cli.py:46`
 - [ ] (suggestion) The rewritten package description and module docstring still name "agent_workspace issue #267"; the tool's own text is not to mention the workspace — `tools/repos-manifest/pyproject.toml:8`, `tools/repos-manifest/src/repos_manifest/__init__.py:6`
 
 ## Checkpoint
